@@ -1,0 +1,266 @@
+// LeetCode #1620: Coordinate With Maximum Network Quality -- the
+// differential.
+//
+// Four arms against the statement read literally, on 100 random cases of
+// 1 to 6 towers in a square of side 1 to 51, radius 1 to 12, with six
+// properties. Three cases in four are built to sit on an edge: two towers
+// exactly `radius` apart, two just out of each other's reach, or one tower
+// on the last column. Every random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the towers listed backwards leave the answer
+// P3  one more tower of strength 0 leaves the answer
+// P4  no tower's own point has a better quality than the answer
+// P5  every tower written twice leaves the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- network.kara: the ★ arm: every point, f64 distances
+
+fn star_arm(towers: Slice[Vec[i32]], radius: i32) -> Vec[i32] {
+    let mut best = [0, 0];
+    let mut most = 0;
+    for x in 0i32..=50 {
+        for y in 0i32..=50 {
+            let mut quality = 0;
+            for t in towers.iter() {
+                let (dx, dy) = (t[0] - x, t[1] - y);
+                let d = ((dx * dx + dy * dy) as f64).sqrt();
+                if d <= radius as f64 {
+                    quality += (t[2] as f64 / (1.0 + d)).floor() as i32;
+                }
+            }
+            if quality > most {
+                most = quality;
+                best = [x, y];
+            }
+        }
+    }
+    best.to_vec()
+}
+
+// ---- network_exact.kara: exact integers, no square roots
+
+fn exact_signal(q: i32, d2: i32) -> i32 {
+    let mut k = q;
+    while k > 0 and k * k * d2 > (q - k) * (q - k) {
+        k -= 1;
+    }
+    k
+}
+
+fn exact_arm(towers: Slice[Vec[i32]], radius: i32) -> Vec[i32] {
+    let mut best: Vec[i32] = [0, 0];
+    let mut most = 0;
+    for x in 0i32..=50 {
+        for y in 0i32..=50 {
+            let mut quality = 0;
+            for t in towers.iter() {
+                let d2 = (t[0] - x) * (t[0] - x) + (t[1] - y) * (t[1] - y);
+                if d2 <= radius * radius {
+                    quality += exact_signal(t[2], d2);
+                }
+            }
+            if quality > most {
+                most = quality;
+                best = [x, y];
+            }
+        }
+    }
+    best
+}
+
+// ---- network_scatter.kara: each tower scattered onto a grid
+
+fn scatter_arm(towers: Slice[Vec[i32]], radius: i32) -> Vec[i32] {
+    let mut grid = Vec.filled(51, Vec.filled(51, 0));
+    for t in towers.iter() {
+        let (tx, ty, q) = (t[0] as i64, t[1] as i64, t[2] as i64);
+        let r = radius as i64;
+        for x in max(0, tx - r)..=min(50, tx + r) {
+            for y in max(0, ty - r)..=min(50, ty + r) {
+                let d = (((x - tx) * (x - tx) + (y - ty) * (y - ty)) as f64).sqrt();
+                if d <= r as f64 {
+                    grid[x][y] += (q as f64 / (1.0 + d)).floor() as i64;
+                }
+            }
+        }
+    }
+    let mut best = (0, 0);
+    for x in 0..51 {
+        for y in 0..51 {
+            if grid[x][y] > grid[best.0][best.1] {
+                best = (x, y);
+            }
+        }
+    }
+    [best.0 as i32, best.1 as i32]
+}
+
+// ---- network_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn best_coordinate(towers: Vec[Vec[i32]], radius: i32) -> Vec[i32] {
+        let mut ans = [0i32, 0];
+        let mut max_q = 0;
+        for x in 0i32..=50 {
+            for y in 0i32..=50 {
+                let mut q = 0;
+                for t in ref towers {
+                    let dx = (t[0] - x) as f64;
+                    let dy = (t[1] - y) as f64;
+                    let d = (dx * dx + dy * dy).sqrt();
+                    if d <= radius as f64 {
+                        q += (t[2] as f64 / (1.0 + d)).floor() as i32;
+                    }
+                }
+                if q > max_q {
+                    max_q = q;
+                    ans = [x, y];
+                }
+            }
+        }
+        ans
+    }
+}
+
+fn solution_arm(towers: Slice[Vec[i32]], radius: i32) -> Vec[i32] {
+    SolutionArm.best_coordinate(towers.to_vec(), radius)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, towers: Slice[Vec[i32]], radius: i32) -> Vec[i32] {
+    match a {
+        0 => star_arm(towers, radius),
+        1 => exact_arm(towers, radius),
+        2 => scatter_arm(towers, radius),
+        _ => solution_arm(towers, radius),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["network", "exact", "scatter", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: the network quality of a point is
+// the sum over the towers within `radius` of `floor(q / (1 + d))`; of all
+// the integral points, the one with the most, and of those the least
+// first by x, then by y
+
+fn quality(towers: Slice[Vec[i32]], radius: i32, x: i32, y: i32) -> i64 {
+    let mut total = 0;
+    for t in towers.iter() {
+        let d = (((t[0] - x) * (t[0] - x) + (t[1] - y) * (t[1] - y)) as f64).sqrt();
+        if d <= radius as f64 {
+            total += (t[2] as f64 / (1.0 + d)).floor() as i64;
+        }
+    }
+    total
+}
+
+fn literal(towers: Slice[Vec[i32]], radius: i32) -> Vec[i32] {
+    let mut points: Vec[(i64, i32, i32)] = Vec.new();
+    for x in 0i32..=50 {
+        for y in 0i32..=50 {
+            points.push((-quality(towers, radius, x, y), x, y));
+        }
+    }
+    points.sort();
+    [points[0].1, points[0].2]
+}
+
+fn main() {
+    let mut seed = 1620;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    let problems = 100;
+    for p in 0..problems {
+        let n = next_random(mut seed) % 6 + 1;
+        let span = next_random(mut seed) % 51 + 1;
+        let mut towers: Vec[Vec[i32]] = (0..n)
+            .map(|_| [(next_random(mut seed) % span) as i32, (next_random(mut seed) % span) as i32, (next_random(mut seed) % 51) as i32])
+            .collect();
+        let radius = (next_random(mut seed) % 12 + 1) as i32;
+        // Three cases in four are built to sit on an edge. A pair just
+        // `radius` apart whose points tie only when each reaches the other:
+        // the stronger tower's strength a multiple of `1 + radius`, the
+        // weaker one less. A pair just out of each other's reach, at
+        // `(radius, 1)`, whose points would tie if each reached the other.
+        // One tower on the square's last column.
+        let (ax, ay) = (next_random(mut seed) % (51 - radius as i64), next_random(mut seed) % 50);
+        let (ax, ay) = (ax as i32, ay as i32);
+        if p % 4 == 0 {
+            let q = (50 / (1 + radius)) * (1 + radius);
+            towers = [[ax, ay, q - 1], [ax + radius, ay, q]];
+        } else if p % 4 == 1 {
+            let q = (1.0 + ((radius * radius + 1) as f64).sqrt()).floor() as i32 + 1;
+            towers = [[ax, ay, q - 1], [ax + radius, ay + 1, q]];
+        } else if p % 4 == 2 {
+            towers = [[50, ay, radius]];
+        }
+        let silent: Vec[i32] = [(next_random(mut seed) % 51) as i32, (next_random(mut seed) % 51) as i32, 0];
+        let mut reversed = towers.clone();
+        reversed.reverse();
+        let mut with_silent = towers.clone();
+        with_silent.push(silent);
+        let mut doubled = towers.clone();
+        doubled.extend(towers.iter().cloned());
+
+        let truth = literal(towers, radius);
+        check = (check * 31 + (truth[0] * 51 + truth[1]) + 1) % 1000000007;
+        let mut answers: Vec[Vec[i32]] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, towers, radius);
+            let at_best = quality(towers, radius, got[0], got[1]);
+            let failed = [
+                got != truth,
+                arm(a, reversed, radius) != truth,
+                arm(a, with_silent, radius) != truth,
+                towers.iter().any(|t| quality(towers, radius, t[0], t[1]) > at_best),
+                arm(a, doubled, radius) != truth,
+            ];
+            answers.push(got);
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P6
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

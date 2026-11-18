@@ -1,0 +1,57 @@
+// LeetCode #1620: Coordinate With Maximum Network Quality -- the bench, on
+// the ★ arm: every point of the square, every tower, f64 distances.
+//
+// Build once, then punch: 1000 random cases of 50 towers anywhere in the
+// square with a radius of 1 to 50, all drawn first, then each one's best
+// coordinate.
+
+fn best_coordinate(towers: Slice[Vec[i32]], radius: i32) -> Vec[i32] {
+    let mut best = [0, 0];
+    let mut most = 0;
+    for x in 0i32..=50 {
+        for y in 0i32..=50 {
+            let mut quality = 0;
+            for t in towers.iter() {
+                let (dx, dy) = (t[0] - x, t[1] - y);
+                let d = ((dx * dx + dy * dy) as f64).sqrt();
+                if d <= radius as f64 {
+                    quality += (t[2] as f64 / (1.0 + d)).floor() as i32;
+                }
+            }
+            if quality > most {
+                most = quality;
+                best = [x, y];
+            }
+        }
+    }
+    best.to_vec()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn main() {
+    let mut seed = 1620;
+    let mut cases: Vec[(Vec[Vec[i32]], i32)] = Vec.new();
+    for _ in 0..1000 {
+        let towers: Vec[Vec[i32]] = (0..50)
+            .map(|_| [(next_random(mut seed) % 51) as i32, (next_random(mut seed) % 51) as i32, (next_random(mut seed) % 51) as i32])
+            .collect();
+        let radius = (next_random(mut seed) % 50 + 1) as i32;
+        cases.push((towers, radius));
+    }
+    let mut check = 0;
+    let mut spread = 0;
+    for (towers, radius) in cases.iter() {
+        let best = best_coordinate(towers, radius);
+        spread += best[0] + best[1];
+        check = mix(check, best[0] * 51 + best[1]);
+    }
+    println(f"1000 cases of 50 towers: coordinates sum to {spread}, checksum {check}");
+}

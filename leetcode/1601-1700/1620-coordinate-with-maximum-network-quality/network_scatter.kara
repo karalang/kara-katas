@@ -1,0 +1,88 @@
+// LeetCode #1620: Coordinate With Maximum Network Quality -- scatter.
+//
+// Turned round: each tower adds its signal to the points of a 51 x 51
+// grid inside its reach, only those within its bounding square; then one
+// pass over the grid, row by row, keeps the first largest. O(t r^2 + 51^2).
+
+fn best_coordinate(towers: Slice[Vec[i32]], radius: i32) -> Vec[i32] {
+    let mut grid = Vec.filled(51, Vec.filled(51, 0));
+    for t in towers.iter() {
+        let (tx, ty, q) = (t[0] as i64, t[1] as i64, t[2] as i64);
+        let r = radius as i64;
+        for x in max(0, tx - r)..=min(50, tx + r) {
+            for y in max(0, ty - r)..=min(50, ty + r) {
+                let d = (((x - tx) * (x - tx) + (y - ty) * (y - ty)) as f64).sqrt();
+                if d <= r as f64 {
+                    grid[x][y] += (q as f64 / (1.0 + d)).floor() as i64;
+                }
+            }
+        }
+    }
+    let mut best = (0, 0);
+    for x in 0..51 {
+        for y in 0..51 {
+            if grid[x][y] > grid[best.0][best.1] {
+                best = (x, y);
+            }
+        }
+    }
+    [best.0 as i32, best.1 as i32]
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn show(towers: Slice[Vec[i32]], radius: i32) -> String {
+    let parts: Vec[String] = towers.iter().map(|t| f"[{t[0]},{t[1]},{t[2]}]").collect();
+    f"[{parts.join(",")}] r={radius}"
+}
+
+fn batch(count: i64, most: i64, span: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut origin = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let towers: Vec[Vec[i32]] = (0..n)
+            .map(|_| vec_of(next_random(mut seed) % span, next_random(mut seed) % span, next_random(mut seed) % 51))
+            .collect();
+        let radius = (next_random(mut seed) % 50 + 1) as i32;
+        let best = best_coordinate(towers, radius);
+        if best[0] == 0 and best[1] == 0 {
+            origin += 1;
+        }
+        check = mix(check, (best[0] * 51 + best[1]));
+    }
+    println(f"{count} cases of up to {most} towers in a {span} square: {origin} at the origin, checksum {check}");
+}
+
+fn vec_of(x: i64, y: i64, q: i64) -> Vec[i32] {
+    [x as i32, y as i32, q as i32]
+}
+
+fn main() {
+    // LeetCode's three examples, then a tower too weak to reach anywhere
+    // but its own square, and no signal at all
+    let examples: Vec[(Vec[Vec[i32]], i32)] = [
+        ([[1, 2, 5], [2, 1, 7], [3, 1, 9]], 2),
+        ([[23, 11, 21]], 9),
+        ([[1, 2, 13], [2, 1, 7], [0, 1, 9]], 2),
+        ([[5, 5, 1], [9, 9, 1]], 3),
+        ([[3, 4, 0], [7, 7, 0]], 10),
+    ];
+    for (towers, radius) in examples.iter() {
+        let best = best_coordinate(towers, radius);
+        println(f"{show(towers, radius)}: [{best[0]},{best[1]}]");
+    }
+    let mut seed = 1620;
+    batch(3000, 4, 8, mut seed);
+    batch(300, 20, 51, mut seed);
+    batch(30, 50, 51, mut seed);
+}
