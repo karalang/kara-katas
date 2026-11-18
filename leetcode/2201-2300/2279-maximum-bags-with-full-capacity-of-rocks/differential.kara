@@ -1,0 +1,273 @@
+// LeetCode #2279: Maximum Bags With Full Capacity of Rocks -- the
+// differential. The six arms, against the statement read literally:
+// every set of bags, as a mask, costed by what its bags lack, and the
+// largest set the spare rocks pay for. No sort and no greed. 300 random
+// sets of 1 to 10 bags of capacity up to 3, 10 or 1000, with spare
+// rocks up to what they all lack; then 30 sets of equal bags; then 30
+// with every bag full but one. Every case is drawn before any arm
+// answers.
+//
+// P1  the count is the literal reading's
+// P2  the bags in reverse order: the same count
+// P3  every capacity, every bag's rocks and the spare rocks times 3: the
+//     same count
+// P4  from the bags already full to all of them, and all exactly when
+//     the spare rocks cover what every bag lacks
+// P5  one spare rock more: the same count or one more
+// P6  each arm agrees with at least three of the other five
+
+// ---- bags.kara: the ★ arm, the needs sorted and spent in order
+fn star_maximum_bags(capacity: Vec[i64], rocks: Vec[i64], additional_rocks: i64) -> i64 {
+    let mut lack: Vec[i64] = Vec.new();
+    for i in 0..capacity.len() {
+        lack.push(capacity[i] - rocks[i]);
+    }
+    lack.sort();
+    let mut left = additional_rocks;
+    let mut full = 0;
+    for need in lack.iter() {
+        if need > left {
+            break;
+        }
+        left -= need;
+        full += 1;
+    }
+    full
+}
+
+// ---- bags_heap.kara: a smallest-first `PriorityQueue`
+fn heap_maximum_bags(capacity: Vec[i64], rocks: Vec[i64], additional_rocks: i64) -> i64 {
+    let mut heap: PriorityQueue[i64] = PriorityQueue.new();
+    for i in 0..capacity.len() {
+        heap.push(capacity[i] - rocks[i]);
+    }
+    let mut left = additional_rocks;
+    let mut full = 0;
+    while let Some(need) = heap.pop() {
+        if need > left {
+            break;
+        }
+        left -= need;
+        full += 1;
+    }
+    full
+}
+
+// ---- bags_binary.kara: prefix costs and `partition_point`
+fn binary_maximum_bags(capacity: Vec[i64], rocks: Vec[i64], additional_rocks: i64) -> i64 {
+    let mut lack: Vec[i64] = (0..capacity.len()).map(|i| capacity[i] - rocks[i]).collect();
+    lack.sort();
+    let mut cost: Vec[i64] = [0].to_vec();
+    for need in lack.iter() {
+        cost.push(cost[cost.len() - 1] + need);
+    }
+    cost.partition_point(|c| c <= additional_rocks) - 1
+}
+
+// ---- bags_struct.kara: `struct Pile` asked to fill a bag at a time
+struct StructPile {
+    left: i64,
+    filled: i64,
+}
+
+impl StructPile {
+    fn fill(mut ref self, need: i64) -> bool {
+        if need > self.left {
+            return false;
+        }
+        self.left -= need;
+        self.filled += 1;
+        true
+    }
+}
+
+fn struct_maximum_bags(capacity: Vec[i64], rocks: Vec[i64], additional_rocks: i64) -> i64 {
+    let mut lack: Vec[i64] = capacity.iter().zip(rocks.iter()).map(|(c, r)| c - r).collect();
+    lack.sort();
+    let mut pile = StructPile { left: additional_rocks, filled: 0 };
+    for need in lack.iter() {
+        if not pile.fill(need) {
+            break;
+        }
+    }
+    pile.filled
+}
+
+// ---- bags_iter.kara: `scan`, `take_while` and `count`
+fn iter_maximum_bags(capacity: Vec[i64], rocks: Vec[i64], additional_rocks: i64) -> i64 {
+    let mut lack: Vec[i64] = capacity.iter().zip(rocks.iter()).map(|(c, r)| c - r).collect();
+    lack.sort();
+    lack.iter()
+        .scan(0, |spent, need| {
+            let spent = spent + need;
+            Some((spent, spent))
+        })
+        .take_while(|spent| spent <= additional_rocks)
+        .count()
+}
+
+// ---- bags_solution.kara: LeetCode's Rust template
+impl Solution {
+    pub fn maximum_bags(capacity: Vec[i32], rocks: Vec[i32], additional_rocks: i32) -> i32 {
+        let mut need: Vec[i32] = capacity.iter().zip(rocks.iter()).map(|(c, r)| c - r).collect();
+        need.sort();
+        let mut left = additional_rocks;
+        let mut ans = 0;
+        for d in need {
+            if d > left {
+                break;
+            }
+            left -= d;
+            ans += 1;
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_maximum_bags(capacity: Vec[i64], rocks: Vec[i64], additional_rocks: i64) -> i64 {
+    Solution.maximum_bags(
+        capacity.iter().map(|x| x as i32).collect(),
+        rocks.iter().map(|x| x as i32).collect(),
+        additional_rocks as i32,
+    )
+}
+
+
+// ---- the statement read literally
+
+fn literal(capacity: Vec[i64], rocks: Vec[i64], spare: i64) -> i64 {
+    let n = capacity.len();
+    let mut best = 0;
+    for mask in 0..(1 << n) {
+        let mut cost = 0;
+        let mut size = 0;
+        for i in 0..n {
+            if mask & (1 << i) != 0 {
+                cost += capacity[i] - rocks[i];
+                size += 1;
+            }
+        }
+        if cost <= spare {
+            best = best.max(size);
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, capacity: Vec[i64], rocks: Vec[i64], spare: i64) -> i64 {
+    match arm {
+        0 => star_maximum_bags(capacity, rocks, spare),
+        1 => heap_maximum_bags(capacity, rocks, spare),
+        2 => binary_maximum_bags(capacity, rocks, spare),
+        3 => struct_maximum_bags(capacity, rocks, spare),
+        4 => iter_maximum_bags(capacity, rocks, spare),
+        _ => solution_maximum_bags(capacity, rocks, spare),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "heap", "binary", "struct", "iter", "solution"];
+    let mut seed = 2279;
+    let mut cases: Vec[(Vec[i64], Vec[i64], i64)] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 10 + 1;
+        let mut capacity: Vec[i64] = Vec.new();
+        let mut rocks: Vec[i64] = Vec.new();
+        if c < 300 {
+            let high = [3, 10, 1000][c % 3];
+            for _ in 0..n {
+                let cap = next_random(mut seed) % high + 1;
+                capacity.push(cap);
+                rocks.push(next_random(mut seed) % (cap + 1));
+            }
+        } else if c < 330 {
+            let cap = next_random(mut seed) % 10 + 1;
+            let r = next_random(mut seed) % (cap + 1);
+            for _ in 0..n {
+                capacity.push(cap);
+                rocks.push(r);
+            }
+        } else {
+            let odd = next_random(mut seed) % n;
+            for i in 0..n {
+                let cap = next_random(mut seed) % 10 + 1;
+                capacity.push(cap);
+                rocks.push(if i == odd { 0 } else { cap });
+            }
+        }
+        let mut lack = 0;
+        for i in 0..n {
+            lack += capacity[i] - rocks[i];
+        }
+        let spare = next_random(mut seed) % (lack + 1);
+        cases.push((capacity, rocks, spare));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (capacity, rocks, spare) in cases.iter() {
+        let truth = literal(capacity, rocks, spare);
+        check = (check * 31 + truth) % 1000000007;
+        let n = capacity.len();
+        let back_c: Vec[i64] = capacity.iter().rev().cloned().collect();
+        let back_r: Vec[i64] = rocks.iter().rev().cloned().collect();
+        let big_c: Vec[i64] = capacity.iter().map(|x| 3 * x).collect();
+        let big_r: Vec[i64] = rocks.iter().map(|x| 3 * x).collect();
+        let mut full = 0;
+        let mut lack = 0;
+        for i in 0..n {
+            if capacity[i] == rocks[i] {
+                full += 1;
+            }
+            lack += capacity[i] - rocks[i];
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, capacity, rocks, spare)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let more = answer(arm, capacity, rocks, spare + 1);
+            let verdicts = [
+                value == truth,
+                answer(arm, back_c, back_r, spare) == value,
+                answer(arm, big_c, big_r, 3 * spare) == value,
+                value >= full and value <= n and (value == n) == (lack <= spare),
+                more == value or more == value + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{capacity} {rocks} {spare} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

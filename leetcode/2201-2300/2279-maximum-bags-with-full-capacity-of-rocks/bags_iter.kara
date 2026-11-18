@@ -1,0 +1,81 @@
+// LeetCode #2279: Maximum Bags With Full Capacity of Rocks -- one chain.
+// What the bags lack, sorted; the running cost by `scan`; the bags while
+// it stays within the spare rocks by `take_while`, and `count`.
+// O(n log n).
+
+fn maximum_bags(capacity: Vec[i64], rocks: Vec[i64], additional_rocks: i64) -> i64 {
+    let mut lack: Vec[i64] = capacity.iter().zip(rocks.iter()).map(|(c, r)| c - r).collect();
+    lack.sort();
+    lack.iter()
+        .scan(0, |spent, need| {
+            let spent = spent + need;
+            Some((spent, spent))
+        })
+        .take_while(|spent| spent <= additional_rocks)
+        .count()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+// `n` bags of capacity 1 to `high`, each holding up to its capacity,
+// half of them a fifth full or less; then the rocks to spare, up to
+// what all the bags lack
+fn bags(seed: mut ref i64, n: i64, high: i64) -> (Vec[i64], Vec[i64], i64) {
+    let mut capacity: Vec[i64] = Vec.new();
+    let mut rocks: Vec[i64] = Vec.new();
+    let mut lack = 0;
+    for _ in 0..n {
+        let c = wide_random(mut seed) % high + 1;
+        let r = if next_random(mut seed) % 2 == 0 { wide_random(mut seed) % (c / 5 + 1) } else { wide_random(mut seed) % (c + 1) };
+        capacity.push(c);
+        rocks.push(r);
+        lack += c - r;
+    }
+    let spare = wide_random(mut seed) % (lack + 1) / (next_random(mut seed) % 4 + 1);
+    (capacity, rocks, spare.min(1000000000))
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: one full bag, one bag
+    // just short, three bags with rocks for two, nothing to spare, and
+    // every bag full already
+    let examples = [
+        ([2, 3, 4, 5].to_vec(), [1, 2, 4, 4].to_vec(), 2),
+        ([10, 2, 2].to_vec(), [2, 2, 0].to_vec(), 100),
+        ([1].to_vec(), [1].to_vec(), 0),
+        ([5].to_vec(), [0].to_vec(), 4),
+        ([3, 3, 3].to_vec(), [0, 0, 0].to_vec(), 8),
+        ([1, 1].to_vec(), [0, 0].to_vec(), 0),
+        ([4, 4].to_vec(), [4, 4].to_vec(), 0),
+    ];
+    for (capacity, rocks, spare) in examples.iter() {
+        println(f"{capacity} {rocks} {spare} -> {maximum_bags(capacity, rocks, spare)}");
+    }
+    // 2000 sets of 1 to 40 bags of capacity up to 10, 1000 or 10^9
+    let mut seed = 2279;
+    let mut check = 0;
+    for t in 0..2000 {
+        let n = next_random(mut seed) % 40 + 1;
+        let (capacity, rocks, spare) = bags(mut seed, n, [10, 1000, 1000000000][t % 3]);
+        check = (check * 31 + maximum_bags(capacity, rocks, spare)) % 1000000007;
+    }
+    println(f"2000 sets: checksum {check}");
+    // the constraints' largest, 5 * 10^4 bags: capacities up to 10^9,
+    // up to 100, and every bag empty with capacity 1
+    let (c1, r1, s1) = bags(mut seed, 50000, 1000000000);
+    let (c2, r2, s2) = bags(mut seed, 50000, 100);
+    let ones: Vec[i64] = Vec.filled(50000, 1);
+    let empty: Vec[i64] = Vec.filled(50000, 0);
+    let answers = [maximum_bags(c1, r1, s1), maximum_bags(c2, r2, s2), maximum_bags(ones, empty, 1000000000)];
+    println(f"5 * 10^4 bags: {answers}");
+}
