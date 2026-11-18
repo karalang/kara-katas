@@ -1,0 +1,54 @@
+// LeetCode #1198 bench: the ★ arm in Rust, over the same 20 matrices of
+// 500 x 500 and 100 rounds as the Kāra bench.
+
+fn smallest_common_element(mat: &[Vec<i64>]) -> i64 {
+    let mut count = [0i64; 10001];
+    for row in mat {
+        for &v in row {
+            count[v as usize] += 1;
+        }
+    }
+    for &v in &mat[0] {
+        if count[v as usize] == mat.len() as i64 {
+            return v;
+        }
+    }
+    -1
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_row(seed: &mut i64, n: i64, high: i64) -> Vec<i64> {
+    let mut row = Vec::new();
+    let mut v = 0;
+    while (row.len() as i64) < n {
+        v += 1 + next_random(seed) % (2 * high / n);
+        let cap = high - (n - row.len() as i64) + 1;
+        if v > cap {
+            v = cap;
+        }
+        row.push(v);
+    }
+    row
+}
+
+fn main() {
+    let highs = [520, 1000, 5000, 10000];
+    let mut seed = 1198;
+    let mut mats: Vec<Vec<Vec<i64>>> = Vec::new();
+    for k in 0..20 {
+        let mat: Vec<Vec<i64>> = (0..500).map(|_| random_row(&mut seed, 500, highs[k % 4])).collect();
+        mats.push(mat);
+    }
+    let mut check: i64 = 0;
+    for _ in 0..100 {
+        for mat in &mats {
+            let v = smallest_common_element(mat);
+            check = (check * 131 + v + 2) % 1000000007;
+        }
+    }
+    println!("100 rounds of 20 matrices of 500 x 500: checksum {}", check);
+}

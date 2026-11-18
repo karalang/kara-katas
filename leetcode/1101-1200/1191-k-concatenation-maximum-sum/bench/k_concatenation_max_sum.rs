@@ -1,0 +1,46 @@
+// LeetCode #1191 bench: the ★ arm in Rust, over the same 4 arrays of 10^5
+// values and 200 rounds as the Kāra bench.
+
+fn k_concatenation_max_sum(arr: &[i64], k: i64) -> i64 {
+    let total: i64 = arr.iter().sum();
+    let mut best = 0;
+    let mut run = 0;
+    for _ in 0..k.min(2) {
+        for &x in arr {
+            run = (run + x).max(0);
+            best = best.max(run);
+        }
+    }
+    if k > 2 && total > 0 {
+        best += (k - 2) * total;
+    }
+    best % 1000000007
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1191;
+    let mut random: Vec<i64> = Vec::new();
+    for _ in 0..100000 {
+        let high = next_random(&mut seed);
+        let low = next_random(&mut seed);
+        random.push((high * 32768 + low) % 20001 - 10000);
+    }
+    let lifted: Vec<i64> = random.iter().map(|&x| (x + 300).min(10000)).collect();
+    let negative: Vec<i64> = random.iter().map(|&x| -(x.abs()) - 1).collect();
+    let alternating: Vec<i64> = (0..100000i64)
+        .map(|i| if i % 2 == 0 { 10000 - i % 7 } else { i % 5 - 10000 })
+        .collect();
+    let arrays = [random, lifted, negative, alternating];
+    let mut check: i64 = 0;
+    for r in 0..200 {
+        for arr in &arrays {
+            check = (check * 131 + k_concatenation_max_sum(arr, 100000 - r)) % 1000000007;
+        }
+    }
+    println!("200 rounds of 4 arrays of 100000 values: checksum {check}");
+}
