@@ -133,8 +133,8 @@ hole. That was reported by the MIR builder as E0516 "an expression whose
 type does not lower (UnsolvedParam("C")) is not lowered yet", where the
 same `collect()` bound by a bare `let` gets the type checker's E0238
 asking for an annotation. It now gets E0238 there too, and in a `println`
-argument (B-2026-11-18-10); handed to a generic parameter it still reaches
-the MIR builder (B-2026-11-18-14). The harness binds
+argument (B-2026-11-18-10), and since kara e05a5afee6 handed to a generic
+parameter as well (B-2026-11-18-14). The harness binds
 `let front: String = b.chars().take(k).collect()` first.
 
 The three Kāra arms were written in Kāra and check as written.

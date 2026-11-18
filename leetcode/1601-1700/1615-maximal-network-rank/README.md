@@ -114,7 +114,7 @@ All four arms print the same output as `rank.py` under
 error. `karac run` and a `karac build` binary print the same output for
 them, the differential and the bench. `karac check` reports nothing on
 any of them, and `karac fix` has nothing left to change. Checked at kara
-`5bb1708545`.
+`5bb1708545`, and again at `428299b56e` after the bench's `let n = 100` was restored.
 
 ## Writing it
 
@@ -131,8 +131,9 @@ The bench's harness wrote `let n = 100`, ran `for a in 0..n` and passed
 because its literal kept the default. By design.md §8 an argument fixes
 a literal's type and a literal defaults only at the end of the body, so
 the `for` range's end should not settle it first; it does even with
-`println(a)` as the loop's only body (B-2026-11-18-13). `karac fix` typed it
-`let n: i32 = 100`.
+`println(a)` as the loop's only body (B-2026-11-18-13). That was fixed at
+kara e05a5afee6, and the bench now writes `let n = 100` as it was first
+written.
 
 The Rust template took one `karac fix` of 13 edits: `struct Solution;`
 to `struct Solution {}`, the `<..>` types to `[..]`, every `as usize` to
