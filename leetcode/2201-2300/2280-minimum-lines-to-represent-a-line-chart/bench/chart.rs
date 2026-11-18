@@ -1,0 +1,55 @@
+// LeetCode #2280: Minimum Lines to Represent a Line Chart -- the bench,
+// the ★ arm.
+
+fn minimum_lines(stock_prices: &[Vec<i64>]) -> i64 {
+    let mut points = stock_prices.to_vec();
+    points.sort_by_key(|p| p[0]);
+    let n = points.len();
+    if n < 2 {
+        return 0;
+    }
+    let mut lines = 1;
+    for i in 2..n {
+        let (a, b, c) = (&points[i - 2], &points[i - 1], &points[i]);
+        if (b[1] - a[1]) * (c[0] - b[0]) != (c[1] - b[1]) * (b[0] - a[0]) {
+            lines += 1;
+        }
+    }
+    lines
+}
+
+// ---- bench harness ---------------------------------------------------------
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2280;
+    let mut check = 0;
+    for _ in 0..20 {
+        let mut points: Vec<Vec<i64>> = Vec::new();
+        let mut day = 1;
+        let mut price = 500000000;
+        while points.len() < 100000 {
+            let dx = next_random(&mut seed) % 1000 + 1;
+            let dy = next_random(&mut seed) % 2001 - 1000;
+            let run = next_random(&mut seed) % 5 + 1;
+            for _ in 0..run {
+                if points.len() < 100000 {
+                    points.push(vec![day, price]);
+                    day += dx;
+                    price += dy;
+                }
+            }
+        }
+        for i in (1..100000).rev() {
+            let high = next_random(&mut seed);
+            let j = ((high * 32768 + next_random(&mut seed)) % (i as i64 + 1)) as usize;
+            points.swap(i, j);
+        }
+        check = (check * 31 + minimum_lines(&points)) % 1000000007;
+    }
+    println!("20 charts of 10^5: checksum {check}");
+}

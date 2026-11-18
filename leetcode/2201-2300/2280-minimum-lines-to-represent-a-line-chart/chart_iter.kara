@@ -1,0 +1,91 @@
+// LeetCode #2280: Minimum Lines to Represent a Line Chart -- one chain.
+// The points sorted by day; every three neighbours by `windows(3)`, the
+// turns among them by `filter` on the cross product, and `count`: one
+// line more than the turns, once there are two points. O(n log n).
+
+fn minimum_lines(stock_prices: Vec[Vec[i64]]) -> i64 {
+    let mut points = stock_prices.clone();
+    points.sort_by_key(|p| p[0]);
+    if points.len() < 2 {
+        return 0;
+    }
+    let turns = points
+        .windows(3)
+        .into_iter()
+        .filter(|w| (w[1][1] - w[0][1]) * (w[2][0] - w[1][0]) != (w[2][1] - w[1][1]) * (w[1][0] - w[0][0]))
+        .count();
+    turns + 1
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+// `n` points walked in straight pieces of 1 to 5 steps, each step `dx`
+// days on (1 to `step`) and `dy` up or down (within `step`), from a
+// price of `base`; then shuffled
+fn chart(seed: mut ref i64, n: i64, step: i64, base: i64) -> Vec[Vec[i64]] {
+    let mut points: Vec[Vec[i64]] = Vec.new();
+    let mut day = next_random(mut seed) % 10 + 1;
+    let mut price = base;
+    while points.len() < n {
+        let dx = wide_random(mut seed) % step + 1;
+        let dy = wide_random(mut seed) % (2 * step + 1) - step;
+        let run = next_random(mut seed) % 5 + 1;
+        for _ in 0..run {
+            if points.len() < n {
+                points.push([day, price].to_vec());
+                day += dx;
+                price += dy;
+            }
+        }
+    }
+    for i in (1..points.len()).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        points.swap(i, j);
+    }
+    points
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: one point, two points, a
+    // turn, a zigzag, and three points whose slopes differ by less than
+    // 10^-17
+    let examples = [
+        [[1, 7], [2, 6], [3, 5], [4, 4], [5, 4], [6, 3], [7, 2], [8, 1]].to_vec(),
+        [[3, 4], [1, 2], [7, 8], [2, 3]].to_vec(),
+        [[5, 5]].to_vec(),
+        [[1, 1], [1000000000, 1000000000]].to_vec(),
+        [[1, 1], [2, 2], [3, 1]].to_vec(),
+        [[4, 2], [1, 1], [3, 1], [2, 2], [5, 1]].to_vec(),
+        [[1, 1], [500000000, 499999999], [1000000000, 999999998]].to_vec(),
+    ];
+    for points in examples.iter() {
+        let stock_prices: Vec[Vec[i64]] = points.iter().map(|p| p.to_vec()).collect();
+        println(f"{stock_prices} -> {minimum_lines(stock_prices)}");
+    }
+    // 2000 charts of 1 to 40 points, steps up to 2, 30 or 10^6
+    let mut seed = 2280;
+    let mut check = 0;
+    for t in 0..2000 {
+        let n = next_random(mut seed) % 40 + 1;
+        let stock_prices = chart(mut seed, n, [2, 30, 1000000][t % 3], [100, 2000, 100000000][t % 3]);
+        check = (check * 31 + minimum_lines(stock_prices)) % 1000000007;
+    }
+    println(f"2000 charts: checksum {check}");
+    // the constraints' largest, 10^5 points: walked in pieces, all on one
+    // line, and a zigzag
+    let walked = chart(mut seed, 100000, 1000, 500000000);
+    let line: Vec[Vec[i64]] = (1..100001).map(|i| [i * 9999, 3 * i + 7].to_vec()).collect();
+    let zigzag: Vec[Vec[i64]] = (1..100001).map(|i| [i, i % 2 + 1].to_vec()).collect();
+    let answers = [minimum_lines(walked), minimum_lines(line), minimum_lines(zigzag)];
+    println(f"10^5 points: {answers}");
+}

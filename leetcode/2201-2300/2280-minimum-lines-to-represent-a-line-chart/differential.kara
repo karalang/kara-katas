@@ -1,0 +1,357 @@
+// LeetCode #2280: Minimum Lines to Represent a Line Chart -- the
+// differential. The six arms, against the statement read literally: the
+// chart drawn from each point to the one with the next day, found by a
+// scan with no sort, each segment's line written `a x + b y = c` in
+// lowest terms, and a new line counted wherever a segment's line is not
+// the last one's. No cross products of neighbours. 300 random charts of
+// 1 to 12 points, walked in straight pieces with steps up to 1, 3 or 10
+// or scattered over 30 days and 4 prices; then 30 on one line; then 30
+// zigzags. Every case is drawn before any arm answers.
+//
+// P1  the count is the literal reading's
+// P2  the points given in reverse order: the same count
+// P3  every price turned upside down, `p` made `10^4 - p`, and every day
+//     tripled and moved 10^8 up: the same count
+// P4  0 for one point; otherwise from 1 to one fewer than the points,
+//     and 1 exactly when every point lies on one line
+// P5  the last segment carried on to one more point (a second point when
+//     there is one): the same count, or 1
+// P6  each arm agrees with at least three of the other five
+
+// ---- chart.kara: the ★ arm, the turns counted by cross products
+fn star_minimum_lines(stock_prices: Vec[Vec[i64]]) -> i64 {
+    let mut points = stock_prices.clone();
+    points.sort_by_key(|p| p[0]);
+    let n = points.len();
+    if n < 2 {
+        return 0;
+    }
+    let mut lines = 1;
+    for i in 2..n {
+        let (a, b, c) = (ref points[i - 2], ref points[i - 1], ref points[i]);
+        if (b[1] - a[1]) * (c[0] - b[0]) != (c[1] - b[1]) * (b[0] - a[0]) {
+            lines += 1;
+        }
+    }
+    lines
+}
+
+// ---- chart_gcd.kara: each step reduced by its gcd
+fn gcd_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { gcd_gcd(b, a % b) }
+}
+
+fn gcd_minimum_lines(stock_prices: Vec[Vec[i64]]) -> i64 {
+    let mut points = stock_prices.clone();
+    points.sort_by_key(|p| p[0]);
+    let mut lines = 0;
+    let mut last = (0, 0);
+    for i in 1..points.len() {
+        let dx = points[i][0] - points[i - 1][0];
+        let dy = points[i][1] - points[i - 1][1];
+        let g = gcd_gcd(dx, dy.abs());
+        let step = (dx / g, dy / g);
+        if step != last {
+            lines += 1;
+            last = step;
+        }
+    }
+    lines
+}
+
+// ---- chart_map.kara: the days walked in a `SortedMap`
+fn map_minimum_lines(stock_prices: Vec[Vec[i64]]) -> i64 {
+    let mut chart: SortedMap[i64, i64] = SortedMap.new();
+    for p in stock_prices.iter() {
+        chart.insert(p[0], p[1]);
+    }
+    let mut lines = 0;
+    let mut seen = 0;
+    let mut a = (0, 0);
+    let mut b = (0, 0);
+    for (day, price) in chart.iter() {
+        if seen == 1 {
+            lines = 1;
+        } else if seen >= 2 {
+            if (b.1 - a.1) * (day - b.0) != (price - b.1) * (b.0 - a.0) {
+                lines += 1;
+            }
+        }
+        a = b;
+        b = (day, price);
+        seen += 1;
+    }
+    lines
+}
+
+// ---- chart_struct.kara: `struct Pen` drawing a point at a time
+struct StructPen {
+    at: (i64, i64),
+    step: (i64, i64),
+    lines: i64,
+}
+
+impl StructPen {
+    fn start(day: i64, price: i64) -> StructPen {
+        StructPen { at: (day, price), step: (0, 0), lines: 0 }
+    }
+
+    fn draw(mut ref self, day: i64, price: i64) {
+        let step = (day - self.at.0, price - self.at.1);
+        if self.lines == 0 or step.1 * self.step.0 != self.step.1 * step.0 {
+            self.lines += 1;
+        }
+        self.step = step;
+        self.at = (day, price);
+    }
+}
+
+fn struct_minimum_lines(stock_prices: Vec[Vec[i64]]) -> i64 {
+    let mut points = stock_prices.clone();
+    points.sort_by_key(|p| p[0]);
+    if points.is_empty() {
+        return 0;
+    }
+    let mut pen = StructPen.start(points[0][0], points[0][1]);
+    for p in points.iter().skip(1) {
+        pen.draw(p[0], p[1]);
+    }
+    pen.lines
+}
+
+// ---- chart_iter.kara: `windows(3)`, `filter` and `count`
+fn iter_minimum_lines(stock_prices: Vec[Vec[i64]]) -> i64 {
+    let mut points = stock_prices.clone();
+    points.sort_by_key(|p| p[0]);
+    if points.len() < 2 {
+        return 0;
+    }
+    let turns = points
+        .windows(3)
+        .into_iter()
+        .filter(|w| (w[1][1] - w[0][1]) * (w[2][0] - w[1][0]) != (w[2][1] - w[1][1]) * (w[1][0] - w[0][0]))
+        .count();
+    turns + 1
+}
+
+// ---- chart_solution.kara: LeetCode's Rust template
+impl Solution {
+    pub fn minimum_lines(stock_prices: own Vec[Vec[i32]]) -> i32 {
+        let mut stock_prices = stock_prices;
+        if stock_prices.len() < 2 {
+            return 0;
+        }
+        stock_prices.sort_by_key(|p| p[0]);
+        let mut ans = 1;
+        for w in stock_prices.windows(3) {
+            let (dx1, dy1) = ((w[1][0] - w[0][0]) as i64, (w[1][1] - w[0][1]) as i64);
+            let (dx2, dy2) = ((w[2][0] - w[1][0]) as i64, (w[2][1] - w[1][1]) as i64);
+            if dy1 * dx2 != dy2 * dx1 {
+                ans += 1;
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_minimum_lines(stock_prices: Vec[Vec[i64]]) -> i64 {
+    Solution.minimum_lines(
+        stock_prices.iter().map(|p| p.iter().map(|x| x as i32).collect()).collect(),
+    )
+}
+
+
+// ---- the statement read literally
+
+fn literal_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a.abs() } else { literal_gcd(b, a % b) }
+}
+
+// the line through two points, as `a x + b y = c` in lowest terms; the
+// second point is the later day, so `b` is always negative
+fn literal_line(p: Vec[i64], q: Vec[i64]) -> (i64, i64, i64) {
+    let a = q[1] - p[1];
+    let b = p[0] - q[0];
+    let c = a * p[0] + b * p[1];
+    let g = literal_gcd(literal_gcd(a, b), c);
+    (a / g, b / g, c / g)
+}
+
+fn literal(stock_prices: Vec[Vec[i64]]) -> i64 {
+    let n = stock_prices.len();
+    let mut first = 0;
+    for i in 0..n {
+        if stock_prices[i][0] < stock_prices[first][0] {
+            first = i;
+        }
+    }
+    let mut lines = 0;
+    let mut last = (0, 0, 0);
+    let mut at = first;
+    loop {
+        let mut next = -1;
+        for i in 0..n {
+            if stock_prices[i][0] > stock_prices[at][0] and (next < 0 or stock_prices[i][0] < stock_prices[next][0]) {
+                next = i;
+            }
+        }
+        if next < 0 {
+            break;
+        }
+        let line = literal_line(stock_prices[at].clone(), stock_prices[next].clone());
+        if lines == 0 or line != last {
+            lines += 1;
+            last = line;
+        }
+        at = next;
+    }
+    lines
+}
+
+fn answer(arm: i64, stock_prices: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_minimum_lines(stock_prices),
+        1 => gcd_minimum_lines(stock_prices),
+        2 => map_minimum_lines(stock_prices),
+        3 => struct_minimum_lines(stock_prices),
+        4 => iter_minimum_lines(stock_prices),
+        _ => solution_minimum_lines(stock_prices),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "gcd", "map", "struct", "iter", "solution"];
+    let mut seed = 2280;
+    let mut cases: Vec[Vec[Vec[i64]]] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 12 + 1;
+        let mut points: Vec[Vec[i64]] = Vec.new();
+        if c < 300 and c % 4 == 3 {
+            let mut days: Vec[i64] = (1..31).collect();
+            for i in (1..30).rev() {
+                let j = next_random(mut seed) % (i + 1);
+                days.swap(i, j);
+            }
+            for i in 0..n {
+                points.push([days[i], next_random(mut seed) % 4 + 1].to_vec());
+            }
+        } else if c < 300 {
+            let step = [1, 3, 10][c % 4];
+            let mut day = next_random(mut seed) % 10 + 1;
+            let mut price = 200;
+            while points.len() < n {
+                let dx = next_random(mut seed) % step + 1;
+                let dy = next_random(mut seed) % (2 * step + 1) - step;
+                let run = next_random(mut seed) % 4 + 1;
+                for _ in 0..run {
+                    if points.len() < n {
+                        points.push([day, price].to_vec());
+                        day += dx;
+                        price += dy;
+                    }
+                }
+            }
+        } else if c < 330 {
+            let dx = next_random(mut seed) % 5 + 1;
+            let dy = next_random(mut seed) % 11 - 5;
+            for i in 0..n {
+                points.push([1 + i * dx, 100 + i * dy].to_vec());
+            }
+        } else {
+            let rise = next_random(mut seed) % 5 + 1;
+            for i in 0..n {
+                points.push([i + 1, 50 + (i % 2) * rise].to_vec());
+            }
+        }
+        for i in (1..points.len()).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            points.swap(i, j);
+        }
+        cases.push(points);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for points in cases.iter() {
+        let truth = literal(points);
+        check = (check * 31 + truth) % 1000000007;
+        let n = points.len();
+        let back: Vec[Vec[i64]] = points.iter().rev().cloned().collect();
+        let turned: Vec[Vec[i64]] = points.iter().map(|p| [3 * p[0] + 100000000, 10000 - p[1]].to_vec()).collect();
+        // the last two days, and whether every point lies on one line
+        let mut last = 0;
+        for i in 0..n {
+            if points[i][0] > points[last][0] {
+                last = i;
+            }
+        }
+        let mut before = -1;
+        for i in 0..n {
+            if i != last and (before < 0 or points[i][0] > points[before][0]) {
+                before = i;
+            }
+        }
+        let mut longer = points.clone();
+        let mut straight = true;
+        if before < 0 {
+            longer.push([points[last][0] + 1, points[last][1]].to_vec());
+        } else {
+            let dx = points[last][0] - points[before][0];
+            let dy = points[last][1] - points[before][1];
+            longer.push([points[last][0] + dx, points[last][1] + dy].to_vec());
+            for p in points.iter() {
+                if dy * (p[0] - points[last][0]) != dx * (p[1] - points[last][1]) {
+                    straight = false;
+                }
+            }
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, points)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let more = answer(arm, longer);
+            let verdicts = [
+                value == truth,
+                answer(arm, back) == value,
+                answer(arm, turned) == value,
+                if n == 1 { value == 0 } else { value >= 1 and value <= n - 1 and (value == 1) == straight },
+                if n == 1 { more == 1 } else { more == value },
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{points} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
