@@ -1,0 +1,82 @@
+// LeetCode #2318: Number of Distinct Roll Sequences -- matrix powers:
+// the 36 pairs of last two rolls are states, a 36 by 36 matrix holds
+// which pair can follow which, and the count for `n` rolls is the 30
+// valid opening pairs carried through that matrix to the power `n - 2`,
+// found by repeated squaring. O(36^3 log n).
+
+fn gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+fn multiply(x: Vec[Vec[i64]], y: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut product: Vec[Vec[i64]] = Vec.filled(36, Vec.filled(36, 0));
+    for i in 0..36 {
+        for k in 0..36 {
+            if x[i][k] != 0 {
+                for j in 0..36 {
+                    product[i][j] = (product[i][j] + x[i][k] * y[k][j]) % 1000000007;
+                }
+            }
+        }
+    }
+    product
+}
+
+fn distinct_sequences(n: i64) -> i64 {
+    if n == 1 {
+        return 6;
+    }
+    // step[a * 6 + b][b * 6 + c]: a pair (a, b) followed by roll c
+    let mut step: Vec[Vec[i64]] = Vec.filled(36, Vec.filled(36, 0));
+    for a in 0..6 {
+        for b in 0..6 {
+            for c in 0..6 {
+                if a != b and b != c and a != c and gcd(b + 1, c + 1) == 1 {
+                    step[a * 6 + b][b * 6 + c] = 1;
+                }
+            }
+        }
+    }
+    let mut power: Vec[Vec[i64]] = Vec.filled(36, Vec.filled(36, 0));
+    for i in 0..36 {
+        power[i][i] = 1;
+    }
+    let mut e = n - 2;
+    while e > 0 {
+        if e % 2 == 1 {
+            power = multiply(power, step);
+        }
+        step = multiply(step, step);
+        e /= 2;
+    }
+    let mut total = 0;
+    for a in 0..6 {
+        for b in 0..6 {
+            if a != b and gcd(a + 1, b + 1) == 1 {
+                for j in 0..36 {
+                    total = (total + power[a * 6 + b][j]) % 1000000007;
+                }
+            }
+        }
+    }
+    total
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn main() {
+    // LeetCode's two examples; then one roll, three, ten, a hundred,
+    // and the largest count of rolls
+    for n in [4, 2, 1, 3, 10, 100, 10000] {
+        println(f"{n}: {distinct_sequences(n)}");
+    }
+    // every count of rolls from 1 to 300
+    let mut check = 0;
+    let mut total = 0;
+    for n in 1..=300 {
+        let ways = distinct_sequences(n);
+        check = (check * 31 + ways) % 1000000007;
+        total += ways;
+    }
+    println(f"300 counts: checksum {check}, {total} in all");
+}

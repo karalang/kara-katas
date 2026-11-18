@@ -1,0 +1,58 @@
+// LeetCode #2318: Number of Distinct Roll Sequences -- the bench, the ★
+// arm in Kāra. The count of sequences ending in each pair of rolls, a 6
+// by 6 table rolled forward once per roll, each next roll coprime with
+// the last and unlike the last two. O(216 n).
+
+fn gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+fn distinct_sequences(n: i64) -> i64 {
+    let modulus = 1000000007;
+    if n == 1 {
+        return 6;
+    }
+    // ends[a][b]: sequences whose last two rolls are a + 1 then b + 1
+    let mut ends = [[0; 6]; 6];
+    for a in 0..6 {
+        for b in 0..6 {
+            if a != b and gcd(a + 1, b + 1) == 1 {
+                ends[a][b] = 1;
+            }
+        }
+    }
+    for _ in 2..n {
+        let mut next = [[0; 6]; 6];
+        for a in 0..6 {
+            for b in 0..6 {
+                if ends[a][b] > 0 {
+                    for c in 0..6 {
+                        if c != a and c != b and gcd(b + 1, c + 1) == 1 {
+                            next[b][c] = (next[b][c] + ends[a][b]) % modulus;
+                        }
+                    }
+                }
+            }
+        }
+        ends = next;
+    }
+    let mut total = 0;
+    for a in 0..6 {
+        for b in 0..6 {
+            total = (total + ends[a][b]) % modulus;
+        }
+    }
+    total
+}
+
+fn main() {
+    // 5 passes, each over every count of rolls from 9981 to 10000, pass
+    // `p` folding each answer plus `p` into the checksum
+    let mut check = 0;
+    for p in 0..5 {
+        for n in 9981..=10000 {
+            check = (check * 31 + distinct_sequences(n) + p) % 1000000007;
+        }
+    }
+    println(f"5 passes over 20 counts of rolls up to 10^4: checksum {check}");
+}

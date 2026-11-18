@@ -1,0 +1,376 @@
+// LeetCode #2318: Number of Distinct Roll Sequences -- the differential.
+// The six arms, against the statement read literally: every sequence of
+// rolls is built one roll at a time, and a roll is refused when it
+// shares a factor with the roll before it or equals any roll within two
+// places of it; every sequence that reaches `n` rolls is counted. That
+// walk runs for 1 to 12 rolls. Every arm answers for each count of rolls
+// from 1 to 360.
+//
+// P1  the answer is the literal reading's, for 1 to 12 rolls
+// P2  the answer is below 10^9 + 7, and from 2 to 16 rolls, before any
+//     reduction, at least the answer for one roll fewer and at most five
+//     times it
+// P3  from 9 rolls on, the answer is 12, 15, 32, 18 and 24 times the
+//     answers for 3 to 7 rolls fewer, modulo 10^9 + 7
+// P4  from 2 to 16 rolls the answer is even
+// P5  each arm agrees with at least three of the other five
+
+// ---- rolls.kara
+fn star_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { star_gcd(b, a % b) }
+}
+
+fn star_distinct_sequences(n: i64) -> i64 {
+    let modulus = 1000000007;
+    if n == 1 {
+        return 6;
+    }
+    // ends[a][b]: sequences whose last two rolls are a + 1 then b + 1
+    let mut ends = [[0; 6]; 6];
+    for a in 0..6 {
+        for b in 0..6 {
+            if a != b and star_gcd(a + 1, b + 1) == 1 {
+                ends[a][b] = 1;
+            }
+        }
+    }
+    for _ in 2..n {
+        let mut next = [[0; 6]; 6];
+        for a in 0..6 {
+            for b in 0..6 {
+                if ends[a][b] > 0 {
+                    for c in 0..6 {
+                        if c != a and c != b and star_gcd(b + 1, c + 1) == 1 {
+                            next[b][c] = (next[b][c] + ends[a][b]) % modulus;
+                        }
+                    }
+                }
+            }
+        }
+        ends = next;
+    }
+    let mut total = 0;
+    for a in 0..6 {
+        for b in 0..6 {
+            total = (total + ends[a][b]) % modulus;
+        }
+    }
+    total
+}
+
+// ---- rolls_memo.kara
+fn memo_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { memo_gcd(b, a % b) }
+}
+
+fn memo_ways(left: i64, a: i64, b: i64, memo: mut ref Vec[i64]) -> i64 {
+    if left == 0 {
+        return 1;
+    }
+    let key = (left * 7 + a) * 7 + b;
+    if memo[key] >= 0 {
+        return memo[key];
+    }
+    let mut count = 0;
+    for c in 1..=6 {
+        if c != a and c != b and (b == 0 or memo_gcd(b, c) == 1) {
+            count = (count + memo_ways(left - 1, b, c, mut memo)) % 1000000007;
+        }
+    }
+    memo[key] = count;
+    count
+}
+
+fn memo_distinct_sequences(n: i64) -> i64 {
+    let mut memo = Vec.filled((n + 1) * 49, -1);
+    memo_ways(n, 0, 0, mut memo)
+}
+
+// ---- rolls_table.kara
+fn table_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { table_gcd(b, a % b) }
+}
+
+fn table_distinct_sequences(n: i64) -> i64 {
+    if n == 1 {
+        return 6;
+    }
+    let mut count: Vec[Vec[Vec[i64]]] = Vec.filled(n - 1, Vec.filled(6, Vec.filled(6, 0)));
+    for a in 0..6 {
+        for b in 0..6 {
+            if a != b and table_gcd(a + 1, b + 1) == 1 {
+                count[0][a][b] = 1;
+            }
+        }
+    }
+    for i in 1..n - 1 {
+        for b in 0..6 {
+            for c in 0..6 {
+                if b != c and table_gcd(b + 1, c + 1) == 1 {
+                    for a in 0..6 {
+                        if a != c {
+                            count[i][b][c] = (count[i][b][c] + count[i - 1][a][b]) % 1000000007;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let mut total = 0;
+    for a in 0..6 {
+        for b in 0..6 {
+            total = (total + count[n - 2][a][b]) % 1000000007;
+        }
+    }
+    total
+}
+
+// ---- rolls_matrix.kara
+fn matrix_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { matrix_gcd(b, a % b) }
+}
+
+fn matrix_multiply(x: Vec[Vec[i64]], y: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut product: Vec[Vec[i64]] = Vec.filled(36, Vec.filled(36, 0));
+    for i in 0..36 {
+        for k in 0..36 {
+            if x[i][k] != 0 {
+                for j in 0..36 {
+                    product[i][j] = (product[i][j] + x[i][k] * y[k][j]) % 1000000007;
+                }
+            }
+        }
+    }
+    product
+}
+
+fn matrix_distinct_sequences(n: i64) -> i64 {
+    if n == 1 {
+        return 6;
+    }
+    // step[a * 6 + b][b * 6 + c]: a pair (a, b) followed by roll c
+    let mut step: Vec[Vec[i64]] = Vec.filled(36, Vec.filled(36, 0));
+    for a in 0..6 {
+        for b in 0..6 {
+            for c in 0..6 {
+                if a != b and b != c and a != c and matrix_gcd(b + 1, c + 1) == 1 {
+                    step[a * 6 + b][b * 6 + c] = 1;
+                }
+            }
+        }
+    }
+    let mut power: Vec[Vec[i64]] = Vec.filled(36, Vec.filled(36, 0));
+    for i in 0..36 {
+        power[i][i] = 1;
+    }
+    let mut e = n - 2;
+    while e > 0 {
+        if e % 2 == 1 {
+            power = matrix_multiply(power, step);
+        }
+        step = matrix_multiply(step, step);
+        e /= 2;
+    }
+    let mut total = 0;
+    for a in 0..6 {
+        for b in 0..6 {
+            if a != b and matrix_gcd(a + 1, b + 1) == 1 {
+                for j in 0..36 {
+                    total = (total + power[a * 6 + b][j]) % 1000000007;
+                }
+            }
+        }
+    }
+    total
+}
+
+// ---- rolls_iter.kara
+fn iter_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { iter_gcd(b, a % b) }
+}
+
+fn iter_distinct_sequences(n: i64) -> i64 {
+    if n == 1 {
+        return 6;
+    }
+    let fits = |b: i64, c: i64| b != c and iter_gcd(b + 1, c + 1) == 1;
+    let mut ends: Vec[i64] = (0..36).map(|s| if fits(s / 6, s % 6) { 1 } else { 0 }).collect();
+    for _ in 2..n {
+        ends = (0..36)
+            .map(|s| {
+                let (b, c) = (s / 6, s % 6);
+                if fits(b, c) { (0..6).filter(|a| a != c).map(|a| ends[a * 6 + b]).sum() % 1000000007 } else { 0 }
+            })
+            .collect();
+    }
+    ends.iter().fold(0, |total, x| (total + x) % 1000000007)
+}
+
+// ---- rolls_solution.kara
+struct Solution {}
+
+fn solution_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { solution_gcd(b, a % b) }
+}
+
+impl Solution {
+    pub fn distinct_sequences(n: i32) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        if n == 1 {
+            return 6;
+        }
+        let mut dp = Vec.filled(7, Vec.filled(7, 0));
+        for a in 1..=6 {
+            for b in 1..=6 {
+                if a != b and solution_gcd(a, b) == 1 {
+                    dp[a][b] = 1;
+                }
+            }
+        }
+        for _ in 2..n {
+            let mut next = Vec.filled(7, Vec.filled(7, 0));
+            for a in 1..=6 {
+                for b in 1..=6 {
+                    if dp[a][b] == 0 {
+                        continue;
+                    }
+                    for c in 1..=6 {
+                        if c != a and c != b and solution_gcd(b, c) == 1 {
+                            next[b][c] = (next[b][c] + dp[a][b]) % MOD;
+                        }
+                    }
+                }
+            }
+            dp = next;
+        }
+        let mut total = 0;
+        for row in ref dp {
+            for x in row {
+                total = (total + x) % MOD;
+            }
+        }
+        total as i32
+    }
+}
+
+fn solution_distinct_sequences(n: i64) -> i64 {
+    Solution.distinct_sequences(n as i32)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+fn coprime(a: i64, b: i64) -> bool {
+    for d in 2..=6 {
+        if a % d == 0 and b % d == 0 {
+            return false;
+        }
+    }
+    true
+}
+
+fn extend(rolls: mut ref Vec[i64], n: i64) -> i64 {
+    if rolls.len() == n {
+        return 1;
+    }
+    let mut count = 0;
+    for v in 1..=6 {
+        let i = rolls.len();
+        let mut fits = i == 0 or coprime(rolls[i - 1], v);
+        for j in 0..i {
+            if rolls[j] == v and i - j <= 2 {
+                fits = false;
+            }
+        }
+        if fits {
+            rolls.push(v);
+            count += extend(mut rolls, n);
+            rolls.pop();
+        }
+    }
+    count
+}
+
+fn literal(n: i64) -> i64 {
+    let mut rolls: Vec[i64] = Vec.new();
+    extend(mut rolls, n) % 1000000007
+}
+
+fn answer(arm: i64, n: i64) -> i64 {
+    match arm {
+        0 => star_distinct_sequences(n),
+        1 => memo_distinct_sequences(n),
+        2 => table_distinct_sequences(n),
+        3 => matrix_distinct_sequences(n),
+        4 => iter_distinct_sequences(n),
+        _ => solution_distinct_sequences(n),
+    }
+}
+
+fn main() {
+    let names = ["star", "memo", "table", "matrix", "iter", "solution"];
+    let modulus = 1000000007;
+    let top = 360;
+    let mut truth: Vec[i64] = Vec.new();
+    let mut check = 0;
+    for n in 1..=12 {
+        let t = literal(n);
+        truth.push(t);
+        check = (check * 31 + t) % modulus;
+    }
+    // got[arm][n - 1]
+    let got: Vec[Vec[i64]] = (0..6).map(|arm| (1..=top).map(|n| answer(arm, n)).collect()).collect();
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0];
+    let mut checks = 0;
+    for n in 1..=top {
+        for arm in 0..6 {
+            let value = got[arm][n - 1];
+            let mut verdicts: Vec[(i64, bool)] = Vec.new();
+            if n <= 12 {
+                verdicts.push((0, value == truth[n - 1]));
+            }
+            let mut range = value >= 0 and value < modulus;
+            if n >= 2 and n <= 16 {
+                let before = got[arm][n - 2];
+                range = range and value >= before and value <= 5 * before;
+            }
+            verdicts.push((1, range));
+            if n >= 9 {
+                let back = |k: i64| got[arm][n - 1 - k];
+                let sum = (12 * back(3) + 15 * back(4) + 32 * back(5) + 18 * back(6) + 24 * back(7)) % modulus;
+                verdicts.push((2, value == sum));
+            }
+            if n >= 2 and n <= 16 {
+                verdicts.push((3, value % 2 == 0));
+            }
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o][n - 1] == value {
+                    same += 1;
+                }
+            }
+            verdicts.push((4, same >= 3));
+            for (q, ok) in verdicts.iter() {
+                checks += 1;
+                if not ok {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{n} rolls, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{top} counts of rolls: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..5 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

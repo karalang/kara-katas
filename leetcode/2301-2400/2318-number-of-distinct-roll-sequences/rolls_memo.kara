@@ -1,0 +1,51 @@
+// LeetCode #2318: Number of Distinct Roll Sequences -- top down,
+// memoized: `ways(left, a, b)` counts the ways to roll `left` more after
+// a sequence ending in `a` then `b`, 0 standing for no roll yet, each
+// next roll coprime with `b` and unlike both; every answer is kept in a
+// table by `left`, `a` and `b`. O(216 n).
+
+fn gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+fn ways(left: i64, a: i64, b: i64, memo: mut ref Vec[i64]) -> i64 {
+    if left == 0 {
+        return 1;
+    }
+    let key = (left * 7 + a) * 7 + b;
+    if memo[key] >= 0 {
+        return memo[key];
+    }
+    let mut count = 0;
+    for c in 1..=6 {
+        if c != a and c != b and (b == 0 or gcd(b, c) == 1) {
+            count = (count + ways(left - 1, b, c, mut memo)) % 1000000007;
+        }
+    }
+    memo[key] = count;
+    count
+}
+
+fn distinct_sequences(n: i64) -> i64 {
+    let mut memo = Vec.filled((n + 1) * 49, -1);
+    ways(n, 0, 0, mut memo)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn main() {
+    // LeetCode's two examples; then one roll, three, ten, a hundred,
+    // and the largest count of rolls
+    for n in [4, 2, 1, 3, 10, 100, 10000] {
+        println(f"{n}: {distinct_sequences(n)}");
+    }
+    // every count of rolls from 1 to 300
+    let mut check = 0;
+    let mut total = 0;
+    for n in 1..=300 {
+        let ways = distinct_sequences(n);
+        check = (check * 31 + ways) % 1000000007;
+        total += ways;
+    }
+    println(f"300 counts: checksum {check}, {total} in all");
+}
