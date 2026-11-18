@@ -1,0 +1,222 @@
+// LeetCode #1619: Mean of Array After Removing Some Elements -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random arrays
+// of 20 to 200 values below 1 to 50, with six properties. Every random
+// choice is drawn before any arm answers. The means are compared exactly,
+// each being one division of an exact sum, except under P3, where the
+// shifted mean and the shift added to the mean round apart, so they are
+// held to 1e-9.
+//
+// P1  the answer is the statement read literally
+// P2  the values shuffled leave the answer
+// P3  every value raised by c raises the answer by c, to 1e-9
+// P4  the answer lies between the values at sorted places n / 20 and
+//     n - n / 20 - 1
+// P5  the array written twice over leaves the answer
+// P6  each arm agrees with at least two of the other three
+
+import std.cmp.Reverse;
+
+// ---- trim.kara: the ★ arm: sort, then the middle
+
+fn star_arm(arr: Slice[i32]) -> f64 {
+    let mut sorted = arr.to_vec();
+    sorted.sort();
+    let k = sorted.len() / 20;
+    let kept = sorted[k..sorted.len() - k];
+    kept.iter().sum() as f64 / kept.len() as f64
+}
+
+// ---- trim_count.kara: counting, no sort
+
+fn count_arm(arr: Slice[i32]) -> f64 {
+    let n = arr.len();
+    let k = n / 20;
+    let top = arr.iter().max().unwrap();
+    let mut counts = Vec.filled(top as i64 + 1, 0);
+    for x in arr.iter() {
+        counts[x] += 1;
+    }
+    let mut seen = 0;
+    let mut sum = 0;
+    for (v, c) in counts.iter().enumerate() {
+        // of this value's copies, the ones at sorted places k to n - k - 1
+        let first = max(seen, k);
+        let last = min(seen + c, n - k);
+        if last > first {
+            sum += (last - first) * v;
+        }
+        seen += c;
+    }
+    sum as f64 / (n - 2 * k) as f64
+}
+
+// ---- trim_heaps.kara: the whole sum less two heaps
+
+fn heaps_arm(arr: Slice[i32]) -> f64 {
+    let n = arr.len();
+    let k = n / 20;
+    let mut smallest: PriorityQueue[i32] = PriorityQueue.max_first();
+    let mut largest: PriorityQueue[Reverse[i32]] = PriorityQueue.max_first();
+    let mut total: i64 = 0;
+    for x in arr.iter() {
+        total += x;
+        smallest.push(x);
+        if smallest.len() > k {
+            smallest.pop();
+        }
+        largest.push(Reverse { value: x });
+        if largest.len() > k {
+            largest.pop();
+        }
+    }
+    let low: i64 = smallest.iter().map(|x| x as i64).sum();
+    let high: i64 = largest.iter().map(|Reverse { value: x }| x as i64).sum();
+    (total - low - high) as f64 / (n - 2 * k) as f64
+}
+
+// ---- trim_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn trim_mean(arr: own Vec[i32]) -> f64 {
+        let mut arr = arr;
+        arr.sort();
+        let n = arr.len();
+        let k = n / 20;
+        arr[k..n - k].iter().map(|x| x as f64).sum() / (n - 2 * k) as f64
+    }
+}
+
+fn solution_arm(arr: Slice[i32]) -> f64 {
+    SolutionArm.trim_mean(arr.to_vec())
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, arr: Slice[i32]) -> f64 {
+    match a {
+        0 => star_arm(arr),
+        1 => count_arm(arr),
+        2 => heaps_arm(arr),
+        _ => solution_arm(arr),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["trim", "count", "heaps", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: take away one smallest value, n / 20
+// times, then one largest, n / 20 times; the mean of what is left
+
+fn literal(arr: Slice[i32]) -> f64 {
+    let mut left = arr.to_vec();
+    let k = arr.len() / 20;
+    for _ in 0..k {
+        let mut at = 0;
+        for i in 0..left.len() {
+            if left[i] < left[at] {
+                at = i;
+            }
+        }
+        left.remove(at);
+    }
+    for _ in 0..k {
+        let mut at = 0;
+        for i in 0..left.len() {
+            if left[i] > left[at] {
+                at = i;
+            }
+        }
+        left.remove(at);
+    }
+    let mut sum = 0;
+    for x in left.iter() {
+        sum += x;
+    }
+    sum as f64 / left.len() as f64
+}
+
+fn main() {
+    let mut seed = 1619;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    for p in 0..problems {
+        let n = (next_random(mut seed) % 10 + 1) * 20;
+        let top = next_random(mut seed) % 50 + 1;
+        let arr: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % top) as i32).collect();
+        let shift = (next_random(mut seed) % 100) as i32;
+        // a shuffle, drawn before any arm answers
+        let mut shuffled = arr.clone();
+        let mut i = n - 1;
+        while i > 0 {
+            let j = next_random(mut seed) % (i + 1);
+            shuffled.swap(i, j);
+            i -= 1;
+        }
+        let shifted: Vec[i32] = arr.iter().map(|x| x + shift).collect();
+        let mut twice = arr.clone();
+        twice.extend(arr.iter());
+        let mut sorted = arr.clone();
+        sorted.sort();
+        let k = n / 20;
+
+        let truth = literal(arr);
+        check = (check * 31 + (truth * 100000.0).round() as i64 + 1) % 1000000007;
+        let mut answers: Vec[f64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, arr);
+            answers.push(got);
+            let failed = [
+                got != truth,
+                arm(a, shuffled) != truth,
+                (arm(a, shifted) - (truth + shift as f64)).abs() > 1e-9,
+                got < sorted[k] as f64 or got > sorted[n - k - 1] as f64,
+                arm(a, twice) != truth,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P6
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}
