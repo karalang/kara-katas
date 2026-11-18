@@ -90,7 +90,7 @@ numbers up to `10^4`. All 360 are drawn before any arm answers.
 | P2 | the answer is at least the larger sum and at most the sum of the larger number at each place |
 | P3 | the two arrays swapped: the same answer |
 | P4 | both arrays reversed: the same answer |
-| P5 | every number raised by 7: the answer raised by `7 n` |
+| P5 | every number doubled: the answer doubled |
 | P6 | each arm agrees with at least three of the other five |
 
 The differential prints `360 cases: checksum 585932677, 12960 checks
@@ -111,12 +111,12 @@ checks.
 | # | mutation | failures by property |
 |---|---|---|
 | M3 | ★: only `nums1` helped | P1 125, P3 264, P6 125 |
-| M5 | ★: the run cut at 1, not 0 | P1 360, P2 80, P6 360 |
+| M5 | ★: the run cut at 1, not 0 | P1 360, P2 80, P5 360, P6 360 |
 | M6 | ★: the walk over every other place | P1 291, P4 141, P6 291 |
 | M8 | naive: no swap longer than 5 places | P1 114, P6 114 |
 | M10 | naive: only swaps of one place | P1 265, P6 265 |
 | M11 | naive: the swaps from the third place | P1 57, P4 87, P6 57 |
-| M12 | prefix: the rise capped at 10 | P1 113, P3 224, P6 113 |
+| M12 | prefix: the rise capped at 10 | P1 113, P3 224, P5 35, P6 113 |
 | M13 | prefix: `nums2`'s sum taken as `nums1`'s | P1 244, P2 85, P3 347, P6 244 |
 | M15 | prefix: every other prefix looked at | P1 214, P4 165, P6 214 |
 | M17 | states: the swap begun again after it ends | P1 280, P6 280 |
@@ -128,16 +128,19 @@ checks.
 | M29 | solution: the score the smaller of the two | P1 264, P6 264 |
 | M30 | solution: the run cut at the first place's difference | P1 231, P4 258, P6 231 |
 
-P1 and P6 kill all seventeen, P2, P3 and P4 four each, and P5 none.
+P1 and P6 kill all seventeen, P2, P3 and P4 four each, and P5 two.
 P3, the arrays swapped, fails where an edit treats the two arrays
 differently: one of them alone helped, a cap on the rise and not the
 fall, one sum taken for the other. P4, the arrays reversed, fails
 where an edit depends on where a swap lies: every other place, swaps
 from the third, the first place's difference. P2 fails for a gain
 larger than any swap gives: the run cut at 1, the differences the
-wrong way or doubled, the wrong sum. P5, every number raised by 7,
-kills nothing: every edit here works on differences, which the raise
-leaves alone, or on sums, which it moves together.
+wrong way or doubled, the wrong sum. P5, every number doubled, fails
+only where an edit holds a constant that does not double with the
+numbers: the run cut at 1 and the rise capped at 10. It replaces every
+number raised by 7, which killed none of the thirty-one, since every
+edit here works on differences, which a raise leaves alone, or on sums,
+which it moves together.
 
 Most ways to lose part of the search lose nothing, because of a
 symmetry: swapping a prefix of the arrays leaves the same two sums as
