@@ -1,0 +1,72 @@
+// LeetCode #2295: Replace Elements in an Array -- the bench, the ★ arm.
+// A `Map[i64, i64]` from each number to its index finds the one to
+// replace at once; the replacement takes over the index.
+
+fn array_change(nums: Vec[i64], operations: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut out = nums.clone();
+    let mut at: Map[i64, i64] = Map.new();
+    for i in 0..out.len() {
+        at.insert(out[i], i);
+    }
+    for (from, to) in operations.iter() {
+        let i = at.remove(from).unwrap();
+        out[i] = to;
+        at.insert(to, i);
+    }
+    out
+}
+
+// ---- bench harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000 + 1
+}
+
+fn main() {
+    // 10 arrays of 10^5 distinct numbers from 1 to 10^6, each with 10^5
+    // operations to a number not then present, built once; then 3 passes
+    // over all of them
+    let mut seed = 2295;
+    let mut cases: Vec[(Vec[i64], Vec[(i64, i64)])] = Vec.new();
+    for _ in 0..10 {
+        let n = 100000;
+        let mut present: Vec[bool] = Vec.filled(1000001, false);
+        let mut nums: Vec[i64] = Vec.new();
+        while nums.len() < n {
+            let x = wide(mut seed);
+            if not present[x] {
+                present[x] = true;
+                nums.push(x);
+            }
+        }
+        let mut now = nums.clone();
+        let mut operations: Vec[(i64, i64)] = Vec.new();
+        for _ in 0..100000 {
+            let i = next_random(mut seed) % n;
+            let mut to = wide(mut seed);
+            while present[to] {
+                to = to % 1000000 + 1;
+            }
+            present[now[i]] = false;
+            present[to] = true;
+            operations.push((now[i], to));
+            now[i] = to;
+        }
+        cases.push((nums, operations));
+    }
+    let mut check = 0;
+    for _ in 0..3 {
+        for (nums, operations) in cases.iter() {
+            let out = array_change(nums, operations);
+            for x in out.iter() {
+                check = (check * 31 + x) % 1000000007;
+            }
+        }
+    }
+    println(f"3 passes over 10 arrays of 10^5 with 10^5 operations: checksum {check}");
+}

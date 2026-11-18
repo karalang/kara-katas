@@ -1,0 +1,275 @@
+// LeetCode #2295: Replace Elements in an Array -- the differential. The
+// six arms, against the statement read literally: each slot's number is
+// carried through the operations one by one, and becomes the second
+// number of every operation whose first number it then is. No index, no
+// map. 300 random arrays of 1 to 30 distinct numbers with 0 to 40
+// operations; then 30 where every operation replaces the number the one
+// before it wrote; then 30 where each operation is undone by the next.
+// Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  as many numbers as given, all distinct
+// P3  the operations split in two, the second part applied to what the
+//     literal reading gives for the first: the same answer
+// P4  the operations followed by their inverses, last first: the numbers
+//     as given
+// P5  every number and operation 1000 higher: every number 1000 higher
+// P6  each arm agrees with at least three of the other five
+
+// ---- replace.kara: the ★ arm, a `Map` from number to index
+fn star_array_change(nums: Vec[i64], operations: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut out = nums.clone();
+    let mut at: Map[i64, i64] = Map.new();
+    for i in 0..out.len() {
+        at.insert(out[i], i);
+    }
+    for (from, to) in operations.iter() {
+        let i = at.remove(from).unwrap();
+        out[i] = to;
+        at.insert(to, i);
+    }
+    out
+}
+
+// ---- replace_naive.kara: a scan for each operation
+fn naive_array_change(nums: Vec[i64], operations: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut out = nums.clone();
+    for (from, to) in operations.iter() {
+        for i in 0..out.len() {
+            if out[i] == from {
+                out[i] = to;
+                break;
+            }
+        }
+    }
+    out
+}
+
+// ---- replace_table.kara: an index table by value
+fn table_array_change(nums: Vec[i64], operations: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut out = nums.clone();
+    let mut top = 0;
+    for x in nums.iter() {
+        top = top.max(x);
+    }
+    for (_, to) in operations.iter() {
+        top = top.max(to);
+    }
+    let mut at: Vec[i64] = Vec.filled(top + 1, -1);
+    for i in 0..out.len() {
+        at[out[i]] = i;
+    }
+    for (from, to) in operations.iter() {
+        let i = at[from];
+        at[from] = -1;
+        at[to] = i;
+        out[i] = to;
+    }
+    out
+}
+
+// ---- replace_struct.kara: `struct Slots` over a `SortedMap`
+struct StructSlots {
+    values: Vec[i64],
+    index: SortedMap[i64, i64],
+}
+
+impl StructSlots {
+    fn of(nums: Vec[i64]) -> StructSlots {
+        let mut index: SortedMap[i64, i64] = SortedMap.new();
+        for i in 0..nums.len() {
+            index.insert(nums[i], i);
+        }
+        StructSlots { values: nums.clone(), index: index }
+    }
+
+    fn replace(mut ref self, from: i64, to: i64) {
+        let i = self.index[from];
+        self.index.remove(from);
+        self.index.insert(to, i);
+        self.values[i] = to;
+    }
+}
+
+fn struct_array_change(nums: Vec[i64], operations: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut slots = StructSlots.of(nums);
+    for (from, to) in operations.iter() {
+        slots.replace(from, to);
+    }
+    slots.values
+}
+
+// ---- replace_iter.kara: the operations folded backwards
+fn iter_array_change(nums: Vec[i64], operations: Vec[(i64, i64)]) -> Vec[i64] {
+    let last = operations.iter().rev().fold(Map.new(), |becomes: own Map[i64, i64], (x, y)| {
+        let mut becomes = becomes;
+        let to = becomes.get(y).unwrap_or(y);
+        becomes.insert(x, to);
+        becomes
+    });
+    nums.iter().map(|x| last.get(x).unwrap_or(x)).collect()
+}
+
+// ---- replace_solution.kara: LeetCode's Rust template
+struct Solution {}
+
+impl Solution {
+    pub fn array_change(nums: own Vec[i32], operations: Vec[Vec[i32]]) -> Vec[i32] {
+        let mut nums = nums;
+        let mut pos: Map[i32, i64] = Map.new();
+        for (i, x) in nums.iter().enumerate() {
+            pos.insert(x, i);
+        }
+        for op in operations.iter() {
+            let i = pos.remove(op[0]).unwrap();
+            nums[i] = op[1];
+            pos.insert(op[1], i);
+        }
+        nums
+    }
+}
+
+fn solution_array_change(nums: Vec[i64], operations: Vec[(i64, i64)]) -> Vec[i64] {
+    let n: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    let ops: Vec[Vec[i32]] = operations.iter().map(|(x, y)| [x as i32, y as i32]).collect();
+    Solution.array_change(n, ops).iter().map(|x| x as i64).collect()
+}
+
+// ---- the statement read literally
+
+fn literal(nums: Vec[i64], operations: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    for x in nums.iter() {
+        let mut v = x;
+        for (from, to) in operations.iter() {
+            if v == from {
+                v = to;
+            }
+        }
+        out.push(v);
+    }
+    out
+}
+
+fn answer(arm: i64, nums: Vec[i64], operations: Vec[(i64, i64)]) -> Vec[i64] {
+    match arm {
+        0 => star_array_change(nums, operations),
+        1 => naive_array_change(nums, operations),
+        2 => table_array_change(nums, operations),
+        3 => struct_array_change(nums, operations),
+        4 => iter_array_change(nums, operations),
+        _ => solution_array_change(nums, operations),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a number from 1 to 100 not present, the present ones marked
+fn fresh(present: mut ref Vec[bool], seed: mut ref i64) -> i64 {
+    let mut to = next_random(mut seed) % 100 + 1;
+    while present[to] {
+        to = to % 100 + 1;
+    }
+    present[to] = true;
+    to
+}
+
+fn main() {
+    let names = ["star", "naive", "table", "struct", "iter", "solution"];
+    let mut seed = 2295;
+    let mut cases: Vec[(Vec[i64], Vec[(i64, i64)])] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 30 + 1;
+        let mut present: Vec[bool] = Vec.filled(101, false);
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            nums.push(fresh(mut present, mut seed));
+        }
+        let mut now = nums.clone();
+        let mut operations: Vec[(i64, i64)] = Vec.new();
+        let mut i = next_random(mut seed) % n;
+        for step in 0..next_random(mut seed) % 41 {
+            if c < 300 {
+                i = next_random(mut seed) % n;
+            } else if c >= 330 and step % 2 == 1 {
+                // undo the operation before
+                let (from, to) = operations[operations.len() - 1];
+                present[to] = false;
+                present[from] = true;
+                operations.push((to, from));
+                now[i] = from;
+                continue;
+            }
+            let to = fresh(mut present, mut seed);
+            present[now[i]] = false;
+            operations.push((now[i], to));
+            now[i] = to;
+        }
+        cases.push((nums, operations));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (nums, operations) in cases.iter() {
+        let truth = literal(nums, operations);
+        for x in truth.iter() {
+            check = (check * 31 + x) % 1000000007;
+        }
+        let half = operations.len() / 2;
+        let first: Vec[(i64, i64)] = operations.iter().take(half).collect();
+        let second: Vec[(i64, i64)] = operations.iter().skip(half).collect();
+        let mut undone = operations.clone();
+        for (from, to) in operations.iter().rev() {
+            undone.push((to, from));
+        }
+        let up: Vec[i64] = nums.iter().map(|x| x + 1000).collect();
+        let up_ops: Vec[(i64, i64)] = operations.iter().map(|(x, y)| (x + 1000, y + 1000)).collect();
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, nums, operations)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut distinct = value.clone();
+            distinct.sort();
+            distinct.dedup();
+            let raised: Vec[i64] = value.iter().map(|x| x + 1000).collect();
+            let verdicts = [
+                value == truth,
+                value.len() == nums.len() and distinct.len() == value.len(),
+                answer(arm, literal(nums, first), second) == value,
+                answer(arm, nums, undone) == nums,
+                answer(arm, up, up_ops) == raised,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} {operations} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

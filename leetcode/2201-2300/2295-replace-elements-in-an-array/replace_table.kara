@@ -1,0 +1,84 @@
+// LeetCode #2295: Replace Elements in an Array -- the table arm. The
+// numbers are at most 10^6, so the index of each number lives in a
+// table indexed by the number itself, as long as the largest number
+// that ever appears, and an operation moves one entry. O(top + n + m).
+
+fn array_change(nums: Vec[i64], operations: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut out = nums.clone();
+    let mut top = 0;
+    for x in nums.iter() {
+        top = top.max(x);
+    }
+    for (_, to) in operations.iter() {
+        top = top.max(to);
+    }
+    let mut at: Vec[i64] = Vec.filled(top + 1, -1);
+    for i in 0..out.len() {
+        at[out[i]] = i;
+    }
+    for (from, to) in operations.iter() {
+        let i = at[from];
+        at[from] = -1;
+        at[to] = i;
+        out[i] = to;
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; then no operations, a number replaced and
+    // replaced back, and a chain that moves one slot through five values
+    let cases: Vec[(Vec[i64], Vec[(i64, i64)])] = [
+        ([1, 2, 4, 6], [(1, 3), (4, 7), (6, 1)]),
+        ([1, 2], [(1, 3), (2, 1), (3, 2)]),
+        ([5, 9], []),
+        ([10, 20, 30], [(20, 25), (25, 20)]),
+        ([1], [(1, 2), (2, 3), (3, 4), (4, 5), (5, 1000000)]),
+    ];
+    for (nums, operations) in cases.iter() {
+        println(f"{array_change(nums, operations)}");
+    }
+    // 2000 random arrays of 1 to 50 distinct numbers from 1 to 200, each
+    // with 0 to 60 operations to a number not then present
+    let mut seed = 2295;
+    let mut check = 0;
+    let mut sum = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 50 + 1;
+        let mut present: Vec[bool] = Vec.filled(201, false);
+        let mut nums: Vec[i64] = Vec.new();
+        while nums.len() < n {
+            let x = next_random(mut seed) % 200 + 1;
+            if not present[x] {
+                present[x] = true;
+                nums.push(x);
+            }
+        }
+        let mut now = nums.clone();
+        let mut operations: Vec[(i64, i64)] = Vec.new();
+        for _ in 0..next_random(mut seed) % 61 {
+            let i = next_random(mut seed) % n;
+            let mut to = next_random(mut seed) % 200 + 1;
+            while present[to] {
+                to = to % 200 + 1;
+            }
+            present[now[i]] = false;
+            present[to] = true;
+            operations.push((now[i], to));
+            now[i] = to;
+        }
+        let out = array_change(nums, operations);
+        for x in out.iter() {
+            check = (check * 31 + x) % 1000000007;
+            sum += x;
+        }
+    }
+    println(f"2000 arrays: checksum {check}, sum {sum}");
+}
