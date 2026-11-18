@@ -1,4 +1,4 @@
-# LeetCode #2276: Percentage of Letter in String -- the bench, the ★ arm.
+# LeetCode #2278: Percentage of Letter in String -- the bench, the ★ arm.
 
 
 def percentage_letter(s, letter):
@@ -11,7 +11,7 @@ def percentage_letter(s, letter):
 
 # ---- bench harness ---------------------------------------------------------
 
-seed = 2276
+seed = 2278
 
 
 def next_random():

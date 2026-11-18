@@ -1,4 +1,4 @@
-// LeetCode #2276: Percentage of Letter in String -- the bench, the ★ arm.
+// LeetCode #2278: Percentage of Letter in String -- the bench, the ★ arm.
 
 fn percentage_letter(s: &str, letter: char) -> i64 {
     let mut count = 0;
@@ -18,7 +18,7 @@ fn next_random(seed: &mut i64) -> i64 {
 }
 
 fn main() {
-    let mut seed = 2276;
+    let mut seed = 2278;
     let mut check = 0;
     for _ in 0..100000 {
         let mut s = String::new();

@@ -1,4 +1,4 @@
-# 2276. Percentage of Letter in String
+# 2278. Percentage of Letter in String
 
 Given a string `s` and a character `letter`, return *the **percentage**
 of characters in* `s` *that equal* `letter` ***rounded down** to the
@@ -33,7 +33,7 @@ more (one letter, 100; a half, 50; a third, 33; two thirds, 66; a
 tenth, 10), each with its percentage; then 3000 random strings of 1 to
 100 letters from the first 2, 3 or 26, the letter one of the first 3,
 with a checksum; then three of the constraints' longest, 100 letters:
-random from the first 4 (25), all the letter (100), and the letter once
+random from the first 4 (30), all the letter (100), and the letter once
 (1). `percent.py` mirrors the ★ arm and its output is byte-identical.
 
 Two arms were first written as in Rust and carried by `karac fix`. The
@@ -68,7 +68,7 @@ answers.
 | P5 | the string twice over: the same percentage |
 | P6 | each arm agrees with at least three of the other five |
 
-The differential prints `360 cases: checksum 63103906, 12960 checks
+The differential prints `360 cases: checksum 427462332, 12960 checks
 over 6 arms: 0 failures` under every lane in Verification; the checksum
 of the literal answers was checked against a Python reading that floors
 a `Fraction` of `s.count(letter)` over the length, times 100. On a
@@ -85,23 +85,23 @@ checks.
 
 | # | mutation | failures by property |
 |---|---|---|
-| M1 | ★: rounded up | P1 185, P6 185 |
-| M3 | ★: the other letters counted | P1 349, P4 142, P6 349 |
-| M5 | ★: the first character skipped | P1 92, P2 93, P4 39, P5 86, P6 92 |
-| M7 | split: the pieces not less one | P1 360, P4 146, P5 335, P6 360 |
-| M8 | split: split at `a` always | P1 214, P3 320, P4 124, P6 214 |
-| M9 | split: split at the letter doubled | P1 255, P4 128, P5 28, P6 255 |
-| M12 | bytes: the byte after the letter | P1 245, P4 123, P6 245 |
-| M15 | bytes: every byte up to the letter counted | P1 202, P3 98, P4 141, P6 202 |
-| M16 | bytes: each match counted twice | P1 255, P4 75, P6 255 |
-| M17 | struct: each character seen twice | P1 255, P4 46, P6 255 |
-| M19 | struct: every character a hit | P1 323, P4 323, P6 323 |
-| M20 | struct: the letter taken from the string | P1 246, P2 168, P4 105, P6 246 |
-| M22 | iter: the letters from it up counted | P1 188, P3 98, P4 127, P6 188 |
-| M23 | iter: divided before scaling | P1 218, P4 218, P6 218 |
-| M26 | iter: the length one more | P1 165, P4 38, P5 113, P6 165 |
-| M30 | solution: only the first half and one counted | P1 225, P2 181, P4 69, P5 190, P6 225 |
-| M31 | solution: the length at least 10 | P1 42, P4 9, P5 42, P6 42 |
+| M1 | ★: rounded up | P1 197, P6 197 |
+| M3 | ★: the other letters counted | P1 353, P4 136, P6 353 |
+| M5 | ★: the first character skipped | P1 74, P2 98, P4 24, P5 72, P6 74 |
+| M7 | split: the pieces not less one | P1 360, P4 140, P5 330, P6 360 |
+| M8 | split: split at `a` always | P1 219, P3 313, P4 126, P6 219 |
+| M9 | split: split at the letter doubled | P1 247, P4 119, P5 13, P6 247 |
+| M12 | bytes: the byte after the letter | P1 238, P4 124, P6 238 |
+| M15 | bytes: every byte up to the letter counted | P1 200, P3 101, P4 147, P6 200 |
+| M16 | bytes: each match counted twice | P1 247, P4 57, P6 247 |
+| M17 | struct: each character seen twice | P1 247, P4 30, P6 247 |
+| M19 | struct: every character a hit | P1 337, P4 337, P6 337 |
+| M20 | struct: the letter taken from the string | P1 268, P2 160, P4 113, P6 268 |
+| M22 | iter: the letters from it up counted | P1 193, P3 101, P4 140, P6 193 |
+| M23 | iter: divided before scaling | P1 224, P4 224, P6 224 |
+| M26 | iter: the length one more | P1 163, P4 23, P5 113, P6 163 |
+| M30 | solution: only the first half and one counted | P1 216, P2 193, P4 69, P5 197, P6 216 |
+| M31 | solution: the length at least 10 | P1 43, P4 5, P5 43, P6 43 |
 
 P1 and P6 kill all seventeen, P4 sixteen, P5 six, P2 three, and P3
 three. P4 checks the two ends without the literal reading, and misses
@@ -135,16 +135,16 @@ __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 arm and the differential. `karac check --output=json` reports nothing on
 any of them, and `karac fix --dry-run` has nothing to apply.
 
-Under `karac __mir-run` the split arm and the ★ arm take 0.4 s, the
-template and the bytes arm 0.5 s, the struct arm 0.5 s, the iter arm
-0.6 s, and the differential 0.7 s.
+Under `karac __mir-run` the ★ arm takes 0.4 s, the split arm and the
+template 0.4 s, the bytes and struct arms 0.5 s, the iter arm 0.6 s,
+and the differential 0.6 s.
 
 ## Benchmarks
 
 The bench answers 100000 strings of the constraints' longest, 100
 letters from the first 4, each asked for one of the first 4, with the
 ★ arm in all five languages. Every implementation prints `100000
-strings of 100: checksum 325007090`. Each builds its string a letter at
+strings of 100: checksum 88042791`. Each builds its string a letter at
 a time from the same generator; Go by a `strings.Builder`, C into a
 fresh buffer.
 

@@ -1,4 +1,4 @@
-// LeetCode #2276: Percentage of Letter in String -- the bench, the ★ arm.
+// LeetCode #2278: Percentage of Letter in String -- the bench, the ★ arm.
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,7 +15,7 @@ static int64_t percentage_letter(const char *s, char letter) {
 
 // ---- bench harness ---------------------------------------------------------
 
-static int64_t seed = 2276;
+static int64_t seed = 2278;
 
 static int64_t next_random(void) {
     seed = (seed * 1103515245 + 12345) % 2147483648;

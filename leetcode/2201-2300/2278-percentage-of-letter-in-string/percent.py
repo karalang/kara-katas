@@ -1,4 +1,4 @@
-# LeetCode #2276: Percentage of Letter in String -- the Python mirror of
+# LeetCode #2278: Percentage of Letter in String -- the Python mirror of
 # the ★ arm, `percent.kara`, line for line. Its output is byte-identical.
 
 
@@ -10,7 +10,7 @@ def percentage_letter(s, letter):
     return count * 100 // len(s)
 
 
-seed = 2276
+seed = 2278
 
 
 def next_random():

@@ -1,4 +1,4 @@
-// LeetCode #2276: Percentage of Letter in String -- the bench, the ★ arm.
+// LeetCode #2278: Percentage of Letter in String -- the bench, the ★ arm.
 package main
 
 import (
@@ -18,7 +18,7 @@ func percentageLetter(s string, letter rune) int64 {
 
 // ---- bench harness ---------------------------------------------------------
 
-var seed int64 = 2276
+var seed int64 = 2278
 
 func nextRandom() int64 {
 	seed = (seed*1103515245 + 12345) % 2147483648
