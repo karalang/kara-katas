@@ -1,0 +1,265 @@
+// LeetCode #1606: Find Servers That Handled Most Number of Requests --
+// the differential.
+//
+// Four arms against the statement read literally, on 3000 problems of 1
+// to 4 servers and 1 to 10 requests, each arriving 1 to 3 after the one
+// before and lasting 1 to 8, with six properties. Every random choice is
+// drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  every arrival 100 later leaves the answer
+// P3  every arrival and every load doubled leaves the answer
+// P4  a request of load 1 added after every server is free goes to server
+//     n mod k: the answer becomes that server alone if it was busiest,
+//     and otherwise stays or gains it
+// P5  the requests spread so none overlaps go round the circle: the
+//     busiest are the first n mod k servers, or all when k divides n
+// P6  each arm agrees with at least two of the other three
+
+// ---- servers.kara: the ★ arm: a sorted set of free servers, a queue of busy ones
+
+fn star_arm(k: i32, arrival: own Vec[i32], load: own Vec[i32]) -> Vec[i32] {
+    let mut free: SortedSet[i32] = (0..k).collect();
+    let mut busy: PriorityQueue[(i64, i32)] = PriorityQueue.new();
+    let mut handled = Vec.filled(k, 0);
+    for i in 0..arrival.len() {
+        let now = arrival[i] as i64;
+        while let Some((t, _)) = busy.peek() {
+            if t > now {
+                break;
+            }
+            let (_, s) = busy.pop().unwrap();
+            free.insert(s);
+        }
+        let start = (i % k) as i32;
+        let pick = free.range(start, k).next().or(free.min()).cloned();
+        if let Some(s) = pick {
+            free.remove(s);
+            busy.push((now + load[i], s));
+            handled[s] += 1;
+        }
+    }
+    let most = *handled.iter().max().unwrap();
+    (0..k).filter(|s| handled[s] == most).collect()
+}
+
+// ---- servers_scan.kara: each server's free time, scanned round the circle
+
+fn scan_arm(k: i32, arrival: own Vec[i32], load: own Vec[i32]) -> Vec[i32] {
+    let mut free_at: Vec[i64] = Vec.filled(k, 0);
+    let mut handled: Vec[i32] = Vec.filled(k, 0);
+    for i in 0..arrival.len() {
+        for step in 0..k {
+            let s = (i + step) % k;
+            if free_at[s] <= arrival[i] {
+                free_at[s] = arrival[i] + load[i];
+                handled[s] += 1;
+                break;
+            }
+        }
+    }
+    let most = handled.iter().max().cloned().unwrap();
+    handled.iter().enumerate().filter(|(_, h)| *h == most).map(|(s, _)| s as i32).collect()
+}
+
+// ---- servers_heaps.kara: two heaps, the free servers keyed by when their turn comes
+
+fn heaps_arm(k: i32, arrival: own Vec[i32], load: own Vec[i32]) -> Vec[i32] {
+    let k = k as i64;
+    let mut free: PriorityQueue[i64] = PriorityQueue.from((0..k).collect());
+    let mut busy: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    let mut handled = Vec.filled(k, 0);
+    for (i, now) in arrival.iter().enumerate() {
+        while busy.peek().is_some_and(|(t, _)| t <= now) {
+            let (_, s) = busy.pop().unwrap();
+            free.push(i + (s - i).rem_euclid(k));
+        }
+        if let Some(key) = free.pop() {
+            let s = key % k;
+            busy.push((now + load[i], s));
+            handled[s] += 1;
+        }
+    }
+    let most = handled.iter().max().cloned().unwrap();
+    (0..k).filter(|s| handled[s] == most).map(|s| s as i32).collect()
+}
+
+// ---- servers_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn busiest_servers(k: i32, arrival: Vec[i32], load: Vec[i32]) -> Vec[i32] {
+        let k = k as i64;
+        let mut free: SortedSet[i64] = (0..k).collect();
+        let mut busy = PriorityQueue.new();
+        let mut cnt = Vec.filled(k, 0);
+        for i in 0..arrival.len() {
+            let t = arrival[i] as i64;
+            while let Some((end, s)) = busy.peek().cloned() {
+                if end > t {
+                    break;
+                }
+                busy.pop();
+                free.insert(s);
+            }
+            if free.is_empty() {
+                continue;
+            }
+            let s = match free.range_inclusive(i % k, i64.MAX).next() {
+                Some(s) => s,
+                None => *free.iter().next().unwrap(),
+            };
+            free.remove(s);
+            busy.push((t + load[i], s));
+            cnt[s] += 1;
+        }
+        let mx = *cnt.iter().max().unwrap();
+        (0..k).filter(|i| cnt[i] == mx).map(|i| i as i32).collect()
+    }
+}
+
+fn solution_arm(k: i32, arrival: own Vec[i32], load: own Vec[i32]) -> Vec[i32] {
+    SolutionArm.busiest_servers(k, arrival, load)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, k: i32, arrival: Slice[i32], load: Slice[i32]) -> Vec[i32] {
+    let (arr, lo) = (arrival.to_vec(), load.to_vec());
+    match a {
+        0 => star_arm(k, arr, lo),
+        1 => scan_arm(k, arr, lo),
+        2 => heaps_arm(k, arr, lo),
+        _ => solution_arm(k, arr, lo),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["servers", "scan", "heaps", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: each server keeps every request it
+// handled as the time it began and the time it ends; a server is busy at
+// `t` when one of them began at or before `t` and ends after it. Request
+// `i` tries server `i % k`, then the next ones round the circle, and is
+// dropped when every one is busy
+
+fn literal(k: i32, arrival: Slice[i32], load: Slice[i32]) -> Vec[i32] {
+    let mut handled: Vec[Vec[(i32, i32)]] = Vec.filled(k, Vec.new());
+    for i in 0..arrival.len() {
+        let t = arrival[i];
+        for step in 0..k {
+            let s = (i + step) % k;
+            let busy = handled[s].iter().any(|(from, to)| *from <= t and t < *to);
+            if not busy {
+                handled[s].push((t, t + load[i]));
+                break;
+            }
+        }
+    }
+    let most = handled.iter().map(|h| h.len()).max().unwrap();
+    (0..k).filter(|s| handled[s].len() == most).collect()
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 16060;
+    let mut cases: Vec[(i32, Vec[i32], Vec[i32])] = Vec.new();
+    for _ in 0..problems {
+        let k = (next_random(mut seed) % 4 + 1) as i32;
+        let n = next_random(mut seed) % 10 + 1;
+        let mut arrival: Vec[i32] = Vec.new();
+        let mut load: Vec[i32] = Vec.new();
+        let mut t: i32 = 0;
+        for _ in 0..n {
+            t += (next_random(mut seed) % 3 + 1) as i32;
+            arrival.push(t);
+            load.push((next_random(mut seed) % 8 + 1) as i32);
+        }
+        cases.push((k, arrival, load));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, (k, arrival, load)) in cases.iter().enumerate() {
+        let n = arrival.len();
+        let truth = literal(k, arrival, load);
+        let later: Vec[i32] = arrival.iter().map(|t| *t + 100).collect();
+        let doubled_arrival: Vec[i32] = arrival.iter().map(|t| *t * 2).collect();
+        let doubled_load: Vec[i32] = load.iter().map(|l| *l * 2).collect();
+        let mut one_more_arrival = arrival.clone();
+        one_more_arrival.push(arrival[n - 1] + 10);
+        let mut one_more_load = load.clone();
+        one_more_load.push(1);
+        let apart: Vec[i32] = (0..n).map(|i| (i * 10 + 1) as i32).collect();
+        let last = (n % k) as i32;
+        let round: Vec[i32] = if n % k == 0 { (0..k).collect() } else { (0..last).collect() };
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, k, arrival, load);
+            for s in answer.iter() {
+                check = (check * 31 + *s + 1) % 1000000007;
+            }
+            check = (check * 31) % 1000000007;
+            let more = arm(a, k, one_more_arrival, one_more_load);
+            let mut with_last = answer.clone();
+            if not with_last.contains(last) {
+                with_last.push(last);
+                with_last.sort();
+            }
+            let fourth_ok = if answer.contains(last) { more == [last] } else { more == answer or more == with_last };
+            let failed = [
+                answer != truth,
+                arm(a, k, later, load) != answer,
+                arm(a, k, doubled_arrival, doubled_load) != answer,
+                not fourth_ok,
+                arm(a, k, apart, load) != round,
+            ];
+            answers.push(answer);
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
