@@ -1,0 +1,262 @@
+// LeetCode #1612: Check If Two Expression Trees are Equivalent -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 pairs of
+// expressions over 1 to 6 leaves from 1 to 4 letters, the second over the
+// first's leaves shuffled, half with one leaf changed and an eighth with
+// a leaf added, with six properties. Every random choice is drawn before
+// any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the two trees swapped leave the answer
+// P3  a tree is equivalent to itself
+// P4  a `z` added to both sides, on different sides of a `+`, leaves the
+//     answer
+// P5  a tree is not equivalent to itself plus `b`
+// P6  each arm agrees with at least two of the other three
+
+// ---- equivalent.kara: the ★ arm: one tally counted up and down
+
+fn star_tally(node: Option[Node], sign: i32, counts: mut ref Array[i32, 26]) {
+    if let Some(n) = node {
+        if n.val == '+' {
+            star_tally(n.left, sign, mut counts);
+            star_tally(n.right, sign, mut counts);
+        } else {
+            counts[n.val as u32 as u8 - b'a'] += sign;
+        }
+    }
+}
+
+fn star_arm(root1: Option[Node], root2: Option[Node]) -> bool {
+    let mut counts = [0; 26];
+    star_tally(root1, 1, mut counts);
+    star_tally(root2, -1, mut counts);
+    counts.iter().all(|c| *c == 0)
+}
+
+// ---- equivalent_map.kara: a map of counts, walked with a stack
+
+fn map_leaf_counts(root: Option[Node]) -> Map[char, i64] {
+    let mut counts = Map.new();
+    let mut stack: Vec[Node] = Vec.new();
+    if let Some(r) = root {
+        stack.push(r);
+    }
+    while let Some(n) = stack.pop() {
+        match (n.left, n.right) {
+            (None, None) => *counts.entry(n.val).or_insert(0) += 1,
+            (l, r) => {
+                if let Some(l) = l {
+                    stack.push(l);
+                }
+                if let Some(r) = r {
+                    stack.push(r);
+                }
+            }
+        }
+    }
+    counts
+}
+
+fn map_arm(root1: Option[Node], root2: Option[Node]) -> bool {
+    map_leaf_counts(root1) == map_leaf_counts(root2)
+}
+
+// ---- equivalent_sorted.kara: the leaves sorted
+
+fn sorted_walk(node: Option[Node], out: mut ref Vec[char]) {
+    match node {
+        None => {}
+        Some(n) => {
+            if n.left.is_none() and n.right.is_none() {
+                out.push(n.val);
+            } else {
+                sorted_walk(n.left, mut out);
+                sorted_walk(n.right, mut out);
+            }
+        }
+    }
+}
+
+fn sorted_list(root: Option[Node]) -> Vec[char] {
+    let mut out = Vec.new();
+    sorted_walk(root, mut out);
+    out.sort();
+    out
+}
+
+fn sorted_arm(root1: Option[Node], root2: Option[Node]) -> bool {
+    sorted_list(root1) == sorted_list(root2)
+}
+
+// ---- equivalent_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+fn solution_dfs(node: Option[Node], cnt: mut ref Array[i32, 26], d: i32) {
+    if let Some(n) = node {
+        if n.val == '+' {
+            solution_dfs(n.left, mut cnt, d);
+            solution_dfs(n.right, mut cnt, d);
+        } else {
+            cnt[(n.val as u32 as u8 - b'a') as usize] += d;
+        }
+    }
+}
+
+impl SolutionArm {
+    pub fn check_equivalence(root1: Option[Node], root2: Option[Node]) -> bool {
+        let mut cnt = [0; 26];
+        solution_dfs(root1, mut cnt, 1);
+        solution_dfs(root2, mut cnt, -1);
+        cnt.iter().all(|c| c == 0)
+    }
+}
+
+fn solution_arm(root1: Option[Node], root2: Option[Node]) -> bool {
+    SolutionArm.check_equivalence(root1, root2)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+shared struct Node {
+    mut val: char,
+    mut left: Option[Node],
+    mut right: Option[Node],
+}
+
+fn leaf(c: char) -> Node {
+    Node { val: c, left: None, right: None }
+}
+
+fn plus(l: Node, r: Node) -> Node {
+    Node { val: '+', left: Some(l), right: Some(r) }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, one: Node, two: Node) -> bool {
+    match a {
+        0 => star_arm(Some(one), Some(two)),
+        1 => map_arm(Some(one), Some(two)),
+        2 => sorted_arm(Some(one), Some(two)),
+        _ => solution_arm(Some(one), Some(two)),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["equivalent", "map", "sorted", "solution"][a].to_string()
+}
+
+fn random_expression(leaves: Slice[char], seed: mut ref i64) -> Node {
+    let mut loose: Vec[Node] = leaves.iter().map(|c| leaf(*c)).collect();
+    while loose.len() > 1 {
+        let a = loose.swap_remove(next_random(mut seed) % loose.len());
+        let b = loose.swap_remove(next_random(mut seed) % loose.len());
+        loose.push(plus(a, b));
+    }
+    loose[0]
+}
+
+// ---- the statement read literally: the two trees evaluate to the same
+// value whatever the variables are set to, tried under three settings
+// drawn at random, the sums taken mod 10^9 + 7
+
+fn evaluate(node: Node, values: Slice[i64]) -> i64 {
+    if node.val == '+' {
+        (evaluate(node.left.unwrap(), values) + evaluate(node.right.unwrap(), values)) % 1000000007
+    } else {
+        values[node.val as u32 - 'a' as u32]
+    }
+}
+
+fn literal(one: Node, two: Node, settings: Slice[Vec[i64]]) -> bool {
+    settings.iter().all(|values| evaluate(one, values) == evaluate(two, values))
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 16120;
+    let mut cases: Vec[(Node, Node)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 6 + 1;
+        let letters = next_random(mut seed) % 4 + 1;
+        let leaves: Vec[char] = (0..n).map(|_| (b'a' + (next_random(mut seed) % letters) as u8) as char).collect();
+        let mut other = leaves.clone();
+        for i in (1..n).rev() {
+            other.swap(i, next_random(mut seed) % (i + 1));
+        }
+        if next_random(mut seed) % 2 == 0 {
+            let i = next_random(mut seed) % n;
+            other[i] = (b'a' + (next_random(mut seed) % letters) as u8) as char;
+        }
+        if next_random(mut seed) % 8 == 0 {
+            other.push('a');
+        }
+        let one = random_expression(leaves, mut seed);
+        let two = random_expression(other, mut seed);
+        cases.push((one, two));
+    }
+    let settings: Vec[Vec[i64]] = (0..3).map(|_| (0..26).map(|_| next_random(mut seed) * 32768 + next_random(mut seed)).collect()).collect();
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, (one, two)) in cases.iter().enumerate() {
+        let (one, two) = (*one, *two);
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let x = arm(a, one, two);
+            check = (check * 31 + (if x { 1 } else { 0 }) + 1) % 1000000007;
+            let failed = [
+                x != literal(one, two, settings),
+                arm(a, two, one) != x,
+                not arm(a, one, one),
+                arm(a, plus(leaf('z'), one), plus(two, leaf('z'))) != x,
+                arm(a, one, plus(one, leaf('b'))),
+            ];
+            answers.push(x);
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
