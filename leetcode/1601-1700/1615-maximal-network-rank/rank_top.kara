@@ -1,0 +1,97 @@
+// LeetCode #1615: Maximal Network Rank -- only the top degrees.
+//
+// The best pair is made of cities with the highest degree, or one of
+// those and one of the next: with `top` the highest degree, if two or
+// more cities have it, the rank is `2 * top` unless every pair of them is
+// joined, then `2 * top - 1`; if one city has it, the rank is
+// `top + second` unless it is joined to every city of the second
+// highest degree. The roads are kept in a `Set` of pairs. O(n + roads)
+// beside the pairs among the top cities.
+
+fn maximal_network_rank(n: i32, roads: Slice[Vec[i32]]) -> i32 {
+    let mut degree: Vec[i32] = Vec.filled(n, 0);
+    let mut joined: Set[(i32, i32)] = Set.new();
+    for road in roads.iter() {
+        degree[road[0]] += 1;
+        degree[road[1]] += 1;
+        joined.insert((min(road[0], road[1]), max(road[0], road[1])));
+    }
+    let linked = |a: i32, b: i32| joined.contains((min(a, b), max(a, b)));
+    let top = *degree.iter().max().unwrap();
+    let firsts: Vec[i32] = (0..n).filter(|c| degree[c] == top).collect();
+    if firsts.len() > 1 {
+        for i in 0..firsts.len() {
+            for j in i + 1..firsts.len() {
+                if not linked(firsts[i], firsts[j]) {
+                    return 2 * top;
+                }
+            }
+        }
+        return 2 * top - 1;
+    }
+    let first = firsts[0];
+    let second = (0..n).filter(|c| degree[c] < top).map(|c| degree[c]).max().unwrap_or(0);
+    let seconds: Vec[i32] = (0..n).filter(|c| degree[c] == second and c != first).collect();
+    if seconds.iter().any(|c| not linked(first, *c)) {
+        top + second
+    } else {
+        top + second - 1
+    }
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// `count` networks of 2 to `most` cities, each with up to `roads_most`
+// distinct roads drawn at random
+fn batch(count: i64, most: i64, roads_most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut roads_seen = 0;
+    let mut best = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % (most - 1) + 2;
+        let wanted = min((next_random(mut seed) * 32768 + next_random(mut seed)) % (roads_most + 1), n * (n - 1) / 2);
+        let mut taken: Set[(i64, i64)] = Set.new();
+        let mut roads: Vec[Vec[i32]] = Vec.new();
+        while roads.len() < wanted {
+            let a = next_random(mut seed) % n;
+            let b = next_random(mut seed) % n;
+            if a != b and taken.insert((min(a, b), max(a, b))) {
+                roads.push([a as i32, b as i32]);
+            }
+        }
+        let rank = maximal_network_rank(n as i32, roads);
+        check = mix(check, rank);
+        best = max(best, rank);
+        roads_seen += wanted;
+    }
+    println(f"{count} networks of up to {most} cities: {roads_seen} roads, highest rank {best}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then two cities and no road, two cities
+    // and their road, and a star whose centre has the most roads
+    let examples: Vec[(i32, Vec[Vec[i32]])] = [
+        (4, [[0, 1], [0, 3], [1, 2], [1, 3]]),
+        (5, [[0, 1], [0, 3], [1, 2], [1, 3], [2, 3], [2, 4]]),
+        (8, [[0, 1], [1, 2], [2, 3], [2, 4], [5, 6], [5, 7]]),
+        (2, []),
+        (2, [[1, 0]]),
+        (5, [[0, 1], [0, 2], [0, 3], [0, 4]]),
+    ];
+    for (n, roads) in examples.iter() {
+        println(f"{maximal_network_rank(n, roads)}");
+    }
+    let mut seed = 1615;
+    batch(3000, 6, 8, mut seed);
+    batch(300, 40, 600, mut seed);
+    batch(30, 100, 50, mut seed);
+}
