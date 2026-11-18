@@ -1,0 +1,185 @@
+// LeetCode #1609: Even Odd Tree -- depth first.
+//
+// A preorder walk, left before right, meets each level's nodes left to
+// right, so it keeps the last value seen at each depth and checks each
+// node against it. O(n) time, O(height) space.
+
+fn walk(node: TreeNode, depth: i64, last: mut ref Vec[i32]) -> bool {
+    let v = node.val;
+    let even = depth % 2 == 0;
+    if even != (v % 2 == 1) {
+        return false;
+    }
+    if depth < last.len() {
+        if (even and v <= last[depth]) or (not even and v >= last[depth]) {
+            return false;
+        }
+        last[depth] = v;
+    } else {
+        last.push(v);
+    }
+    if let Some(l) = node.left {
+        if not walk(l, depth + 1, mut last) {
+            return false;
+        }
+    }
+    match node.right {
+        Some(r) => walk(r, depth + 1, mut last),
+        None => true,
+    }
+}
+
+fn is_even_odd_tree(root: Option[TreeNode]) -> bool {
+    match root {
+        Some(r) => walk(r, 0, mut Vec.new()),
+        None => true,
+    }
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn leaf(v: i32) -> TreeNode {
+    TreeNode { val: v, left: None, right: None }
+}
+
+// the tree LeetCode's level-order list describes, `None` for null
+fn from_level_order(items: Slice[Option[i32]]) -> Option[TreeNode] {
+    let root = leaf(items[0].unwrap());
+    let mut queue = VecDeque.new();
+    queue.push_back(root);
+    let mut i = 1;
+    while i < items.len() {
+        let node = queue.pop_front().unwrap();
+        for side in 0..2 {
+            if i < items.len() {
+                if let Some(v) = items[i] {
+                    let child = leaf(v);
+                    if side == 0 {
+                        node.left = Some(child);
+                    } else {
+                        node.right = Some(child);
+                    }
+                    queue.push_back(child);
+                }
+                i += 1;
+            }
+        }
+    }
+    Some(root)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// a tree of `n` nodes, each hung on a random free child slot of the
+// nodes before it, its values even-odd: each even level odd and rising
+// left to right, each odd level even and falling; every node, in the
+// order they were made
+fn random_tree(n: i64, seed: mut ref i64) -> Vec[TreeNode] {
+    let mut nodes = [leaf(0)];
+    let mut free = [(nodes[0], true), (nodes[0], false)];
+    for _ in 1..n {
+        let k = (next_random(mut seed) * 32768 + next_random(mut seed)) % free.len();
+        let (parent, left) = free.swap_remove(k);
+        let child = leaf(0);
+        if left {
+            parent.left = Some(child);
+        } else {
+            parent.right = Some(child);
+        }
+        free.push((child, true));
+        free.push((child, false));
+        nodes.push(child);
+    }
+    let mut level = [nodes[0]];
+    let mut depth = 0;
+    while not level.is_empty() {
+        let mut v: i32 = if depth % 2 == 0 { 1 + 2 * (next_random(mut seed) % 5) as i32 } else { 1000000 - 2 * (next_random(mut seed) % 5) as i32 };
+        let mut below = Vec.new();
+        for node in level.iter() {
+            node.val = v;
+            let step = 2 * (next_random(mut seed) % 2 + 1) as i32;
+            v = if depth % 2 == 0 { v + step } else { v - step };
+            if let Some(l) = node.left {
+                below.push(l);
+            }
+            if let Some(r) = node.right {
+                below.push(r);
+            }
+        }
+        level = below;
+        depth += 1;
+    }
+    nodes
+}
+
+// half the trees spoiled: one value moved off by one, or two values
+// swapped (which may be one node with itself)
+fn spoil(nodes: Slice[TreeNode], seed: mut ref i64) {
+    let n = nodes.len();
+    match next_random(mut seed) % 4 {
+        0 => {
+            let a = nodes[(next_random(mut seed) * 32768 + next_random(mut seed)) % n];
+            a.val = if a.val > 1 { a.val - 1 } else { a.val + 1 };
+        }
+        1 => {
+            let a = nodes[(next_random(mut seed) * 32768 + next_random(mut seed)) % n];
+            let b = nodes[(next_random(mut seed) * 32768 + next_random(mut seed)) % n];
+            let t = a.val;
+            a.val = b.val;
+            b.val = t;
+        }
+        _ => {}
+    }
+}
+
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut nodes = 0;
+    let mut even_odd = 0;
+    for _ in 0..count {
+        let n = (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1;
+        let tree = random_tree(n, mut seed);
+        spoil(tree, mut seed);
+        let yes = is_even_odd_tree(Some(tree[0]));
+        if yes {
+            even_odd += 1;
+        }
+        check = mix(check, if yes { 1 } else { 0 });
+        nodes += n;
+    }
+    println(f"{count} trees of up to {most} nodes: {nodes} nodes, {even_odd} even-odd, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then one even node, a level of equal
+    // values, and a level rising where it should fall
+    let examples: Vec[Vec[Option[i32]]] = [
+        [Some(1), Some(10), Some(4), Some(3), None, Some(7), Some(9), Some(12), Some(8), Some(6), None, None, Some(2)],
+        [Some(5), Some(4), Some(2), Some(3), Some(3), Some(7)],
+        [Some(5), Some(9), Some(1), Some(3), Some(5), Some(7)],
+        [Some(1)],
+        [Some(2)],
+        [Some(1), Some(10), Some(10)],
+        [Some(1), Some(4), Some(10)],
+    ];
+    for items in examples.iter() {
+        println(f"{is_even_odd_tree(from_level_order(items))}");
+    }
+    let mut seed = 1609;
+    batch(3000, 8, mut seed);
+    batch(300, 1000, mut seed);
+    batch(10, 100000, mut seed);
+}

@@ -1,0 +1,356 @@
+// LeetCode #1609: Even Odd Tree -- the differential.
+//
+// Four arms against the statement read literally, on 3000 trees of 1 to
+// 8 nodes, half of them even-odd as made and half spoiled, with six
+// properties. Every random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the tree mirrored, each value v made 2000 - v, leaves the answer
+// P3  every value raised by 2 leaves the answer
+// P4  the tree hung under a new root of 1, each value v made 1001 - v,
+//     leaves the answer
+// P5  the root's value made even gives false
+// P6  each arm agrees with at least two of the other three
+
+// ---- even_odd.kara: the ★ arm: breadth first, a level at a time
+
+fn star_arm(root: Option[TreeNode]) -> bool {
+    let mut queue = VecDeque.new();
+    if let Some(r) = root {
+        queue.push_back(r);
+    }
+    let mut even = true;
+    while not queue.is_empty() {
+        let mut prev: Option[i32] = None;
+        for _ in 0..queue.len() {
+            let node = queue.pop_front().unwrap();
+            let v = node.val;
+            let ok = if even {
+                v % 2 == 1 and prev.is_none_or(|p| v > p)
+            } else {
+                v % 2 == 0 and prev.is_none_or(|p| v < p)
+            };
+            if not ok {
+                return false;
+            }
+            prev = Some(v);
+            if let Some(l) = node.left {
+                queue.push_back(l);
+            }
+            if let Some(r) = node.right {
+                queue.push_back(r);
+            }
+        }
+        even = not even;
+    }
+    true
+}
+
+// ---- even_odd_dfs.kara: depth first, the last value at each depth
+
+fn dfs_walk(node: TreeNode, depth: i64, last: mut ref Vec[i32]) -> bool {
+    let v = node.val;
+    let even = depth % 2 == 0;
+    if even != (v % 2 == 1) {
+        return false;
+    }
+    if depth < last.len() {
+        if (even and v <= last[depth]) or (not even and v >= last[depth]) {
+            return false;
+        }
+        last[depth] = v;
+    } else {
+        last.push(v);
+    }
+    if let Some(l) = node.left {
+        if not dfs_walk(l, depth + 1, mut last) {
+            return false;
+        }
+    }
+    match node.right {
+        Some(r) => dfs_walk(r, depth + 1, mut last),
+        None => true,
+    }
+}
+
+fn dfs_arm(root: Option[TreeNode]) -> bool {
+    match root {
+        Some(r) => dfs_walk(r, 0, mut Vec.new()),
+        None => true,
+    }
+}
+
+// ---- even_odd_levels.kara: whole levels checked at once
+
+fn levels_arm(root: Option[TreeNode]) -> bool {
+    // `root.into_iter().collect()` is refused: an `Option` has no
+    // `into_iter` (B-2026-11-18-11)
+    let mut level: Vec[TreeNode] = match root {
+        Some(r) => [r],
+        None => Vec.new(),
+    };
+    let mut depth = 0;
+    while not level.is_empty() {
+        let values: Vec[i32] = level.iter().map(|node| node.val).collect();
+        let ok = if depth % 2 == 0 {
+            values.iter().all(|v| v % 2 == 1) and values.windows(2).into_iter().all(|w| w[0] < w[1])
+        } else {
+            values.iter().all(|v| v % 2 == 0) and values.windows(2).into_iter().all(|w| w[0] > w[1])
+        };
+        if not ok {
+            return false;
+        }
+        level = level.iter().flat_map(|node| [node.left, node.right].into_iter()).filter_map(|v| v).collect();
+        depth += 1;
+    }
+    true
+}
+
+// ---- even_odd_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn is_even_odd_tree(root: Option[TreeNode]) -> bool {
+        let mut q = VecDeque.new();
+        if let Some(r) = root {
+            q.push_back(r);
+        }
+        let mut level = 0;
+        while not q.is_empty() {
+            let mut prev = if level % 2 == 0 { i32.MIN } else { i32.MAX };
+            for _ in 0..q.len() {
+                let node = q.pop_front().unwrap();
+                let v = node.val;
+                if level % 2 == 0 {
+                    if v % 2 == 0 or v <= prev {
+                        return false;
+                    }
+                } else {
+                    if v % 2 == 1 or v >= prev {
+                        return false;
+                    }
+                }
+                prev = v;
+                if let Some(l) = node.left.clone() {
+                    q.push_back(l);
+                }
+                if let Some(r) = node.right.clone() {
+                    q.push_back(r);
+                }
+            }
+            level += 1;
+        }
+        true
+    }
+}
+
+fn solution_arm(root: Option[TreeNode]) -> bool {
+    SolutionArm.is_even_odd_tree(root)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn leaf(v: i32) -> TreeNode {
+    TreeNode { val: v, left: None, right: None }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, root: Option[TreeNode]) -> bool {
+    match a {
+        0 => star_arm(root),
+        1 => dfs_arm(root),
+        2 => levels_arm(root),
+        _ => solution_arm(root),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["even_odd", "dfs", "levels", "solution"][a].to_string()
+}
+
+// a tree of `n` nodes, each hung on a random free child slot of the
+// nodes before it, its values even-odd from `low`, then spoiled with a
+// chance of a half: one value moved by one, or two swapped
+fn random_tree(n: i64, low: i64, seed: mut ref i64) -> TreeNode {
+    let mut nodes = [leaf(0)];
+    let mut free = [(nodes[0], true), (nodes[0], false)];
+    for _ in 1..n {
+        let k = next_random(mut seed) % free.len();
+        let (parent, left) = free.swap_remove(k);
+        let child = leaf(0);
+        if left {
+            parent.left = Some(child);
+        } else {
+            parent.right = Some(child);
+        }
+        free.push((child, true));
+        free.push((child, false));
+        nodes.push(child);
+    }
+    let mut level = [nodes[0]];
+    let mut depth = 0;
+    while not level.is_empty() {
+        let mut v: i32 = if depth % 2 == 0 { (low + 1 + 2 * (next_random(mut seed) % 3)) as i32 } else { (1000 - 2 * (next_random(mut seed) % 3)) as i32 };
+        let mut below = Vec.new();
+        for node in level.iter() {
+            node.val = v;
+            let step = 2 * (next_random(mut seed) % 2 + 1) as i32;
+            v = if depth % 2 == 0 { v + step } else { v - step };
+            if let Some(l) = node.left {
+                below.push(l);
+            }
+            if let Some(r) = node.right {
+                below.push(r);
+            }
+        }
+        level = below;
+        depth += 1;
+    }
+    match next_random(mut seed) % 4 {
+        0 => {
+            let a = nodes[next_random(mut seed) % n];
+            a.val += if next_random(mut seed) % 2 == 0 { 1 } else { -1 };
+        }
+        1 => {
+            let a = nodes[next_random(mut seed) % n];
+            let b = nodes[next_random(mut seed) % n];
+            let t = a.val;
+            a.val = b.val;
+            b.val = t;
+        }
+        _ => {}
+    }
+    nodes[0]
+}
+
+// a copy of the tree, mirrored if asked, each value `v` made `k - v`
+// (or kept, with `k` 0) and then moved by `add`
+fn copy(node: Option[TreeNode], mirror: bool, k: i32, add: i32) -> Option[TreeNode] {
+    match node {
+        None => None,
+        Some(n) => {
+            let (l, r) = if mirror { (n.right, n.left) } else { (n.left, n.right) };
+            let v = if k == 0 { n.val } else { k - n.val };
+            Some(TreeNode { val: v + add, left: copy(l, mirror, k, add), right: copy(r, mirror, k, add) })
+        }
+    }
+}
+
+// ---- the statement read literally: every level's values in order, left
+// to right; an even-indexed level all odd and strictly increasing, an
+// odd-indexed level all even and strictly decreasing
+
+fn gather(node: Option[TreeNode], depth: i64, levels: mut ref Vec[Vec[i32]]) {
+    if let Some(n) = node {
+        if levels.len() == depth {
+            levels.push(Vec.new());
+        }
+        levels[depth].push(n.val);
+        gather(n.left, depth + 1, mut levels);
+        gather(n.right, depth + 1, mut levels);
+    }
+}
+
+fn literal(root: Option[TreeNode]) -> bool {
+    let mut levels = Vec.new();
+    gather(root, 0, mut levels);
+    for (i, level) in levels.iter().enumerate() {
+        for j in 0..level.len() {
+            if i % 2 == 0 {
+                if level[j] % 2 == 0 or (j > 0 and level[j] <= level[j - 1]) {
+                    return false;
+                }
+            } else {
+                if level[j] % 2 != 0 or (j > 0 and level[j] >= level[j - 1]) {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 16090;
+    let mut cases: Vec[TreeNode] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 8 + 1;
+        let low = next_random(mut seed) % 20;
+        cases.push(random_tree(n, low, mut seed));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, root) in cases.iter().enumerate() {
+        let tree = Some(*root);
+        let mirrored = copy(tree, true, 2000, 0);
+        let raised = copy(tree, false, 0, 2);
+        let under = leaf(1);
+        under.left = copy(tree, false, 1001, 0);
+        let odd_root = copy(tree, false, 0, 0).unwrap();
+        odd_root.val = if odd_root.val % 2 == 0 { odd_root.val } else { odd_root.val + 1 };
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let x = arm(a, tree);
+            check = (check * 31 + (if x { 1 } else { 0 }) + 1) % 1000000007;
+            let failed = [
+                x != literal(tree),
+                arm(a, mirrored) != x,
+                arm(a, raised) != x,
+                arm(a, Some(under)) != x,
+                arm(a, Some(odd_root)),
+            ];
+            answers.push(x);
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
