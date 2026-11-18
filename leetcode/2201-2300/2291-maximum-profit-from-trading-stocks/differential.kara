@@ -1,0 +1,282 @@
+// LeetCode #2291: Maximum Profit From Trading Stocks -- the
+// differential. The six arms, against the statement read literally:
+// every set of stocks, counted out as the bits of a number from 0 to
+// 2^n - 1; of those whose prices now come to at most the budget, the
+// most that the prices to come exceed the prices now. 300 random markets
+// of 1 to 12 stocks; then 30 where every stock but one loses or breaks
+// even; then 30 whose budget is exactly the price of a random set. Every
+// case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  0 <= answer <= the gains of all the stocks that gain, summed
+// P3  a budget of every price now summed: just that sum of the gains
+// P4  the stocks in the opposite order: the same answer
+// P5  a free stock gaining 7 added: 7 more
+// P6  each arm agrees with at least three of the other five
+
+// ---- profit.kara: the ★ arm, a knapsack row run downwards
+fn star_maximum_profit(present: Vec[i64], future: Vec[i64], budget: i64) -> i64 {
+    let mut best: Vec[i64] = Vec.filled(budget + 1, 0);
+    for i in 0..present.len() {
+        let cost = present[i];
+        let gain = future[i] - present[i];
+        if gain <= 0 {
+            continue;
+        }
+        for b in (cost..budget + 1).rev() {
+            best[b] = best[b].max(best[b - cost] + gain);
+        }
+    }
+    best[budget]
+}
+
+// ---- profit_naive.kara: every set of stocks by recursion
+fn naive_best_from(i: i64, present: Vec[i64], future: Vec[i64], left: i64) -> i64 {
+    if i == present.len() {
+        return 0;
+    }
+    let skip = naive_best_from(i + 1, present, future, left);
+    if present[i] > left {
+        return skip;
+    }
+    let buy = future[i] - present[i] + naive_best_from(i + 1, present, future, left - present[i]);
+    skip.max(buy)
+}
+
+fn naive_maximum_profit(present: Vec[i64], future: Vec[i64], budget: i64) -> i64 {
+    naive_best_from(0, present, future, budget)
+}
+
+// ---- profit_memo.kara: the recursion over a `Map` memo
+fn memo_best_from(i: i64, left: i64, present: Vec[i64], future: Vec[i64], memo: mut ref Map[(i64, i64), i64]) -> i64 {
+    if i == present.len() {
+        return 0;
+    }
+    if let Some(known) = memo.get((i, left)) {
+        return known;
+    }
+    let mut best = memo_best_from(i + 1, left, present, future, mut memo);
+    if present[i] <= left {
+        best = best.max(future[i] - present[i] + memo_best_from(i + 1, left - present[i], present, future, mut memo));
+    }
+    memo.insert((i, left), best);
+    best
+}
+
+fn memo_maximum_profit(present: Vec[i64], future: Vec[i64], budget: i64) -> i64 {
+    let mut memo: Map[(i64, i64), i64] = Map.new();
+    memo_best_from(0, budget, present, future, mut memo)
+}
+
+// ---- profit_struct.kara: `struct Table`, the full two-dimensional knapsack
+struct StructStock {
+    now: i64,
+    later: i64,
+}
+
+impl StructStock {
+    fn gain(self) -> i64 {
+        self.later - self.now
+    }
+}
+
+struct StructTable {
+    rows: Vec[Vec[i64]],
+}
+
+impl StructTable {
+    fn fill(stocks: Vec[StructStock], budget: i64) -> StructTable {
+        let mut rows: Vec[Vec[i64]] = [Vec.filled(budget + 1, 0)];
+        for s in stocks.iter() {
+            let last = rows[rows.len() - 1].clone();
+            let mut row = last.clone();
+            for b in s.now..budget + 1 {
+                row[b] = row[b].max(last[b - s.now] + s.gain());
+            }
+            rows.push(row);
+        }
+        StructTable { rows: rows }
+    }
+
+    fn answer(self) -> i64 {
+        let last = ref self.rows[self.rows.len() - 1];
+        last[last.len() - 1]
+    }
+}
+
+fn struct_maximum_profit(present: Vec[i64], future: Vec[i64], budget: i64) -> i64 {
+    let mut stocks: Vec[StructStock] = Vec.new();
+    for i in 0..present.len() {
+        stocks.push(StructStock { now: present[i], later: future[i] });
+    }
+    StructTable.fill(stocks, budget).answer()
+}
+
+// ---- profit_iter.kara: `zip`, `filter`, `fold`
+fn iter_maximum_profit(present: Vec[i64], future: Vec[i64], budget: i64) -> i64 {
+    let row = present
+        .iter()
+        .zip(future.iter())
+        .filter(|(p, f)| f > p)
+        .fold(Vec.filled(budget + 1, 0), |row: Vec[i64], (p, f)| {
+            (0..budget + 1).map(|b| if b >= p { row[b].max(row[b - p] + f - p) } else { row[b] }).collect()
+        });
+    row[budget]
+}
+
+// ---- profit_solution.kara: LeetCode's Rust template
+struct Solution {}
+
+impl Solution {
+    pub fn maximum_profit(present: Vec[i32], future: Vec[i32], budget: i32) -> i32 {
+        let budget = budget as i64;
+        let mut dp = Vec.filled(budget + 1, 0i32);
+        for (p, f) in present.iter().zip(future.iter()) {
+            let p = p as i64;
+            for j in (p..=budget).rev() {
+                dp[j] = dp[j].max(dp[j - p] + f - p as i32);
+            }
+        }
+        dp[budget]
+    }
+}
+
+fn solution_maximum_profit(present: Vec[i64], future: Vec[i64], budget: i64) -> i64 {
+    let p: Vec[i32] = present.iter().map(|x| x as i32).collect();
+    let f: Vec[i32] = future.iter().map(|x| x as i32).collect();
+    Solution.maximum_profit(p, f, budget as i32)
+}
+
+// ---- the statement read literally
+
+fn literal(present: Vec[i64], future: Vec[i64], budget: i64) -> i64 {
+    let n = present.len();
+    let mut most = 0;
+    for set in 0..(1 << n) {
+        let mut spent = 0;
+        let mut later = 0;
+        for i in 0..n {
+            if (set >> i) & 1 == 1 {
+                spent += present[i];
+                later += future[i];
+            }
+        }
+        if spent <= budget and later - spent > most {
+            most = later - spent;
+        }
+    }
+    most
+}
+
+fn answer(arm: i64, present: Vec[i64], future: Vec[i64], budget: i64) -> i64 {
+    match arm {
+        0 => star_maximum_profit(present, future, budget),
+        1 => naive_maximum_profit(present, future, budget),
+        2 => memo_maximum_profit(present, future, budget),
+        3 => struct_maximum_profit(present, future, budget),
+        4 => iter_maximum_profit(present, future, budget),
+        _ => solution_maximum_profit(present, future, budget),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "naive", "memo", "struct", "iter", "solution"];
+    let mut seed = 2291;
+    let mut cases: Vec[(Vec[i64], Vec[i64], i64)] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 12 + 1;
+        let mut present: Vec[i64] = Vec.new();
+        let mut future: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            present.push(next_random(mut seed) % 101);
+            future.push(next_random(mut seed) % 101);
+        }
+        if c >= 300 and c < 330 {
+            // every stock but the first loses or breaks even
+            for i in 1..n {
+                future[i] = present[i] - next_random(mut seed) % (present[i] + 1);
+            }
+        }
+        let mut total = 0;
+        for p in present.iter() {
+            total += p;
+        }
+        let budget = if c < 330 {
+            next_random(mut seed) % (total + 1)
+        } else {
+            // the price of a random set
+            let mut sum = 0;
+            for p in present.iter() {
+                if next_random(mut seed) % 2 == 0 {
+                    sum += p;
+                }
+            }
+            sum
+        };
+        cases.push((present, future, budget));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (present, future, budget) in cases.iter() {
+        let truth = literal(present, future, budget);
+        check = (check * 31 + truth) % 1000000007;
+        let mut gains = 0;
+        let mut total = 0;
+        for i in 0..present.len() {
+            gains += (future[i] - present[i]).max(0);
+            total += present[i];
+        }
+        let back_p: Vec[i64] = present.iter().rev().collect();
+        let back_f: Vec[i64] = future.iter().rev().collect();
+        let mut more_p = present.clone();
+        let mut more_f = future.clone();
+        more_p.push(0);
+        more_f.push(7);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, present, future, budget)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                value >= 0 and value <= gains,
+                answer(arm, present, future, total) == gains,
+                answer(arm, back_p, back_f, budget) == value,
+                answer(arm, more_p, more_f, budget) == value + 7,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{present} {future} {budget} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

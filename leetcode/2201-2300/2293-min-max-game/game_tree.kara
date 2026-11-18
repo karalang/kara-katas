@@ -1,0 +1,59 @@
+// LeetCode #2293: Min Max Game -- the tree arm. The rounds are a
+// tournament tree: the number a block of the array ends as is the
+// minimum or the maximum of its two halves, and a half's own block ends
+// by a minimum when it is the left one and by a maximum when it is the
+// right one. The root takes a minimum. Recursion over the halves. O(n).
+
+fn play(nums: Vec[i64], lo: i64, hi: i64, take_min: bool) -> i64 {
+    if hi - lo == 1 {
+        return nums[lo];
+    }
+    let mid = (lo + hi) / 2;
+    let left = play(nums, lo, mid, true);
+    let right = play(nums, mid, hi, false);
+    if take_min { left.min(right) } else { left.max(right) }
+}
+
+fn min_max_game(nums: Vec[i64]) -> i64 {
+    play(nums, 0, nums.len(), true)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; then two numbers, rising and falling runs
+    // of eight, all equal, and the largest values the constraints allow
+    let cases: Vec[Vec[i64]] = [
+        [1, 3, 5, 2, 4, 8, 2, 2],
+        [3],
+        [7, 2],
+        [1, 2, 3, 4, 5, 6, 7, 8],
+        [8, 7, 6, 5, 4, 3, 2, 1],
+        [4, 4, 4, 4],
+        [1000000000, 1, 1, 1000000000],
+    ];
+    for nums in cases.iter() {
+        println(f"{nums.len()} numbers: {min_max_game(nums)}");
+    }
+    // 3000 random arrays of 1 to 1024 numbers, a power of two, from 1 to
+    // 10^9
+    let mut seed = 2293;
+    let mut check = 0;
+    let mut sum = 0;
+    for _ in 0..3000 {
+        let n = 1 << (next_random(mut seed) % 11);
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            nums.push((next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000 + 1);
+        }
+        let last = min_max_game(nums);
+        check = (check * 31 + last) % 1000000007;
+        sum += last;
+    }
+    println(f"3000 arrays: checksum {check}, sum {sum}");
+}

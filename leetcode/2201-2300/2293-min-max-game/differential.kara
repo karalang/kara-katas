@@ -1,0 +1,269 @@
+// LeetCode #2293: Min Max Game -- the differential. The six arms,
+// against the statement read literally: keep every round as a list of
+// its own; to make the next, first fill each even index `i` with
+// `min(nums[2 * i], nums[2 * i + 1])`, then each odd one with the
+// `max`, and stop at a round of one number. 300 random arrays of 1 to
+// 256 numbers from 1 to 10^9; then 30 of 1 to 3, so most pairs tie; then
+// 30 sorted, rising or falling. Every case is drawn before any arm
+// answers.
+//
+// P1  the answer is the literal reading's
+// P2  the answer is one of the numbers, and no larger than either of
+//     the first two
+// P3  the right half all made the largest number: the answer of the
+//     left half alone
+// P4  each pair's two numbers swapped: the same answer
+// P5  the left half all made the smallest number: that number
+// P6  each arm agrees with at least three of the other five
+
+// ---- game.kara: the ★ arm, rounds played in place
+fn star_min_max_game(nums: Vec[i64]) -> i64 {
+    let mut a = nums.clone();
+    let mut n = a.len();
+    while n > 1 {
+        n /= 2;
+        for i in 0..n {
+            a[i] = if i % 2 == 0 { a[2 * i].min(a[2 * i + 1]) } else { a[2 * i].max(a[2 * i + 1]) };
+        }
+    }
+    a[0]
+}
+
+// ---- game_naive.kara: a fresh `newNums` each round
+fn naive_min_max_game(nums: Vec[i64]) -> i64 {
+    let mut nums = nums.clone();
+    while nums.len() > 1 {
+        let mut new_nums: Vec[i64] = Vec.filled(nums.len() / 2, 0);
+        for i in 0..new_nums.len() {
+            if i % 2 == 0 {
+                new_nums[i] = nums[2 * i].min(nums[2 * i + 1]);
+            } else {
+                new_nums[i] = nums[2 * i].max(nums[2 * i + 1]);
+            }
+        }
+        nums = new_nums;
+    }
+    nums[0]
+}
+
+// ---- game_tree.kara: a tournament tree by recursion
+fn tree_play(nums: Vec[i64], lo: i64, hi: i64, take_min: bool) -> i64 {
+    if hi - lo == 1 {
+        return nums[lo];
+    }
+    let mid = (lo + hi) / 2;
+    let left = tree_play(nums, lo, mid, true);
+    let right = tree_play(nums, mid, hi, false);
+    if take_min { left.min(right) } else { left.max(right) }
+}
+
+fn tree_min_max_game(nums: Vec[i64]) -> i64 {
+    tree_play(nums, 0, nums.len(), true)
+}
+
+// ---- game_struct.kara: `enum Pick` and `struct Round`
+enum StructPick {
+    Min,
+    Max,
+}
+
+impl StructPick {
+    fn at(i: i64) -> StructPick {
+        if i % 2 == 0 { StructPick.Min } else { StructPick.Max }
+    }
+
+    fn of(self, a: i64, b: i64) -> i64 {
+        match self {
+            StructPick.Min => a.min(b),
+            StructPick.Max => a.max(b),
+        }
+    }
+}
+
+struct StructRound {
+    numbers: Vec[i64],
+}
+
+impl StructRound {
+    fn done(self) -> bool {
+        self.numbers.len() == 1
+    }
+
+    fn next(self) -> StructRound {
+        let mut numbers: Vec[i64] = Vec.new();
+        for i in 0..self.numbers.len() / 2 {
+            numbers.push(StructPick.at(i).of(self.numbers[2 * i], self.numbers[2 * i + 1]));
+        }
+        StructRound { numbers: numbers }
+    }
+}
+
+fn struct_min_max_game(nums: Vec[i64]) -> i64 {
+    let mut round = StructRound { numbers: nums.clone() };
+    while not round.done() {
+        round = round.next();
+    }
+    round.numbers[0]
+}
+
+// ---- game_iter.kara: `chunks`, `enumerate`, `map`, `collect`
+fn iter_min_max_game(nums: Vec[i64]) -> i64 {
+    let mut round = nums.clone();
+    while round.len() > 1 {
+        round = round
+            .chunks(2)
+            .into_iter()
+            .enumerate()
+            .map(|(i, pair)| if i % 2 == 0 { pair[0].min(pair[1]) } else { pair[0].max(pair[1]) })
+            .collect();
+    }
+    round[0]
+}
+
+// ---- game_solution.kara: LeetCode's Rust template
+struct Solution {}
+
+impl Solution {
+    pub fn min_max_game(nums: own Vec[i32]) -> i32 {
+        let mut nums = nums;
+        let mut n = nums.len();
+        while n > 1 {
+            n /= 2;
+            for i in 0..n {
+                nums[i] = if i % 2 == 0 {
+                    min(nums[2 * i], nums[2 * i + 1])
+                } else {
+                    max(nums[2 * i], nums[2 * i + 1])
+                };
+            }
+        }
+        nums[0]
+    }
+}
+
+fn solution_min_max_game(nums: Vec[i64]) -> i64 {
+    let n: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.min_max_game(n)
+}
+
+// ---- the statement read literally
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let mut rounds: Vec[Vec[i64]] = [nums.clone()];
+    while rounds[rounds.len() - 1].len() > 1 {
+        let last = rounds[rounds.len() - 1].clone();
+        let mut new_nums: Vec[i64] = Vec.filled(last.len() / 2, 0);
+        for i in (0..new_nums.len()).step_by(2) {
+            new_nums[i] = last[2 * i].min(last[2 * i + 1]);
+        }
+        for i in (1..new_nums.len()).step_by(2) {
+            new_nums[i] = last[2 * i].max(last[2 * i + 1]);
+        }
+        rounds.push(new_nums);
+    }
+    rounds[rounds.len() - 1][0]
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_min_max_game(nums),
+        1 => naive_min_max_game(nums),
+        2 => tree_min_max_game(nums),
+        3 => struct_min_max_game(nums),
+        4 => iter_min_max_game(nums),
+        _ => solution_min_max_game(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "naive", "tree", "struct", "iter", "solution"];
+    let mut seed = 2293;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..360 {
+        let n = 1 << (next_random(mut seed) % 9);
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            if c < 300 {
+                nums.push((next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000 + 1);
+            } else {
+                nums.push(next_random(mut seed) % 3 + 1);
+            }
+        }
+        if c >= 330 {
+            nums.sort();
+            if c % 2 == 0 {
+                nums.reverse();
+            }
+        }
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for nums in cases.iter() {
+        let truth = literal(nums);
+        check = (check * 31 + truth) % 1000000007;
+        let n = nums.len();
+        let largest = nums.iter().max().unwrap();
+        let smallest = nums.iter().min().unwrap();
+        let left: Vec[i64] = nums.iter().take(n.max(2) / 2).collect();
+        let mut topped = nums.clone();
+        let mut bottomed = nums.clone();
+        for i in 0..n {
+            if i >= n / 2 and n > 1 {
+                topped[i] = largest;
+            } else {
+                bottomed[i] = smallest;
+            }
+        }
+        let mut swapped = nums.clone();
+        for i in (0..swapped.len() - 1).step_by(2) {
+            swapped.swap(i, i + 1);
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                nums.contains(value) and (n == 1 or value <= nums[0].min(nums[1])),
+                n == 1 or answer(arm, topped) == answer(arm, left),
+                answer(arm, swapped) == value,
+                answer(arm, bottomed) == smallest,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

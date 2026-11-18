@@ -1,0 +1,62 @@
+// LeetCode #2291: Maximum Profit From Trading Stocks -- the ★ arm. A
+// 0/1 knapsack: `best[b]` is the most profit for a budget of `b`, and
+// each stock, worth buying only for a profit, is taken into it once by
+// running the budgets downwards. O(n * budget).
+
+fn maximum_profit(present: Vec[i64], future: Vec[i64], budget: i64) -> i64 {
+    let mut best: Vec[i64] = Vec.filled(budget + 1, 0);
+    for i in 0..present.len() {
+        let cost = present[i];
+        let gain = future[i] - present[i];
+        if gain <= 0 {
+            continue;
+        }
+        for b in (cost..budget + 1).rev() {
+            best[b] = best[b].max(best[b - cost] + gain);
+        }
+    }
+    best[budget]
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples; then a budget of 0, free stocks, every
+    // stock at a loss, and one stock costing the whole budget
+    let cases = [
+        ([5, 4, 6, 2, 3], [8, 5, 4, 3, 5], 10),
+        ([2, 2, 5], [3, 4, 10], 6),
+        ([3, 3, 12], [0, 3, 15], 10),
+        ([1, 2], [5, 9], 0),
+        ([0, 0, 3], [4, 0, 9], 2),
+        ([5, 6, 7], [5, 1, 0], 100),
+        ([10, 1, 1], [30, 5, 5], 10),
+    ];
+    for (present, future, budget) in cases.iter() {
+        println(f"{present.len()} stocks, budget {budget}: {maximum_profit(present, future, budget)}");
+    }
+    // 2000 random markets of 1 to 10 stocks, prices 0 to 100, budgets 0
+    // to 400
+    let mut seed = 2291;
+    let mut check = 0;
+    let mut sum = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 10 + 1;
+        let mut present: Vec[i64] = Vec.new();
+        let mut future: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            present.push(next_random(mut seed) % 101);
+            future.push(next_random(mut seed) % 101);
+        }
+        let budget = next_random(mut seed) % 401;
+        let profit = maximum_profit(present, future, budget);
+        check = (check * 31 + profit) % 1000000007;
+        sum += profit;
+    }
+    println(f"2000 markets: checksum {check}, {sum} profit");
+}
