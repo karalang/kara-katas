@@ -1,0 +1,76 @@
+// LeetCode #2277: Closest Node to Path in Tree -- the ★ arm. A
+// breadth-first search from every node gives all the distances; a node
+// `u` lies on the path from `start` to `end` exactly when it adds
+// nothing to their distance, `d(start, u) + d(u, end) = d(start, end)`,
+// and of those the answer is the one nearest the query's node.
+// O(n^2 + q n).
+
+fn distances(n: i64, adj: Vec[Vec[i64]], from: i64) -> Vec[i64] {
+    let mut dist: Vec[i64] = Vec.filled(n, -1);
+    dist[from] = 0;
+    let mut queue: Vec[i64] = [from].to_vec();
+    let mut head = 0;
+    while head < queue.len() {
+        let v = queue[head];
+        head += 1;
+        for w in adj[v].iter() {
+            if dist[w] < 0 {
+                dist[w] = dist[v] + 1;
+                queue.push(w);
+            }
+        }
+    }
+    dist
+}
+
+fn closest_node(n: i64, edges: Vec[Vec[i64]], query: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut adj: Vec[Vec[i64]] = (0..n).map(|_| Vec.new()).collect();
+    for e in edges.iter() {
+        adj[e[0]].push(e[1]);
+        adj[e[1]].push(e[0]);
+    }
+    let dist: Vec[Vec[i64]] = (0..n).map(|v| distances(n, adj, v)).collect();
+    let mut answer: Vec[i64] = Vec.new();
+    for q in query.iter() {
+        let (start, end, node) = (q[0], q[1], q[2]);
+        let mut best = start;
+        for u in 0..n {
+            if dist[start][u] + dist[u][end] == dist[start][end] and dist[u][node] < dist[best][node] {
+                best = u;
+            }
+        }
+        answer.push(best);
+    }
+    answer
+}
+
+// ---- bench harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 50 trees of the constraints' largest, 1000 nodes, each joined to a
+    // random node before it, with 1000 random queries, built afresh
+    let mut seed = 2277;
+    let mut check = 0;
+    for _ in 0..50 {
+        let mut edges: Vec[Vec[i64]] = Vec.new();
+        for i in 1..1000 {
+            edges.push([i, next_random(mut seed) % i].to_vec());
+        }
+        let mut query: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..1000 {
+            let s = next_random(mut seed) % 1000;
+            let e = next_random(mut seed) % 1000;
+            let x = next_random(mut seed) % 1000;
+            query.push([s, e, x].to_vec());
+        }
+        for a in closest_node(1000, edges, query).iter() {
+            check = (check * 31 + a) % 1000000007;
+        }
+    }
+    println(f"50 trees of 1000: checksum {check}");
+}

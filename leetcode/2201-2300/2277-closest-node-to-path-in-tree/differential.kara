@@ -1,0 +1,497 @@
+// LeetCode #2277: Closest Node to Path in Tree -- the differential. The
+// six arms, against the statement read literally: the path from `start`
+// to `end` found by a depth-first walk that returns the nodes it went
+// through, and each node on it measured to the query's node by the same
+// walk, the shortest kept. No distances table, no rooting and no
+// ancestors. 300 random trees of 1 to 12 nodes, each joined to one of
+// the 1, 3 or all before it, with 1 to 6 queries; then 30 paths; then 30
+// stars. Every case is drawn before any arm answers.
+//
+// P1  the answers are the literal reading's
+// P2  each query's three nodes turned round, `[end, node, start]`: the
+//     same answers, the node nearest the other two being their median
+// P3  the nodes relabelled `v` to `n - 1 - v`: the answers relabelled
+// P4  each answer on its path, the query's node itself when that is on
+//     the path, and the start when the path is one node
+// P5  each query's node replaced by its answer: the same answers
+// P6  each arm agrees with at least three of the other five
+
+// ---- closest.kara: the ★ arm, all distances, the path by its length
+fn star_distances(n: i64, adj: Vec[Vec[i64]], from: i64) -> Vec[i64] {
+    let mut dist: Vec[i64] = Vec.filled(n, -1);
+    dist[from] = 0;
+    let mut queue: Vec[i64] = [from].to_vec();
+    let mut head = 0;
+    while head < queue.len() {
+        let v = queue[head];
+        head += 1;
+        for w in adj[v].iter() {
+            if dist[w] < 0 {
+                dist[w] = dist[v] + 1;
+                queue.push(w);
+            }
+        }
+    }
+    dist
+}
+
+fn star_closest_node(n: i64, edges: Vec[Vec[i64]], query: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut adj: Vec[Vec[i64]] = (0..n).map(|_| Vec.new()).collect();
+    for e in edges.iter() {
+        adj[e[0]].push(e[1]);
+        adj[e[1]].push(e[0]);
+    }
+    let dist: Vec[Vec[i64]] = (0..n).map(|v| star_distances(n, adj, v)).collect();
+    let mut answer: Vec[i64] = Vec.new();
+    for q in query.iter() {
+        let (start, end, node) = (q[0], q[1], q[2]);
+        let mut best = start;
+        for u in 0..n {
+            if dist[start][u] + dist[u][end] == dist[start][end] and dist[u][node] < dist[best][node] {
+                best = u;
+            }
+        }
+        answer.push(best);
+    }
+    answer
+}
+
+// ---- closest_path.kara: the path read back from parents, per query
+fn path_search(n: i64, adj: Vec[Vec[i64]], from: i64) -> (Vec[i64], Vec[i64]) {
+    let mut dist: Vec[i64] = Vec.filled(n, -1);
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    dist[from] = 0;
+    parent[from] = from;
+    let mut queue: Vec[i64] = [from].to_vec();
+    let mut head = 0;
+    while head < queue.len() {
+        let v = queue[head];
+        head += 1;
+        for w in adj[v].iter() {
+            if dist[w] < 0 {
+                dist[w] = dist[v] + 1;
+                parent[w] = v;
+                queue.push(w);
+            }
+        }
+    }
+    (dist, parent)
+}
+
+fn path_closest_node(n: i64, edges: Vec[Vec[i64]], query: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut adj: Vec[Vec[i64]] = (0..n).map(|_| Vec.new()).collect();
+    for e in edges.iter() {
+        adj[e[0]].push(e[1]);
+        adj[e[1]].push(e[0]);
+    }
+    let mut answer: Vec[i64] = Vec.new();
+    for q in query.iter() {
+        let (start, end, node) = (q[0], q[1], q[2]);
+        let (_, parent) = path_search(n, adj, start);
+        let (dist, _) = path_search(n, adj, node);
+        let mut best = end;
+        let mut u = end;
+        while u != start {
+            u = parent[u];
+            if dist[u] < dist[best] {
+                best = u;
+            }
+        }
+        answer.push(best);
+    }
+    answer
+}
+
+// ---- closest_lca.kara: the deepest of three meetings, by binary lifting
+fn lca_closest_node(n: i64, edges: Vec[Vec[i64]], query: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut adj: Vec[Vec[i64]] = (0..n).map(|_| Vec.new()).collect();
+    for e in edges.iter() {
+        adj[e[0]].push(e[1]);
+        adj[e[1]].push(e[0]);
+    }
+    let mut levels = 1;
+    while (1 << levels) < n {
+        levels += 1;
+    }
+    let mut up: Vec[Vec[i64]] = (0..levels).map(|_| Vec.filled(n, 0)).collect();
+    let mut depth: Vec[i64] = Vec.filled(n, -1);
+    depth[0] = 0;
+    let mut queue: Vec[i64] = [0].to_vec();
+    let mut head = 0;
+    while head < queue.len() {
+        let v = queue[head];
+        head += 1;
+        for w in adj[v].iter() {
+            if depth[w] < 0 {
+                depth[w] = depth[v] + 1;
+                up[0][w] = v;
+                queue.push(w);
+            }
+        }
+    }
+    for k in 1..levels {
+        for v in 0..n {
+            up[k][v] = up[k - 1][up[k - 1][v]];
+        }
+    }
+    let lca = |a: i64, b: i64| {
+        let mut a = a;
+        let mut b = b;
+        if depth[a] < depth[b] {
+            let t = a;
+            a = b;
+            b = t;
+        }
+        for k in (0..levels).rev() {
+            if depth[a] - (1 << k) >= depth[b] {
+                a = up[k][a];
+            }
+        }
+        if a == b {
+            return a;
+        }
+        for k in (0..levels).rev() {
+            if up[k][a] != up[k][b] {
+                a = up[k][a];
+                b = up[k][b];
+            }
+        }
+        up[0][a]
+    };
+    let mut answer: Vec[i64] = Vec.new();
+    for q in query.iter() {
+        let mut best = lca(q[0], q[1]);
+        for m in [lca(q[0], q[2]), lca(q[1], q[2])] {
+            if depth[m] > depth[best] {
+                best = m;
+            }
+        }
+        answer.push(best);
+    }
+    answer
+}
+
+// ---- closest_struct.kara: `struct Rooted` climbed a step at a time
+struct StructRooted {
+    parent: Vec[i64],
+    depth: Vec[i64],
+}
+
+impl StructRooted {
+    fn new(n: i64, edges: Vec[Vec[i64]]) -> StructRooted {
+        let mut adj: Vec[Vec[i64]] = (0..n).map(|_| Vec.new()).collect();
+        for e in edges.iter() {
+            adj[e[0]].push(e[1]);
+            adj[e[1]].push(e[0]);
+        }
+        let mut parent: Vec[i64] = Vec.filled(n, 0);
+        let mut depth: Vec[i64] = Vec.filled(n, -1);
+        depth[0] = 0;
+        let mut stack: Vec[i64] = [0].to_vec();
+        while let Some(v) = stack.pop() {
+            for w in adj[v].iter() {
+                if depth[w] < 0 {
+                    depth[w] = depth[v] + 1;
+                    parent[w] = v;
+                    stack.push(w);
+                }
+            }
+        }
+        StructRooted { parent: parent, depth: depth }
+    }
+
+    fn meet(self, a: i64, b: i64) -> i64 {
+        let mut a = a;
+        let mut b = b;
+        while a != b {
+            if self.depth[a] >= self.depth[b] {
+                a = self.parent[a];
+            } else {
+                b = self.parent[b];
+            }
+        }
+        a
+    }
+
+    fn closest(self, start: i64, end: i64, node: i64) -> i64 {
+        let mut best = self.meet(start, end);
+        for m in [self.meet(start, node), self.meet(end, node)] {
+            if self.depth[m] > self.depth[best] {
+                best = m;
+            }
+        }
+        best
+    }
+}
+
+fn struct_closest_node(n: i64, edges: Vec[Vec[i64]], query: Vec[Vec[i64]]) -> Vec[i64] {
+    let tree = StructRooted.new(n, edges);
+    query.iter().map(|q| tree.closest(q[0], q[1], q[2])).collect()
+}
+
+// ---- closest_iter.kara: `filter` and `min_by_key` over all distances
+fn iter_distances(n: i64, adj: Vec[Vec[i64]], from: i64) -> Vec[i64] {
+    let mut dist: Vec[i64] = Vec.filled(n, -1);
+    dist[from] = 0;
+    let mut queue: Vec[i64] = [from].to_vec();
+    let mut head = 0;
+    while head < queue.len() {
+        let v = queue[head];
+        head += 1;
+        let fresh: Vec[i64] = adj[v].iter().filter(|w| dist[w] < 0).cloned().collect();
+        for w in fresh {
+            dist[w] = dist[v] + 1;
+            queue.push(w);
+        }
+    }
+    dist
+}
+
+fn iter_closest_node(n: i64, edges: Vec[Vec[i64]], query: Vec[Vec[i64]]) -> Vec[i64] {
+    let adj: Vec[Vec[i64]] = (0..n)
+        .map(|v| edges.iter().filter(|e| e[0] == v or e[1] == v).map(|e| e[0] + e[1] - v).collect())
+        .collect();
+    let dist: Vec[Vec[i64]] = (0..n).map(|v| iter_distances(n, adj, v)).collect();
+    query
+        .iter()
+        .map(|q| {
+            (0..n)
+                .filter(|u| dist[q[0]][u] + dist[u][q[1]] == dist[q[0]][q[1]])
+                .min_by_key(|u| dist[u][q[2]])
+                .unwrap()
+        })
+        .collect()
+}
+
+// ---- closest_solution.kara: LeetCode's Rust template
+impl Solution {
+    pub fn closest_node(n: i32, edges: Vec[Vec[i32]], query: Vec[Vec[i32]]) -> Vec[i32] {
+        let n = n as i64;
+        let mut g = Vec.filled(n, Vec.new());
+        for e in ref edges {
+            let (a, b) = (e[0] as i64, e[1] as i64);
+            g[a].push(b);
+            g[b].push(a);
+        }
+        let mut ans = Vec.with_capacity(query.len());
+        for q in ref query {
+            let (s, t, x) = (q[0] as i64, q[1] as i64, q[2] as i64);
+            let mut par = Vec.filled(n, i64.MAX);
+            let mut dist = Vec.filled(n, i64.MAX);
+            let mut st = [s];
+            par[s] = s;
+            while let Some(u) = st.pop() {
+                for v in ref g[u] {
+                    if par[v] == i64.MAX {
+                        par[v] = u;
+                        st.push(v);
+                    }
+                }
+            }
+            let mut dq = VecDeque.new();
+            dist[x] = 0;
+            dq.push_back(x);
+            while let Some(u) = dq.pop_front() {
+                for v in ref g[u] {
+                    if dist[v] == i64.MAX {
+                        dist[v] = dist[u] + 1;
+                        dq.push_back(v);
+                    }
+                }
+            }
+            let mut best = t;
+            let mut u = t;
+            loop {
+                if dist[u] < dist[best] {
+                    best = u;
+                }
+                if u == s {
+                    break;
+                }
+                u = par[u];
+            }
+            ans.push(best as i32);
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_closest_node(n: i64, edges: Vec[Vec[i64]], query: Vec[Vec[i64]]) -> Vec[i64] {
+    let edges: Vec[Vec[i32]] = edges.iter().map(|e| e.iter().map(|x| x as i32).collect()).collect();
+    let query: Vec[Vec[i32]] = query.iter().map(|q| q.iter().map(|x| x as i32).collect()).collect();
+    Solution.closest_node(n as i32, edges, query).iter().map(|x| x as i64).collect()
+}
+
+
+// ---- the statement read literally
+
+// the nodes from `v` to `target`, walking away from `came`; empty when
+// `target` is not that way
+fn walk(adj: Vec[Vec[i64]], v: i64, target: i64, came: i64) -> Vec[i64] {
+    if v == target {
+        return [v].to_vec();
+    }
+    for w in adj[v].iter() {
+        if w != came {
+            let rest = walk(adj, w, target, v);
+            if not rest.is_empty() {
+                let mut out = [v].to_vec();
+                out.extend(rest.iter().cloned());
+                return out;
+            }
+        }
+    }
+    Vec.new()
+}
+
+fn neighbours(n: i64, edges: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut adj: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..n {
+        adj.push(Vec.new());
+    }
+    for e in edges.iter() {
+        adj[e[0]].push(e[1]);
+        adj[e[1]].push(e[0]);
+    }
+    adj
+}
+
+fn literal(n: i64, edges: Vec[Vec[i64]], query: Vec[Vec[i64]]) -> Vec[i64] {
+    let adj = neighbours(n, edges);
+    let mut answer: Vec[i64] = Vec.new();
+    for q in query.iter() {
+        let on = walk(adj, q[0], q[1], -1);
+        let mut best = on[0];
+        for u in on.iter() {
+            if walk(adj, u, q[2], -1).len() < walk(adj, best, q[2], -1).len() {
+                best = u;
+            }
+        }
+        answer.push(best);
+    }
+    answer
+}
+
+fn answer(arm: i64, n: i64, edges: Vec[Vec[i64]], query: Vec[Vec[i64]]) -> Vec[i64] {
+    match arm {
+        0 => star_closest_node(n, edges, query),
+        1 => path_closest_node(n, edges, query),
+        2 => lca_closest_node(n, edges, query),
+        3 => struct_closest_node(n, edges, query),
+        4 => iter_closest_node(n, edges, query),
+        _ => solution_closest_node(n, edges, query),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random tree of `n` nodes, each node joined to one of the `reach`
+// before it, or to the first when `reach` is 0, relabelled and shuffled
+fn tree(seed: mut ref i64, n: i64, reach: i64) -> Vec[Vec[i64]] {
+    let mut label: Vec[i64] = (0..n).collect();
+    for j in (1..n).rev() {
+        let r = next_random(mut seed) % (j + 1);
+        label.swap(j, r);
+    }
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for i in 1..n {
+        let parent = if reach == 0 { 0 } else { i - 1 - next_random(mut seed) % reach.min(i) };
+        edges.push([label[i], label[parent]].to_vec());
+    }
+    for j in (1..edges.len()).rev() {
+        let r = next_random(mut seed) % (j + 1);
+        edges.swap(j, r);
+    }
+    edges
+}
+
+fn main() {
+    let names = ["star", "path", "lca", "struct", "iter", "solution"];
+    let mut seed = 2277;
+    let mut cases: Vec[(i64, Vec[Vec[i64]], Vec[Vec[i64]])] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 12 + 1;
+        let reach = if c < 300 { [1, 3, 1000][c % 3] } else if c < 330 { 1 } else { 0 };
+        let edges = tree(mut seed, n, reach);
+        let m = next_random(mut seed) % 6 + 1;
+        let mut query: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..m {
+            let s = next_random(mut seed) % n;
+            let e = next_random(mut seed) % n;
+            let x = next_random(mut seed) % n;
+            query.push([s, e, x].to_vec());
+        }
+        cases.push((n, edges, query));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (n, edges, query) in cases.iter() {
+        let truth = literal(n, edges, query);
+        for a in truth.iter() {
+            check = (check * 31 + a) % 1000000007;
+        }
+        let adj = neighbours(n, edges);
+        let turned_round: Vec[Vec[i64]] = query.iter().map(|q| [q[1], q[2], q[0]].to_vec()).collect();
+        let turned_edges: Vec[Vec[i64]] = edges.iter().map(|e| [n - 1 - e[0], n - 1 - e[1]].to_vec()).collect();
+        let turned_query: Vec[Vec[i64]] = query.iter().map(|q| [n - 1 - q[0], n - 1 - q[1], n - 1 - q[2]].to_vec()).collect();
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, n, edges, query)).collect();
+        for arm in 0..6 {
+            let value = ref got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut placed = value.len() == query.len();
+            if placed {
+                for i in 0..query.len() {
+                    let q = ref query[i];
+                    let on = walk(adj, q[0], q[1], -1);
+                    let a = value[i];
+                    if not on.contains(a) or (on.contains(q[2]) and a != q[2]) or (q[0] == q[1] and a != q[0]) {
+                        placed = false;
+                    }
+                }
+            }
+            let settled: Vec[Vec[i64]] = (0..query.len()).map(|i| [query[i][0], query[i][1], value[i]].to_vec()).collect();
+            let back: Vec[i64] = answer(arm, n, turned_edges, turned_query).iter().map(|a| n - 1 - a).collect();
+            let verdicts = [
+                value == truth,
+                answer(arm, n, edges, turned_round) == value,
+                back == value,
+                placed,
+                answer(arm, n, edges, settled) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{n} {edges} {query} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

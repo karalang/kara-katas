@@ -1,0 +1,149 @@
+// LeetCode #2277: Closest Node to Path in Tree -- lowest common
+// ancestors. With the tree rooted at 0, the node of the path from `s`
+// to `e` nearest to `x` is the deepest of the three meeting points
+// lca(s, e), lca(s, x) and lca(e, x). Binary lifting answers each in
+// O(log n). O((n + q) log n).
+
+fn closest_node(n: i64, edges: Vec[Vec[i64]], query: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut adj: Vec[Vec[i64]] = (0..n).map(|_| Vec.new()).collect();
+    for e in edges.iter() {
+        adj[e[0]].push(e[1]);
+        adj[e[1]].push(e[0]);
+    }
+    let mut levels = 1;
+    while (1 << levels) < n {
+        levels += 1;
+    }
+    let mut up: Vec[Vec[i64]] = (0..levels).map(|_| Vec.filled(n, 0)).collect();
+    let mut depth: Vec[i64] = Vec.filled(n, -1);
+    depth[0] = 0;
+    let mut queue: Vec[i64] = [0].to_vec();
+    let mut head = 0;
+    while head < queue.len() {
+        let v = queue[head];
+        head += 1;
+        for w in adj[v].iter() {
+            if depth[w] < 0 {
+                depth[w] = depth[v] + 1;
+                up[0][w] = v;
+                queue.push(w);
+            }
+        }
+    }
+    for k in 1..levels {
+        for v in 0..n {
+            up[k][v] = up[k - 1][up[k - 1][v]];
+        }
+    }
+    let lca = |a: i64, b: i64| {
+        let mut a = a;
+        let mut b = b;
+        if depth[a] < depth[b] {
+            let t = a;
+            a = b;
+            b = t;
+        }
+        for k in (0..levels).rev() {
+            if depth[a] - (1 << k) >= depth[b] {
+                a = up[k][a];
+            }
+        }
+        if a == b {
+            return a;
+        }
+        for k in (0..levels).rev() {
+            if up[k][a] != up[k][b] {
+                a = up[k][a];
+                b = up[k][b];
+            }
+        }
+        up[0][a]
+    };
+    let mut answer: Vec[i64] = Vec.new();
+    for q in query.iter() {
+        let mut best = lca(q[0], q[1]);
+        for m in [lca(q[0], q[2]), lca(q[1], q[2])] {
+            if depth[m] > depth[best] {
+                best = m;
+            }
+        }
+        answer.push(best);
+    }
+    answer
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random tree of `n` nodes, each node joined to one of the `reach`
+// before it, then relabelled at random and its edges shuffled
+fn tree(seed: mut ref i64, n: i64, reach: i64) -> Vec[Vec[i64]] {
+    let mut label: Vec[i64] = (0..n).collect();
+    for j in (1..n).rev() {
+        let r = next_random(mut seed) % (j + 1);
+        label.swap(j, r);
+    }
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for i in 1..n {
+        let parent = i - 1 - next_random(mut seed) % reach.min(i);
+        if next_random(mut seed) % 2 == 0 {
+            edges.push([label[i], label[parent]].to_vec());
+        } else {
+            edges.push([label[parent], label[i]].to_vec());
+        }
+    }
+    for j in (1..edges.len()).rev() {
+        let r = next_random(mut seed) % (j + 1);
+        edges.swap(j, r);
+    }
+    edges
+}
+
+fn queries(seed: mut ref i64, n: i64, m: i64) -> Vec[Vec[i64]] {
+    (0..m).map(|_| [next_random(mut seed) % n, next_random(mut seed) % n, next_random(mut seed) % n].to_vec()).collect()
+}
+
+fn main() {
+    // LeetCode's three examples, then three more: one node, a path
+    // asked both ways, and a star
+    let examples = [
+        (7, [[0, 1], [0, 2], [0, 3], [1, 4], [2, 5], [2, 6]].to_vec(), [[5, 3, 4], [5, 3, 6]].to_vec()),
+        (3, [[0, 1], [1, 2]].to_vec(), [[0, 1, 2]].to_vec()),
+        (3, [[0, 1], [1, 2]].to_vec(), [[0, 0, 0]].to_vec()),
+        (1, Vec.new(), [[0, 0, 0]].to_vec()),
+        (5, [[0, 1], [1, 2], [2, 3], [3, 4]].to_vec(), [[0, 4, 2], [4, 0, 2], [1, 3, 0]].to_vec()),
+        (5, [[0, 1], [0, 2], [0, 3], [0, 4]].to_vec(), [[1, 2, 3], [3, 3, 4]].to_vec()),
+    ];
+    for (n, edges, query) in examples.iter() {
+        let edges: Vec[Vec[i64]] = edges.iter().map(|e| e.to_vec()).collect();
+        let query: Vec[Vec[i64]] = query.iter().map(|q| q.to_vec()).collect();
+        println(f"{n} {edges} {query} -> {closest_node(n, edges, query)}");
+    }
+    // 500 trees of 1 to 30 nodes, each joined to one of the 1, 3 or all
+    // before it, with 1 to 10 queries
+    let mut seed = 2277;
+    let mut check = 0;
+    for t in 0..500 {
+        let n = next_random(mut seed) % 30 + 1;
+        let edges = tree(mut seed, n, [1, 3, 1000][t % 3]);
+        let m = next_random(mut seed) % 10 + 1;
+        let query = queries(mut seed, n, m);
+        for a in closest_node(n, edges, query).iter() {
+            check = (check * 31 + a) % 1000000007;
+        }
+    }
+    println(f"500 trees: checksum {check}");
+    // the constraints' largest, 1000 nodes and 1000 queries: a random
+    // tree and a path, each answer summed
+    let mut sums: Vec[i64] = Vec.new();
+    for reach in [1000, 1] {
+        let edges = tree(mut seed, 1000, reach);
+        let query = queries(mut seed, 1000, 1000);
+        sums.push(closest_node(1000, edges, query).iter().sum());
+    }
+    println(f"1000 nodes: {sums}");
+}
