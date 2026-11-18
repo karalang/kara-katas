@@ -1,0 +1,293 @@
+// LeetCode #2259: Remove Digit From Number to Maximize Result -- the
+// differential. The six arms, against the statement read literally:
+// every occurrence of `digit` cut out in turn, each result read as an
+// `i64` by `i64.parse`, and the largest value written back; no string
+// comparison and no greedy rule. 300 random numbers of 2 to 18 digits
+// from '1' up to '2', '3', '4' or '9'; then 30 of one digit repeated
+// with one other digit put in somewhere; then 30 whose digits never
+// fall or never rise. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the answer is the number with one occurrence of `digit` cut out
+// P3  a digit other than `digit` put in front: the same digit in front
+//     of the answer
+// P4  no other cut of `digit` gives a larger string
+// P5  `digit` put on the end: the larger of the number and the answer
+//     with `digit` on the end
+// P6  each arm agrees with at least three of the other five
+
+// ---- remove.kara: the ★ arm, the first occurrence before a larger digit
+fn star_remove_digit(number: String, digit: char) -> String {
+    let bytes = number.bytes();
+    let d = digit as u32 as u8;
+    let mut last = 0;
+    for i in 0..bytes.len() {
+        if bytes[i] == d {
+            last = i;
+            if i + 1 < bytes.len() and bytes[i + 1] > d {
+                break;
+            }
+        }
+    }
+    f"{number.substring(0, last)}{number.substring(last + 1, number.len())}"
+}
+
+// ---- remove_all.kara: every candidate built by `substring`
+fn all_remove_digit(number: String, digit: char) -> String {
+    let mut best = String.new();
+    let mut i = 0;
+    for c in number.chars() {
+        if c == digit {
+            let candidate = number.substring(0, i) + number.substring(i + 1);
+            if candidate > best {
+                best = candidate;
+            }
+        }
+        i += 1;
+    }
+    best
+}
+
+// ---- remove_iter.kara: `char_indices`, `filter`, `map`, `max`
+fn iter_remove_digit(number: String, digit: char) -> String {
+    number
+        .char_indices()
+        .filter(|(_, c)| c == digit)
+        .map(|(i, _)| f"{number.substring(0, i)}{number.substring(i + 1)}")
+        .max()
+        .unwrap()
+}
+
+// ---- remove_compare.kara: candidates compared without building them
+fn compare_at(bytes: Slice[u8], skip: i64, k: i64) -> u8 {
+    if k < skip { bytes[k] } else { bytes[k + 1] }
+}
+
+fn compare_beats(bytes: Slice[u8], challenger: i64, best: i64) -> bool {
+    for k in 0..bytes.len() - 1 {
+        let (a, b) = (compare_at(bytes, challenger, k), compare_at(bytes, best, k));
+        if a != b {
+            return a > b;
+        }
+    }
+    false
+}
+
+fn compare_remove_digit(number: String, digit: char) -> String {
+    let bytes = number.bytes();
+    let d = digit as u32 as u8;
+    let mut best = -1;
+    for i in 0..bytes.len() {
+        if bytes[i] == d and (best < 0 or compare_beats(bytes, i, best)) {
+            best = i;
+        }
+    }
+    number.substring(0, best) + number.substring(best + 1)
+}
+
+// ---- remove_struct.kara: `struct Digits` with `without` and `greater`
+struct StructDigits {
+    values: Vec[i64],
+}
+
+impl StructDigits {
+    fn parse(text: String) -> StructDigits {
+        StructDigits { values: text.chars().map(|c| c.to_digit(10).unwrap() as i64).collect() }
+    }
+
+    fn without(ref self, i: i64) -> StructDigits {
+        let mut values = self.values.clone();
+        values.remove(i);
+        StructDigits { values }
+    }
+
+    fn greater(ref self, other: StructDigits) -> bool {
+        for (a, b) in self.values.iter().zip(other.values.iter()) {
+            if a != b {
+                return a > b;
+            }
+        }
+        false
+    }
+
+    fn to_string(ref self) -> String {
+        let parts: Vec[String] = self.values.iter().map(|v| v.to_string()).collect();
+        parts.join("")
+    }
+}
+
+fn struct_remove_digit(number: String, digit: char) -> String {
+    let all = StructDigits.parse(number);
+    let target = digit.to_digit(10).unwrap() as i64;
+    let mut best: Option[StructDigits] = None;
+    for i in 0..all.values.len() {
+        if all.values[i] == target {
+            let candidate = all.without(i);
+            let better = match best {
+                None => true,
+                Some(ref b) => candidate.greater(b),
+            };
+            if better {
+                best = Some(candidate);
+            }
+        }
+    }
+    best.unwrap().to_string()
+}
+
+// ---- remove_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn remove_digit(number: String, digit: char) -> String {
+        let s: Vec[char] = number.chars().collect();
+        let mut best = String.new();
+        for i in 0..s.len() {
+            if s[i] == digit {
+                let mut t = s.clone();
+                t.remove(i);
+                let candidate: String = t.into_iter().collect();
+                if candidate > best {
+                    best = candidate;
+                }
+            }
+        }
+        best
+    }
+}
+
+struct Solution {}
+
+fn solution_remove_digit(number: String, digit: char) -> String {
+    Solution.remove_digit(number, digit)
+}
+
+// ---- the statement read literally
+
+fn literal(number: String, digit: char) -> String {
+    let mut best = -1;
+    let mut i = 0;
+    for c in number.chars() {
+        if c == digit {
+            let value = i64.parse(number.substring(0, i) + number.substring(i + 1)).unwrap();
+            best = best.max(value);
+        }
+        i += 1;
+    }
+    best.to_string()
+}
+
+fn cuts(number: String, digit: char) -> Vec[String] {
+    let mut out: Vec[String] = Vec.new();
+    let mut i = 0;
+    for c in number.chars() {
+        if c == digit {
+            out.push(number.substring(0, i) + number.substring(i + 1));
+        }
+        i += 1;
+    }
+    out
+}
+
+fn answer(arm: i64, number: String, digit: char) -> String {
+    match arm {
+        0 => star_remove_digit(number, digit),
+        1 => all_remove_digit(number, digit),
+        2 => iter_remove_digit(number, digit),
+        3 => compare_remove_digit(number, digit),
+        4 => struct_remove_digit(number, digit),
+        _ => solution_remove_digit(number, digit),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn digit_of(v: i64) -> char {
+    (b'0' + v as u8) as char
+}
+
+fn main() {
+    let names = ["star", "all", "iter", "compare", "struct", "solution"];
+    let mut seed = 2259;
+    let mut cases: Vec[(String, char)] = Vec.new();
+    for c in 0..360 {
+        let len = next_random(mut seed) % 17 + 2;
+        let mut number = String.new();
+        if c < 300 {
+            let top = [2, 3, 4, 9][c % 4];
+            for _ in 0..len {
+                number.push(digit_of(next_random(mut seed) % top + 1));
+            }
+        } else if c < 330 {
+            let (same, other, at) = (next_random(mut seed) % 9 + 1, next_random(mut seed) % 9 + 1, next_random(mut seed) % len);
+            for k in 0..len {
+                number.push(digit_of(if k == at { other } else { same }));
+            }
+        } else {
+            let mut v = next_random(mut seed) % 9 + 1;
+            let rising = c % 2 == 0;
+            for _ in 0..len {
+                number.push(digit_of(v));
+                let step = next_random(mut seed) % 2;
+                v = if rising { (v + step).min(9) } else { (v - step).max(1) };
+            }
+        }
+        let digit = number.chars().nth(next_random(mut seed) % len).unwrap();
+        cases.push((number, digit));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (number, digit) in cases.iter() {
+        let truth = literal(number, digit);
+        for b in truth.bytes() {
+            check = (check * 131 + b) % 1000000007;
+        }
+        check = (check * 131 + 7) % 1000000007;
+        let all_cuts = cuts(number, digit);
+        let front = if digit == '7' { '3' } else { '7' };
+        let got: Vec[String] = (0..6).map(|arm| answer(arm, number, digit)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let with_end = answer(arm, f"{number}{digit}", digit);
+            let end_best = if number.clone() > f"{value}{digit}" { number.clone() } else { f"{value}{digit}" };
+            let verdicts = [
+                value == truth,
+                all_cuts.contains(value),
+                answer(arm, f"{front}{number}", digit) == f"{front}{value}",
+                all_cuts.iter().all(|s| s <= value),
+                with_end == end_best,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{number} {digit} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

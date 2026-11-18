@@ -1,0 +1,42 @@
+// LeetCode #2260: Minimum Consecutive Cards to Pick Up -- the ★ arm. The
+// shortest run holding a matching pair has the pair at its two ends, and
+// those two are neighbouring occurrences of one value. So one pass with
+// a `Map` from each value to where it was last seen: at every repeat the
+// run from there to here is a candidate. O(n).
+
+fn minimum_card_pickup(cards: Vec[i64]) -> i64 {
+    let mut last: Map[i64, i64] = Map.new();
+    let mut best = -1;
+    for i in 0..cards.len() {
+        if let Some(j) = last.get(cards[i]) {
+            let run = i - j + 1;
+            if best < 0 or run < best {
+                best = run;
+            }
+        }
+        last.insert(cards[i], i);
+    }
+    best
+}
+
+// ---- bench harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 300 hands of 10^5 cards, values below 10^6, 10^5 or 10^4 in turn
+    let mut seed = 2260;
+    let mut check = 0;
+    let tops = [1000000, 100000, 10000];
+    for t in 0..300 {
+        let mut cards: Vec[i64] = Vec.new();
+        for _ in 0..100000 {
+            cards.push((next_random(mut seed) * 32768 + next_random(mut seed)) % tops[t % 3]);
+        }
+        check = (check * 31 + minimum_card_pickup(cards) + 2) % 1000000007;
+    }
+    println(f"300 hands of 10^5 cards: checksum {check}");
+}

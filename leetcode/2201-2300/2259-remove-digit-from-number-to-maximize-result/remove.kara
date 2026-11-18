@@ -1,0 +1,87 @@
+// LeetCode #2259: Remove Digit From Number to Maximize Result -- the ★
+// arm. Every candidate has the same length, so the larger is the one
+// whose first difference is larger. Removing the occurrence at `i`
+// shifts in the next digit there, which wins exactly when it is larger
+// than `digit`; so the first occurrence followed by a larger digit is
+// the best, and failing that the last occurrence, which keeps every
+// earlier digit in place. One pass over the bytes. O(n).
+
+fn remove_digit(number: String, digit: char) -> String {
+    let bytes = number.bytes();
+    let d = digit as u32 as u8;
+    let mut last = 0;
+    for i in 0..bytes.len() {
+        if bytes[i] == d {
+            last = i;
+            if i + 1 < bytes.len() and bytes[i + 1] > d {
+                break;
+            }
+        }
+    }
+    f"{number.substring(0, last)}{number.substring(last + 1, number.len())}"
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `len` digits from '1' up to `top`, and one of them as the digit to remove
+fn draw(seed: mut ref i64, len: i64, top: i64) -> (String, char) {
+    let mut number = String.new();
+    for _ in 0..len {
+        number.push((b'1' + (next_random(mut seed) % top) as u8) as char);
+    }
+    let at = next_random(mut seed) % len;
+    let digit = number.bytes()[at] as char;
+    (number, digit)
+}
+
+fn fold(check: i64, s: String) -> i64 {
+    let mut h = check;
+    for b in s.bytes() {
+        h = (h * 131 + b) % 1000000007;
+    }
+    (h * 131 + 7) % 1000000007
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: two digits, the digit
+    // in front, two removals giving the same number, and a run of the
+    // digit before a larger one
+    let examples = [("123", '3'), ("1231", '1'), ("551", '5'), ("99", '9'), ("19", '1'), ("2998", '9'), ("3334333", '3')];
+    for (number, digit) in examples {
+        println(f"{number} without one {digit} -> {remove_digit(number.to_string(), digit)}");
+    }
+    // 5000 numbers of 2 to 20 digits from '1' to '2', '3', '4' or '9'
+    let mut seed = 2259;
+    let mut check = 0;
+    let mut kept_last = 0;
+    for t in 0..5000 {
+        let tops = [2, 3, 4, 9];
+        let len = next_random(mut seed) % 19 + 2;
+        let (number, digit) = draw(mut seed, len, tops[t % 4]);
+        let answer = remove_digit(number, digit);
+        let last = number.bytes().iter().rposition(|b| b == digit as u32 as u8).unwrap();
+        if answer == f"{number.substring(0, last)}{number.substring(last + 1)}" {
+            kept_last += 1;
+        }
+        check = fold(check, answer);
+    }
+    println(f"5000 numbers: {kept_last} lose their last occurrence, checksum {check}");
+    // the constraints' longest, 100 digits: all one digit, falling, and random
+    let mut long: Vec[String] = Vec.new();
+    long.push(remove_digit("7".repeat(100), '7'));
+    let mut falling = String.new();
+    for i in 0..100 {
+        falling.push((b'9' - (i / 12) as u8) as char);
+    }
+    long.push(remove_digit(falling, '5'));
+    let (number, digit) = draw(mut seed, 100, 9);
+    long.push(remove_digit(number, digit));
+    for s in long.iter() {
+        println(f"{s.len()} digits: {s.substring(0, 30)}... checksum {fold(0, s)}");
+    }
+}

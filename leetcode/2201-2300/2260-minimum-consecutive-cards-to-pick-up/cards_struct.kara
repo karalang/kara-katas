@@ -1,0 +1,93 @@
+// LeetCode #2260: Minimum Consecutive Cards to Pick Up -- a struct that
+// watches the deal. `struct Table` keeps the last position of each value
+// in a `Map` and the shortest run so far as an `Option[i64]`; `deal`
+// (`mut ref self`) takes one card and its position, `shortest` reads the
+// answer out. O(n).
+
+struct Table {
+    last: Map[i64, i64],
+    shortest: Option[i64],
+}
+
+impl Table {
+    fn new() -> Table {
+        Table { last: Map.new(), shortest: None }
+    }
+
+    fn deal(mut ref self, at: i64, card: i64) {
+        if let Some(before) = self.last.insert(card, at) {
+            let run = at - before + 1;
+            self.shortest = match self.shortest {
+                Some(s) if s <= run => Some(s),
+                _ => Some(run),
+            };
+        }
+    }
+
+    fn shortest(ref self) -> i64 {
+        self.shortest.unwrap_or(-1)
+    }
+}
+
+fn minimum_card_pickup(cards: Vec[i64]) -> i64 {
+    let mut table = Table.new();
+    for (i, card) in cards.iter().enumerate() {
+        table.deal(i, card);
+    }
+    table.shortest()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn draw(seed: mut ref i64, len: i64, values: i64) -> Vec[i64] {
+    let mut cards: Vec[i64] = Vec.new();
+    for _ in 0..len {
+        cards.push(next_random(mut seed) % values);
+    }
+    cards
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one card, a pair side by
+    // side, the pair at the two ends, and two pairs the later one shorter
+    let examples: Vec[Vec[i64]] = [
+        [3, 4, 2, 3, 4, 7].to_vec(),
+        [1, 0, 5, 3].to_vec(),
+        [1000000].to_vec(),
+        [7, 7].to_vec(),
+        [5, 1, 2, 3, 5].to_vec(),
+        [9, 1, 2, 9, 4, 4].to_vec(),
+    ].to_vec();
+    for cards in examples.iter() {
+        println(f"{cards} -> {minimum_card_pickup(cards)}");
+    }
+    // 5000 hands of 1 to 30 cards with values below 5, 20, 100 or 1000
+    let mut seed = 2260;
+    let mut check = 0;
+    let mut none = 0;
+    for t in 0..5000 {
+        let len = next_random(mut seed) % 30 + 1;
+        let cards = draw(mut seed, len, [5, 20, 100, 1000][t % 4]);
+        let answer = minimum_card_pickup(cards);
+        if answer < 0 {
+            none += 1;
+        }
+        check = (check * 31 + answer + 2) % 1000000007;
+    }
+    println(f"5000 hands: {none} with no pair, checksum {check}");
+    // the constraints' most cards, 10^5: all different; values 0 to 10^6
+    // at random; every value of 0 to 49999 twice, 50000 apart; and the
+    // first card again at the very end
+    let all_different: Vec[i64] = (0..100000).map(|i| i * 10).collect();
+    let random = draw(mut seed, 100000, 1000001);
+    let twice: Vec[i64] = (0..100000).map(|i| i * 7919 % 50000).collect();
+    let mut far: Vec[i64] = (0..100000).collect();
+    far[99999] = 0;
+    let answers: Vec[i64] = [all_different, random, twice, far].iter().map(|cards| minimum_card_pickup(cards)).collect();
+    println(f"10^5 cards: {answers}");
+}

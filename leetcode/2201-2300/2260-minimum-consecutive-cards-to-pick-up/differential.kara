@@ -1,0 +1,259 @@
+// LeetCode #2260: Minimum Consecutive Cards to Pick Up -- the
+// differential. The six arms, against the statement read literally:
+// runs of 2 cards, then 3, and so on, each run tried at every start and
+// every two cards in it compared, the first length with a matching pair
+// the answer; no map, no last positions. 300 random hands of 1 to 30
+// cards with values below 2 to 40; then 30 of all different cards; then
+// 30 of all different cards but one pair. Every case is drawn before any
+// arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the hand reversed: the same answer
+// P3  every card relabelled `7c + 3`: the same answer
+// P4  the hand followed by itself: n + 1 if there was no pair, else no
+//     more than the answer
+// P5  the first card dropped: still no pair if there was none, else no
+//     pair or no shorter a run
+// P6  each arm agrees with at least three of the other five
+
+// ---- cards.kara: the ★ arm, a `Map` of where each value was last seen
+fn star_minimum_card_pickup(cards: Vec[i64]) -> i64 {
+    let mut last: Map[i64, i64] = Map.new();
+    let mut best = -1;
+    for i in 0..cards.len() {
+        if let Some(j) = last.get(cards[i]) {
+            let run = i - j + 1;
+            if best < 0 or run < best {
+                best = run;
+            }
+        }
+        last.insert(cards[i], i);
+    }
+    best
+}
+
+// ---- cards_array.kara: last positions in a `Vec` indexed by card
+fn array_minimum_card_pickup(cards: Vec[i64]) -> i64 {
+    let top = cards.iter().max().unwrap();
+    let mut last: Vec[i64] = Vec.filled(top + 1, -1);
+    let mut best = i64.MAX;
+    for (i, card) in cards.iter().enumerate() {
+        if last[card] >= 0 {
+            best = best.min(i - last[card] + 1);
+        }
+        last[card] = i;
+    }
+    if best == i64.MAX { -1 } else { best }
+}
+
+// ---- cards_window.kara: a sliding window of distinct cards in a `Set`
+fn window_minimum_card_pickup(cards: Vec[i64]) -> i64 {
+    let mut inside: Set[i64] = Set.new();
+    let mut best = -1;
+    let mut lo = 0;
+    for hi in 0..cards.len() {
+        while inside.contains(cards[hi]) {
+            if cards[lo] == cards[hi] {
+                let run = hi - lo + 1;
+                if best < 0 or run < best {
+                    best = run;
+                }
+            }
+            inside.remove(cards[lo]);
+            lo += 1;
+        }
+        inside.insert(cards[hi]);
+    }
+    best
+}
+
+// ---- cards_sort.kara: `(card, position)` sorted, `windows(2)`
+fn sort_minimum_card_pickup(cards: Vec[i64]) -> i64 {
+    let mut at: Vec[(i64, i64)] = cards.iter().enumerate().map(|(i, c)| (c, i)).collect();
+    at.sort();
+    at.windows(2)
+        .into_iter()
+        .filter(|w| w[0].0 == w[1].0)
+        .map(|w| w[1].1 - w[0].1 + 1)
+        .min()
+        .unwrap_or(-1)
+}
+
+// ---- cards_struct.kara: `struct Table` dealt one card at a time
+struct StructTable {
+    last: Map[i64, i64],
+    shortest: Option[i64],
+}
+
+impl StructTable {
+    fn new() -> StructTable {
+        StructTable { last: Map.new(), shortest: None }
+    }
+
+    fn deal(mut ref self, at: i64, card: i64) {
+        if let Some(before) = self.last.insert(card, at) {
+            let run = at - before + 1;
+            self.shortest = match self.shortest {
+                Some(s) if s <= run => Some(s),
+                _ => Some(run),
+            };
+        }
+    }
+
+    fn shortest(ref self) -> i64 {
+        self.shortest.unwrap_or(-1)
+    }
+}
+
+fn struct_minimum_card_pickup(cards: Vec[i64]) -> i64 {
+    let mut table = StructTable.new();
+    for (i, card) in cards.iter().enumerate() {
+        table.deal(i, card);
+    }
+    table.shortest()
+}
+
+// ---- cards_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn minimum_card_pickup(cards: Vec[i32]) -> i32 {
+        let mut last: Map[i32, i64] = Map.new();
+        let mut ans = i64.MAX;
+        for (i, c) in cards.iter().enumerate() {
+            if let Some(j) = last.get(c).cloned() {
+                ans = ans.min(i - j + 1);
+            }
+            last.insert(c, i);
+        }
+        if ans == i64.MAX { -1 } else { ans as i32 }
+    }
+}
+
+struct Solution {}
+
+fn solution_minimum_card_pickup(cards: Vec[i64]) -> i64 {
+    let hand: Vec[i32] = cards.iter().map(|c| c as i32).collect();
+    Solution.minimum_card_pickup(hand)
+}
+
+// ---- the statement read literally
+
+fn literal(cards: Vec[i64]) -> i64 {
+    let n = cards.len();
+    for len in 2..n + 1 {
+        for start in 0..n - len + 1 {
+            for a in start..start + len {
+                for b in a + 1..start + len {
+                    if cards[a] == cards[b] {
+                        return len;
+                    }
+                }
+            }
+        }
+    }
+    -1
+}
+
+fn answer(arm: i64, cards: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_minimum_card_pickup(cards),
+        1 => array_minimum_card_pickup(cards),
+        2 => window_minimum_card_pickup(cards),
+        3 => sort_minimum_card_pickup(cards),
+        4 => struct_minimum_card_pickup(cards),
+        _ => solution_minimum_card_pickup(cards),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` different values below 1000, in a random order
+fn distinct(seed: mut ref i64, n: i64) -> Vec[i64] {
+    let mut cards: Vec[i64] = Vec.new();
+    while cards.len() < n {
+        let v = next_random(mut seed) % 1000;
+        if not cards.contains(v) {
+            cards.push(v);
+        }
+    }
+    cards
+}
+
+fn main() {
+    let names = ["star", "array", "window", "sort", "struct", "solution"];
+    let mut seed = 2260;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 30 + 1;
+        if c < 300 {
+            let values = next_random(mut seed) % 39 + 2;
+            cases.push((0..n).map(|_| next_random(mut seed) % values).collect());
+        } else if c < 330 {
+            cases.push(distinct(mut seed, n));
+        } else {
+            let mut cards = distinct(mut seed, n + 1);
+            let (a, b) = (next_random(mut seed) % (n + 1), next_random(mut seed) % (n + 1));
+            if a != b {
+                cards[a] = cards[b];
+            }
+            cases.push(cards);
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for cards in cases.iter() {
+        let n = cards.len();
+        let truth = literal(cards);
+        check = (check * 31 + truth + 2) % 1000000007;
+        let reversed: Vec[i64] = cards.iter().rev().collect();
+        let relabelled: Vec[i64] = cards.iter().map(|c| 7 * c + 3).collect();
+        let mut doubled = cards.clone();
+        doubled.extend(cards.iter());
+        let dropped: Vec[i64] = cards.iter().skip(1).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, cards)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let twice = answer(arm, doubled);
+            let less = if n > 1 { answer(arm, dropped) } else { -1 };
+            let verdicts = [
+                value == truth,
+                answer(arm, reversed) == value,
+                answer(arm, relabelled) == value,
+                if value < 0 { twice == n + 1 } else { twice >= 2 and twice <= value },
+                if value < 0 { less == -1 } else { less == -1 or less >= value },
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{cards} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
