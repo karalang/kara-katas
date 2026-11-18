@@ -1,0 +1,63 @@
+// LeetCode #2309: Greatest English Letter in Upper and Lower Case -- a
+// `Set[char]` of the letters seen: each letter's other case is looked up
+// as it comes, and when it is there the uppercase one is a candidate,
+// the greatest candidate kept. O(n).
+
+fn greatest_letter(s: String) -> String {
+    let mut seen: Set[char] = Set.new();
+    let mut best: Option[char] = None;
+    for c in s.chars() {
+        seen.insert(c);
+        let other = if c.is_ascii_lowercase() { c.to_ascii_uppercase() } else { c.to_ascii_lowercase() };
+        if seen.contains(other) {
+            let upper = c.to_ascii_uppercase();
+            if best.is_none() or upper > best.unwrap() {
+                best = Some(upper);
+            }
+        }
+    }
+    match best {
+        Some(c) => c.to_string(),
+        None => String.new(),
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples; then one letter in both cases, `Z` and
+    // `z` far apart, `a` and `A` alone, and every letter in one case
+    for s in ["lEeTcOdE", "arRAzFif", "AbCdEfGhIjK", "qQ", "zabcdefghijklmnopqrstuvwxyZ", "Aa", "ABCDEFGHIJKLMNOPQRSTUVWXYZ"] {
+        let letter = greatest_letter(s.to_string());
+        println(f"\"{s}\": \"{letter}\"");
+    }
+    // 2000 random strings of 1 to 60 letters, each from a random handful
+    // of the 52, so that a pair turns up about half the time
+    let letters: Vec[char] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".chars().collect();
+    let mut seed = 2309;
+    let mut check = 0;
+    let mut found = 0;
+    for _ in 0..2000 {
+        let pool = next_random(mut seed) % 24 + 1;
+        let mut from: Vec[char] = Vec.new();
+        for _ in 0..pool {
+            from.push(letters[next_random(mut seed) % 52]);
+        }
+        let mut s = String.new();
+        for _ in 0..next_random(mut seed) % 60 + 1 {
+            s.push(from[next_random(mut seed) % pool]);
+        }
+        let letter = greatest_letter(s);
+        let code = if letter.len() == 0 { 0 } else { letter.bytes()[0] as i64 };
+        check = (check * 31 + code) % 1000000007;
+        if code > 0 {
+            found += 1;
+        }
+    }
+    println(f"2000 strings: checksum {check}, {found} with a letter in both cases");
+}

@@ -1,0 +1,263 @@
+// LeetCode #2309: Greatest English Letter in Upper and Lower Case -- the
+// differential. The six arms, against the statement read literally: every
+// pair of places in the string, the first holding an uppercase letter and
+// the second its lowercase, makes that uppercase letter a candidate, and
+// the greatest candidate is the answer, or "" when there is none. 300
+// random strings of 1 to 60 letters drawn from a handful of the 52; then
+// 30 that hold every letter in one case and a few in the other; then 30
+// of up to 1000 letters from all 52. Every case is drawn before any arm
+// answers.
+//
+// P1  the answer is the literal reading's
+// P2  the answer is "" or one uppercase letter whose lowercase the string
+//     also holds
+// P3  the string reversed: the same answer
+// P4  every letter's case swapped: the same answer
+// P5  the answer's letter taken out in both cases: an answer that is ""
+//     or a smaller letter
+// P6  each arm agrees with at least three of the other five
+
+// ---- greatest.kara: the ★ arm, two masks
+fn star_letter(s: String) -> String {
+    let mut lower = 0;
+    let mut upper = 0;
+    for b in s.bytes() {
+        if b >= b'a' {
+            lower |= 1 << (b - b'a') as i64;
+        } else {
+            upper |= 1 << (b - b'A') as i64;
+        }
+    }
+    let both = lower & upper;
+    for i in (0..26).rev() {
+        if (both >> i) & 1 == 1 {
+            return ((b'A' + i as u8) as char).to_string();
+        }
+    }
+    String.new()
+}
+
+// ---- greatest_naive.kara: each letter from Z down
+fn naive_letter(s: String) -> String {
+    let uppers: Vec[char] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".chars().collect();
+    let lowers: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    for i in (0..26).rev() {
+        let mut has_upper = false;
+        let mut has_lower = false;
+        for c in s.chars() {
+            if c == uppers[i] {
+                has_upper = true;
+            }
+            if c == lowers[i] {
+                has_lower = true;
+            }
+        }
+        if has_upper and has_lower {
+            return uppers[i].to_string();
+        }
+    }
+    String.new()
+}
+
+// ---- greatest_set.kara: a `Set[char]` of the letters seen
+fn set_letter(s: String) -> String {
+    let mut seen: Set[char] = Set.new();
+    let mut best: Option[char] = None;
+    for c in s.chars() {
+        seen.insert(c);
+        let other = if c.is_ascii_lowercase() { c.to_ascii_uppercase() } else { c.to_ascii_lowercase() };
+        if seen.contains(other) {
+            let upper = c.to_ascii_uppercase();
+            if best.is_none() or upper > best.unwrap() {
+                best = Some(upper);
+            }
+        }
+    }
+    match best {
+        Some(c) => c.to_string(),
+        None => String.new(),
+    }
+}
+
+// ---- greatest_table.kara: two tables of flags
+fn table_letter(s: String) -> String {
+    let mut lower = [false; 26];
+    let mut upper = [false; 26];
+    for c in s.chars() {
+        match c {
+            'a'..='z' => lower[(c as i64) - ('a' as i64)] = true,
+            'A'..='Z' => upper[(c as i64) - ('A' as i64)] = true,
+            _ => {}
+        }
+    }
+    let mut i = 25;
+    while i >= 0 {
+        if lower[i] and upper[i] {
+            return (('A' as i64 + i) as u8 as char).to_string();
+        }
+        i -= 1;
+    }
+    String.new()
+}
+
+// ---- greatest_iter.kara: iterators
+fn iter_letter(s: String) -> String {
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        .chars()
+        .filter(|u| s.chars().any(|c| c == u) and s.chars().any(|c| c == u.to_ascii_lowercase()))
+        .max()
+        .map(|u| u.to_string())
+        .unwrap_or(String.new())
+}
+
+// ---- greatest_solution.kara: LeetCode's Rust template
+struct Solution {}
+
+impl Solution {
+    pub fn greatest_letter(s: String) -> String {
+        let mut seen = [false; 128];
+        for b in s.bytes() {
+            seen[b as usize] = true;
+        }
+        for c in (b'A'..=b'Z').rev() {
+            if seen[c as usize] and seen[(c + 32) as usize] {
+                return (c as char).to_string();
+            }
+        }
+        String.new()
+    }
+}
+
+fn solution_letter(s: String) -> String {
+    Solution.greatest_letter(s)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(s: String) -> String {
+    let chars: Vec[char] = s.chars().collect();
+    let mut best = String.new();
+    for i in 0..chars.len() {
+        for j in 0..chars.len() {
+            if chars[i].is_ascii_uppercase() and chars[j] == chars[i].to_ascii_lowercase() {
+                let candidate = chars[i].to_string();
+                if best.len() == 0 or candidate > best {
+                    best = candidate;
+                }
+            }
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, s: String) -> String {
+    match arm {
+        0 => star_letter(s),
+        1 => naive_letter(s),
+        2 => set_letter(s),
+        3 => table_letter(s),
+        4 => iter_letter(s),
+        _ => solution_letter(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "naive", "set", "table", "iter", "solution"];
+    let letters: Vec[char] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".chars().collect();
+    let mut seed = 2309;
+    let mut cases: Vec[String] = Vec.new();
+    for c in 0..360 {
+        let mut s = String.new();
+        if c < 300 {
+            let pool = next_random(mut seed) % 24 + 1;
+            let mut from: Vec[char] = Vec.new();
+            for _ in 0..pool {
+                from.push(letters[next_random(mut seed) % 52]);
+            }
+            for _ in 0..next_random(mut seed) % 60 + 1 {
+                s.push(from[next_random(mut seed) % pool]);
+            }
+        } else if c < 330 {
+            // every letter in one case, then up to 3 in the other
+            let base = (next_random(mut seed) % 2) * 26;
+            for i in 0..26 {
+                s.push(letters[base + i]);
+            }
+            for _ in 0..next_random(mut seed) % 4 {
+                s.push(letters[26 - base + next_random(mut seed) % 26]);
+            }
+        } else {
+            for _ in 0..next_random(mut seed) % 1000 + 1 {
+                s.push(letters[next_random(mut seed) % 52]);
+            }
+        }
+        cases.push(s);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for s in cases.iter() {
+        let truth = literal(s);
+        let code = if truth.len() == 0 { 0 } else { truth.bytes()[0] as i64 };
+        check = (check * 31 + code) % 1000000007;
+        let reversed: String = s.chars().rev().collect();
+        let swapped: String = s.chars().map(|c| if c.is_ascii_lowercase() { c.to_ascii_uppercase() } else { c.to_ascii_lowercase() }).collect();
+        let got: Vec[String] = (0..6).map(|arm| answer(arm, s)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut shape = value.len() == 0;
+            let mut smaller = true;
+            if value.len() == 1 {
+                let u = value.chars().next().unwrap();
+                let l = u.to_ascii_lowercase();
+                shape = u.is_ascii_uppercase() and s.chars().any(|c| c == u) and s.chars().any(|c| c == l);
+                let without: String = s.chars().filter(|c| c != u and c != l).collect();
+                if without.len() > 0 {
+                    let after = answer(arm, without);
+                    smaller = after.len() == 0 or after < value;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                shape,
+                answer(arm, reversed) == value,
+                answer(arm, swapped) == value,
+                smaller,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"\"{s}\" arm {names[arm]}: P{q + 1} fails, gave \"{value}\", literal \"{truth}\"");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
