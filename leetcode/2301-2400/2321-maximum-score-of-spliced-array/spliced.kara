@@ -1,0 +1,58 @@
+// LeetCode #2321: Maximum Score Of Spliced Array -- the ★ arm. Swapping
+// `nums1[left..=right]` into `nums2` adds to its sum the subarray's
+// `nums1[i] - nums2[i]`, so the best for each array is its own sum plus
+// the largest subarray sum of those differences, found by Kadane's walk,
+// or nothing when every swap loses. Both ways round, the larger. O(n).
+
+fn best_gain(into: Vec[i64], from: Vec[i64]) -> i64 {
+    let mut best = 0;
+    let mut here = 0;
+    for i in 0..into.len() {
+        here = (here + from[i] - into[i]).max(0);
+        best = best.max(here);
+    }
+    best
+}
+
+fn maximums_spliced_array(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let sum1: i64 = nums1.iter().sum();
+    let sum2: i64 = nums2.iter().sum();
+    (sum1 + best_gain(nums1, nums2)).max(sum2 + best_gain(nums2, nums1))
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn numbers(seed: mut ref i64, n: i64, top: i64) -> Vec[i64] {
+    (0..n).map(|_| next_random(mut seed) % top + 1).collect()
+}
+
+fn main() {
+    // LeetCode's three examples; then one number each, a splice that
+    // pays only in the middle, and two arrays of 1000 numbers up to 10^4
+    println(maximums_spliced_array([60, 60, 60].to_vec(), [10, 90, 10].to_vec()));
+    println(maximums_spliced_array([20, 40, 20, 70, 30].to_vec(), [50, 20, 50, 40, 20].to_vec()));
+    println(maximums_spliced_array([7, 11, 13].to_vec(), [1, 1, 1].to_vec()));
+    println(maximums_spliced_array([3].to_vec(), [8].to_vec()));
+    println(maximums_spliced_array([5, 1, 5].to_vec(), [1, 9, 1].to_vec()));
+    let mut seed = 2321;
+    let a = numbers(mut seed, 1000, 10000);
+    let b = numbers(mut seed, 1000, 10000);
+    println(maximums_spliced_array(a, b));
+    // 2000 random pairs of 1 to 30 numbers up to 20
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 30 + 1;
+        let a = numbers(mut seed, n, 20);
+        let b = numbers(mut seed, n, 20);
+        let score = maximums_spliced_array(a, b);
+        check = (check * 31 + score) % 1000000007;
+        total += score;
+    }
+    println(f"2000 pairs: checksum {check}, {total} in all");
+}

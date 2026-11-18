@@ -1,0 +1,250 @@
+// LeetCode #2321: Maximum Score Of Spliced Array -- the differential.
+// The six arms, against the statement read literally: no swap, and every
+// `left <= right`, each swap carried out on copies of the two arrays,
+// whose sums are added up afresh; the score is the larger sum, and the
+// answer the best score. 300 random pairs of 1 to 30 numbers up to 20;
+// then 30 of numbers 1 and 2 only, where swaps tie; then 30 of up to 80
+// numbers up to 10^4. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the answer is at least the larger sum and at most the sum of the
+//     larger number at each place
+// P3  the two arrays swapped: the same answer
+// P4  both arrays reversed: the same answer
+// P5  every number raised by 7: the answer raised by 7 n
+// P6  each arm agrees with at least three of the other five
+
+// ---- spliced.kara
+fn star_best_gain(into: Vec[i64], from: Vec[i64]) -> i64 {
+    let mut best = 0;
+    let mut here = 0;
+    for i in 0..into.len() {
+        here = (here + from[i] - into[i]).max(0);
+        best = best.max(here);
+    }
+    best
+}
+
+fn star_maximums_spliced_array(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let sum1: i64 = nums1.iter().sum();
+    let sum2: i64 = nums2.iter().sum();
+    (sum1 + star_best_gain(nums1, nums2)).max(sum2 + star_best_gain(nums2, nums1))
+}
+
+// ---- spliced_naive.kara
+fn naive_maximums_spliced_array(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let sum1: i64 = nums1.iter().sum();
+    let sum2: i64 = nums2.iter().sum();
+    let mut best = sum1.max(sum2);
+    for left in 0..n {
+        let mut one = sum1;
+        let mut two = sum2;
+        for right in left..n {
+            one += nums2[right] - nums1[right];
+            two += nums1[right] - nums2[right];
+            best = best.max(one).max(two);
+        }
+    }
+    best
+}
+
+// ---- spliced_prefix.kara
+fn prefix_maximums_spliced_array(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let mut prefix: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        prefix[i + 1] = prefix[i] + nums2[i] - nums1[i];
+    }
+    let mut lowest = 0;
+    let mut highest = 0;
+    let mut rise = 0;
+    let mut fall = 0;
+    for i in 1..=n {
+        rise = rise.max(prefix[i] - lowest);
+        fall = fall.max(highest - prefix[i]);
+        lowest = lowest.min(prefix[i]);
+        highest = highest.max(prefix[i]);
+    }
+    let sum1: i64 = nums1.iter().sum();
+    let sum2 = sum1 + prefix[n];
+    (sum1 + rise).max(sum2 + fall)
+}
+
+// ---- spliced_states.kara
+fn states_best_sum(keep: Vec[i64], other: Vec[i64]) -> i64 {
+    let mut before = 0;
+    let mut during = i64.MIN / 2;
+    let mut after = i64.MIN / 2;
+    for i in 0..keep.len() {
+        let next_during = before.max(during) + other[i];
+        after = after.max(during) + keep[i];
+        before += keep[i];
+        during = next_during;
+    }
+    before.max(during).max(after)
+}
+
+fn states_maximums_spliced_array(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    states_best_sum(nums1, nums2).max(states_best_sum(nums2, nums1))
+}
+
+// ---- spliced_iter.kara
+fn iter_gain(into: Vec[i64], from: Vec[i64]) -> i64 {
+    into.iter().zip(from.iter()).map(|(a, b)| b - a).fold((0, 0), |(best, here), d| {
+        let run = (here + d).max(0);
+        (best.max(run), run)
+    }).0
+}
+
+fn iter_maximums_spliced_array(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let sum1: i64 = nums1.iter().sum();
+    let sum2: i64 = nums2.iter().sum();
+    (sum1 + iter_gain(nums1, nums2)).max(sum2 + iter_gain(nums2, nums1))
+}
+
+// ---- spliced_solution.kara
+struct Solution {}
+
+fn solution_kadane(a: Slice[i32], b: Slice[i32]) -> i32 {
+    let mut best: i32 = 0;
+    let mut cur: i32 = 0;
+    for i in 0..a.len() {
+        cur = max(0, cur + b[i] - a[i]);
+        best = max(best, cur);
+    }
+    best
+}
+
+impl Solution {
+    pub fn maximums_spliced_array(nums1: Vec[i32], nums2: Vec[i32]) -> i32 {
+        let s1: i32 = nums1.iter().sum();
+        let s2: i32 = nums2.iter().sum();
+        max(s1 + solution_kadane(nums1, nums2), s2 + solution_kadane(nums2, nums1))
+    }
+}
+
+fn solution_maximums_spliced_array(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let a: Vec[i32] = nums1.iter().map(|x| x as i32).collect();
+    let b: Vec[i32] = nums2.iter().map(|x| x as i32).collect();
+    Solution.maximums_spliced_array(a, b)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+fn total(v: Vec[i64]) -> i64 {
+    let mut sum = 0;
+    for x in v.iter() {
+        sum += x;
+    }
+    sum
+}
+
+fn literal(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let mut best = total(nums1).max(total(nums2));
+    for left in 0..n {
+        for right in left..n {
+            let mut one = nums1.clone();
+            let mut two = nums2.clone();
+            for i in left..=right {
+                one[i] = nums2[i];
+                two[i] = nums1[i];
+            }
+            best = best.max(total(one)).max(total(two));
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, a: Vec[i64], b: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_maximums_spliced_array(a, b),
+        1 => naive_maximums_spliced_array(a, b),
+        2 => prefix_maximums_spliced_array(a, b),
+        3 => states_maximums_spliced_array(a, b),
+        4 => iter_maximums_spliced_array(a, b),
+        _ => solution_maximums_spliced_array(a, b),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn numbers(seed: mut ref i64, n: i64, top: i64) -> Vec[i64] {
+    (0..n).map(|_| next_random(mut seed) % top + 1).collect()
+}
+
+fn main() {
+    let names = ["star", "naive", "prefix", "states", "iter", "solution"];
+    let mut seed = 2321;
+    let mut cases: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    for c in 0..360 {
+        let (n, top) = if c < 300 {
+            (next_random(mut seed) % 30 + 1, 20)
+        } else if c < 330 {
+            (next_random(mut seed) % 30 + 1, 2)
+        } else {
+            (next_random(mut seed) % 80 + 1, 10000)
+        };
+        let a = numbers(mut seed, n, top);
+        let b = numbers(mut seed, n, top);
+        cases.push((a, b));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (a, b) in cases.iter() {
+        let n = a.len();
+        let truth = literal(a, b);
+        check = (check * 31 + truth) % 1000000007;
+        let low = total(a).max(total(b));
+        let high = total((0..n).map(|i| a[i].max(b[i])).collect());
+        let ra: Vec[i64] = a.iter().rev().collect();
+        let rb: Vec[i64] = b.iter().rev().collect();
+        let ua: Vec[i64] = a.iter().map(|x| x + 7).collect();
+        let ub: Vec[i64] = b.iter().map(|x| x + 7).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, a, b)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                value >= low and value <= high,
+                answer(arm, b, a) == value,
+                answer(arm, ra, rb) == value,
+                answer(arm, ua, ub) == value + 7 * n,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{n} numbers, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
