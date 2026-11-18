@@ -1,0 +1,52 @@
+// LeetCode #1611: Minimum One Bit Operations to Make Integers Zero --
+// recursion on the top bit.
+//
+// Taking `2^b` to zero takes `2^(b+1) - 1` moves, and on the way it
+// passes `2^b` with every lower bit clear except where `n`'s lower bits
+// can meet it: so `n = 2^b + r` takes `2^(b+1) - 1 - f(r)`. O(log n).
+
+fn minimum_one_bit_operations(n: i32) -> i32 {
+    if n == 0 {
+        return 0;
+    }
+    let b = 31 - n.leading_zeros();
+    let top: i32 = 1 << b;
+    (top << 1) - 1 - minimum_one_bit_operations(n ^ top)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn main() {
+    // LeetCode's two examples, then 0, 1, 2, a power of two, all ones,
+    // and the largest n allowed
+    for n in [3i32, 6, 0, 1, 2, 1024, 1023, 1000000000] {
+        println(f"{minimum_one_bit_operations(n)}");
+    }
+    let mut check = 0;
+    let mut most = 0;
+    for n in 0..4096 {
+        let ops = minimum_one_bit_operations(n);
+        check = mix(check, ops);
+        most = max(most, ops);
+    }
+    println(f"every n below 4096: most {most}, checksum {check}");
+    let mut seed = 1611;
+    check = 0;
+    let mut total = 0;
+    for _ in 0..100000 {
+        let n = ((next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000001) as i32;
+        let ops = minimum_one_bit_operations(n);
+        check = mix(check, ops);
+        total += ops;
+    }
+    println(f"100000 random n to 10^9: total {total}, checksum {check}");
+}

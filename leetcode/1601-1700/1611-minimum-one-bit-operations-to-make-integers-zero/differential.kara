@@ -1,0 +1,202 @@
+// LeetCode #1611: Minimum One Bit Operations to Make Integers Zero --
+// the differential.
+//
+// Four arms against the statement read literally, on 3000 numbers, half
+// below 8192 and half up to 10^9, with six properties. Every random
+// choice is drawn before any arm answers.
+//
+// P1  below 8192, the answer is the statement read literally
+// P2  with n below 2^b, b its bit length and at most 29, n + 2^b takes
+//     2^(b+1) - 1 - f(n)
+// P3  n ^ (n >> 1) takes n
+// P4  the answer is odd exactly when n has an odd count of set bits
+// P5  for n above 0, the answer has n's bit length
+// P6  each arm agrees with at least two of the other three
+
+// ---- one_bit.kara: the ★ arm: n turned back from Gray code
+
+fn star_arm(n: i32) -> i32 {
+    let mut n = n;
+    let mut k: i32 = 0;
+    while n > 0 {
+        k ^= n;
+        n >>= 1;
+    }
+    k
+}
+
+// ---- one_bit_recursive.kara: recursion on the top bit
+
+fn recursive_arm(n: i32) -> i32 {
+    if n == 0 {
+        return 0;
+    }
+    let b = 31 - n.leading_zeros();
+    let top: i32 = 1 << b;
+    (top << 1) - 1 - recursive_arm(n ^ top)
+}
+
+// ---- one_bit_signs.kara: the recursion unrolled with signs that alternate
+
+fn signs_arm(n: i32) -> i32 {
+    (0..31)
+        .rev()
+        .filter(|b| n & (1 << b) != 0)
+        .enumerate()
+        .map(|(i, b)| {
+            let moves = (1 << (b + 1)) - 1;
+            if i % 2 == 0 { moves } else { -moves }
+        })
+        .sum()
+}
+
+// ---- one_bit_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn minimum_one_bit_operations(n: i32) -> i32 {
+        let mut ans: i32 = 0;
+        let mut sign: i32 = 1;
+        let mut i = i32.BITS - n.leading_zeros();
+        while i > 0 {
+            i -= 1;
+            if n >> i & 1 == 1 {
+                ans += sign * ((1 << (i + 1)) - 1);
+                sign = -sign;
+            }
+        }
+        ans
+    }
+}
+
+fn solution_arm(n: i32) -> i32 {
+    SolutionArm.minimum_one_bit_operations(n)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, n: i32) -> i32 {
+    match a {
+        0 => star_arm(n),
+        1 => recursive_arm(n),
+        2 => signs_arm(n),
+        _ => solution_arm(n),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["one_bit", "recursive", "signs", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: the fewest operations from n to 0, a
+// breadth-first search over every number below 2^13 from 0 outwards
+// (each operation undoes itself), where the first operation changes bit
+// 0 and the second changes bit i when bit i - 1 is 1 and bits i - 2
+// through 0 are 0
+
+fn literal_table() -> Vec[i32] {
+    let size = 1 << 13;
+    let mut dist: Vec[i32] = Vec.filled(size, -1);
+    dist[0] = 0;
+    let mut queue = VecDeque.new();
+    queue.push_back(0);
+    while let Some(x) = queue.pop_front() {
+        let mut next = [x ^ 1];
+        for i in 1..13 {
+            if (x >> (i - 1)) & 1 == 1 and x & ((1 << (i - 1)) - 1) == 0 {
+                next.push(x ^ (1 << i));
+            }
+        }
+        for y in next.iter() {
+            if dist[*y] < 0 {
+                dist[*y] = dist[x] + 1;
+                queue.push_back(*y);
+            }
+        }
+    }
+    dist
+}
+
+// the fewest bits that hold n
+fn bit_length(n: i32) -> i64 {
+    32 - n.leading_zeros()
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 16110;
+    let table = literal_table();
+    let mut cases: Vec[i32] = Vec.new();
+    for _ in 0..problems {
+        let n = if next_random(mut seed) % 2 == 0 {
+            next_random(mut seed) % 8192
+        } else {
+            (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000001
+        };
+        cases.push(n as i32);
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, n) in cases.iter().enumerate() {
+        let n = *n;
+        let b = bit_length(n);
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let x = arm(a, n);
+            check = (check * 31 + x + 1) % 1000000007;
+            let failed = [
+                n < 8192 and x != table[n],
+                b <= 29 and arm(a, n + (1 << b)) != (1 << (b + 1)) - 1 - x,
+                arm(a, n ^ (n >> 1)) != n,
+                x % 2 != n.count_ones() % 2,
+                n > 0 and (x < (1 << (b - 1)) or x >= (1 << b)),
+            ];
+            answers.push(x);
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
