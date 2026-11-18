@@ -1,0 +1,46 @@
+// LeetCode #2294: Partition Array Such That Maximum Difference Is K --
+// the bench, the ★ arm. Sort a copy, then open a group at each number
+// more than `k` above the one that opened the last.
+
+fn partition_array(nums: Vec[i64], k: i64) -> i64 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut groups = 0;
+    let mut low = -1;
+    for x in sorted.iter() {
+        if groups == 0 or x - low > k {
+            groups += 1;
+            low = x;
+        }
+    }
+    groups
+}
+
+// ---- bench harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 20 arrays of 10^5 numbers from 0 to 10^5 built once; then 5 passes
+    // over all of them, array `a` with k = 7a in pass 0 and one more each
+    // pass
+    let mut seed = 2294;
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..20 {
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..100000 {
+            nums.push((next_random(mut seed) * 32768 + next_random(mut seed)) % 100001);
+        }
+        arrays.push(nums);
+    }
+    let mut check = 0;
+    for pass in 0..5 {
+        for a in 0..20 {
+            check = (check * 31 + partition_array(arrays[a], 7 * a + pass)) % 1000000007;
+        }
+    }
+    println(f"5 passes over 20 arrays of 10^5: checksum {check}");
+}

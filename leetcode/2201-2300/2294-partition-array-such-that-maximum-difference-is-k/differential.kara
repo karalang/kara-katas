@@ -1,0 +1,259 @@
+// LeetCode #2294: Partition Array Such That Maximum Difference Is K --
+// the differential. The six arms, against the statement read literally:
+// every way to split the numbers into subsequences, each way written as
+// a restricted growth string (the first number in group 0, each next one
+// in a group already used or the next new one); of the ways where every
+// group's largest and smallest differ by at most `k`, the fewest groups.
+// No sorting. 300 random arrays of 1 to 8 numbers; then 30 of numbers
+// exactly `k` apart; then 30 of one value repeated with a few others.
+// Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  1 <= answer <= the distinct values, and the answer is 1 just when
+//     the largest and smallest differ by at most `k`
+// P3  the numbers reversed: the same answer
+// P4  every number written twice: the same answer
+// P5  `k` one larger: no more groups; `k` of 0: the distinct values
+// P6  each arm agrees with at least three of the other five
+
+// ---- partition.kara: the ★ arm, sort and greedy
+fn star_partition_array(nums: Vec[i64], k: i64) -> i64 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut groups = 0;
+    let mut low = -1;
+    for x in sorted.iter() {
+        if groups == 0 or x - low > k {
+            groups += 1;
+            low = x;
+        }
+    }
+    groups
+}
+
+// ---- partition_naive.kara: the smallest left and its group struck, again and again
+fn naive_partition_array(nums: Vec[i64], k: i64) -> i64 {
+    let mut left = nums.clone();
+    let mut groups = 0;
+    while not left.is_empty() {
+        let mut low = left[0];
+        for x in left.iter() {
+            low = low.min(x);
+        }
+        left.retain(|x| x - low > k);
+        groups += 1;
+    }
+    groups
+}
+
+// ---- partition_count.kara: the values marked in an array and walked upwards
+fn count_partition_array(nums: Vec[i64], k: i64) -> i64 {
+    let mut top = 0;
+    for x in nums.iter() {
+        top = top.max(x);
+    }
+    let mut seen: Vec[bool] = Vec.filled(top + 1, false);
+    for x in nums.iter() {
+        seen[x] = true;
+    }
+    let mut groups = 0;
+    let mut reach = -1;
+    for v in 0..top + 1 {
+        if seen[v] and v > reach {
+            groups += 1;
+            reach = v + k;
+        }
+    }
+    groups
+}
+
+// ---- partition_struct.kara: `struct Group`
+struct StructGroup {
+    least: i64,
+    most: i64,
+}
+
+impl StructGroup {
+    fn fits(self, x: i64, k: i64) -> bool {
+        x.max(self.most) - x.min(self.least) <= k
+    }
+
+    fn take(mut ref self, x: i64) {
+        self.least = self.least.min(x);
+        self.most = self.most.max(x);
+    }
+}
+
+fn struct_partition_array(nums: Vec[i64], k: i64) -> i64 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut groups: Vec[StructGroup] = Vec.new();
+    for x in sorted.iter() {
+        let n = groups.len();
+        if n > 0 and groups[n - 1].fits(x, k) {
+            groups[n - 1].take(x);
+        } else {
+            groups.push(StructGroup { least: x, most: x });
+        }
+    }
+    groups.len()
+}
+
+// ---- partition_iter.kara: sort and `fold`
+fn iter_partition_array(nums: Vec[i64], k: i64) -> i64 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let (groups, _) = sorted.iter().fold((0, 0), |(groups, low), x| if groups == 0 or x - low > k { (groups + 1, x) } else { (groups, low) });
+    groups
+}
+
+// ---- partition_solution.kara: LeetCode's Rust template
+struct Solution {}
+
+impl Solution {
+    pub fn partition_array(nums: own Vec[i32], k: i32) -> i32 {
+        let mut nums = nums;
+        nums.sort();
+        let mut ans = 1;
+        let mut start = nums[0];
+        for x in nums.iter().skip(1) {
+            if x - start > k {
+                ans += 1;
+                start = x;
+            }
+        }
+        ans
+    }
+}
+
+fn solution_partition_array(nums: Vec[i64], k: i64) -> i64 {
+    let n: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.partition_array(n, k as i32)
+}
+
+// ---- the statement read literally
+
+// the fewest groups over every split from position `i` on, `group[..i]`
+// already given and `used` groups opened
+fn split(nums: Vec[i64], k: i64, i: i64, group: mut ref Vec[i64], used: i64) -> i64 {
+    if i == nums.len() {
+        for g in 0..used {
+            let mut least = i64.MAX;
+            let mut most = i64.MIN;
+            for j in 0..nums.len() {
+                if group[j] == g {
+                    least = least.min(nums[j]);
+                    most = most.max(nums[j]);
+                }
+            }
+            if most - least > k {
+                return i64.MAX;
+            }
+        }
+        return used;
+    }
+    let mut best = i64.MAX;
+    for g in 0..used + 1 {
+        group[i] = g;
+        best = best.min(split(nums, k, i + 1, mut group, used.max(g + 1)));
+    }
+    best
+}
+
+fn literal(nums: Vec[i64], k: i64) -> i64 {
+    let mut group: Vec[i64] = Vec.filled(nums.len(), 0);
+    split(nums, k, 0, mut group, 0)
+}
+
+fn answer(arm: i64, nums: Vec[i64], k: i64) -> i64 {
+    match arm {
+        0 => star_partition_array(nums, k),
+        1 => naive_partition_array(nums, k),
+        2 => count_partition_array(nums, k),
+        3 => struct_partition_array(nums, k),
+        4 => iter_partition_array(nums, k),
+        _ => solution_partition_array(nums, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "naive", "count", "struct", "iter", "solution"];
+    let mut seed = 2294;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 8 + 1;
+        let k = next_random(mut seed) % 11;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            if c < 300 {
+                nums.push(next_random(mut seed) % 41);
+            } else if c < 330 {
+                // multiples of k + 1 apart, or exactly k
+                nums.push(next_random(mut seed) % 6 * (k + next_random(mut seed) % 2));
+            } else {
+                nums.push(if next_random(mut seed) % 4 == 0 { next_random(mut seed) % 30 } else { 15 });
+            }
+        }
+        cases.push((nums, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (nums, k) in cases.iter() {
+        let truth = literal(nums, k);
+        check = (check * 31 + truth) % 1000000007;
+        let mut values = nums.clone();
+        values.sort();
+        values.dedup();
+        let distinct = values.len();
+        let span = values[distinct - 1] - values[0];
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let mut twice = nums.clone();
+        twice.extend(nums.iter());
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums, k)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                value >= 1 and value <= distinct and (value == 1) == (span <= k),
+                answer(arm, reversed, k) == value,
+                answer(arm, twice, k) == value,
+                answer(arm, nums, k + 1) <= value and answer(arm, nums, 0) == distinct,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} {k} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
