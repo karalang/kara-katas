@@ -1,0 +1,61 @@
+// LeetCode #2273: Find Resultant Array After Removing Anagrams -- the ★
+// arm. A word is removed when it is an anagram of the word before it,
+// and since an anagram of an anagram is one, the order of removals does
+// not matter: a word stays exactly when its sorted letters differ from
+// the previous word's. O(m w log w) for m words of w letters.
+
+fn sorted_letters(word: String) -> String {
+    let mut letters: Vec[char] = word.chars().collect();
+    letters.sort();
+    letters.iter().collect()
+}
+
+fn remove_anagrams(words: Vec[String]) -> Vec[String] {
+    let mut kept: Vec[String] = Vec.new();
+    let mut last = String.new();
+    for w in words.iter() {
+        let key = sorted_letters(w);
+        if kept.is_empty() or key != last {
+            kept.push(w.clone());
+        }
+        last = key;
+    }
+    kept
+}
+
+// ---- bench harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 20000 lists of the constraints' largest, 100 words of 10 letters from
+    // the first 4, each word after the first half the time the one before
+    // it shuffled
+    let mut seed = 2273;
+    let mut check = 0;
+    for _ in 0..20000 {
+        let mut words: Vec[String] = Vec.new();
+        for i in 0..100 {
+            if i > 0 and next_random(mut seed) % 2 == 0 {
+                let mut letters: Vec[char] = words[i - 1].chars().collect();
+                for j in (1..10).rev() {
+                    let r = next_random(mut seed) % (j + 1);
+                    letters.swap(j, r);
+                }
+                words.push(letters.iter().collect());
+            } else {
+                let mut w = String.new();
+                for _ in 0..10 {
+                    w.push((b'a' + (next_random(mut seed) % 4) as u8) as char);
+                }
+                words.push(w);
+            }
+        }
+        let kept = remove_anagrams(words);
+        check = (check * 31 + kept.len() * 1000 + kept[kept.len() - 1].bytes()[0]) % 1000000007;
+    }
+    println(f"20000 lists of 100: checksum {check}");
+}

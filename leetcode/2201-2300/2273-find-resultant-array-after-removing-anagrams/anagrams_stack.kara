@@ -1,0 +1,106 @@
+// LeetCode #2273: Find Resultant Array After Removing Anagrams -- the
+// removals as stated, with a stack. Each word is pushed, and popped
+// again when it is an anagram of the word under it; but the word under
+// it was itself kept or pushed back, so the test is against the top of
+// the stack. Anagrams compared by sorted bytes. O(m w log w).
+
+fn is_anagram(x: String, y: String) -> bool {
+    let mut a: Vec[u8] = x.bytes().to_vec();
+    let mut b: Vec[u8] = y.bytes().to_vec();
+    a.sort();
+    b.sort();
+    a == b
+}
+
+fn remove_anagrams(words: Vec[String]) -> Vec[String] {
+    let mut stack: Vec[String] = Vec.new();
+    for w in words.iter() {
+        match stack.last() {
+            Some(top) if is_anagram(top, w) => {}
+            _ => stack.push(w.clone()),
+        }
+    }
+    stack
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `m` words of 1 to `long` letters from the first `k`; each word after
+// the first is, half the time, the one before it shuffled
+fn random_words(seed: mut ref i64, m: i64, long: i64, k: i64) -> Vec[String] {
+    let mut words: Vec[String] = Vec.new();
+    for i in 0..m {
+        if i > 0 and next_random(mut seed) % 2 == 0 {
+            let mut letters: Vec[char] = words[i - 1].chars().collect();
+            for j in (1..letters.len()).rev() {
+                let r = next_random(mut seed) % (j + 1);
+                letters.swap(j, r);
+            }
+            words.push(letters.iter().collect());
+        } else {
+            let len = next_random(mut seed) % long + 1;
+            let mut w = String.new();
+            for _ in 0..len {
+                w.push((b'a' + (next_random(mut seed) % k) as u8) as char);
+            }
+            words.push(w);
+        }
+    }
+    words
+}
+
+// a checksum of the words in order
+fn digest(words: Vec[String]) -> i64 {
+    let mut h = words.len();
+    for w in words.iter() {
+        for b in w.bytes().iter() {
+            h = (h * 131 + b) % 1000000007;
+        }
+        h = (h * 131 + 7) % 1000000007;
+    }
+    h
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: one word, every word an
+    // anagram of the first, anagrams apart but not adjacent, a word and
+    // its anagram of another length, and a run broken then resumed
+    let examples = [
+        ["abba", "baba", "bbaa", "cd", "cd"].to_vec(),
+        ["a", "b", "c", "d", "e"].to_vec(),
+        ["z"].to_vec(),
+        ["abc", "bca", "cab", "acb"].to_vec(),
+        ["ab", "cd", "ba", "dc"].to_vec(),
+        ["ab", "aab", "ba"].to_vec(),
+        ["xy", "yx", "z", "z", "xy", "yx"].to_vec(),
+    ];
+    for words in examples.iter() {
+        let owned: Vec[String] = words.iter().map(|w| w.to_string()).collect();
+        println(f"{owned} -> {remove_anagrams(owned)}");
+    }
+    // 3000 lists of 1 to 30 words of 1 to 1, 3 or 10 letters from the
+    // first 2, 3 or 26
+    let mut seed = 2273;
+    let mut kept = 0;
+    let mut check = 0;
+    for t in 0..3000 {
+        let m = next_random(mut seed) % 30 + 1;
+        let words = random_words(mut seed, m, [1, 3, 10][t % 3], [2, 3, 26][t / 3 % 3]);
+        let left = remove_anagrams(words);
+        kept += left.len();
+        check = (check * 31 + digest(left)) % 1000000007;
+    }
+    println(f"3000 lists: {kept} words kept, checksum {check}");
+    // the constraints' largest, 100 words of 10 letters: random, all
+    // anagrams of one, and two anagram families alternating
+    let random = random_words(mut seed, 100, 10, 26);
+    let family: Vec[String] = (0..100).map(|i| if i % 2 == 0 { "abcdefghij" } else { "jihgfedcba" }.to_string()).collect();
+    let pairs: Vec[String] = (0..100).map(|i| if i % 4 < 2 { "aabbccddee" } else { "zzyyxxwwvv" }.to_string()).collect();
+    let answers = [remove_anagrams(random).len(), remove_anagrams(family).len(), remove_anagrams(pairs).len()];
+    println(f"100 words: {answers} kept");
+}

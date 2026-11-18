@@ -1,0 +1,327 @@
+// LeetCode #2273: Find Resultant Array After Removing Anagrams -- the
+// differential. The six arms, against the statement read literally: the
+// operation applied while it can be, each time deleting the first word
+// that is an anagram of the word before it, an anagram tested by
+// counting each letter of the alphabet in both. No key per word and no
+// single pass. 300 random lists of 1 to 8 words of 1 to 1, 3 or 5
+// letters from the first 2, 3 or 26, each word half the time the one
+// before shuffled; then 30 of anagrams of one word; then 30 of two
+// families alternating. Every case is drawn before any arm answers.
+//
+// P1  the words left are the literal reading's
+// P2  every word written backwards: the words left, each backwards
+// P3  the letters relabelled, the alphabet turned by seven: the words
+//     left, relabelled
+// P4  the first word kept, the rest a subsequence of the list, and no
+//     two words left side by side anagrams
+// P5  the list twice over: the words left twice over, the second time
+//     without its first word when the list's last word is an anagram of
+//     its first
+// P6  each arm agrees with at least three of the other five
+
+// ---- anagrams.kara: the ★ arm, sorted letters against the last
+fn star_sorted_letters(word: String) -> String {
+    let mut letters: Vec[char] = word.chars().collect();
+    letters.sort();
+    letters.iter().collect()
+}
+
+fn star_remove_anagrams(words: Vec[String]) -> Vec[String] {
+    let mut kept: Vec[String] = Vec.new();
+    let mut last = String.new();
+    for w in words.iter() {
+        let key = star_sorted_letters(w);
+        if kept.is_empty() or key != last {
+            kept.push(w.clone());
+        }
+        last = key;
+    }
+    kept
+}
+
+// ---- anagrams_counts.kara: letter counts against the word before
+fn counts_counts_of(word: String) -> Array[i64, 26] {
+    let mut count = [0; 26];
+    for b in word.bytes().iter() {
+        count[b - b'a'] += 1;
+    }
+    count
+}
+
+fn counts_remove_anagrams(words: Vec[String]) -> Vec[String] {
+    let mut kept: Vec[String] = Vec.new();
+    for i in 0..words.len() {
+        if i == 0 or counts_counts_of(words[i]) != counts_counts_of(words[i - 1]) {
+            kept.push(words[i].clone());
+        }
+    }
+    kept
+}
+
+// ---- anagrams_stack.kara: the removals on a stack
+fn stack_is_anagram(x: String, y: String) -> bool {
+    let mut a: Vec[u8] = x.bytes().to_vec();
+    let mut b: Vec[u8] = y.bytes().to_vec();
+    a.sort();
+    b.sort();
+    a == b
+}
+
+fn stack_remove_anagrams(words: Vec[String]) -> Vec[String] {
+    let mut stack: Vec[String] = Vec.new();
+    for w in words.iter() {
+        match stack.last() {
+            Some(top) if stack_is_anagram(top, w) => {}
+            _ => stack.push(w.clone()),
+        }
+    }
+    stack
+}
+
+// ---- anagrams_struct.kara: `struct Filter` offered a word at a time
+struct StructFilter {
+    kept: Vec[String],
+    last: Array[i64, 26],
+}
+
+impl StructFilter {
+    fn offer(mut ref self, word: String) {
+        let mut count = [0; 26];
+        for b in word.bytes().iter() {
+            count[b - b'a'] += 1;
+        }
+        if self.kept.is_empty() or count != self.last {
+            self.kept.push(word.clone());
+        }
+        self.last = count;
+    }
+}
+
+fn struct_remove_anagrams(words: Vec[String]) -> Vec[String] {
+    let mut filter = StructFilter { kept: Vec.new(), last: [0; 26] };
+    for w in words.iter() {
+        filter.offer(w);
+    }
+    filter.kept
+}
+
+// ---- anagrams_iter.kara: keys by `map`, then `filter` by index
+fn iter_remove_anagrams(words: Vec[String]) -> Vec[String] {
+    let keys: Vec[String] = words
+        .iter()
+        .map(|w| {
+            let mut letters: Vec[char] = w.chars().collect();
+            letters.sort();
+            letters.iter().collect()
+        })
+        .collect();
+    words
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| i == 0 or keys[i] != keys[i - 1])
+        .map(|(_, w)| w.clone())
+        .collect()
+}
+
+// ---- anagrams_solution.kara: LeetCode's Rust template
+impl Solution {
+    pub fn remove_anagrams(words: Vec[String]) -> Vec[String] {
+        let key = |w: ref String| {
+            let mut v: Vec[u8] = w.bytes().iter().collect();
+            v.sort();
+            v
+        };
+        let mut ans: Vec[String] = Vec.new();
+        for w in words {
+            if ans.is_empty() or key(ans.last().unwrap()) != key(w) {
+                ans.push(w.clone());
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_remove_anagrams(words: Vec[String]) -> Vec[String] {
+    Solution.remove_anagrams(words)
+}
+
+
+// ---- the statement read literally
+
+fn anagram(x: String, y: String) -> bool {
+    for c in 'a'..='z' {
+        if x.chars().filter(|d| d == c).count() != y.chars().filter(|d| d == c).count() {
+            return false;
+        }
+    }
+    true
+}
+
+fn literal(words: Vec[String]) -> Vec[String] {
+    let mut list = words.clone();
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for i in 1..list.len() {
+            if anagram(list[i - 1], list[i]) {
+                list.remove(i);
+                changed = true;
+                break;
+            }
+        }
+    }
+    list
+}
+
+fn relabel(w: String) -> String {
+    w.chars().map(|c| (((c as i64 - 'a' as i64 + 7) % 26) as u8 + b'a') as char).collect()
+}
+
+fn backwards(w: String) -> String {
+    w.chars().rev().collect()
+}
+
+// whether `small` can be had from `big` by deleting words
+fn subsequence(small: Vec[String], big: Vec[String]) -> bool {
+    let mut i = 0;
+    for w in big.iter() {
+        if i < small.len() and small[i] == w {
+            i += 1;
+        }
+    }
+    i == small.len()
+}
+
+fn answer(arm: i64, words: Vec[String]) -> Vec[String] {
+    match arm {
+        0 => star_remove_anagrams(words),
+        1 => counts_remove_anagrams(words),
+        2 => stack_remove_anagrams(words),
+        3 => struct_remove_anagrams(words),
+        4 => iter_remove_anagrams(words),
+        _ => solution_remove_anagrams(words),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn shuffled(seed: mut ref i64, w: String) -> String {
+    let mut letters: Vec[char] = w.chars().collect();
+    for j in (1..letters.len()).rev() {
+        let r = next_random(mut seed) % (j + 1);
+        letters.swap(j, r);
+    }
+    letters.iter().collect()
+}
+
+fn main() {
+    let names = ["star", "counts", "stack", "struct", "iter", "solution"];
+    let mut seed = 2273;
+    let mut cases: Vec[Vec[String]] = Vec.new();
+    for c in 0..360 {
+        let m = next_random(mut seed) % 8 + 1;
+        let mut words: Vec[String] = Vec.new();
+        if c < 300 {
+            let long = [1, 3, 5][c % 3];
+            let k = [2, 3, 26][c / 3 % 3];
+            for i in 0..m {
+                if i > 0 and next_random(mut seed) % 2 == 0 {
+                    let w = shuffled(mut seed, words[i - 1]);
+                    words.push(w);
+                } else {
+                    let len = next_random(mut seed) % long + 1;
+                    let mut w = String.new();
+                    for _ in 0..len {
+                        w.push((b'a' + (next_random(mut seed) % k) as u8) as char);
+                    }
+                    words.push(w);
+                }
+            }
+        } else if c < 330 {
+            for _ in 0..m {
+                let w = shuffled(mut seed, "kayak");
+                words.push(w);
+            }
+        } else {
+            for i in 0..m {
+                let w = shuffled(mut seed, if i % 2 == 0 { "stop" } else { "lemon" });
+                words.push(w);
+            }
+        }
+        cases.push(words);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for words in cases.iter() {
+        let truth = literal(words);
+        for w in truth.iter() {
+            for b in w.bytes().iter() {
+                check = (check * 131 + b) % 1000000007;
+            }
+            check = (check * 131 + 7) % 1000000007;
+        }
+        let back: Vec[String] = words.iter().map(|w| backwards(w)).collect();
+        let turned: Vec[String] = words.iter().map(|w| relabel(w)).collect();
+        let mut twice = words.clone();
+        twice.extend(words.iter().cloned());
+        let got: Vec[Vec[String]] = (0..6).map(|arm| answer(arm, words)).collect();
+        for arm in 0..6 {
+            let value = ref got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut apart = true;
+            for i in 1..value.len() {
+                if anagram(value[i - 1], value[i]) {
+                    apart = false;
+                }
+            }
+            let mut doubled = value.clone();
+            let skip = if anagram(words[words.len() - 1], words[0]) { 1 } else { 0 };
+            for i in skip..value.len() {
+                doubled.push(value[i].clone());
+            }
+            let back_left: Vec[String] = value.iter().map(|w| backwards(w)).collect();
+            let turned_left: Vec[String] = value.iter().map(|w| relabel(w)).collect();
+            let verdicts = [
+                value == truth,
+                answer(arm, back) == back_left,
+                answer(arm, turned) == turned_left,
+                not value.is_empty() and value[0] == words[0] and subsequence(value, words) and apart,
+                answer(arm, twice) == doubled,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{words} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
