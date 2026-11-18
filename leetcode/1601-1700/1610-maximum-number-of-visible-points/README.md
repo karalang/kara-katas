@@ -161,7 +161,10 @@ written keeps `i64` elements whatever the index's result must be, even
 under `let a: i32 = [0, 45][k]`, while the same literal bound first and
 then indexed is fixed by the use (B-2026-11-18-12). Kara e05a5afee6 fixed
 the annotated `let`, but the literal indexed as a branch beside an `i32`
-branch is still refused, so the list is still bound first.
+branch is still refused (B-2026-11-18-35), so the list is still bound
+first. Writing that fix also found the same gap one level down: a list of
+lists keeps `i64` under an annotated element read, bound or inline
+(B-2026-11-18-34).
 
 The Rust template took one `karac fix` of 13 edits, among them `struct Solution;`
 to `struct Solution {}`, the `<..>` types to `[..]`, `Vec::new()` to
