@@ -1,0 +1,66 @@
+// LeetCode #2306: Naming a Company -- the bench, the ★ arm. Group the
+// suffixes by first letter, and for each pair of letters multiply the
+// suffixes each group does not share with the other, twice.
+
+fn distinct_names(ideas: Vec[String]) -> i64 {
+    let mut groups: Vec[Set[String]] = Vec.new();
+    for _ in 0..26 {
+        groups.push(Set.new());
+    }
+    for idea in ideas.iter() {
+        let first = (idea.bytes()[0] - b'a') as i64;
+        groups[first].insert(idea[1..].to_string());
+    }
+    let mut names = 0;
+    for a in 0..26 {
+        for b in a + 1..26 {
+            let mut shared = 0;
+            for suffix in groups[a].iter() {
+                if groups[b].contains(suffix) {
+                    shared += 1;
+                }
+            }
+            names += 2 * (groups[a].len() - shared) * (groups[b].len() - shared);
+        }
+    }
+    names
+}
+
+// ---- bench harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 10 lists of 5 * 10^4 distinct ideas built once, a first letter from
+    // all 26 and up to 6 more from the first 6, so that suffixes repeat
+    // across letters; then 4 passes over all of them
+    let letters: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    let mut seed = 2306;
+    let mut lists: Vec[Vec[String]] = Vec.new();
+    for _ in 0..10 {
+        let mut seen: Set[String] = Set.new();
+        let mut ideas: Vec[String] = Vec.new();
+        while ideas.len() < 50000 {
+            let mut idea = String.new();
+            idea.push(letters[next_random(mut seed) % 26]);
+            for _ in 0..next_random(mut seed) % 7 {
+                idea.push(letters[next_random(mut seed) % 6]);
+            }
+            if not seen.contains(idea) {
+                seen.insert(idea.clone());
+                ideas.push(idea);
+            }
+        }
+        lists.push(ideas);
+    }
+    let mut check = 0;
+    for _ in 0..4 {
+        for ideas in lists.iter() {
+            check = (check * 31 + distinct_names(ideas)) % 1000000007;
+        }
+    }
+    println(f"4 passes over 10 lists of 5 * 10^4 ideas: checksum {check}");
+}

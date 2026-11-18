@@ -1,0 +1,94 @@
+// LeetCode #2306: Naming a Company -- a mask for each suffix: a
+// `Map[String, i64]` from each suffix to the bits of the first letters it
+// comes with. A suffix with letter `a` and not `b` can go to `b`; so
+// `movable[a][b]` counts those, and each pair of letters gives
+// `movable[a][b] * movable[b][a]` names. O(n * 26).
+
+fn distinct_names(ideas: Vec[String]) -> i64 {
+    let mut masks: Map[String, i64] = Map.new();
+    for idea in ideas.iter() {
+        let bit = 1 << (idea.bytes()[0] - b'a') as i64;
+        let suffix = idea[1..].to_string();
+        let mask = masks.get(suffix).unwrap_or(0);
+        masks.insert(suffix, mask | bit);
+    }
+    let mut movable: Vec[Vec[i64]] = Vec.filled(26, Vec.filled(26, 0));
+    for mask in masks.values() {
+        for a in 0..26 {
+            if (mask >> a) & 1 == 1 {
+                for b in 0..26 {
+                    if (mask >> b) & 1 == 0 {
+                        movable[a][b] += 1;
+                    }
+                }
+            }
+        }
+    }
+    let mut names = 0;
+    for a in 0..26 {
+        for b in 0..26 {
+            names += movable[a][b] * movable[b][a];
+        }
+    }
+    names
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` distinct ideas: a first letter from the first `heads` letters
+// and 0 to `longest - 1` more from the first `tails`, drawn until enough
+// are new
+fn make(seed: mut ref i64, count: i64, heads: i64, tails: i64, longest: i64) -> Vec[String] {
+    let letters: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    let mut seen: Set[String] = Set.new();
+    let mut ideas: Vec[String] = Vec.new();
+    while ideas.len() < count {
+        let mut idea = String.new();
+        idea.push(letters[next_random(mut seed) % heads]);
+        for _ in 0..next_random(mut seed) % longest {
+            idea.push(letters[next_random(mut seed) % tails]);
+        }
+        if not seen.contains(idea) {
+            seen.insert(idea.clone());
+            ideas.push(idea);
+        }
+    }
+    ideas
+}
+
+fn main() {
+    // LeetCode's two examples; then one letter alone, every first letter
+    // on one suffix, and two groups sharing nothing
+    let fixed: Vec[Vec[Str]] = [
+        ["coffee", "donuts", "time", "toffee"].to_vec(),
+        ["lack", "back"].to_vec(),
+        ["a", "b"].to_vec(),
+        ["ax", "bx", "cx", "dx"].to_vec(),
+        ["ab", "ac", "bd", "be", "bf"].to_vec(),
+    ];
+    for ideas in fixed.iter() {
+        let owned: Vec[String] = ideas.iter().map(|s| s.to_string()).collect();
+        println(distinct_names(owned));
+    }
+    // 600 ideas over all 26 letters, up to 4 more
+    let mut seed = 2306;
+    println(distinct_names(make(mut seed, 600, 26, 26, 4)));
+    // 300 random cases of 2 to 40 ideas, first letters from up to 6 and
+    // suffixes of up to 2 letters from 3, so that suffixes repeat
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..300 {
+        let count = next_random(mut seed) % 39 + 2;
+        let heads = next_random(mut seed) % 5 + 2;
+        let ideas = make(mut seed, count.min(heads * 13), heads, 3, 3);
+        let names = distinct_names(ideas);
+        check = (check * 31 + names) % 1000000007;
+        total += names;
+    }
+    println(f"300 cases: checksum {check}, {total} in all");
+}
