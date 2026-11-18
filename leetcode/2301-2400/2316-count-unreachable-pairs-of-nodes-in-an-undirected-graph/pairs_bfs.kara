@@ -1,0 +1,86 @@
+// LeetCode #2316: Count Unreachable Pairs of Nodes in an Undirected
+// Graph -- components by breadth-first search: adjacency lists, and from
+// each node not yet seen a search that measures its component; each
+// component pairs with every node of those found before it. O(n + m).
+
+fn count_pairs(n: i64, edges: Vec[(i64, i64)]) -> i64 {
+    let mut next: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in edges.iter() {
+        next[a].push(b);
+        next[b].push(a);
+    }
+    let mut seen = Vec.filled(n, false);
+    let mut before = 0;
+    let mut pairs = 0;
+    for start in 0..n {
+        if seen[start] {
+            continue;
+        }
+        seen[start] = true;
+        let mut queue: VecDeque[i64] = VecDeque.new();
+        queue.push_back(start);
+        let mut size = 0;
+        while let Some(x) = queue.pop_front() {
+            size += 1;
+            for y in next[x].iter() {
+                if not seen[y] {
+                    seen[y] = true;
+                    queue.push_back(y);
+                }
+            }
+        }
+        pairs += size * before;
+        before += size;
+    }
+    pairs
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random edges among `n` nodes, no edge from a node to itself
+// and none twice
+fn graph(seed: mut ref i64, n: i64, count: i64) -> Vec[(i64, i64)] {
+    let mut edges: Vec[(i64, i64)] = Vec.new();
+    let mut seen: Set[i64] = Set.new();
+    while edges.len() < count {
+        let a = (next_random(mut seed) * 32768 + next_random(mut seed)) % n;
+        let b = (next_random(mut seed) * 32768 + next_random(mut seed)) % n;
+        if a != b and not seen.contains(a.min(b) * n + a.max(b)) {
+            seen.insert(a.min(b) * n + a.max(b));
+            edges.push((a, b));
+        }
+    }
+    edges
+}
+
+fn main() {
+    // LeetCode's two examples; then one node, five nodes and no edges,
+    // two triangles, and a path of 2000 nodes
+    println(count_pairs(3, [(0, 1), (0, 2), (1, 2)].to_vec()));
+    println(count_pairs(7, [(0, 2), (0, 5), (2, 4), (1, 6), (5, 4)].to_vec()));
+    println(count_pairs(1, Vec.new()));
+    println(count_pairs(5, Vec.new()));
+    println(count_pairs(6, [(0, 1), (1, 2), (2, 0), (3, 4), (4, 5), (5, 3)].to_vec()));
+    let path: Vec[(i64, i64)] = (1..2000).map(|i| (i - 1, i)).collect();
+    println(count_pairs(2000, path));
+    // 2000 nodes and 1000 random edges
+    let mut seed = 2316;
+    println(count_pairs(2000, graph(mut seed, 2000, 1000)));
+    // 300 random graphs of 1 to 30 nodes with up to as many edges as
+    // nodes, as many as there are pairs
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..300 {
+        let n = next_random(mut seed) % 30 + 1;
+        let count = next_random(mut seed) % (n + 1);
+        let pairs = count_pairs(n, graph(mut seed, n, count.min(n * (n - 1) / 2)));
+        check = (check * 31 + pairs) % 1000000007;
+        total += pairs;
+    }
+    println(f"300 graphs: checksum {check}, {total} pairs in all");
+}

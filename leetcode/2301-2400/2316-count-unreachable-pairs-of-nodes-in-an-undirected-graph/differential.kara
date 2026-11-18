@@ -1,0 +1,336 @@
+// LeetCode #2316: Count Unreachable Pairs of Nodes in an Undirected
+// Graph -- the differential. The six arms, against the statement read
+// literally: a table of which node reaches which, closed under going
+// through every node in turn, and every pair of nodes the table leaves
+// apart counted. 300 random graphs of 1 to 12 nodes with up to as many
+// edges as nodes; then 30 with no edges; then 30 of 40 nodes and up to
+// 60 edges. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the answer is at most the pairs of nodes less the edges
+// P3  every node `i` renamed `n - 1 - i`: the same answer
+// P4  the edges listed in reverse, each with its ends swapped: the same
+//     answer
+// P5  one node more with no edges: `n` more
+// P6  each arm agrees with at least three of the other five
+
+// ---- pairs.kara
+fn star_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+fn star_count_pairs(n: i64, edges: Vec[(i64, i64)]) -> i64 {
+    let mut parent: Vec[i64] = (0..n).collect();
+    let mut size = Vec.filled(n, 1);
+    for (a, b) in edges.iter() {
+        let mut ra = star_find(mut parent, a);
+        let mut rb = star_find(mut parent, b);
+        if ra != rb {
+            if size[ra] < size[rb] {
+                let t = ra;
+                ra = rb;
+                rb = t;
+            }
+            parent[rb] = ra;
+            size[ra] += size[rb];
+        }
+    }
+    let mut before = 0;
+    let mut pairs = 0;
+    for x in 0..n {
+        if parent[x] == x {
+            pairs += size[x] * before;
+            before += size[x];
+        }
+    }
+    pairs
+}
+
+// ---- pairs_naive.kara
+fn naive_count_pairs(n: i64, edges: Vec[(i64, i64)]) -> i64 {
+    let mut next: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in edges.iter() {
+        next[a].push(b);
+        next[b].push(a);
+    }
+    let mut unreachable = 0;
+    for start in 0..n {
+        let mut seen = Vec.filled(n, false);
+        seen[start] = true;
+        let mut queue: VecDeque[i64] = VecDeque.new();
+        queue.push_back(start);
+        let mut reached = 1;
+        while let Some(x) = queue.pop_front() {
+            for y in next[x].iter() {
+                if not seen[y] {
+                    seen[y] = true;
+                    reached += 1;
+                    queue.push_back(y);
+                }
+            }
+        }
+        unreachable += n - reached;
+    }
+    unreachable / 2
+}
+
+// ---- pairs_bfs.kara
+fn bfs_count_pairs(n: i64, edges: Vec[(i64, i64)]) -> i64 {
+    let mut next: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in edges.iter() {
+        next[a].push(b);
+        next[b].push(a);
+    }
+    let mut seen = Vec.filled(n, false);
+    let mut before = 0;
+    let mut pairs = 0;
+    for start in 0..n {
+        if seen[start] {
+            continue;
+        }
+        seen[start] = true;
+        let mut queue: VecDeque[i64] = VecDeque.new();
+        queue.push_back(start);
+        let mut size = 0;
+        while let Some(x) = queue.pop_front() {
+            size += 1;
+            for y in next[x].iter() {
+                if not seen[y] {
+                    seen[y] = true;
+                    queue.push_back(y);
+                }
+            }
+        }
+        pairs += size * before;
+        before += size;
+    }
+    pairs
+}
+
+// ---- pairs_labels.kara
+fn labels_count_pairs(n: i64, edges: Vec[(i64, i64)]) -> i64 {
+    let mut label: Vec[i64] = (0..n).collect();
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for (a, b) in edges.iter() {
+            let least = label[a].min(label[b]);
+            if label[a] != least or label[b] != least {
+                label[a] = least;
+                label[b] = least;
+                changed = true;
+            }
+        }
+    }
+    let mut size = Vec.filled(n, 0);
+    for x in 0..n {
+        size[label[x]] += 1;
+    }
+    let mut missed = 0;
+    for x in 0..n {
+        missed += n - size[label[x]];
+    }
+    missed / 2
+}
+
+// ---- pairs_iter.kara
+fn iter_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+fn iter_count_pairs(n: i64, edges: Vec[(i64, i64)]) -> i64 {
+    let mut parent: Vec[i64] = (0..n).collect();
+    let mut size = Vec.filled(n, 1);
+    for (a, b) in edges.iter() {
+        let ra = iter_find(mut parent, a);
+        let rb = iter_find(mut parent, b);
+        if ra != rb {
+            let (big, small) = if size[ra] < size[rb] { (rb, ra) } else { (ra, rb) };
+            parent[small] = big;
+            size[big] += size[small];
+        }
+    }
+    let within: i64 = (0..n).filter(|x| parent[x] == x).map(|x| size[x] * size[x]).sum();
+    (n * n - within) / 2
+}
+
+// ---- pairs_solution.kara
+struct Solution {}
+
+fn solution_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    if parent[x] != x {
+        parent[x] = solution_find(mut parent, parent[x]);
+    }
+    parent[x]
+}
+
+impl Solution {
+    pub fn count_pairs(n: i32, edges: Vec[Vec[i32]]) -> i64 {
+        let n = n as i64;
+        let mut parent: Vec[i64] = (0..n).collect();
+        for e in ref edges {
+            let (a, b) = (solution_find(mut parent, e[0]), solution_find(mut parent, e[1]));
+            if a != b {
+                parent[a] = b;
+            }
+        }
+        let mut size = Vec.filled(n, 0);
+        for x in 0..n {
+            let r = solution_find(mut parent, x);
+            size[r] += 1;
+        }
+        let mut answer = 0;
+        let mut rest = n;
+        for s in size {
+            rest -= s;
+            answer += s * rest;
+        }
+        answer
+    }
+}
+
+fn solution_count_pairs(n: i64, edges: Vec[(i64, i64)]) -> i64 {
+    let rows: Vec[Vec[i32]] = edges.iter().map(|(a, b)| [a as i32, b as i32]).collect();
+    Solution.count_pairs(n as i32, rows)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(n: i64, edges: Vec[(i64, i64)]) -> i64 {
+    let mut reach: Vec[Vec[bool]] = Vec.filled(n, Vec.filled(n, false));
+    for i in 0..n {
+        reach[i][i] = true;
+    }
+    for (a, b) in edges.iter() {
+        reach[a][b] = true;
+        reach[b][a] = true;
+    }
+    for k in 0..n {
+        for i in 0..n {
+            for j in 0..n {
+                if reach[i][k] and reach[k][j] {
+                    reach[i][j] = true;
+                }
+            }
+        }
+    }
+    let mut apart = 0;
+    for i in 0..n {
+        for j in i + 1..n {
+            if not reach[i][j] {
+                apart += 1;
+            }
+        }
+    }
+    apart
+}
+
+fn answer(arm: i64, n: i64, edges: Vec[(i64, i64)]) -> i64 {
+    match arm {
+        0 => star_count_pairs(n, edges),
+        1 => naive_count_pairs(n, edges),
+        2 => bfs_count_pairs(n, edges),
+        3 => labels_count_pairs(n, edges),
+        4 => iter_count_pairs(n, edges),
+        _ => solution_count_pairs(n, edges),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random edges among `n` nodes, no edge from a node to itself
+// and none twice
+fn graph(seed: mut ref i64, n: i64, count: i64) -> Vec[(i64, i64)] {
+    let mut edges: Vec[(i64, i64)] = Vec.new();
+    let mut seen: Set[i64] = Set.new();
+    while edges.len() < count {
+        let a = next_random(mut seed) % n;
+        let b = next_random(mut seed) % n;
+        if a != b and not seen.contains(a.min(b) * n + a.max(b)) {
+            seen.insert(a.min(b) * n + a.max(b));
+            edges.push((a, b));
+        }
+    }
+    edges
+}
+
+fn main() {
+    let names = ["star", "naive", "bfs", "labels", "iter", "solution"];
+    let mut seed = 2316;
+    let mut cases: Vec[(i64, Vec[(i64, i64)])] = Vec.new();
+    for c in 0..360 {
+        if c < 300 {
+            let n = next_random(mut seed) % 12 + 1;
+            let count = next_random(mut seed) % (n + 1);
+            cases.push((n, graph(mut seed, n, count.min(n * (n - 1) / 2))));
+        } else if c < 330 {
+            let n = next_random(mut seed) % 12 + 1;
+            cases.push((n, Vec.new()));
+        } else {
+            let count = next_random(mut seed) % 61;
+            cases.push((40, graph(mut seed, 40, count)));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (n, edges) in cases.iter() {
+        let truth = literal(n, edges);
+        check = (check * 31 + truth) % 1000000007;
+        let renamed: Vec[(i64, i64)] = edges.iter().map(|(a, b)| (n - 1 - a, n - 1 - b)).collect();
+        let swapped: Vec[(i64, i64)] = edges.iter().rev().map(|(a, b)| (b, a)).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, n, edges)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                value >= 0 and value <= n * (n - 1) / 2 - edges.len(),
+                answer(arm, n, renamed) == value,
+                answer(arm, n, swapped) == value,
+                answer(arm, n + 1, edges) == value + n,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{n} nodes, {edges.len()} edges, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
