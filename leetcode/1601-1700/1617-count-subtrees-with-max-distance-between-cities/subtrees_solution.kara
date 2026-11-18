@@ -1,0 +1,118 @@
+// LeetCode #1617: Count Subtrees With Max Distance Between Cities -- a
+// Rust solution as LeetCode's Rust users write it (Floyd-Warshall over
+// `usize::MAX / 2`, every mask's cities collected with `filter(|&i| ..)`,
+// the roads among them counted from the distance table), carried to Kāra
+// by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn count_subgraphs_for_each_diameter(n: i32, edges: Vec[Vec[i32]]) -> Vec[i32] {
+        let n = n as i64;
+        let mut dist = Vec.filled(n, Vec.filled(n, i64.MAX / 2));
+        for i in 0..n {
+            dist[i][i] = 0;
+        }
+        for e in ref edges {
+            let (u, v) = (e[0] as i64 - 1, e[1] as i64 - 1);
+            dist[u][v] = 1;
+            dist[v][u] = 1;
+        }
+        for k in 0..n {
+            for i in 0..n {
+                for j in 0..n {
+                    dist[i][j] = dist[i][j].min(dist[i][k] + dist[k][j]);
+                }
+            }
+        }
+        let mut ans = Vec.filled(n - 1, 0);
+        for mask in 1..(1 << n) {
+            let nodes: Vec[i64] = (0..n).filter(|i| mask >> i & 1 == 1).collect();
+            if nodes.len() < 2 {
+                continue;
+            }
+            let mut edge_cnt = 0;
+            let mut max_d: i64 = 0;
+            for a in 0..nodes.len() {
+                for b in a + 1..nodes.len() {
+                    let d = dist[nodes[a]][nodes[b]];
+                    if d == 1 {
+                        edge_cnt += 1;
+                    }
+                    max_d = max_d.max(d);
+                }
+            }
+            if edge_cnt == nodes.len() - 1 {
+                ans[max_d - 1] += 1;
+            }
+        }
+        ans
+    }
+}
+
+fn count_subgraphs_for_each_diameter(n: i32, edges: Slice[Vec[i32]]) -> Vec[i32] {
+    Solution.count_subgraphs_for_each_diameter(n, edges.to_vec())
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// a random tree of `n` cities: each city after the first joined to one
+// before it, then the cities renamed at random
+fn random_tree(n: i64, seed: mut ref i64) -> Vec[Vec[i32]] {
+    let mut name: Vec[i32] = (1..=n).map(|c| c as i32).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        name.swap(i, j);
+    }
+    let mut edges: Vec[Vec[i32]] = Vec.new();
+    for c in 1..n {
+        let p = next_random(mut seed) % c;
+        edges.push([name[c], name[p]]);
+    }
+    edges
+}
+
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut subtrees = 0;
+    let mut cities = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % (most - 1) + 2;
+        let edges = random_tree(n, mut seed);
+        let answer = count_subgraphs_for_each_diameter(n as i32, edges);
+        for x in answer.iter() {
+            check = mix(check, *x);
+            subtrees += *x;
+        }
+        cities += n;
+    }
+    println(f"{count} trees of up to {most} cities: {cities} cities, {subtrees} subtrees, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then a path, a star and a caterpillar
+    let examples: Vec[(i32, Vec[Vec[i32]])] = [
+        (4, [[1, 2], [2, 3], [2, 4]]),
+        (2, [[1, 2]]),
+        (3, [[1, 2], [2, 3]]),
+        (6, [[1, 2], [2, 3], [3, 4], [4, 5], [5, 6]]),
+        (6, [[1, 2], [1, 3], [1, 4], [1, 5], [1, 6]]),
+        (7, [[1, 2], [2, 3], [3, 4], [2, 5], [3, 6], [3, 7]]),
+    ];
+    for (n, edges) in examples.iter() {
+        println(f"{count_subgraphs_for_each_diameter(n, edges)}");
+    }
+    let mut seed = 1617;
+    batch(3000, 6, mut seed);
+    batch(300, 10, mut seed);
+    batch(30, 15, mut seed);
+}

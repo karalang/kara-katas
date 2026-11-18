@@ -1,0 +1,413 @@
+// LeetCode #1617: Count Subtrees With Max Distance Between Cities -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random trees
+// of 2 to 8 cities, with six properties. Every random choice is drawn
+// before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the cities renamed at random leave the answer
+// P3  the roads listed backwards, each turned round, leave the answer
+// P4  the subtrees of largest distance 1 are the roads: n - 1 of them
+// P5  the last distance with a subtree is the tree's own diameter
+// P6  each arm agrees with at least two of the other three
+
+// ---- subtrees.kara: the ★ arm: Floyd-Warshall, then every mask
+
+fn star_arm(n: i32, edges: Slice[Vec[i32]]) -> Vec[i32] {
+    let n = n as i64;
+    let far = n + 1;
+    let mut dist = Vec.filled(n, Vec.filled(n, far));
+    for i in 0..n {
+        dist[i][i] = 0;
+    }
+    let mut ends: Vec[(i64, i64)] = Vec.new();
+    for e in edges.iter() {
+        let (a, b) = ((e[0] - 1) as i64, (e[1] - 1) as i64);
+        dist[a][b] = 1;
+        dist[b][a] = 1;
+        ends.push((a, b));
+    }
+    for k in 0..n {
+        for i in 0..n {
+            for j in 0..n {
+                if dist[i][k] + dist[k][j] < dist[i][j] {
+                    dist[i][j] = dist[i][k] + dist[k][j];
+                }
+            }
+        }
+    }
+    let mut answer: Vec[i32] = Vec.filled(n - 1, 0);
+    for mask in 1..(1 << n) {
+        let size = mask.count_ones();
+        if size < 2 {
+            continue;
+        }
+        let roads = ends.iter().filter(|(a, b)| mask >> a & 1 == 1 and mask >> b & 1 == 1).count();
+        if roads != size - 1 {
+            continue;
+        }
+        let mut widest = 0;
+        for i in 0..n {
+            if mask >> i & 1 == 1 {
+                for j in i + 1..n {
+                    if mask >> j & 1 == 1 {
+                        widest = max(widest, dist[i][j]);
+                    }
+                }
+            }
+        }
+        answer[widest - 1] += 1;
+    }
+    answer
+}
+
+// ---- subtrees_bfs.kara: breadth first inside each mask
+
+// the city bfs_farthest from `start` within `mask`, its distance, and how
+// many cities the search reached
+fn bfs_farthest(adj: Slice[Vec[i64]], mask: i64, start: i64) -> (i64, i64, i64) {
+    let mut dist = Vec.filled(adj.len(), -1);
+    dist[start] = 0;
+    let mut queue = VecDeque.new();
+    queue.push_back(start);
+    let mut (far, reached) = (start, 0);
+    while let Some(u) = queue.pop_front() {
+        reached += 1;
+        if dist[u] > dist[far] {
+            far = u;
+        }
+        for v in adj[u].iter() {
+            if mask >> v & 1 == 1 and dist[v] < 0 {
+                dist[v] = dist[u] + 1;
+                queue.push_back(v);
+            }
+        }
+    }
+    (far, dist[far], reached)
+}
+
+fn bfs_arm(n: i32, edges: Slice[Vec[i32]]) -> Vec[i32] {
+    let n = n as i64;
+    let mut adj: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        let (a, b) = ((e[0] - 1) as i64, (e[1] - 1) as i64);
+        adj[a].push(b);
+        adj[b].push(a);
+    }
+    let mut answer: Vec[i32] = Vec.filled(n - 1, 0);
+    for mask in 1..(1 << n) {
+        if mask.count_ones() < 2 {
+            continue;
+        }
+        let low = mask.trailing_zeros();
+        let (end, _, reached) = bfs_farthest(adj, mask, low);
+        if reached != mask.count_ones() {
+            continue;
+        }
+        let (_, widest, _) = bfs_farthest(adj, mask, end);
+        answer[widest - 1] += 1;
+    }
+    answer
+}
+
+// ---- subtrees_pairs.kara: by the pair of cities at the ends
+
+fn pairs_count_from(
+    u: i64,
+    parent: i64,
+    adj: Slice[Vec[i64]],
+    allowed: Slice[bool],
+    on_path: Slice[bool],
+) -> i64 {
+    let mut ways = 1;
+    for v in adj[u].iter() {
+        if v != parent and allowed[v] {
+            let below = pairs_count_from(v, u, adj, allowed, on_path);
+            ways *= if on_path[v] { below } else { below + 1 };
+        }
+    }
+    ways
+}
+
+fn pairs_arm(n: i32, edges: Slice[Vec[i32]]) -> Vec[i32] {
+    let n = n as i64;
+    let mut adj: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        let (a, b) = ((e[0] - 1) as i64, (e[1] - 1) as i64);
+        adj[a].push(b);
+        adj[b].push(a);
+    }
+    // every city's distances, by a breadth-first search from it
+    let dist: Vec[Vec[i64]] = (0..n)
+        .map(|s| {
+            let mut d = Vec.filled(n, -1);
+            d[s] = 0;
+            let mut queue = VecDeque.new();
+            queue.push_back(s);
+            while let Some(u) = queue.pop_front() {
+                for v in adj[u].iter() {
+                    if d[v] < 0 {
+                        d[v] = d[u] + 1;
+                        queue.push_back(v);
+                    }
+                }
+            }
+            d
+        })
+        .collect();
+    let mut answer: Vec[i32] = Vec.filled(n - 1, 0);
+    for i in 0..n {
+        for j in i + 1..n {
+            let d = dist[i][j];
+            let allowed: Vec[bool] = (0..n)
+                .map(|k| {
+                    k == i
+                        or k == j
+                        or ((dist[i][k] < d or (dist[i][k] == d and k > j))
+                            and (dist[j][k] < d or (dist[j][k] == d and k > i)))
+                })
+                .collect();
+            let on_path: Vec[bool] = (0..n).map(|k| dist[i][k] + dist[k][j] == d).collect();
+            answer[d - 1] += pairs_count_from(i, -1, adj, allowed, on_path) as i32;
+        }
+    }
+    answer
+}
+
+// ---- subtrees_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn count_subgraphs_for_each_diameter(n: i32, edges: Vec[Vec[i32]]) -> Vec[i32] {
+        let n = n as i64;
+        let mut dist = Vec.filled(n, Vec.filled(n, i64.MAX / 2));
+        for i in 0..n {
+            dist[i][i] = 0;
+        }
+        for e in ref edges {
+            let (u, v) = (e[0] as i64 - 1, e[1] as i64 - 1);
+            dist[u][v] = 1;
+            dist[v][u] = 1;
+        }
+        for k in 0..n {
+            for i in 0..n {
+                for j in 0..n {
+                    dist[i][j] = dist[i][j].min(dist[i][k] + dist[k][j]);
+                }
+            }
+        }
+        let mut ans = Vec.filled(n - 1, 0);
+        for mask in 1..(1 << n) {
+            let nodes: Vec[i64] = (0..n).filter(|i| mask >> i & 1 == 1).collect();
+            if nodes.len() < 2 {
+                continue;
+            }
+            let mut edge_cnt = 0;
+            let mut max_d: i64 = 0;
+            for a in 0..nodes.len() {
+                for b in a + 1..nodes.len() {
+                    let d = dist[nodes[a]][nodes[b]];
+                    if d == 1 {
+                        edge_cnt += 1;
+                    }
+                    max_d = max_d.max(d);
+                }
+            }
+            if edge_cnt == nodes.len() - 1 {
+                ans[max_d - 1] += 1;
+            }
+        }
+        ans
+    }
+}
+
+fn solution_arm(n: i32, edges: Slice[Vec[i32]]) -> Vec[i32] {
+    SolutionArm.count_subgraphs_for_each_diameter(n, edges.to_vec())
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, n: i32, edges: Slice[Vec[i32]]) -> Vec[i32] {
+    match a {
+        0 => star_arm(n, edges),
+        1 => bfs_arm(n, edges),
+        2 => pairs_arm(n, edges),
+        _ => solution_arm(n, edges),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["subtrees", "bfs", "pairs", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every set of two or more cities in
+// which every city is reached from every other through cities of the set;
+// the distance between two of its cities is the roads on the path between
+// them inside the set; the largest such distance, counted
+
+fn within(n: i64, roads: Slice[(i64, i64)], keep: Slice[bool], from: i64) -> Vec[i64] {
+    let mut dist = Vec.filled(n, -1);
+    dist[from] = 0;
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for (a, b) in roads.iter() {
+            if keep[a] and keep[b] {
+                if dist[a] >= 0 and dist[b] < 0 {
+                    dist[b] = dist[a] + 1;
+                    changed = true;
+                } else if dist[b] >= 0 and dist[a] < 0 {
+                    dist[a] = dist[b] + 1;
+                    changed = true;
+                }
+            }
+        }
+    }
+    dist
+}
+
+fn literal(n: i32, edges: Slice[Vec[i32]]) -> Vec[i32] {
+    let n = n as i64;
+    let roads: Vec[(i64, i64)] = edges.iter().map(|e| ((e[0] - 1) as i64, (e[1] - 1) as i64)).collect();
+    let mut answer: Vec[i32] = Vec.filled(n - 1, 0);
+    let mut keep = Vec.filled(n, false);
+    loop {
+        // the next set, counting in binary over `keep`
+        let mut i = 0;
+        while i < n and keep[i] {
+            keep[i] = false;
+            i += 1;
+        }
+        if i == n {
+            break;
+        }
+        keep[i] = true;
+        let cities: Vec[i64] = (0..n).filter(|c| keep[c]).collect();
+        if cities.len() < 2 {
+            continue;
+        }
+        let mut connected = true;
+        let mut widest = 0;
+        for a in cities.iter() {
+            let dist = within(n, roads, keep, a);
+            for b in cities.iter() {
+                if dist[b] < 0 {
+                    connected = false;
+                }
+                widest = max(widest, dist[b]);
+            }
+        }
+        if connected {
+            answer[widest - 1] += 1;
+        }
+    }
+    answer
+}
+
+fn tree(n: i64, seed: mut ref i64) -> Vec[Vec[i32]] {
+    let mut name: Vec[i32] = (1..=n).map(|c| c as i32).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        name.swap(i, j);
+    }
+    (1..n).map(|c| [name[c], name[next_random(mut seed) % c]]).collect()
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 16170;
+    let mut cases: Vec[(i32, Vec[Vec[i32]], Vec[i32])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 7 + 2;
+        let edges = tree(n, mut seed);
+        // a renaming of the cities, drawn now
+        let mut rename: Vec[i32] = (1..=n).map(|c| c as i32).collect();
+        for i in (1..n).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            rename.swap(i, j);
+        }
+        cases.push((n as i32, edges, rename));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, (n, edges, rename)) in cases.iter().enumerate() {
+        let truth = literal(n, edges);
+        let renamed: Vec[Vec[i32]] = edges.iter().map(|e| [rename[e[0] - 1], rename[e[1] - 1]]).collect();
+        let turned: Vec[Vec[i32]] = edges.iter().rev().map(|e| [e[1], e[0]]).collect();
+        // the tree's diameter: the farthest city from city 1, then the
+        // farthest from that one
+        let roads: Vec[(i64, i64)] = edges.iter().map(|e| ((e[0] - 1) as i64, (e[1] - 1) as i64)).collect();
+        let all = Vec.filled(n, true);
+        let from_one = within(n, roads, all, 0);
+        let mut end = 0;
+        for c in 0..n as i64 {
+            if from_one[c] > from_one[end] {
+                end = c;
+            }
+        }
+        let diameter_src = within(n, roads, all, end);
+        let diameter = diameter_src.iter().max().unwrap();
+        let mut answers: Vec[Vec[i32]] = Vec.new();
+        for a in 0..arms {
+            let x = arm(a, n, edges);
+            for v in x.iter() {
+                check = (check * 31 + v + 1) % 1000000007;
+            }
+            let last = (0..x.len()).filter(|d| x[d] > 0).max().unwrap_or(-1);
+            let failed = [
+                x != truth,
+                arm(a, n, renamed) != x,
+                arm(a, n, turned) != x,
+                x[0] != n - 1,
+                last + 1 != diameter,
+            ];
+            answers.push(x);
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
