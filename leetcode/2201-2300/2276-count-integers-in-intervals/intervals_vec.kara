@@ -1,0 +1,116 @@
+// LeetCode #2276: Count Integers in Intervals -- a sorted `Vec`. The
+// disjoint intervals sit in start order; `partition_point` finds the
+// first that ends at or past the new left end and the first that starts
+// past its right end, and the run between them, all overlapping it, is
+// drained and replaced by one merged interval. O(log n) to find and
+// O(n) to shift per call.
+
+struct CountIntervals {
+    spans: Vec[(i64, i64)],
+    total: i64,
+}
+
+impl CountIntervals {
+    fn new() -> CountIntervals {
+        CountIntervals { spans: Vec.new(), total: 0 }
+    }
+
+    fn add(mut ref self, left: i64, right: i64) {
+        let i = self.spans.partition_point(|(_, b)| b < left);
+        let j = self.spans.partition_point(|(a, _)| a <= right);
+        let mut l = left;
+        let mut r = right;
+        if i < j {
+            l = l.min(self.spans[i].0);
+            r = r.max(self.spans[j - 1].1);
+        }
+        for (a, b) in self.spans.drain(i..j) {
+            self.total -= b - a + 1;
+        }
+        self.total += r - l + 1;
+        self.spans.insert(i, (l, r));
+    }
+
+    fn count(self) -> i64 {
+        self.total
+    }
+}
+
+// Plays the calls: `(left, right)` adds `[left, right]`, and `(0, 0)`
+// asks for the count, which goes into the answers.
+fn play(calls: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut intervals = CountIntervals.new();
+    let mut answers: Vec[i64] = Vec.new();
+    for (left, right) in calls.iter() {
+        if left == 0 {
+            answers.push(intervals.count());
+        } else {
+            intervals.add(left, right);
+        }
+    }
+    answers
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+// `m` calls, a third of them counts; each interval starts below `span`
+// and is up to `long` wide, kept within 10^9
+fn calls(seed: mut ref i64, m: i64, span: i64, long: i64) -> Vec[(i64, i64)] {
+    let mut out: Vec[(i64, i64)] = Vec.new();
+    for _ in 0..m {
+        if next_random(mut seed) % 3 == 0 {
+            out.push((0, 0));
+        } else {
+            let left = wide_random(mut seed) % span + 1;
+            let right = (left + wide_random(mut seed) % long).min(1000000000);
+            out.push((left, right));
+        }
+    }
+    out
+}
+
+fn main() {
+    // LeetCode's example, then five more: one interval inside another,
+    // two touching, one added twice, a gap bridged, and the widest
+    let examples = [
+        [(2, 3), (7, 10), (0, 0), (5, 8), (0, 0)].to_vec(),
+        [(1, 10), (3, 4), (0, 0)].to_vec(),
+        [(1, 2), (3, 4), (0, 0)].to_vec(),
+        [(5, 5), (5, 5), (0, 0)].to_vec(),
+        [(1, 2), (5, 6), (0, 0), (3, 4), (0, 0), (1, 6), (0, 0)].to_vec(),
+        [(1, 1000000000), (0, 0)].to_vec(),
+    ];
+    for calls in examples.iter() {
+        println(f"{calls} -> {play(calls)}");
+    }
+    // 1000 runs of 1 to 40 calls, intervals starting below 10, 100 or
+    // 10^9 and up to 3, 30 or 10^9 wide
+    let mut seed = 2276;
+    let mut check = 0;
+    for t in 0..1000 {
+        let m = next_random(mut seed) % 40 + 1;
+        let run = calls(mut seed, m, [10, 100, 1000000000][t % 3], [3, 30, 1000000000][t / 3 % 3]);
+        for a in play(run).iter() {
+            check = (check * 31 + a % 1000000007) % 1000000007;
+        }
+    }
+    println(f"1000 runs: checksum {check}");
+    // long runs of 10^4 calls: short intervals over 10^9, which stay
+    // apart, and the same over 10^6, which merge
+    let mut lasts: Vec[i64] = Vec.new();
+    for (span, long) in [(1000000000, 1000), (1000000, 1000)] {
+        let answers = play(calls(mut seed, 10000, span, long));
+        lasts.push(answers[answers.len() - 1]);
+    }
+    println(f"10^4 calls: last counts {lasts}");
+}

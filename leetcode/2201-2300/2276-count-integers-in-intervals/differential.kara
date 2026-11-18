@@ -1,0 +1,478 @@
+// LeetCode #2276: Count Integers in Intervals -- the differential. The
+// six arms, against the statement read literally: every integer from 1
+// to 60 marked when an added interval holds it, and a count the number
+// marked. No intervals kept. 300 random runs of 1 to 20 calls, a third
+// of them counts, intervals starting below 10, 30 or 60 and up to 3, 10
+// or 60 wide within 60; then 30 runs of intervals each inside the last;
+// then 30 runs of intervals of three that touch end to end, shuffled.
+// Every case is drawn before any arm answers.
+//
+// P1  the counts are the literal reading's
+// P2  each interval mirrored, `[l, r]` made `[61 - r, 61 - l]`: the same
+//     counts
+// P3  each interval moved 10^8 up: the same counts
+// P4  the counts never fall, each at most the widths added so far and
+//     at least the widest of them, and 0 before any add
+// P5  every add made twice in a row: the same counts
+// P6  each arm agrees with at least three of the other five
+
+// ---- intervals.kara: the ★ arm, a `SortedMap` merged by `floor`
+struct StarCountIntervals {
+    spans: SortedMap[i64, i64],
+    total: i64,
+}
+
+impl StarCountIntervals {
+    fn new() -> StarCountIntervals {
+        StarCountIntervals { spans: SortedMap.new(), total: 0 }
+    }
+
+    fn add(mut ref self, left: i64, right: i64) {
+        let mut l = left;
+        let mut r = right;
+        loop {
+            let (a, b) = match self.spans.floor(r) {
+                Some((a, b)) => (*a, *b),
+                None => break,
+            };
+            if b < l {
+                break;
+            }
+            l = l.min(a);
+            r = r.max(b);
+            self.total -= b - a + 1;
+            self.spans.remove(a);
+        }
+        self.total += r - l + 1;
+        self.spans.insert(l, r);
+    }
+
+    fn count(self) -> i64 {
+        self.total
+    }
+}
+
+// Plays the calls: `(left, right)` adds `[left, right]`, and `(0, 0)`
+// asks for the count, which goes into the answers.
+fn star_play(calls: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut intervals = StarCountIntervals.new();
+    let mut answers: Vec[i64] = Vec.new();
+    for (left, right) in calls.iter() {
+        if left == 0 {
+            answers.push(intervals.count());
+        } else {
+            intervals.add(left, right);
+        }
+    }
+    answers
+}
+
+// ---- intervals_vec.kara: a sorted `Vec`, `partition_point` and `drain`
+struct VecCountIntervals {
+    spans: Vec[(i64, i64)],
+    total: i64,
+}
+
+impl VecCountIntervals {
+    fn new() -> VecCountIntervals {
+        VecCountIntervals { spans: Vec.new(), total: 0 }
+    }
+
+    fn add(mut ref self, left: i64, right: i64) {
+        let i = self.spans.partition_point(|(_, b)| b < left);
+        let j = self.spans.partition_point(|(a, _)| a <= right);
+        let mut l = left;
+        let mut r = right;
+        if i < j {
+            l = l.min(self.spans[i].0);
+            r = r.max(self.spans[j - 1].1);
+        }
+        for (a, b) in self.spans.drain(i..j) {
+            self.total -= b - a + 1;
+        }
+        self.total += r - l + 1;
+        self.spans.insert(i, (l, r));
+    }
+
+    fn count(self) -> i64 {
+        self.total
+    }
+}
+
+// Plays the calls: `(left, right)` adds `[left, right]`, and `(0, 0)`
+// asks for the count, which goes into the answers.
+fn vec_play(calls: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut intervals = VecCountIntervals.new();
+    let mut answers: Vec[i64] = Vec.new();
+    for (left, right) in calls.iter() {
+        if left == 0 {
+            answers.push(intervals.count());
+        } else {
+            intervals.add(left, right);
+        }
+    }
+    answers
+}
+
+// ---- intervals_tree.kara: a dynamic segment tree over [1, 10^9]
+struct TreeCountIntervals {
+    low: Vec[i64],
+    high: Vec[i64],
+    covered: Vec[i64],
+}
+
+impl TreeCountIntervals {
+    fn new() -> TreeCountIntervals {
+        TreeCountIntervals { low: [0].to_vec(), high: [0].to_vec(), covered: [0].to_vec() }
+    }
+
+    fn child(mut ref self) -> i64 {
+        self.low.push(0);
+        self.high.push(0);
+        self.covered.push(0);
+        self.low.len() - 1
+    }
+
+    fn cover(mut ref self, node: i64, lo: i64, hi: i64, left: i64, right: i64) {
+        if self.covered[node] == hi - lo + 1 or right < lo or hi < left {
+            return;
+        }
+        if left <= lo and hi <= right {
+            self.covered[node] = hi - lo + 1;
+            return;
+        }
+        let mid = (lo + hi) / 2;
+        if self.low[node] == 0 {
+            let c = self.child();
+            self.low[node] = c;
+        }
+        if self.high[node] == 0 {
+            let c = self.child();
+            self.high[node] = c;
+        }
+        self.cover(self.low[node], lo, mid, left, right);
+        self.cover(self.high[node], mid + 1, hi, left, right);
+        self.covered[node] = self.covered[self.low[node]] + self.covered[self.high[node]];
+    }
+
+    fn add(mut ref self, left: i64, right: i64) {
+        self.cover(0, 1, 1000000000, left, right);
+    }
+
+    fn count(self) -> i64 {
+        self.covered[0]
+    }
+}
+
+// Plays the calls: `(left, right)` adds `[left, right]`, and `(0, 0)`
+// asks for the count, which goes into the answers.
+fn tree_play(calls: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut intervals = TreeCountIntervals.new();
+    let mut answers: Vec[i64] = Vec.new();
+    for (left, right) in calls.iter() {
+        if left == 0 {
+            answers.push(intervals.count());
+        } else {
+            intervals.add(left, right);
+        }
+    }
+    answers
+}
+
+// ---- intervals_range.kara: a `SortedMap` read by `range_inclusive`
+struct RangeCountIntervals {
+    spans: SortedMap[i64, i64],
+    total: i64,
+}
+
+impl RangeCountIntervals {
+    fn new() -> RangeCountIntervals {
+        RangeCountIntervals { spans: SortedMap.new(), total: 0 }
+    }
+
+    fn add(mut ref self, left: i64, right: i64) {
+        let from = match self.spans.floor(left) {
+            Some((a, b)) if *b >= left => *a,
+            _ => left,
+        };
+        let swallowed: Vec[(i64, i64)] = self.spans.range_inclusive(from, right).map(|(a, b)| (*a, *b)).collect();
+        let mut l = left;
+        let mut r = right;
+        for (a, b) in swallowed.iter() {
+            l = l.min(a);
+            r = r.max(b);
+            self.total -= b - a + 1;
+            self.spans.remove(a);
+        }
+        self.total += r - l + 1;
+        self.spans.insert(l, r);
+    }
+
+    fn count(self) -> i64 {
+        self.total
+    }
+}
+
+// Plays the calls: `(left, right)` adds `[left, right]`, and `(0, 0)`
+// asks for the count, which goes into the answers.
+fn range_play(calls: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut intervals = RangeCountIntervals.new();
+    let mut answers: Vec[i64] = Vec.new();
+    for (left, right) in calls.iter() {
+        if left == 0 {
+            answers.push(intervals.count());
+        } else {
+            intervals.add(left, right);
+        }
+    }
+    answers
+}
+
+// ---- intervals_iter.kara: `filter`, `retain` and `fold` over an unordered `Vec`
+struct IterCountIntervals {
+    spans: Vec[(i64, i64)],
+    total: i64,
+}
+
+impl IterCountIntervals {
+    fn new() -> IterCountIntervals {
+        IterCountIntervals { spans: Vec.new(), total: 0 }
+    }
+
+    fn add(mut ref self, left: i64, right: i64) {
+        let touched: Vec[(i64, i64)] = self.spans.iter().filter(|(a, b)| a <= right and b >= left).cloned().collect();
+        self.spans.retain(|(a, b)| a > right or b < left);
+        let (l, r) = touched.iter().fold((left, right), |(l, r), (a, b)| (l.min(a), r.max(b)));
+        self.total += r - l + 1 - touched.iter().map(|(a, b)| b - a + 1).sum();
+        self.spans.push((l, r));
+    }
+
+    fn count(self) -> i64 {
+        self.total
+    }
+}
+
+// Plays the calls: `(left, right)` adds `[left, right]`, and `(0, 0)`
+// asks for the count, which goes into the answers.
+fn iter_play(calls: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut intervals = IterCountIntervals.new();
+    let mut answers: Vec[i64] = Vec.new();
+    for (left, right) in calls.iter() {
+        if left == 0 {
+            answers.push(intervals.count());
+        } else {
+            intervals.add(left, right);
+        }
+    }
+    answers
+}
+
+// ---- intervals_solution.kara: LeetCode's Rust template
+struct SolutionCountIntervals {
+    map: SortedMap[i32, i32],
+    cnt: i32,
+}
+
+impl SolutionCountIntervals {
+    fn new() -> Self {
+        SolutionCountIntervals { map: SortedMap.new(), cnt: 0 }
+    }
+
+    fn add(mut ref self, left: i32, right: i32) {
+        let mut l = left;
+        let mut r = right;
+        while let Some((a, b)) = self.map.range_inclusive(i32.MIN, r).next_back() {
+            if b < l {
+                break;
+            }
+            l = l.min(a);
+            r = r.max(b);
+            self.cnt -= b - a + 1;
+            self.map.remove(a);
+        }
+        self.cnt += r - l + 1;
+        self.map.insert(l, r);
+    }
+
+    fn count(self) -> i32 {
+        self.cnt
+    }
+}
+
+// Plays the calls: `(left, right)` adds `[left, right]`, and `(0, 0)`
+// asks for the count, which goes into the answers.
+fn solution_play(calls: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut intervals = SolutionCountIntervals.new();
+    let mut answers: Vec[i64] = Vec.new();
+    for (left, right) in calls.iter() {
+        if left == 0 {
+            answers.push(intervals.count());
+        } else {
+            intervals.add(left as i32, right as i32);
+        }
+    }
+    answers
+}
+
+
+// ---- the statement read literally
+
+fn literal(calls: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut marked: Vec[bool] = Vec.filled(61, false);
+    let mut answers: Vec[i64] = Vec.new();
+    for (left, right) in calls.iter() {
+        if left == 0 {
+            let mut count = 0;
+            for x in 1..=60 {
+                if marked[x] {
+                    count += 1;
+                }
+            }
+            answers.push(count);
+        } else {
+            for x in left..=right {
+                marked[x] = true;
+            }
+        }
+    }
+    answers
+}
+
+fn answer(arm: i64, calls: Vec[(i64, i64)]) -> Vec[i64] {
+    match arm {
+        0 => star_play(calls),
+        1 => vec_play(calls),
+        2 => tree_play(calls),
+        3 => range_play(calls),
+        4 => iter_play(calls),
+        _ => solution_play(calls),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "vec", "tree", "range", "iter", "solution"];
+    let mut seed = 2276;
+    let mut cases: Vec[Vec[(i64, i64)]] = Vec.new();
+    for c in 0..360 {
+        let m = next_random(mut seed) % 20 + 1;
+        let mut calls: Vec[(i64, i64)] = Vec.new();
+        if c < 300 {
+            let span = [10, 30, 60][c % 3];
+            let long = [3, 10, 60][c / 3 % 3];
+            for _ in 0..m {
+                if next_random(mut seed) % 3 == 0 {
+                    calls.push((0, 0));
+                } else {
+                    let left = next_random(mut seed) % span + 1;
+                    calls.push((left, (left + next_random(mut seed) % long).min(60)));
+                }
+            }
+        } else if c < 330 {
+            let mut left = 1;
+            let mut right = 60;
+            for _ in 0..m {
+                calls.push((left, right));
+                calls.push((0, 0));
+                if right - left >= 2 {
+                    left += next_random(mut seed) % ((right - left) / 2) + 1;
+                    right -= next_random(mut seed) % ((right - left) / 2 + 1);
+                }
+            }
+        } else {
+            let mut blocks: Vec[(i64, i64)] = (0..20).map(|i| (3 * i + 1, 3 * i + 3)).collect();
+            for j in (1..20).rev() {
+                let r = next_random(mut seed) % (j + 1);
+                blocks.swap(j, r);
+            }
+            for i in 0..m {
+                calls.push(blocks[i]);
+                calls.push((0, 0));
+            }
+        }
+        cases.push(calls);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for calls in cases.iter() {
+        let truth = literal(calls);
+        for a in truth.iter() {
+            check = (check * 31 + a) % 1000000007;
+        }
+        let mirrored: Vec[(i64, i64)] = calls.iter().map(|(l, r)| if l == 0 { (0, 0) } else { (61 - r, 61 - l) }).collect();
+        let moved: Vec[(i64, i64)] = calls.iter().map(|(l, r)| if l == 0 { (0, 0) } else { (l + 100000000, r + 100000000) }).collect();
+        let mut doubled: Vec[(i64, i64)] = Vec.new();
+        for (l, r) in calls.iter() {
+            doubled.push((l, r));
+            if l != 0 {
+                doubled.push((l, r));
+            }
+        }
+        let mut lows: Vec[i64] = Vec.new();
+        let mut highs: Vec[i64] = Vec.new();
+        let mut widest = 0;
+        let mut added = 0;
+        for (l, r) in calls.iter() {
+            if l == 0 {
+                lows.push(widest);
+                highs.push(added);
+            } else {
+                widest = widest.max(r - l + 1);
+                added += r - l + 1;
+            }
+        }
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, calls)).collect();
+        for arm in 0..6 {
+            let value = ref got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut bounded = value.len() == lows.len();
+            if bounded {
+                for i in 0..value.len() {
+                    if value[i] < lows[i] or value[i] > highs[i] or (i > 0 and value[i] < value[i - 1]) {
+                        bounded = false;
+                    }
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, mirrored) == value,
+                answer(arm, moved) == value,
+                bounded,
+                answer(arm, doubled) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{calls} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

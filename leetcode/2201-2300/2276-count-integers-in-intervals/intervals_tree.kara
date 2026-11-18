@@ -1,0 +1,134 @@
+// LeetCode #2276: Count Integers in Intervals -- a dynamic segment tree
+// over `[1, 10^9]`. Nodes are made only where an added interval reaches;
+// each holds how many of its integers are covered, and a node covered
+// whole is never descended again. The children live in two `Vec`s of
+// indices, 0 meaning none yet. O(log 10^9) nodes touched per call,
+// amortised.
+
+struct CountIntervals {
+    low: Vec[i64],
+    high: Vec[i64],
+    covered: Vec[i64],
+}
+
+impl CountIntervals {
+    fn new() -> CountIntervals {
+        CountIntervals { low: [0].to_vec(), high: [0].to_vec(), covered: [0].to_vec() }
+    }
+
+    fn child(mut ref self) -> i64 {
+        self.low.push(0);
+        self.high.push(0);
+        self.covered.push(0);
+        self.low.len() - 1
+    }
+
+    fn cover(mut ref self, node: i64, lo: i64, hi: i64, left: i64, right: i64) {
+        if self.covered[node] == hi - lo + 1 or right < lo or hi < left {
+            return;
+        }
+        if left <= lo and hi <= right {
+            self.covered[node] = hi - lo + 1;
+            return;
+        }
+        let mid = (lo + hi) / 2;
+        if self.low[node] == 0 {
+            let c = self.child();
+            self.low[node] = c;
+        }
+        if self.high[node] == 0 {
+            let c = self.child();
+            self.high[node] = c;
+        }
+        self.cover(self.low[node], lo, mid, left, right);
+        self.cover(self.high[node], mid + 1, hi, left, right);
+        self.covered[node] = self.covered[self.low[node]] + self.covered[self.high[node]];
+    }
+
+    fn add(mut ref self, left: i64, right: i64) {
+        self.cover(0, 1, 1000000000, left, right);
+    }
+
+    fn count(self) -> i64 {
+        self.covered[0]
+    }
+}
+
+// Plays the calls: `(left, right)` adds `[left, right]`, and `(0, 0)`
+// asks for the count, which goes into the answers.
+fn play(calls: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut intervals = CountIntervals.new();
+    let mut answers: Vec[i64] = Vec.new();
+    for (left, right) in calls.iter() {
+        if left == 0 {
+            answers.push(intervals.count());
+        } else {
+            intervals.add(left, right);
+        }
+    }
+    answers
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+// `m` calls, a third of them counts; each interval starts below `span`
+// and is up to `long` wide, kept within 10^9
+fn calls(seed: mut ref i64, m: i64, span: i64, long: i64) -> Vec[(i64, i64)] {
+    let mut out: Vec[(i64, i64)] = Vec.new();
+    for _ in 0..m {
+        if next_random(mut seed) % 3 == 0 {
+            out.push((0, 0));
+        } else {
+            let left = wide_random(mut seed) % span + 1;
+            let right = (left + wide_random(mut seed) % long).min(1000000000);
+            out.push((left, right));
+        }
+    }
+    out
+}
+
+fn main() {
+    // LeetCode's example, then five more: one interval inside another,
+    // two touching, one added twice, a gap bridged, and the widest
+    let examples = [
+        [(2, 3), (7, 10), (0, 0), (5, 8), (0, 0)].to_vec(),
+        [(1, 10), (3, 4), (0, 0)].to_vec(),
+        [(1, 2), (3, 4), (0, 0)].to_vec(),
+        [(5, 5), (5, 5), (0, 0)].to_vec(),
+        [(1, 2), (5, 6), (0, 0), (3, 4), (0, 0), (1, 6), (0, 0)].to_vec(),
+        [(1, 1000000000), (0, 0)].to_vec(),
+    ];
+    for calls in examples.iter() {
+        println(f"{calls} -> {play(calls)}");
+    }
+    // 1000 runs of 1 to 40 calls, intervals starting below 10, 100 or
+    // 10^9 and up to 3, 30 or 10^9 wide
+    let mut seed = 2276;
+    let mut check = 0;
+    for t in 0..1000 {
+        let m = next_random(mut seed) % 40 + 1;
+        let run = calls(mut seed, m, [10, 100, 1000000000][t % 3], [3, 30, 1000000000][t / 3 % 3]);
+        for a in play(run).iter() {
+            check = (check * 31 + a % 1000000007) % 1000000007;
+        }
+    }
+    println(f"1000 runs: checksum {check}");
+    // long runs of 10^4 calls: short intervals over 10^9, which stay
+    // apart, and the same over 10^6, which merge
+    let mut lasts: Vec[i64] = Vec.new();
+    for (span, long) in [(1000000000, 1000), (1000000, 1000)] {
+        let answers = play(calls(mut seed, 10000, span, long));
+        lasts.push(answers[answers.len() - 1]);
+    }
+    println(f"10^4 calls: last counts {lasts}");
+}
