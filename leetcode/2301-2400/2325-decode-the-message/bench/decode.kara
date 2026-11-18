@@ -1,0 +1,65 @@
+// LeetCode #2325: Decode the Message -- the bench, the ★ arm. One walk
+// over the key's bytes fills a table of 26, each letter's first
+// appearance given the next letter of the alphabet, and the message is
+// read through it, spaces kept. O(|key| + |message|).
+
+fn decode_message(key: String, message: String) -> String {
+    let mut table = [0u8; 26];
+    let mut next = b'a';
+    for b in key.bytes() {
+        if b != b' ' and table[b - b'a'] == 0 {
+            table[b - b'a'] = next;
+            next += 1;
+        }
+    }
+    let mut decoded = String.new();
+    for b in message.bytes() {
+        decoded.push(if b == b' ' { ' ' } else { table[b - b'a'] as char });
+    }
+    decoded
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letter(seed: mut ref i64) -> char {
+    let roll = next_random(mut seed) % 27;
+    if roll == 26 { ' ' } else { (b'a' + roll as u8) as char }
+}
+
+fn main() {
+    // 100 keys of 2000 letters and spaces that hold every letter, and as
+    // many messages of 2000, built once; each pass decodes every message
+    // with its key, then moves on each key's first letter by rotating it
+    let mut seed = 2325;
+    let mut keys: Vec[String] = Vec.new();
+    let mut messages: Vec[String] = Vec.new();
+    for _ in 0..100 {
+        let mut key = String.new();
+        for _ in 0..1974 {
+            key.push(letter(mut seed));
+        }
+        for c in "abcdefghijklmnopqrstuvwxyz".chars() {
+            key.push(c);
+        }
+        keys.push(key);
+        let mut message = String.new();
+        for _ in 0..2000 {
+            message.push(letter(mut seed));
+        }
+        messages.push(message);
+    }
+    let mut check = 0;
+    for p in 0..1000 {
+        for k in 0..100 {
+            let decoded = decode_message(keys[k], messages[k]);
+            let bytes = decoded.bytes();
+            check = (check * 31 + bytes[p % 2000] + bytes[(7 * p + k) % 2000]) % 1000000007;
+            let first = keys[k].chars().next().unwrap();
+            keys[k] = f"{keys[k].substring(1, keys[k].len())}{first}";
+        }
+    }
+    println(f"1000 passes over 100 keys and messages of 2000: checksum {check}");
+}

@@ -1,0 +1,85 @@
+// LeetCode #2325: Decode the Message -- iterators: the key's letters
+// `filter`ed of spaces and `fold`ed into the distinct ones in order,
+// then the message `map`ped through their places by `position` and
+// `collect`ed into a `String`.
+
+fn decode_message(key: String, message: String) -> String {
+    let order: Vec[char] = key.chars().filter(|c| c != ' ').fold(Vec.new(), |seen, c| {
+        let mut seen = seen;
+        if not seen.contains(c) {
+            seen.push(c);
+        }
+        seen
+    });
+    message
+        .chars()
+        .map(|c| match order.iter().position(|o| o == c) {
+            Some(i) => (b'a' + i as u8) as char,
+            None => ' ',
+        })
+        .collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a key: the 26 letters in a random order, each followed now and then by
+// a space or by a letter already placed
+fn random_key(seed: mut ref i64) -> String {
+    let mut letters: Vec[u8] = (0..26).map(|i| b'a' + i as u8).collect();
+    for i in (1..26).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        letters.swap(i, j);
+    }
+    let mut key = String.new();
+    for i in 0..26 {
+        key.push(letters[i] as char);
+        let roll = next_random(mut seed) % 6;
+        if roll == 0 {
+            key.push(' ');
+        } else if roll == 1 {
+            key.push(letters[next_random(mut seed) % (i + 1)] as char);
+        }
+    }
+    key
+}
+
+fn random_message(seed: mut ref i64, length: i64) -> String {
+    let mut message = String.new();
+    for _ in 0..length {
+        let roll = next_random(mut seed) % 27;
+        message.push(if roll == 26 { ' ' } else { (b'a' + roll as u8) as char });
+    }
+    message
+}
+
+fn main() {
+    // LeetCode's two examples; then the alphabet as its own key, a key
+    // in reverse, and a message of spaces
+    println(decode_message("the quick brown fox jumps over the lazy dog", "vkbs bs t suepuv"));
+    println(decode_message("eljuxhpwnyrdgtqkviszcfmabo", "zwx hnfx lqantp mnoeius ycgk vcnjrdb"));
+    println(decode_message("abcdefghijklmnopqrstuvwxyz", "hello world"));
+    println(decode_message("zyxwvutsrqponmlkjihgfedcba", "svool dliow"));
+    println(f"[{decode_message("a b c d e f g h i j k l m n o p q r s t u v w x y z", "   ")}]");
+    // 2000 random keys, each with a message of 1 to 100 letters and spaces
+    let mut seed = 2325;
+    let mut check = 0;
+    let mut letters = 0;
+    for _ in 0..2000 {
+        let key = random_key(mut seed);
+        let length = next_random(mut seed) % 100 + 1;
+        let message = random_message(mut seed, length);
+        let decoded = decode_message(key, message);
+        for b in decoded.bytes() {
+            check = (check * 31 + b) % 1000000007;
+            if b == b'a' {
+                letters += 1;
+            }
+        }
+    }
+    println(f"2000 messages: checksum {check}, {letters} a's");
+}
