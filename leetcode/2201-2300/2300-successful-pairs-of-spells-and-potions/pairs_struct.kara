@@ -1,0 +1,79 @@
+// LeetCode #2300: Successful Pairs of Spells and Potions -- `struct
+// Shelf` holds the potions sorted, and `at_least(need)` counts the ones
+// of strength `need` or more by a binary search of its own for the
+// first such potion. A spell asks for `success / spell` rounded up.
+// O((n + m) log m).
+
+struct Shelf {
+    sorted: Vec[i64],
+}
+
+impl Shelf {
+    fn new(potions: Vec[i64]) -> Shelf {
+        let mut sorted = potions.clone();
+        sorted.sort();
+        Shelf { sorted }
+    }
+
+    fn at_least(self, need: i64) -> i64 {
+        let mut lo = 0;
+        let mut hi = self.sorted.len();
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            if self.sorted[mid] < need {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        self.sorted.len() - lo
+    }
+}
+
+fn successful_pairs(spells: Vec[i64], potions: Vec[i64], success: i64) -> Vec[i64] {
+    let shelf = Shelf.new(potions);
+    spells.iter().map(|spell| shelf.at_least((success + spell - 1) / spell)).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; then a success every pair reaches, one
+    // only the largest pair reaches, at 10^5 * 10^5, and one no pair does
+    let cases: Vec[(Vec[i64], Vec[i64], i64)] = [
+        ([5, 1, 3], [1, 2, 3, 4, 5], 7),
+        ([3, 1, 2], [8, 5, 8], 16),
+        ([4, 9], [2, 7, 7], 1),
+        ([100000, 99999, 1], [100000, 7, 100000], 10000000000),
+        ([1, 2, 3], [1, 2], 7),
+    ];
+    for (spells, potions, success) in cases.iter() {
+        println(f"{successful_pairs(spells, potions, success)}");
+    }
+    // 2000 random cases of 1 to 40 spells and 1 to 40 potions from 1 to
+    // 50, and a success from 1 to 2600
+    let mut seed = 2300;
+    let mut check = 0;
+    let mut sum = 0;
+    for _ in 0..2000 {
+        let mut spells: Vec[i64] = Vec.new();
+        for _ in 0..next_random(mut seed) % 40 + 1 {
+            spells.push(next_random(mut seed) % 50 + 1);
+        }
+        let mut potions: Vec[i64] = Vec.new();
+        for _ in 0..next_random(mut seed) % 40 + 1 {
+            potions.push(next_random(mut seed) % 50 + 1);
+        }
+        let success = next_random(mut seed) % 2600 + 1;
+        for x in successful_pairs(spells, potions, success).iter() {
+            check = (check * 31 + x) % 1000000007;
+            sum += x;
+        }
+    }
+    println(f"2000 cases: checksum {check}, sum {sum}");
+}

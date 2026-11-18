@@ -1,0 +1,51 @@
+// LeetCode #2300: Successful Pairs of Spells and Potions -- the bench,
+// the ★ arm. Sort a copy of the potions, then for each spell count the
+// potions past the `partition_point` of those whose product with it
+// falls short of `success`.
+
+fn successful_pairs(spells: Vec[i64], potions: Vec[i64], success: i64) -> Vec[i64] {
+    let mut sorted = potions.clone();
+    sorted.sort();
+    let m = sorted.len();
+    let mut out: Vec[i64] = Vec.new();
+    for spell in spells.iter() {
+        out.push(m - sorted.partition_point(|p| spell * p < success));
+    }
+    out
+}
+
+// ---- bench harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 10 cases of 10^5 spells and 10^5 potions from 1 to 10^5 built once,
+    // case `c` with a success of 10^9 c + 7; then 5 passes over all of
+    // them, pass `p` adding `p` to each success
+    let mut seed = 2300;
+    let mut spells: Vec[Vec[i64]] = Vec.new();
+    let mut potions: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..10 {
+        let mut s: Vec[i64] = Vec.new();
+        let mut p: Vec[i64] = Vec.new();
+        for _ in 0..100000 {
+            s.push((next_random(mut seed) * 32768 + next_random(mut seed)) % 100000 + 1);
+            p.push((next_random(mut seed) * 32768 + next_random(mut seed)) % 100000 + 1);
+        }
+        spells.push(s);
+        potions.push(p);
+    }
+    let mut check = 0;
+    for pass in 0..5 {
+        for c in 0..10 {
+            let out = successful_pairs(spells[c], potions[c], 1000000000 * c + 7 + pass);
+            for x in out.iter() {
+                check = (check * 31 + x) % 1000000007;
+            }
+        }
+    }
+    println(f"5 passes over 10 cases of 10^5 spells and potions: checksum {check}");
+}
