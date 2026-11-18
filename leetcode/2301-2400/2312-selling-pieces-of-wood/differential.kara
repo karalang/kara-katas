@@ -1,0 +1,291 @@
+// LeetCode #2312: Selling Pieces of Wood -- the differential. The six
+// arms, against the statement read literally: a piece fetches the
+// price listed for its shape, found by walking the list, or whatever
+// any one cut across it, at any height or width, makes of its two
+// sides, each read the same way, with nothing remembered. 300 random
+// pieces of 1 to 5 by 1 to 5 with up to 8 prices of up to 20; then 30
+// with every shape that fits priced near its area, where many ways
+// tie; then 30 of 5 by 5 with one or two prices of up to 1000, where
+// strips are left unsold. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the answer is at least any fitting shape's price times how many
+//     such pieces tile the wood, and at most the area times the largest
+//     price
+// P3  the piece and every shape turned on their side: the same answer
+// P4  every price doubled: the answer doubled
+// P5  the whole piece priced at one more than the answer: one more
+// P6  each arm agrees with at least three of the other five
+
+// ---- wood.kara
+fn star_selling_wood(m: i64, n: i64, prices: Vec[(i64, i64, i64)]) -> i64 {
+    let mut best: Vec[Vec[i64]] = Vec.filled(m + 1, Vec.filled(n + 1, 0));
+    for (h, w, price) in prices.iter() {
+        best[h][w] = price;
+    }
+    for h in 1..=m {
+        for w in 1..=n {
+            for i in 1..h {
+                best[h][w] = best[h][w].max(best[i][w] + best[h - i][w]);
+            }
+            for j in 1..w {
+                best[h][w] = best[h][w].max(best[h][j] + best[h][w - j]);
+            }
+        }
+    }
+    best[m][n]
+}
+
+// ---- wood_memo.kara
+fn memo_most(h: i64, w: i64, price: Vec[Vec[i64]], memo: mut ref Vec[Vec[i64]]) -> i64 {
+    if memo[h][w] >= 0 {
+        return memo[h][w];
+    }
+    let mut best = price[h][w];
+    for i in 1..h {
+        best = best.max(memo_most(i, w, price, mut memo) + memo_most(h - i, w, price, mut memo));
+    }
+    for j in 1..w {
+        best = best.max(memo_most(h, j, price, mut memo) + memo_most(h, w - j, price, mut memo));
+    }
+    memo[h][w] = best;
+    best
+}
+
+fn memo_selling_wood(m: i64, n: i64, prices: Vec[(i64, i64, i64)]) -> i64 {
+    let mut price: Vec[Vec[i64]] = Vec.filled(m + 1, Vec.filled(n + 1, 0));
+    for (h, w, p) in prices.iter() {
+        price[h][w] = p;
+    }
+    let mut memo: Vec[Vec[i64]] = Vec.filled(m + 1, Vec.filled(n + 1, -1));
+    memo_most(m, n, price, mut memo)
+}
+
+// ---- wood_half.kara
+fn half_selling_wood(m: i64, n: i64, prices: Vec[(i64, i64, i64)]) -> i64 {
+    let mut best: Vec[Vec[i64]] = Vec.filled(m + 1, Vec.filled(n + 1, 0));
+    for (h, w, price) in prices.iter() {
+        best[h][w] = price;
+    }
+    for h in 1..=m {
+        for w in 1..=n {
+            let mut most = best[h][w];
+            for i in 1..=h / 2 {
+                most = most.max(best[i][w] + best[h - i][w]);
+            }
+            for j in 1..=w / 2 {
+                most = most.max(best[h][j] + best[h][w - j]);
+            }
+            best[h][w] = most;
+        }
+    }
+    best[m][n]
+}
+
+// ---- wood_map.kara
+fn map_worth(h: i64, w: i64, price: Map[(i64, i64), i64], memo: mut ref Map[(i64, i64), i64]) -> i64 {
+    if let Some(known) = memo.get((h, w)) {
+        return known;
+    }
+    let mut best = price.get((h, w)).unwrap_or(0);
+    for i in 1..h {
+        best = best.max(map_worth(i, w, price, mut memo) + map_worth(h - i, w, price, mut memo));
+    }
+    for j in 1..w {
+        best = best.max(map_worth(h, j, price, mut memo) + map_worth(h, w - j, price, mut memo));
+    }
+    memo.insert((h, w), best);
+    best
+}
+
+fn map_selling_wood(m: i64, n: i64, prices: Vec[(i64, i64, i64)]) -> i64 {
+    let mut price: Map[(i64, i64), i64] = Map.new();
+    for (h, w, p) in prices.iter() {
+        price.insert((h, w), p);
+    }
+    let mut memo: Map[(i64, i64), i64] = Map.new();
+    map_worth(m, n, price, mut memo)
+}
+
+// ---- wood_iter.kara
+fn iter_selling_wood(m: i64, n: i64, prices: Vec[(i64, i64, i64)]) -> i64 {
+    let mut best: Vec[Vec[i64]] = Vec.filled(m + 1, Vec.filled(n + 1, 0));
+    for (h, w, price) in prices.iter() {
+        best[h][w] = price;
+    }
+    for h in 1..=m {
+        for w in 1..=n {
+            let cut = (1..h)
+                .map(|i| best[i][w] + best[h - i][w])
+                .chain((1..w).map(|j| best[h][j] + best[h][w - j]))
+                .max()
+                .unwrap_or(0);
+            best[h][w] = best[h][w].max(cut);
+        }
+    }
+    best[m][n]
+}
+
+// ---- wood_solution.kara
+struct Solution {}
+
+impl Solution {
+    pub fn selling_wood(m: i32, n: i32, prices: Vec[Vec[i32]]) -> i64 {
+        let (m, n) = (m as i64, n as i64);
+        let mut best = Vec.filled(m + 1, Vec.filled(n + 1, 0));
+        for p in ref prices {
+            best[p[0]][p[1]] = p[2] as i64;
+        }
+        for h in 1..=m {
+            for w in 1..=n {
+                for i in 1..h {
+                    best[h][w] = best[h][w].max(best[i][w] + best[h - i][w]);
+                }
+                for j in 1..w {
+                    best[h][w] = best[h][w].max(best[h][j] + best[h][w - j]);
+                }
+            }
+        }
+        best[m][n]
+    }
+}
+
+fn solution_selling_wood(m: i64, n: i64, prices: Vec[(i64, i64, i64)]) -> i64 {
+    let rows: Vec[Vec[i32]] = prices.iter().map(|(h, w, p)| [h as i32, w as i32, p as i32]).collect();
+    Solution.selling_wood(m as i32, n as i32, rows)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(h: i64, w: i64, prices: Vec[(i64, i64, i64)]) -> i64 {
+    let mut best = 0;
+    for (ph, pw, price) in prices.iter() {
+        if ph == h and pw == w {
+            best = price;
+        }
+    }
+    for i in 1..h {
+        best = best.max(literal(i, w, prices) + literal(h - i, w, prices));
+    }
+    for j in 1..w {
+        best = best.max(literal(h, j, prices) + literal(h, w - j, prices));
+    }
+    best
+}
+
+fn answer(arm: i64, m: i64, n: i64, prices: Vec[(i64, i64, i64)]) -> i64 {
+    match arm {
+        0 => star_selling_wood(m, n, prices),
+        1 => memo_selling_wood(m, n, prices),
+        2 => half_selling_wood(m, n, prices),
+        3 => map_selling_wood(m, n, prices),
+        4 => iter_selling_wood(m, n, prices),
+        _ => solution_selling_wood(m, n, prices),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` prices for pieces up to `m` by `n`, each shape at most once,
+// worth 1 to `most`
+fn make(seed: mut ref i64, m: i64, n: i64, count: i64, most: i64) -> Vec[(i64, i64, i64)] {
+    let mut used = Vec.filled(m * n, false);
+    let mut prices: Vec[(i64, i64, i64)] = Vec.new();
+    for _ in 0..count {
+        let h = next_random(mut seed) % m + 1;
+        let w = next_random(mut seed) % n + 1;
+        let price = next_random(mut seed) % most + 1;
+        if not used[(h - 1) * n + w - 1] {
+            used[(h - 1) * n + w - 1] = true;
+            prices.push((h, w, price));
+        }
+    }
+    prices
+}
+
+fn main() {
+    let names = ["star", "memo", "half", "map", "iter", "solution"];
+    let mut seed = 2312;
+    let mut cases: Vec[(i64, i64, Vec[(i64, i64, i64)])] = Vec.new();
+    for c in 0..360 {
+        if c < 300 {
+            let m = next_random(mut seed) % 5 + 1;
+            let n = next_random(mut seed) % 5 + 1;
+            let count = next_random(mut seed) % 8 + 1;
+            cases.push((m, n, make(mut seed, m, n, count, 20)));
+        } else if c < 330 {
+            let m = next_random(mut seed) % 5 + 1;
+            let n = next_random(mut seed) % 5 + 1;
+            let mut prices: Vec[(i64, i64, i64)] = Vec.new();
+            for h in 1..=m {
+                for w in 1..=n {
+                    prices.push((h, w, 3 * h * w + next_random(mut seed) % 3));
+                }
+            }
+            cases.push((m, n, prices));
+        } else {
+            let count = next_random(mut seed) % 2 + 1;
+            cases.push((5, 5, make(mut seed, 5, 5, count, 1000)));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (m, n, prices) in cases.iter() {
+        let truth = literal(m, n, prices);
+        check = (check * 31 + truth) % 1000000007;
+        let mut low = 0;
+        let mut top = 0;
+        for (h, w, price) in prices.iter() {
+            low = low.max(price * (m / h) * (n / w));
+            top = top.max(price);
+        }
+        let turned: Vec[(i64, i64, i64)] = prices.iter().map(|(h, w, price)| (w, h, price)).collect();
+        let doubled: Vec[(i64, i64, i64)] = prices.iter().map(|(h, w, price)| (h, w, 2 * price)).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, m, n, prices)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut raised: Vec[(i64, i64, i64)] = prices.iter().filter(|(h, w, _)| h != m or w != n).collect();
+            raised.push((m, n, value + 1));
+            let verdicts = [
+                value == truth,
+                value >= low and value <= m * n * top,
+                answer(arm, n, m, turned) == value,
+                answer(arm, m, n, doubled) == 2 * value,
+                answer(arm, m, n, raised) == value + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{m} by {n}, {prices.len()} prices, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

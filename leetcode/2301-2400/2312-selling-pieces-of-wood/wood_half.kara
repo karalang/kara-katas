@@ -1,0 +1,75 @@
+// LeetCode #2312: Selling Pieces of Wood -- half the cuts: a cut at `i`
+// and one at `h - i` give the same two pieces, so only cuts up to the
+// middle are tried, in each direction. Bottom up as in the ★ arm, with
+// half the work.
+
+fn selling_wood(m: i64, n: i64, prices: Vec[(i64, i64, i64)]) -> i64 {
+    let mut best: Vec[Vec[i64]] = Vec.filled(m + 1, Vec.filled(n + 1, 0));
+    for (h, w, price) in prices.iter() {
+        best[h][w] = price;
+    }
+    for h in 1..=m {
+        for w in 1..=n {
+            let mut most = best[h][w];
+            for i in 1..=h / 2 {
+                most = most.max(best[i][w] + best[h - i][w]);
+            }
+            for j in 1..=w / 2 {
+                most = most.max(best[h][j] + best[h][w - j]);
+            }
+            best[h][w] = most;
+        }
+    }
+    best[m][n]
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` prices for pieces up to `m` by `n`, each shape at most once,
+// worth 1 to `most`
+fn make(seed: mut ref i64, m: i64, n: i64, count: i64, most: i64) -> Vec[(i64, i64, i64)] {
+    let mut used = Vec.filled(m * n, false);
+    let mut prices: Vec[(i64, i64, i64)] = Vec.new();
+    for _ in 0..count {
+        let h = next_random(mut seed) % m + 1;
+        let w = next_random(mut seed) % n + 1;
+        let price = next_random(mut seed) % most + 1;
+        if not used[(h - 1) * n + w - 1] {
+            used[(h - 1) * n + w - 1] = true;
+            prices.push((h, w, price));
+        }
+    }
+    prices
+}
+
+fn main() {
+    // LeetCode's two examples; then a piece that sells only whole, one
+    // whose only price leaves a strip unsold, and a 1 by 1 price that
+    // beats every larger one
+    println(selling_wood(3, 5, [(1, 4, 2), (2, 2, 7), (2, 1, 3)].to_vec()));
+    println(selling_wood(4, 6, [(3, 2, 10), (1, 4, 2), (4, 1, 3)].to_vec()));
+    println(selling_wood(2, 3, [(2, 3, 50), (1, 1, 1)].to_vec()));
+    println(selling_wood(2, 3, [(2, 2, 9)].to_vec()));
+    println(selling_wood(3, 3, [(1, 1, 5), (3, 3, 40), (1, 3, 14)].to_vec()));
+    // a 100 by 100 piece of wood and 2000 prices up to 10^6
+    let mut seed = 2312;
+    println(selling_wood(100, 100, make(mut seed, 100, 100, 2000, 1000000)));
+    // 300 random pieces of 1 to 12 by 1 to 12 with up to 20 prices of up
+    // to 100
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..300 {
+        let m = next_random(mut seed) % 12 + 1;
+        let n = next_random(mut seed) % 12 + 1;
+        let count = next_random(mut seed) % 20 + 1;
+        let money = selling_wood(m, n, make(mut seed, m, n, count, 100));
+        check = (check * 31 + money) % 1000000007;
+        total += money;
+    }
+    println(f"300 pieces: checksum {check}, {total} in all");
+}
