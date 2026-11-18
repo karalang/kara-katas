@@ -42,7 +42,7 @@ its output is byte-identical.
 The set arm would narrow its set in place with `retain`, as Rust's
 `HashSet::retain` does, but the library gives `Set` no `retain` (it
 gives one to `Vec`, `Map`, `SortedMap`, `SortedSet` and `VecDeque`), so
-the arm uses `intersection`.
+the arm uses `intersection` (kara B-2026-11-17-151).
 
 `karac fix` carries the template in one round of 25 edits: `Vec<..>` to
 `Vec[..]`, the `use std::collections::HashMap` removed, `HashMap::new()`

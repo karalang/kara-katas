@@ -1,0 +1,298 @@
+// LeetCode #2243: Calculate Digit Sum of a String -- the differential.
+// The six arms, against the statement read literally: each round the
+// string is walked one character at a time into a group, a group closed
+// whenever it holds k characters or the string ends, each closed group
+// replaced by its digit sum counted up one unit at a time and written
+// out; no slicing and no division. 300 random strings of 1 to 40
+// digits, k from 2 to 12; then 30 of nines only, whose sums carry; then
+// 30 of length k + 1. Every case is drawn before any arm answers.
+//
+// P1  the answer is the rounds read literally
+// P2  only digits, and no longer than k, or the string itself when it
+//     is no longer than k
+// P3  the digit sum keeps its remainder by 9
+// P4  one round done first, by the literal reading: the same answer,
+//     when the string is longer than k
+// P5  the last group padded with zeros to k: the same answer, when the
+//     string is longer than k
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- digits.kara: the ★ arm, each group cut by `substring`
+fn star_digit_sum(s: String, k: i64) -> String {
+    let mut current = s.clone();
+    while current.len() > k {
+        let mut next = String.new();
+        let mut start = 0;
+        while start < current.len() {
+            let end = (start + k).min(current.len());
+            let mut sum = 0;
+            for ch in current.substring(start, end).chars() {
+                sum += (ch as i64) - ('0' as i64);
+            }
+            next.push_str(f"{sum}");
+            start = end;
+        }
+        current = next;
+    }
+    current
+}
+
+// ---- digits_list.kara: the digits as a `Vec[i64]` until the end
+fn list_digit_sum(s: String, k: i64) -> String {
+    let mut digits: Vec[i64] = s.chars().map(|ch| (ch as i64) - ('0' as i64)).collect();
+    while digits.len() > k {
+        let mut next: Vec[i64] = Vec.new();
+        let mut i = 0;
+        while i < digits.len() {
+            let mut sum = 0;
+            let mut j = i;
+            while j < digits.len() and j < i + k {
+                sum += digits[j];
+                j += 1;
+            }
+            let mut stack: Vec[i64] = [sum % 10].to_vec();
+            sum /= 10;
+            while sum > 0 {
+                stack.push(sum % 10);
+                sum /= 10;
+            }
+            while let Some(d) = stack.pop() {
+                next.push(d);
+            }
+            i = j;
+        }
+        digits = next;
+    }
+    let mut out = String.new();
+    for d in digits.iter() {
+        out.push_str(f"{d}");
+    }
+    out
+}
+
+// ---- digits_recursive.kara: one round, then recursion
+fn recursive_one_round(s: String, k: i64) -> String {
+    let chars: Vec[char] = s.chars().collect();
+    let mut parts: Vec[String] = Vec.new();
+    let mut start = 0;
+    while start < chars.len() {
+        let mut sum = 0;
+        for i in start..(start + k).min(chars.len()) {
+            sum += chars[i].to_digit(10).unwrap();
+        }
+        parts.push(sum.to_string());
+        start += k;
+    }
+    parts.join("")
+}
+
+fn recursive_digit_sum(s: String, k: i64) -> String {
+    if s.len() <= k {
+        return s.clone();
+    }
+    recursive_digit_sum(recursive_one_round(s, k), k)
+}
+
+// ---- digits_groups.kara: `Groups` and its `impl Iterator`
+struct GroupsGroups {
+    chars: Vec[char],
+    k: i64,
+    at: i64,
+}
+
+impl GroupsGroups {
+    fn over(s: String, k: i64) -> GroupsGroups {
+        GroupsGroups { chars: s.chars().collect(), k, at: 0 }
+    }
+}
+
+impl Iterator for GroupsGroups {
+    type Item = i64;
+
+    fn next(mut ref self) -> Option[i64] {
+        if self.at >= self.chars.len() {
+            return None;
+        }
+        let end = (self.at + self.k).min(self.chars.len());
+        let mut sum = 0;
+        while self.at < end {
+            sum += (self.chars[self.at] as i64) - ('0' as i64);
+            self.at += 1;
+        }
+        Some(sum)
+    }
+}
+
+fn groups_digit_sum(s: String, k: i64) -> String {
+    let mut current = s.clone();
+    while current.len() > k {
+        let mut next = String.new();
+        for sum in GroupsGroups.over(current, k) {
+            next.push_str(f"{sum}");
+        }
+        current = next;
+    }
+    current
+}
+
+// ---- digits_iter.kara: `chunks`, `map`, `sum` and `join`
+fn iter_digit_sum(s: String, k: i64) -> String {
+    let mut current = s.clone();
+    while current.len() > k {
+        let chars: Vec[char] = current.chars().collect();
+        let sums: Vec[String] = chars.chunks(k).into_iter().map(|group| {
+            let sum: i64 = group.iter().map(|ch| (ch as i64) - ('0' as i64)).sum();
+            sum.to_string()
+        }).collect();
+        current = sums.join("");
+    }
+    current
+}
+
+// ---- digits_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn digit_sum(s: own String, k: i32) -> String {
+        let mut s = s;
+        while s.len() > k {
+            let mut next = String.new();
+            for chunk in s.bytes().chunks(k) {
+                let sum: u32 = chunk.iter().map(|b| (b - b'0') as u32).sum();
+                next.push_str(sum.to_string());
+            }
+            s = next;
+        }
+        s
+    }
+}
+
+struct Solution {}
+
+fn solution_digit_sum(s: String, k: i64) -> String {
+    Solution.digit_sum(s.clone(), k as i32)
+}
+
+// ---- the statement read literally
+
+fn literal_round(s: String, k: i64) -> String {
+    let mut out = String.new();
+    let mut group: Vec[char] = Vec.new();
+    let chars: Vec[char] = s.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        group.push(chars[i]);
+        i += 1;
+        if group.len() == k or i == chars.len() {
+            let mut total = 0;
+            for ch in group.iter() {
+                let mut d = ch;
+                while d != '0' {
+                    total += 1;
+                    d = char.from_digit(d.to_digit(10).unwrap() - 1, 10).unwrap();
+                }
+            }
+            out.push_str(f"{total}");
+            group.clear();
+        }
+    }
+    out
+}
+
+fn literal(s: String, k: i64) -> String {
+    let mut current = s.clone();
+    while current.len() > k {
+        current = literal_round(current, k);
+    }
+    current
+}
+
+fn answer(arm: i64, s: String, k: i64) -> String {
+    match arm {
+        0 => star_digit_sum(s, k),
+        1 => list_digit_sum(s, k),
+        2 => recursive_digit_sum(s, k),
+        3 => groups_digit_sum(s, k),
+        4 => iter_digit_sum(s, k),
+        _ => solution_digit_sum(s, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn digit_total(s: String) -> i64 {
+    s.chars().map(|ch| ch.to_digit(10).unwrap() as i64).sum()
+}
+
+fn main() {
+    let names = ["star", "list", "recursive", "groups", "iter", "solution"];
+    let mut seed = 2243;
+    let mut cases: Vec[(String, i64)] = Vec.new();
+    for c in 0..360 {
+        let k = next_random(mut seed) % 11 + 2;
+        let length = if c >= 330 { k + 1 } else { next_random(mut seed) % 40 + 1 };
+        let mut s = String.new();
+        for _ in 0..length {
+            let d = if c >= 300 and c < 330 { 9 } else { next_random(mut seed) % 10 };
+            s.push(char.from_digit(d as u32, 10).unwrap());
+        }
+        cases.push((s, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (s, k) in cases.iter() {
+        let truth = literal(s, k);
+        for ch in truth.chars() {
+            check = (check * 31 + (ch as i64)) % 1000000007;
+        }
+        let longer = s.len() > k;
+        let mut padded = s.clone();
+        while padded.len() % k != 0 {
+            padded.push('0');
+        }
+        let got: Vec[String] = (0..6).map(|arm| answer(arm, s, k)).collect();
+        for arm in 0..6 {
+            let value = ref got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let digits_only = value.chars().all(|ch| ch.is_ascii_digit()) and not value.is_empty();
+            let verdicts = [
+                value == truth,
+                digits_only and (if longer { value.len() <= k } else { value == s }),
+                digits_only and digit_total(value) % 9 == digit_total(s) % 9,
+                not longer or answer(arm, literal_round(s, k), k) == value,
+                not longer or answer(arm, padded, k) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{s} {k} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

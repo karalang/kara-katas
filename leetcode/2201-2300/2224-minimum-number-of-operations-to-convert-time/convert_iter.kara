@@ -1,0 +1,64 @@
+// LeetCode #2224: Minimum Number of Operations to Convert Time -- the
+// gap by `zip`ping the two times' digits with their place values in
+// minutes (600, 60, 10, 1, the colon skipped) and summing the
+// differences; then a `fold` over the steps carrying the gap left and
+// the operations. O(1).
+
+fn convert_time(current: String, correct: String) -> i64 {
+    let places = [600, 60, 10, 1];
+    let digits: Fn(ref String) -> Vec[i64] = |time: String| { time.chars().filter(|c| c.is_ascii_digit()).map(|c| (c as i64) - ('0' as i64)).collect() };
+    let gap: i64 = digits(correct).iter().zip(digits(current).iter()).zip(places.iter()).map(|((a, b), p)| (a - b) * p).sum();
+    let (_, operations) = [60, 15, 5, 1].iter().fold((gap, 0), |(left, done), step| (left % step, done + left / step));
+    operations
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// minutes since midnight as "HH:MM"
+fn clock(minutes: i64) -> String {
+    let hours = minutes / 60;
+    let rest = minutes % 60;
+    let h = if hours < 10 { f"0{hours}" } else { f"{hours}" };
+    let m = if rest < 10 { f"0{rest}" } else { f"{rest}" };
+    f"{h}:{m}"
+}
+
+fn show(current: String, correct: String) {
+    println(f"{current} -> {correct}: {convert_time(current, correct)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: no change, the whole
+    // day, one of each step, and four of the smallest
+    show("02:30", "04:35");
+    show("11:00", "11:01");
+    show("09:09", "09:09");
+    show("00:00", "23:59");
+    show("10:00", "11:21");
+    show("12:56", "13:00");
+    // 3000 random pairs, the earlier one first
+    let mut seed = 2224;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let a = next_random(mut seed) % 1440;
+        let b = next_random(mut seed) % 1440;
+        let (low, high) = if a <= b { (a, b) } else { (b, a) };
+        check = (check * 31 + convert_time(clock(low), clock(high))) % 1000000007;
+    }
+    println(f"3000 pairs: checksum {check}");
+    // every pair of the times 00:00, 00:29, 00:58, ... in order
+    let mut total = 0;
+    let mut pairs = 0;
+    for a in 0..50 {
+        for b in a..50 {
+            total += convert_time(clock(a * 29), clock(b * 29));
+            pairs += 1;
+        }
+    }
+    println(f"{pairs} pairs 29 minutes apart: {total} operations");
+}

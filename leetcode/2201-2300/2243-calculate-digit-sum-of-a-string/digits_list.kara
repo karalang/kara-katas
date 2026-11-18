@@ -1,0 +1,86 @@
+// LeetCode #2243: Calculate Digit Sum of a String -- no string until the
+// end: the digits held as a `Vec[i64]`, each round summing every k of
+// them and writing each sum's digits back, most significant first, by
+// dividing by 10 into a small stack that is then popped. O(n) a round.
+
+fn digit_sum(s: String, k: i64) -> String {
+    let mut digits: Vec[i64] = s.chars().map(|ch| (ch as i64) - ('0' as i64)).collect();
+    while digits.len() > k {
+        let mut next: Vec[i64] = Vec.new();
+        let mut i = 0;
+        while i < digits.len() {
+            let mut sum = 0;
+            let mut j = i;
+            while j < digits.len() and j < i + k {
+                sum += digits[j];
+                j += 1;
+            }
+            let mut stack: Vec[i64] = [sum % 10].to_vec();
+            sum /= 10;
+            while sum > 0 {
+                stack.push(sum % 10);
+                sum /= 10;
+            }
+            while let Some(d) = stack.pop() {
+                next.push(d);
+            }
+            i = j;
+        }
+        digits = next;
+    }
+    let mut out = String.new();
+    for d in digits.iter() {
+        out.push_str(f"{d}");
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `length` digits, each below `top`
+fn digits_of(length: i64, top: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for _ in 0..length {
+        s.push(char.from_digit((next_random(mut seed) % top) as u32, 10).unwrap());
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: no round needed, one
+    // digit a group, a group sum of two digits growing the string, and
+    // the constraints' longest of nines
+    let examples = [
+        ("11111222223", 3),
+        ("00000000", 3),
+        ("1234", 4),
+        ("9999", 2),
+        ("98765", 2),
+        ("9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999", 2),
+    ];
+    for (s, k) in examples.iter() {
+        println(f"{s} {k} -> {digit_sum(s, k)}");
+    }
+    // 3000 strings of 1 to 100 digits below 1 to 10, k from 2 to 100,
+    // then from 2 to 5
+    let mut seed = 2243;
+    let mut check = 0;
+    let mut length_total = 0;
+    for c in 0..3000 {
+        let length = next_random(mut seed) % 100 + 1;
+        let top = next_random(mut seed) % 10 + 1;
+        let s = digits_of(length, top, mut seed);
+        let k = if c < 1500 { next_random(mut seed) % 99 + 2 } else { next_random(mut seed) % 4 + 2 };
+        let answer = digit_sum(s, k);
+        length_total += answer.len();
+        for ch in answer.chars() {
+            check = (check * 31 + (ch as i64)) % 1000000007;
+        }
+    }
+    println(f"3000 strings: {length_total} digits answered, checksum {check}");
+}

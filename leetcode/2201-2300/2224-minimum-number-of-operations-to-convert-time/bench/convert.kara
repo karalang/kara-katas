@@ -1,0 +1,46 @@
+// LeetCode #2224: Minimum Number of Operations to Convert Time -- each
+// time read from its four digits, the gap in minutes cut greedily by
+// 60s, 15s, 5s and 1s. O(1).
+
+fn minutes_of(time: String) -> i64 {
+    let d: Vec[i64] = time.chars().filter(|c| c != ':').map(|c| (c as i64) - ('0' as i64)).collect();
+    (d[0] * 10 + d[1]) * 60 + d[2] * 10 + d[3]
+}
+
+fn convert_time(current: String, correct: String) -> i64 {
+    let mut gap = minutes_of(correct) - minutes_of(current);
+    let mut operations = 0;
+    for step in [60, 15, 5, 1] {
+        operations += gap / step;
+        gap %= step;
+    }
+    operations
+}
+
+// ---- bench ------------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // every time of the day as "HH:MM", built once
+    let mut times: Vec[String] = Vec.new();
+    for m in 0..1440 {
+        let hours = m / 60;
+        let rest = m % 60;
+        let h = if hours < 10 { f"0{hours}" } else { f"{hours}" };
+        let r = if rest < 10 { f"0{rest}" } else { f"{rest}" };
+        times.push(f"{h}:{r}");
+    }
+    let mut seed = 2224;
+    let mut check = 0;
+    for _ in 0..2000000 {
+        let a = next_random(mut seed) % 1440;
+        let b = next_random(mut seed) % 1440;
+        let (low, high) = if a <= b { (a, b) } else { (b, a) };
+        check = (check * 31 + convert_time(times[low], times[high])) % 1000000007;
+    }
+    println(f"2000000 pairs: checksum {check}");
+}

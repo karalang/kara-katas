@@ -70,9 +70,10 @@ The iter arm was first written with its fold's accumulator a bare
 that the closure writes and gives it away, and `karac fix` made it `own`.
 The struct arm was first written with Rust's typed receivers, `self: ref
 Tournament` and `self: mut ref Tournament`; `karac check` rejected them
-and named the Kāra spellings, but `karac fix` carries a typed receiver
-only when the type is written `Self`, so these two were rewritten by
-hand to `ref self` and `mut ref self`.
+and named the Kāra spellings, but `karac fix` carried a typed receiver
+only when the type was written `Self`, so these two were rewritten by
+hand to `ref self` and `mut ref self`. karac now fixes the impl's own type
+name the same way (kara B-2026-11-17-142).
 
 ## Differential
 

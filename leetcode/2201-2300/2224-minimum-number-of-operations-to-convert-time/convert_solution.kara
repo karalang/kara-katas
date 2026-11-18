@@ -1,0 +1,81 @@
+// LeetCode #2224: Minimum Number of Operations to Convert Time -- LeetCode's
+// Rust template: two `String`s in, `i32` out, each time parsed by a
+// nested `fn` over `split(':')` and `parse::<i32>()`, and the gap cut by
+// an array of steps in a `for &step in` loop. Carried by `karac fix`.
+// The adapter below hands the harness's values to it.
+
+fn minutes(t: Str) -> i32 {
+    let mut parts = t.split(":");
+    let h: i32 = i32.parse(parts.next().unwrap()).unwrap();
+    let m: i32 = i32.parse(parts.next().unwrap()).unwrap();
+    h * 60 + m
+}
+
+impl Solution {
+    pub fn convert_time(current: String, correct: String) -> i32 {
+        let mut diff = minutes(correct) - minutes(current);
+        let mut ops: i32 = 0;
+        for step in [60i32, 15, 5, 1] {
+            ops += diff / step;
+            diff %= step;
+        }
+        ops
+    }
+}
+
+struct Solution {}
+
+fn convert_time(current: String, correct: String) -> i64 {
+    Solution.convert_time(current, correct)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// minutes since midnight as "HH:MM"
+fn clock(minutes: i64) -> String {
+    let hours = minutes / 60;
+    let rest = minutes % 60;
+    let h = if hours < 10 { f"0{hours}" } else { f"{hours}" };
+    let m = if rest < 10 { f"0{rest}" } else { f"{rest}" };
+    f"{h}:{m}"
+}
+
+fn show(current: String, correct: String) {
+    println(f"{current} -> {correct}: {convert_time(current, correct)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: no change, the whole
+    // day, one of each step, and four of the smallest
+    show("02:30", "04:35");
+    show("11:00", "11:01");
+    show("09:09", "09:09");
+    show("00:00", "23:59");
+    show("10:00", "11:21");
+    show("12:56", "13:00");
+    // 3000 random pairs, the earlier one first
+    let mut seed = 2224;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let a = next_random(mut seed) % 1440;
+        let b = next_random(mut seed) % 1440;
+        let (low, high) = if a <= b { (a, b) } else { (b, a) };
+        check = (check * 31 + convert_time(clock(low), clock(high))) % 1000000007;
+    }
+    println(f"3000 pairs: checksum {check}");
+    // every pair of the times 00:00, 00:29, 00:58, ... in order
+    let mut total = 0;
+    let mut pairs = 0;
+    for a in 0..50 {
+        for b in a..50 {
+            total += convert_time(clock(a * 29), clock(b * 29));
+            pairs += 1;
+        }
+    }
+    println(f"{pairs} pairs 29 minutes apart: {total} operations");
+}

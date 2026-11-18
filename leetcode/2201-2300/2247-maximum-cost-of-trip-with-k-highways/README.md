@@ -67,7 +67,7 @@ names that borrow `reached`. `karac fix` offers `let best = ref best;`
 instead, which shadows the table for the rest of the loop body, where
 the steps are written back into it, and the next check refuses the
 write (`best` is a shared `ref`); that fix is a compiler gap, recorded
-in the kara ledger.
+in the kara ledger (B-2026-11-17-150).
 
 ## Differential
 

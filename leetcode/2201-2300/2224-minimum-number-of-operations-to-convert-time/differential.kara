@@ -1,0 +1,293 @@
+// LeetCode #2224: Minimum Number of Operations to Convert Time -- the
+// differential. The six arms, against the statement read literally: a
+// breadth-first search over the minutes of the day from the current
+// time, each of the four operations tried from every minute reached and
+// none past the correct time, until the correct time is reached; no
+// division and no greed. 300 random pairs, the earlier one first; then
+// 30 with the two times equal; then 30 a whole number of hours apart,
+// give or take a minute. Every case is drawn before any arm answers.
+//
+// P1  the answer is the fewest operations, read literally
+// P2  both times moved by the same minutes within the day: the same
+//     answer
+// P3  at least the gap in whole hours rounded up, at most the gap, and
+//     0 exactly when the times are equal
+// P4  through a time between them: no more than the two legs together
+// P5  the correct time an hour later, where the day allows: one more
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- convert.kara: the ★ arm, the gap cut greedily by 60, 15, 5 and 1
+fn star_minutes_of(time: String) -> i64 {
+    let d: Vec[i64] = time.chars().filter(|c| c != ':').map(|c| (c as i64) - ('0' as i64)).collect();
+    (d[0] * 10 + d[1]) * 60 + d[2] * 10 + d[3]
+}
+
+fn star_convert_time(current: String, correct: String) -> i64 {
+    let mut gap = star_minutes_of(correct) - star_minutes_of(current);
+    let mut operations = 0;
+    for step in [60, 15, 5, 1] {
+        operations += gap / step;
+        gap %= step;
+    }
+    operations
+}
+
+// ---- convert_dp.kara: the fewest steps for every gap, as in coin change
+fn dp_minutes_of(time: String) -> i64 {
+    let parts: Vec[String] = time.split(":").map(|p| p.to_string()).collect();
+    i64.parse(parts[0]).unwrap() * 60 + i64.parse(parts[1]).unwrap()
+}
+
+fn dp_convert_time(current: String, correct: String) -> i64 {
+    let gap = dp_minutes_of(correct) - dp_minutes_of(current);
+    let mut fewest: Vec[i64] = Vec.filled(gap + 1, 0);
+    for g in 1..gap + 1 {
+        let mut best = fewest[g - 1] + 1;
+        for step in [5, 15, 60] {
+            if step <= g and fewest[g - step] + 1 < best {
+                best = fewest[g - step] + 1;
+            }
+        }
+        fewest[g] = best;
+    }
+    fewest[gap]
+}
+
+// ---- convert_walk.kara: the clock walked one operation at a time
+fn walk_convert_time(current: String, correct: String) -> i64 {
+    let c: Vec[char] = current.chars().collect();
+    let t: Vec[char] = correct.chars().collect();
+    let digit = |ch: char| (ch as i64) - ('0' as i64);
+    let mut hours = digit(c[0]) * 10 + digit(c[1]);
+    let mut minutes = digit(c[3]) * 10 + digit(c[4]);
+    let goal = (digit(t[0]) * 10 + digit(t[1])) * 60 + digit(t[3]) * 10 + digit(t[4]);
+    let mut operations = 0;
+    while hours * 60 + minutes < goal {
+        let left = goal - hours * 60 - minutes;
+        let step = if left >= 60 { 60 } else if left >= 15 { 15 } else if left >= 5 { 5 } else { 1 };
+        minutes += step;
+        if minutes >= 60 {
+            hours += 1;
+            minutes -= 60;
+        }
+        operations += 1;
+    }
+    operations
+}
+
+// ---- convert_struct.kara: `Time`, `Step`, `minutes`, `until` and `length`
+struct StructTime {
+    hours: i64,
+    minutes: i64,
+}
+
+enum StructStep {
+    Hour,
+    Quarter,
+    Five,
+    Minute,
+}
+
+impl StructStep {
+    fn length(ref self) -> i64 {
+        match self {
+            StructStep.Hour => 60,
+            StructStep.Quarter => 15,
+            StructStep.Five => 5,
+            StructStep.Minute => 1,
+        }
+    }
+}
+
+impl StructTime {
+    fn parse(text: String) -> StructTime {
+        let parts: Vec[String] = text.split(":").map(|p| p.to_string()).collect();
+        StructTime { hours: i64.parse(parts[0]).unwrap(), minutes: i64.parse(parts[1]).unwrap() }
+    }
+
+    fn minutes(ref self) -> i64 {
+        self.hours * 60 + self.minutes
+    }
+
+    fn until(ref self, later: StructTime) -> i64 {
+        later.minutes() - self.minutes()
+    }
+}
+
+fn struct_convert_time(current: String, correct: String) -> i64 {
+    let mut gap = StructTime.parse(current).until(StructTime.parse(correct));
+    let mut operations = 0;
+    for step in [StructStep.Hour, StructStep.Quarter, StructStep.Five, StructStep.Minute] {
+        let length = step.length();
+        operations += gap / length;
+        gap -= gap / length * length;
+    }
+    operations
+}
+
+// ---- convert_iter.kara: `zip`, `map`, `sum` and `fold`
+fn iter_convert_time(current: String, correct: String) -> i64 {
+    let places = [600, 60, 10, 1];
+    let digits: Fn(ref String) -> Vec[i64] = |time: String| { time.chars().filter(|c| c.is_ascii_digit()).map(|c| (c as i64) - ('0' as i64)).collect() };
+    let gap: i64 = digits(correct).iter().zip(digits(current).iter()).zip(places.iter()).map(|((a, b), p)| (a - b) * p).sum();
+    let (_, operations) = [60, 15, 5, 1].iter().fold((gap, 0), |(left, done), step| (left % step, done + left / step));
+    operations
+}
+
+// ---- convert_solution.kara: LeetCode's Rust template, carried by `karac fix`
+fn solution_minutes(t: Str) -> i32 {
+    let mut parts = t.split(":");
+    let h: i32 = i32.parse(parts.next().unwrap()).unwrap();
+    let m: i32 = i32.parse(parts.next().unwrap()).unwrap();
+    h * 60 + m
+}
+
+impl Solution {
+    pub fn convert_time(current: String, correct: String) -> i32 {
+        let mut diff = solution_minutes(correct) - solution_minutes(current);
+        let mut ops: i32 = 0;
+        for step in [60i32, 15, 5, 1] {
+            ops += diff / step;
+            diff %= step;
+        }
+        ops
+    }
+}
+
+struct Solution {}
+
+fn solution_convert_time(current: String, correct: String) -> i64 {
+    Solution.convert_time(current, correct)
+}
+
+// ---- the statement read literally
+
+fn literal(current: String, correct: String) -> i64 {
+    let at = |time: String| {
+        let d: Vec[i64] = time.chars().filter(|c| c != ':').map(|c| (c as i64) - ('0' as i64)).collect();
+        (d[0] * 10 + d[1]) * 60 + d[2] * 10 + d[3]
+    };
+    let start = at(current);
+    let goal = at(correct);
+    let mut seen: Vec[i64] = Vec.filled(1440, -1);
+    seen[start] = 0;
+    let mut queue: Vec[i64] = [start].to_vec();
+    let mut head = 0;
+    while head < queue.len() {
+        let now = queue[head];
+        head += 1;
+        for step in [1, 5, 15, 60] {
+            let next = now + step;
+            if next <= goal and seen[next] < 0 {
+                seen[next] = seen[now] + 1;
+                queue.push(next);
+            }
+        }
+    }
+    seen[goal]
+}
+
+fn answer(arm: i64, current: String, correct: String) -> i64 {
+    match arm {
+        0 => star_convert_time(current, correct),
+        1 => dp_convert_time(current, correct),
+        2 => walk_convert_time(current, correct),
+        3 => struct_convert_time(current, correct),
+        4 => iter_convert_time(current, correct),
+        _ => solution_convert_time(current, correct),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// minutes since midnight as "HH:MM"
+fn clock(minutes: i64) -> String {
+    let hours = minutes / 60;
+    let rest = minutes % 60;
+    let h = if hours < 10 { f"0{hours}" } else { f"{hours}" };
+    let m = if rest < 10 { f"0{rest}" } else { f"{rest}" };
+    f"{h}:{m}"
+}
+
+fn main() {
+    let names = ["star", "dp", "walk", "struct", "iter", "solution"];
+    let mut seed = 2224;
+    // (current, correct, shift, middle), each in minutes
+    let mut cases: Vec[(i64, i64, i64, i64)] = Vec.new();
+    for c in 0..360 {
+        let a = next_random(mut seed) % 1440;
+        let b = next_random(mut seed) % 1440;
+        let mut (low, high) = if a <= b { (a, b) } else { (b, a) };
+        if c >= 300 and c < 330 {
+            high = low;
+        } else if c >= 330 {
+            let hours = next_random(mut seed) % 24;
+            low = next_random(mut seed) % (1440 - hours * 60);
+            high = low + hours * 60 + next_random(mut seed) % 3 - 1;
+            if high < low {
+                high = low;
+            }
+            if high > 1439 {
+                high = 1439;
+            }
+        }
+        let shift = next_random(mut seed) % (1440 - high + low) - low;
+        let middle = low + next_random(mut seed) % (high - low + 1);
+        cases.push((low, high, shift, middle));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (low, high, shift, middle) in cases.iter() {
+        let current = clock(low);
+        let correct = clock(high);
+        let truth = literal(current, correct);
+        check = (check * 31 + truth) % 1000000007;
+        let gap = high - low;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, current, correct)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let hour_later = high + 60 > 1439 or answer(arm, current, clock(high + 60)) == value + 1;
+            let verdicts = [
+                value == truth,
+                answer(arm, clock(low + shift), clock(high + shift)) == value,
+                value >= (gap + 59) / 60 and value <= gap and (value == 0) == (gap == 0),
+                value <= answer(arm, current, clock(middle)) + answer(arm, clock(middle), correct),
+                hour_later,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{current} -> {correct} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

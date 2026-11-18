@@ -1,0 +1,105 @@
+// LeetCode #2224: Minimum Number of Operations to Convert Time -- a
+// `struct Time` of hours and minutes with `parse` reading "HH:MM",
+// `minutes` (`ref self`) the minutes since midnight, and `until` (`ref
+// self`) the gap to a later time; an `enum Step` of the four
+// operations, each with its length, tried from the longest. O(1).
+
+struct Time {
+    hours: i64,
+    minutes: i64,
+}
+
+enum Step {
+    Hour,
+    Quarter,
+    Five,
+    Minute,
+}
+
+impl Step {
+    fn length(ref self) -> i64 {
+        match self {
+            Step.Hour => 60,
+            Step.Quarter => 15,
+            Step.Five => 5,
+            Step.Minute => 1,
+        }
+    }
+}
+
+impl Time {
+    fn parse(text: String) -> Time {
+        let parts: Vec[String] = text.split(":").map(|p| p.to_string()).collect();
+        Time { hours: i64.parse(parts[0]).unwrap(), minutes: i64.parse(parts[1]).unwrap() }
+    }
+
+    fn minutes(ref self) -> i64 {
+        self.hours * 60 + self.minutes
+    }
+
+    fn until(ref self, later: Time) -> i64 {
+        later.minutes() - self.minutes()
+    }
+}
+
+fn convert_time(current: String, correct: String) -> i64 {
+    let mut gap = Time.parse(current).until(Time.parse(correct));
+    let mut operations = 0;
+    for step in [Step.Hour, Step.Quarter, Step.Five, Step.Minute] {
+        let length = step.length();
+        operations += gap / length;
+        gap -= gap / length * length;
+    }
+    operations
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// minutes since midnight as "HH:MM"
+fn clock(minutes: i64) -> String {
+    let hours = minutes / 60;
+    let rest = minutes % 60;
+    let h = if hours < 10 { f"0{hours}" } else { f"{hours}" };
+    let m = if rest < 10 { f"0{rest}" } else { f"{rest}" };
+    f"{h}:{m}"
+}
+
+fn show(current: String, correct: String) {
+    println(f"{current} -> {correct}: {convert_time(current, correct)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: no change, the whole
+    // day, one of each step, and four of the smallest
+    show("02:30", "04:35");
+    show("11:00", "11:01");
+    show("09:09", "09:09");
+    show("00:00", "23:59");
+    show("10:00", "11:21");
+    show("12:56", "13:00");
+    // 3000 random pairs, the earlier one first
+    let mut seed = 2224;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let a = next_random(mut seed) % 1440;
+        let b = next_random(mut seed) % 1440;
+        let (low, high) = if a <= b { (a, b) } else { (b, a) };
+        check = (check * 31 + convert_time(clock(low), clock(high))) % 1000000007;
+    }
+    println(f"3000 pairs: checksum {check}");
+    // every pair of the times 00:00, 00:29, 00:58, ... in order
+    let mut total = 0;
+    let mut pairs = 0;
+    for a in 0..50 {
+        for b in a..50 {
+            total += convert_time(clock(a * 29), clock(b * 29));
+            pairs += 1;
+        }
+    }
+    println(f"{pairs} pairs 29 minutes apart: {total} operations");
+}

@@ -1,0 +1,76 @@
+// LeetCode #2224: Minimum Number of Operations to Convert Time -- the
+// clock walked forward one operation at a time, always the largest
+// step that does not pass the correct time, the hours and minutes kept
+// apart and the minutes carried into the hours at 60. O(answer).
+
+fn convert_time(current: String, correct: String) -> i64 {
+    let c: Vec[char] = current.chars().collect();
+    let t: Vec[char] = correct.chars().collect();
+    let digit = |ch: char| (ch as i64) - ('0' as i64);
+    let mut hours = digit(c[0]) * 10 + digit(c[1]);
+    let mut minutes = digit(c[3]) * 10 + digit(c[4]);
+    let goal = (digit(t[0]) * 10 + digit(t[1])) * 60 + digit(t[3]) * 10 + digit(t[4]);
+    let mut operations = 0;
+    while hours * 60 + minutes < goal {
+        let left = goal - hours * 60 - minutes;
+        let step = if left >= 60 { 60 } else if left >= 15 { 15 } else if left >= 5 { 5 } else { 1 };
+        minutes += step;
+        if minutes >= 60 {
+            hours += 1;
+            minutes -= 60;
+        }
+        operations += 1;
+    }
+    operations
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// minutes since midnight as "HH:MM"
+fn clock(minutes: i64) -> String {
+    let hours = minutes / 60;
+    let rest = minutes % 60;
+    let h = if hours < 10 { f"0{hours}" } else { f"{hours}" };
+    let m = if rest < 10 { f"0{rest}" } else { f"{rest}" };
+    f"{h}:{m}"
+}
+
+fn show(current: String, correct: String) {
+    println(f"{current} -> {correct}: {convert_time(current, correct)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: no change, the whole
+    // day, one of each step, and four of the smallest
+    show("02:30", "04:35");
+    show("11:00", "11:01");
+    show("09:09", "09:09");
+    show("00:00", "23:59");
+    show("10:00", "11:21");
+    show("12:56", "13:00");
+    // 3000 random pairs, the earlier one first
+    let mut seed = 2224;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let a = next_random(mut seed) % 1440;
+        let b = next_random(mut seed) % 1440;
+        let (low, high) = if a <= b { (a, b) } else { (b, a) };
+        check = (check * 31 + convert_time(clock(low), clock(high))) % 1000000007;
+    }
+    println(f"3000 pairs: checksum {check}");
+    // every pair of the times 00:00, 00:29, 00:58, ... in order
+    let mut total = 0;
+    let mut pairs = 0;
+    for a in 0..50 {
+        for b in a..50 {
+            total += convert_time(clock(a * 29), clock(b * 29));
+            pairs += 1;
+        }
+    }
+    println(f"{pairs} pairs 29 minutes apart: {total} operations");
+}

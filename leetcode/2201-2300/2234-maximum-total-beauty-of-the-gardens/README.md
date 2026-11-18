@@ -79,7 +79,8 @@ move, and `karac fix` would clone `sums` at the move site, which copies
 the whole `Vec` for every garden, quadratic over 10^5 gardens; the read
 was bound to a `let` before the call by hand instead, which the help
 text names as restructuring. A fix that hoists the later argument when
-the earlier ones are plain values is noted for `karac fix`.
+the earlier ones are plain values is noted for `karac fix` (kara
+B-2026-11-17-145).
 
 ## Differential
 

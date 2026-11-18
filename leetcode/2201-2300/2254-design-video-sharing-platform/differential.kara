@@ -1,0 +1,925 @@
+// LeetCode #2254: Design Video Sharing Platform -- the differential. The
+// six arms, against the statement read literally: the videos held kept
+// as a plain list of records in no order, an upload's id the smallest
+// number 0, 1, 2, ... that no held video has, found by trying each in
+// turn; every other call a search of the list, and a watch built minute
+// by minute from the video's characters. 300 random platforms of 1 to 30
+// calls; then 30 of 40 to 80 calls with as many removes as uploads, so
+// ids are freed and taken back often; then 30 of 20 to 40 calls on ids
+// up to 2, where most calls find a video. Every case is drawn before any
+// arm answers.
+//
+// P1  the answers are the literal reading's
+// P2  each watch's answer -1, or some uploaded video's text from the
+//     watch's start minute, cut short at most
+// P3  one answer per upload, watch and get, and each watch's no longer
+//     than end - start + 1
+// P4  each upload's id held by no video at that moment, and no more than
+//     the number held
+// P5  an upload right after the remove of a held id: an id no larger
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- videos.kara: the ★ arm, `Vec[Option[Video]]` and a `PriorityQueue` of freed ids
+struct StarVideo {
+    content: String,
+    views: i64,
+    likes: i64,
+    dislikes: i64,
+}
+
+struct StarPlatform {
+    slots: Vec[Option[StarVideo]],
+    free: PriorityQueue[i64],
+}
+
+impl StarPlatform {
+    fn new() -> StarPlatform {
+        StarPlatform { slots: Vec.new(), free: PriorityQueue.new() }
+    }
+
+    fn upload(mut ref self, video: own String) -> i64 {
+        let held = Some(StarVideo { content: video, views: 0, likes: 0, dislikes: 0 });
+        match self.free.pop() {
+            Some(id) => {
+                self.slots[id] = held;
+                id
+            }
+            None => {
+                self.slots.push(held);
+                self.slots.len() - 1
+            }
+        }
+    }
+
+    fn remove(mut ref self, id: i64) {
+        if id < self.slots.len() and self.slots[id].is_some() {
+            self.slots[id] = None;
+            self.free.push(id);
+        }
+    }
+
+    fn watch(mut ref self, id: i64, start: i64, end: i64) -> String {
+        if id >= self.slots.len() {
+            return "-1";
+        }
+        match self.slots[id] {
+            Some(mut ref video) => {
+                video.views += 1;
+                let last = end.min(video.content.len() - 1);
+                video.content[start..last + 1].to_string()
+            }
+            None => "-1",
+        }
+    }
+
+    fn like(mut ref self, id: i64) {
+        if id < self.slots.len() {
+            if let Some(mut ref video) = self.slots[id] {
+                video.likes += 1;
+            }
+        }
+    }
+
+    fn dislike(mut ref self, id: i64) {
+        if id < self.slots.len() {
+            if let Some(mut ref video) = self.slots[id] {
+                video.dislikes += 1;
+            }
+        }
+    }
+
+    fn get_likes_and_dislikes(ref self, id: i64) -> Vec[i64] {
+        if id < self.slots.len() {
+            if let Some(video) = self.slots[id] {
+                return [video.likes, video.dislikes].to_vec();
+            }
+        }
+        [-1].to_vec()
+    }
+
+    fn get_views(ref self, id: i64) -> i64 {
+        if id < self.slots.len() {
+            if let Some(video) = self.slots[id] {
+                return video.views;
+            }
+        }
+        -1
+    }
+}
+
+fn star_run(calls: Vec[(i64, Vec[i64], String)]) -> Vec[String] {
+    let mut platform = StarPlatform.new();
+    let mut answers: Vec[String] = Vec.new();
+    for (kind, args, text) in calls.iter() {
+        match kind {
+            0 => answers.push(f"{platform.upload(text.clone())}"),
+            1 => platform.remove(args[0]),
+            2 => answers.push(platform.watch(args[0], args[1], args[2])),
+            3 => platform.like(args[0]),
+            4 => platform.dislike(args[0]),
+            5 => answers.push(f"{platform.get_likes_and_dislikes(args[0])}"),
+            _ => answers.push(f"{platform.get_views(args[0])}"),
+        }
+    }
+    answers
+}
+
+// ---- videos_map.kara: `Map[i64, Video]` and a `SortedSet` of freed ids
+struct MapVideo {
+    content: String,
+    views: i64,
+    likes: i64,
+    dislikes: i64,
+}
+
+struct MapPlatform {
+    videos: Map[i64, MapVideo],
+    free: SortedSet[i64],
+    next: i64,
+}
+
+impl MapPlatform {
+    fn new() -> MapPlatform {
+        MapPlatform { videos: Map.new(), free: SortedSet.new(), next: 0 }
+    }
+
+    fn upload(mut ref self, video: own String) -> i64 {
+        let id = match self.free.pop_first() {
+            Some(id) => id,
+            None => {
+                self.next += 1;
+                self.next - 1
+            }
+        };
+        self.videos.insert(id, MapVideo { content: video, views: 0, likes: 0, dislikes: 0 });
+        id
+    }
+
+    fn remove(mut ref self, id: i64) {
+        if self.videos.remove(id).is_some() {
+            self.free.insert(id);
+        }
+    }
+
+    fn watch(mut ref self, id: i64, start: i64, end: i64) -> String {
+        match self.videos.get_mut(id) {
+            Some(video) => {
+                video.views += 1;
+                video.content.substring(start, end + 1)
+            }
+            None => "-1",
+        }
+    }
+
+    fn like(mut ref self, id: i64) {
+        if let Some(video) = self.videos.get_mut(id) {
+            video.likes += 1;
+        }
+    }
+
+    fn dislike(mut ref self, id: i64) {
+        if let Some(video) = self.videos.get_mut(id) {
+            video.dislikes += 1;
+        }
+    }
+
+    fn get_likes_and_dislikes(ref self, id: i64) -> Vec[i64] {
+        match self.videos.get(id) {
+            Some(video) => [video.likes, video.dislikes].to_vec(),
+            None => [-1].to_vec(),
+        }
+    }
+
+    fn get_views(ref self, id: i64) -> i64 {
+        match self.videos.get(id) {
+            Some(video) => video.views,
+            None => -1,
+        }
+    }
+}
+
+fn map_run(calls: Vec[(i64, Vec[i64], String)]) -> Vec[String] {
+    let mut platform = MapPlatform.new();
+    let mut answers: Vec[String] = Vec.new();
+    for (kind, args, text) in calls.iter() {
+        match kind {
+            0 => answers.push(f"{platform.upload(text.clone())}"),
+            1 => platform.remove(args[0]),
+            2 => answers.push(platform.watch(args[0], args[1], args[2])),
+            3 => platform.like(args[0]),
+            4 => platform.dislike(args[0]),
+            5 => answers.push(f"{platform.get_likes_and_dislikes(args[0])}"),
+            _ => answers.push(f"{platform.get_views(args[0])}"),
+        }
+    }
+    answers
+}
+
+// ---- videos_enum.kara: `enum Slot { Free, Held(Video) }` and the lowest free id
+struct EnumVideo {
+    content: String,
+    views: i64,
+    likes: i64,
+    dislikes: i64,
+}
+
+enum EnumSlot {
+    Free,
+    Held(EnumVideo),
+}
+
+impl EnumSlot {
+    fn is_held(self) -> bool {
+        match self {
+            EnumSlot.Held(_) => true,
+            EnumSlot.Free => false,
+        }
+    }
+
+    fn watch(mut ref self, start: i64, end: i64) -> String {
+        match self {
+            EnumSlot.Held(video) => {
+                video.views += 1;
+                let last = end.min(video.content.len() - 1);
+                video.content[start..last + 1].to_string()
+            }
+            EnumSlot.Free => "-1",
+        }
+    }
+
+    fn rate(mut ref self, liked: bool) {
+        if let EnumSlot.Held(video) = self {
+            if liked {
+                video.likes += 1;
+            } else {
+                video.dislikes += 1;
+            }
+        }
+    }
+
+    fn likes_and_dislikes(self) -> Vec[i64] {
+        match self {
+            EnumSlot.Held(video) => [video.likes, video.dislikes].to_vec(),
+            EnumSlot.Free => [-1].to_vec(),
+        }
+    }
+
+    fn views(self) -> i64 {
+        match self {
+            EnumSlot.Held(video) => video.views,
+            EnumSlot.Free => -1,
+        }
+    }
+}
+
+struct EnumPlatform {
+    slots: Vec[EnumSlot],
+    lowest: i64,
+}
+
+impl EnumPlatform {
+    fn new() -> EnumPlatform {
+        EnumPlatform { slots: Vec.new(), lowest: 0 }
+    }
+
+    fn upload(mut ref self, video: own String) -> i64 {
+        let id = self.lowest;
+        let held = EnumSlot.Held(EnumVideo { content: video, views: 0, likes: 0, dislikes: 0 });
+        if id == self.slots.len() {
+            self.slots.push(held);
+        } else {
+            self.slots[id] = held;
+        }
+        while self.lowest < self.slots.len() and self.slots[self.lowest].is_held() {
+            self.lowest += 1;
+        }
+        id
+    }
+
+    fn remove(mut ref self, id: i64) {
+        if id < self.slots.len() and self.slots[id].is_held() {
+            self.slots[id] = EnumSlot.Free;
+            self.lowest = self.lowest.min(id);
+        }
+    }
+
+    fn watch(mut ref self, id: i64, start: i64, end: i64) -> String {
+        if id < self.slots.len() { self.slots[id].watch(start, end) } else { "-1" }
+    }
+
+    fn like(mut ref self, id: i64) {
+        if id < self.slots.len() {
+            self.slots[id].rate(true);
+        }
+    }
+
+    fn dislike(mut ref self, id: i64) {
+        if id < self.slots.len() {
+            self.slots[id].rate(false);
+        }
+    }
+
+    fn get_likes_and_dislikes(ref self, id: i64) -> Vec[i64] {
+        if id < self.slots.len() { self.slots[id].likes_and_dislikes() } else { [-1].to_vec() }
+    }
+
+    fn get_views(ref self, id: i64) -> i64 {
+        if id < self.slots.len() { self.slots[id].views() } else { -1 }
+    }
+}
+
+fn enum_run(calls: Vec[(i64, Vec[i64], String)]) -> Vec[String] {
+    let mut platform = EnumPlatform.new();
+    let mut answers: Vec[String] = Vec.new();
+    for (kind, args, text) in calls.iter() {
+        match kind {
+            0 => answers.push(f"{platform.upload(text.clone())}"),
+            1 => platform.remove(args[0]),
+            2 => answers.push(platform.watch(args[0], args[1], args[2])),
+            3 => platform.like(args[0]),
+            4 => platform.dislike(args[0]),
+            5 => answers.push(f"{platform.get_likes_and_dislikes(args[0])}"),
+            _ => answers.push(f"{platform.get_views(args[0])}"),
+        }
+    }
+    answers
+}
+
+// ---- videos_columns.kara: parallel columns and a hand-written min-heap
+struct ColumnsPlatform {
+    contents: Vec[String],
+    views: Vec[i64],
+    likes: Vec[i64],
+    dislikes: Vec[i64],
+    held: Vec[bool],
+    heap: Vec[i64],
+}
+
+// the heap's new last element moved up while it is smaller than its parent
+fn columns_sift_up(heap: mut ref Vec[i64]) {
+    let mut at = heap.len() - 1;
+    while at > 0 and heap[(at - 1) / 2] > heap[at] {
+        heap.swap(at, (at - 1) / 2);
+        at = (at - 1) / 2;
+    }
+}
+
+// the heap's root moved down while a child is smaller
+fn columns_sift_down(heap: mut ref Vec[i64]) {
+    let mut at = 0;
+    loop {
+        let mut least = at;
+        for child in [2 * at + 1, 2 * at + 2] {
+            if child < heap.len() and heap[child] < heap[least] {
+                least = child;
+            }
+        }
+        if least == at {
+            break;
+        }
+        heap.swap(at, least);
+        at = least;
+    }
+}
+
+impl ColumnsPlatform {
+    fn new() -> ColumnsPlatform {
+        ColumnsPlatform {
+            contents: Vec.new(),
+            views: Vec.new(),
+            likes: Vec.new(),
+            dislikes: Vec.new(),
+            held: Vec.new(),
+            heap: Vec.new(),
+        }
+    }
+
+    fn upload(mut ref self, video: own String) -> i64 {
+        if self.heap.is_empty() {
+            self.contents.push(video);
+            self.views.push(0);
+            self.likes.push(0);
+            self.dislikes.push(0);
+            self.held.push(true);
+            return self.held.len() - 1;
+        }
+        let id = self.heap[0];
+        let last = self.heap.pop().unwrap();
+        if not self.heap.is_empty() {
+            self.heap[0] = last;
+            columns_sift_down(mut self.heap);
+        }
+        self.contents[id] = video;
+        self.views[id] = 0;
+        self.likes[id] = 0;
+        self.dislikes[id] = 0;
+        self.held[id] = true;
+        id
+    }
+
+    fn has(ref self, id: i64) -> bool {
+        id < self.held.len() and self.held[id]
+    }
+
+    fn remove(mut ref self, id: i64) {
+        if self.has(id) {
+            self.held[id] = false;
+            self.heap.push(id);
+            columns_sift_up(mut self.heap);
+        }
+    }
+
+    fn watch(mut ref self, id: i64, start: i64, end: i64) -> String {
+        if not self.has(id) {
+            return "-1";
+        }
+        self.views[id] += 1;
+        let last = end.min(self.contents[id].len() - 1);
+        self.contents[id][start..last + 1].to_string()
+    }
+
+    fn like(mut ref self, id: i64) {
+        if self.has(id) {
+            self.likes[id] += 1;
+        }
+    }
+
+    fn dislike(mut ref self, id: i64) {
+        if self.has(id) {
+            self.dislikes[id] += 1;
+        }
+    }
+
+    fn get_likes_and_dislikes(ref self, id: i64) -> Vec[i64] {
+        if self.has(id) { [self.likes[id], self.dislikes[id]].to_vec() } else { [-1].to_vec() }
+    }
+
+    fn get_views(ref self, id: i64) -> i64 {
+        if self.has(id) { self.views[id] } else { -1 }
+    }
+}
+
+fn columns_run(calls: Vec[(i64, Vec[i64], String)]) -> Vec[String] {
+    let mut platform = ColumnsPlatform.new();
+    let mut answers: Vec[String] = Vec.new();
+    for (kind, args, text) in calls.iter() {
+        match kind {
+            0 => answers.push(f"{platform.upload(text.clone())}"),
+            1 => platform.remove(args[0]),
+            2 => answers.push(platform.watch(args[0], args[1], args[2])),
+            3 => platform.like(args[0]),
+            4 => platform.dislike(args[0]),
+            5 => answers.push(f"{platform.get_likes_and_dislikes(args[0])}"),
+            _ => answers.push(f"{platform.get_views(args[0])}"),
+        }
+    }
+    answers
+}
+
+// ---- videos_iter.kara: iterator methods and `Option` combinators
+struct IterVideo {
+    content: String,
+    views: i64,
+    likes: i64,
+    dislikes: i64,
+}
+
+struct IterPlatform {
+    videos: Map[i64, IterVideo],
+    free: Set[i64],
+}
+
+impl IterPlatform {
+    fn new() -> IterPlatform {
+        IterPlatform { videos: Map.new(), free: Set.new() }
+    }
+
+    fn upload(mut ref self, video: own String) -> i64 {
+        let id = self.free.iter().min().cloned().unwrap_or(self.videos.len());
+        self.free.remove(id);
+        self.videos.insert(id, IterVideo { content: video, views: 0, likes: 0, dislikes: 0 });
+        id
+    }
+
+    fn remove(mut ref self, id: i64) {
+        if self.videos.remove(id).is_some() {
+            self.free.insert(id);
+        }
+    }
+
+    fn watch(mut ref self, id: i64, start: i64, end: i64) -> String {
+        self.videos
+            .get_mut(id)
+            .map(|video| {
+                video.views += 1;
+                video.content.chars().skip(start).take(end - start + 1).collect()
+            })
+            .unwrap_or("-1")
+    }
+
+    fn like(mut ref self, id: i64) {
+        if let Some(video) = self.videos.get_mut(id) {
+            video.likes += 1;
+        }
+    }
+
+    fn dislike(mut ref self, id: i64) {
+        if let Some(video) = self.videos.get_mut(id) {
+            video.dislikes += 1;
+        }
+    }
+
+    fn get_likes_and_dislikes(ref self, id: i64) -> Vec[i64] {
+        self.videos.get(id).map(|video| [video.likes, video.dislikes].to_vec()).unwrap_or([-1].to_vec())
+    }
+
+    fn get_views(ref self, id: i64) -> i64 {
+        self.videos.get(id).map(|video| video.views).unwrap_or(-1)
+    }
+}
+
+fn iter_run(calls: Vec[(i64, Vec[i64], String)]) -> Vec[String] {
+    let mut platform = IterPlatform.new();
+    let mut answers: Vec[String] = Vec.new();
+    for (kind, args, text) in calls.iter() {
+        match kind {
+            0 => answers.push(f"{platform.upload(text.clone())}"),
+            1 => platform.remove(args[0]),
+            2 => answers.push(platform.watch(args[0], args[1], args[2])),
+            3 => platform.like(args[0]),
+            4 => platform.dislike(args[0]),
+            5 => answers.push(f"{platform.get_likes_and_dislikes(args[0])}"),
+            _ => answers.push(f"{platform.get_views(args[0])}"),
+        }
+    }
+    answers
+}
+
+// ---- videos_solution.kara: LeetCode's Rust template, carried by `karac fix`
+struct SolutionVideoSharingPlatform {
+    videos: Map[i32, String],
+    views: Map[i32, i32],
+    likes: Map[i32, (i32, i32)],
+    free: PriorityQueue[i32],
+    next_id: i32,
+}
+
+impl SolutionVideoSharingPlatform {
+    fn new() -> Self {
+        SolutionVideoSharingPlatform {
+            videos: Map.new(),
+            views: Map.new(),
+            likes: Map.new(),
+            free: PriorityQueue.new(),
+            next_id: 0,
+        }
+    }
+
+    fn upload(mut ref self, video: own String) -> i32 {
+        let id = if let Some(id) = self.free.pop() {
+            id
+        } else {
+            self.next_id += 1;
+            self.next_id - 1
+        };
+        self.videos.insert(id, video);
+        self.views.insert(id, 0);
+        self.likes.insert(id, (0, 0));
+        id
+    }
+
+    fn remove(mut ref self, video_id: i32) {
+        if self.videos.remove(video_id).is_some() {
+            self.views.remove(video_id);
+            self.likes.remove(video_id);
+            self.free.push(video_id);
+        }
+    }
+
+    fn watch(mut ref self, video_id: i32, start_minute: i32, end_minute: i32) -> String {
+        match self.videos.get(video_id) {
+            Some(v) => {
+                *self.views.get_mut(video_id).unwrap() += 1;
+                let end = (end_minute as i64).min(v.len() - 1);
+                v[start_minute as i64..=end].to_string()
+            }
+            None => "-1",
+        }
+    }
+
+    fn like(mut ref self, video_id: i32) {
+        if let Some(e) = self.likes.get_mut(video_id) {
+            e.0 += 1;
+        }
+    }
+
+    fn dislike(mut ref self, video_id: i32) {
+        if let Some(e) = self.likes.get_mut(video_id) {
+            e.1 += 1;
+        }
+    }
+
+    fn get_likes_and_dislikes(self, video_id: i32) -> Vec[i32] {
+        match self.likes.get(video_id) {
+            Some((l, d)) => [l, d],
+            None => [-1],
+        }
+    }
+
+    fn get_views(self, video_id: i32) -> i32 {
+        *self.views.get(video_id).unwrap_or(-1)
+    }
+}
+
+fn solution_run(calls: Vec[(i64, Vec[i64], String)]) -> Vec[String] {
+    let mut platform = SolutionVideoSharingPlatform.new();
+    let mut answers: Vec[String] = Vec.new();
+    for (kind, args, text) in calls.iter() {
+        let id = if args.is_empty() { 0 } else { args[0] as i32 };
+        match kind {
+            0 => answers.push(f"{platform.upload(text.clone())}"),
+            1 => platform.remove(id),
+            2 => answers.push(platform.watch(id, args[1] as i32, args[2] as i32)),
+            3 => platform.like(id),
+            4 => platform.dislike(id),
+            5 => answers.push(f"{platform.get_likes_and_dislikes(id)}"),
+            _ => answers.push(f"{platform.get_views(id)}"),
+        }
+    }
+    answers
+}
+
+
+fn main() {
+    let names = ["star", "map", "enum", "columns", "iter", "solution"];
+    let mut seed = 2254;
+    let mut cases: Vec[Vec[(i64, Vec[i64], String)]] = Vec.new();
+    for c in 0..360 {
+        if c < 300 {
+            let count = next_random(mut seed) % 30 + 1;
+            cases.push(calls_of(count, 0, -1, mut seed));
+        } else if c < 330 {
+            let count = next_random(mut seed) % 41 + 40;
+            cases.push(calls_of(count, 1, -1, mut seed));
+        } else {
+            let count = next_random(mut seed) % 21 + 20;
+            cases.push(calls_of(count, 0, 2, mut seed));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for calls in cases.iter() {
+        let truth = literal_run(calls);
+        for answer in truth.iter() {
+            for b in answer.bytes() {
+                check = (check * 131 + b) % 1000000007;
+            }
+            check = (check * 131 + 1) % 1000000007;
+        }
+        let got: Vec[Vec[String]] = (0..6).map(|arm| answer(arm, calls)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                from_a_video(calls, value),
+                well_formed(calls, value),
+                ids_free(calls, value, false),
+                ids_free(calls, value, true),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{calls} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
+
+// ---- the statement read literally
+
+
+struct Record {
+    id: i64,
+    text: String,
+    views: i64,
+    likes: i64,
+    dislikes: i64,
+}
+
+// the place in the list of the video with this id, or -1
+fn find(held: Vec[Record], id: i64) -> i64 {
+    for k in 0..held.len() {
+        if held[k].id == id {
+            return k;
+        }
+    }
+    -1
+}
+
+fn literal_run(calls: Vec[(i64, Vec[i64], String)]) -> Vec[String] {
+    let mut held: Vec[Record] = Vec.new();
+    let mut out: Vec[String] = Vec.new();
+    for (kind, args, text) in calls.iter() {
+        if kind == 0 {
+            let mut id = 0;
+            while find(held, id) >= 0 {
+                id += 1;
+            }
+            held.push(Record { id, text: text.clone(), views: 0, likes: 0, dislikes: 0 });
+            out.push(f"{id}");
+            continue;
+        }
+        let k = find(held, args[0]);
+        if kind == 1 {
+            if k >= 0 {
+                held.remove(k);
+            }
+        } else if kind == 2 {
+            if k < 0 {
+                out.push("-1");
+            } else {
+                held[k].views += 1;
+                let chars: Vec[char] = held[k].text.chars().collect();
+                let mut pieces: Vec[String] = Vec.new();
+                let mut minute = args[1];
+                while minute <= args[2] and minute < chars.len() {
+                    pieces.push(f"{chars[minute]}");
+                    minute += 1;
+                }
+                out.push(pieces.join(""));
+            }
+        } else if kind == 3 {
+            if k >= 0 {
+                held[k].likes += 1;
+            }
+        } else if kind == 4 {
+            if k >= 0 {
+                held[k].dislikes += 1;
+            }
+        } else if kind == 5 {
+            if k < 0 {
+                out.push("[-1]");
+            } else {
+                out.push(f"[{held[k].likes}, {held[k].dislikes}]");
+            }
+        } else {
+            if k < 0 {
+                out.push("-1");
+            } else {
+                out.push(f"{held[k].views}");
+            }
+        }
+    }
+    out
+}
+
+// the kinds of the calls that answer, in order
+fn answering(calls: Vec[(i64, Vec[i64], String)]) -> Vec[(i64, Vec[i64])] {
+    calls.iter().filter(|(kind, _, _)| kind == 0 or kind == 2 or kind == 5 or kind == 6).map(|(kind, args, _)| (kind, args.clone())).collect()
+}
+
+// P2: each watch's answer "-1" or some uploaded video's text from the
+// watch's start minute, cut short at most
+fn from_a_video(calls: Vec[(i64, Vec[i64], String)], value: Vec[String]) -> bool {
+    let kinds = answering(calls);
+    if value.len() != kinds.len() {
+        return false;
+    }
+    let texts: Vec[String] = calls.iter().filter(|(kind, _, _)| kind == 0).map(|(_, _, text)| text.clone()).collect();
+    for k in 0..value.len() {
+        let (kind, args) = kinds[k].clone();
+        if kind == 2 and value[k] != "-1" {
+            let w = value[k].clone();
+            if not texts.iter().any(|t| t.len() >= args[1] + w.len() and t.substring(args[1], args[1] + w.len()) == w) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+// P3: one answer per answering call, and a watch no longer than asked
+fn well_formed(calls: Vec[(i64, Vec[i64], String)], value: Vec[String]) -> bool {
+    let kinds = answering(calls);
+    if value.len() != kinds.len() {
+        return false;
+    }
+    for k in 0..value.len() {
+        let (kind, args) = kinds[k].clone();
+        if kind == 2 and value[k].len() > args[2] - args[1] + 1 {
+            return false;
+        }
+    }
+    true
+}
+
+// P4 (after_remove false): each upload's id held by no video and no more
+// than the number held; P5 (after_remove true): an upload right after a
+// remove of a held id gives an id no larger than the one removed. The
+// ids held are replayed from the arm's own upload answers.
+fn ids_free(calls: Vec[(i64, Vec[i64], String)], value: Vec[String], after_remove: bool) -> bool {
+    let mut held: Vec[i64] = Vec.new();
+    let mut next = 0;
+    let mut removed = -1;
+    for (kind, args, _) in calls.iter() {
+        if kind == 0 {
+            if next >= value.len() {
+                return false;
+            }
+            let id = i64.parse(value[next]).unwrap_or(-1);
+            if after_remove {
+                if removed >= 0 and id > removed {
+                    return false;
+                }
+            } else if id < 0 or held.contains(id) or id > held.len() {
+                return false;
+            }
+            held.push(id);
+            removed = -1;
+        } else {
+            removed = -1;
+            if kind == 1 {
+                if held.contains(args[0]) {
+                    held.retain(|h| h != args[0]);
+                    removed = args[0];
+                }
+            }
+        }
+        if kind == 0 or kind == 2 or kind == 5 or kind == 6 {
+            next += 1;
+        }
+    }
+    true
+}
+
+fn answer(arm: i64, calls: Vec[(i64, Vec[i64], String)]) -> Vec[String] {
+    match arm {
+        0 => star_run(calls),
+        1 => map_run(calls),
+        2 => enum_run(calls),
+        3 => columns_run(calls),
+        4 => iter_run(calls),
+        _ => solution_run(calls),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` calls: (kind, numbers, text) as the arms' harness has them.
+// With `churn` 1, four in ten are uploads and three removes; otherwise
+// three uploads and one remove. Ids up to `top`, or up to one past the
+// uploads so far when `top` is -1; videos of 3 to 8 digits; a watch from
+// minute 0 to 2 for 1 to 8 minutes.
+fn calls_of(count: i64, churn: i64, top: i64, seed: mut ref i64) -> Vec[(i64, Vec[i64], String)] {
+    let mut calls: Vec[(i64, Vec[i64], String)] = Vec.new();
+    let mut uploads = 0;
+    for _ in 0..count {
+        let pick = next_random(mut seed) % 10;
+        let id = if top < 0 { next_random(mut seed) % (uploads + 2) } else { next_random(mut seed) % (top + 1) };
+        let (up, rm) = if churn == 1 { (4, 7) } else { (3, 4) };
+        if pick < up {
+            let length = next_random(mut seed) % 6 + 3;
+            let digits: Vec[String] = (0..length).map(|_| f"{next_random(mut seed) % 10}").collect();
+            calls.push((0, Vec.new(), digits.join("")));
+            uploads += 1;
+        } else if pick < rm {
+            calls.push((1, [id].to_vec(), ""));
+        } else if pick < rm + 3 {
+            let start = next_random(mut seed) % 3;
+            let end = start + next_random(mut seed) % 8 + 1;
+            calls.push((2, [id, start, end].to_vec(), ""));
+        } else {
+            calls.push((3 + next_random(mut seed) % 4, [id].to_vec(), ""));
+        }
+    }
+    calls
+}

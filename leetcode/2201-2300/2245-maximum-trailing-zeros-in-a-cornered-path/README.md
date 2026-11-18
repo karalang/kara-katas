@@ -53,6 +53,11 @@ checksum of the answers; then the constraints' largest as 250 x 400
 cells with values up to 1000; then one row of 10^5 cells. `zeros.py`
 mirrors the ★ arm and its output is byte-identical.
 
+The iter arm first carried Rust's `use std::iter::once;`, which `karac
+fix` turns into `import std.iter.once;` and `karac check` then refuses
+("`std.iter` has no item `once`") with no fix and no word that `once`
+is in the prelude (kara B-2026-11-17-149). The arm imports nothing.
+
 `karac fix` carries the template in one round of 23 edits: `Vec<..>` to
 `Vec[..]`, `vec![vec![[0i32; 2]; n + 1]; m]` to `Vec.filled(m,
 Vec.filled(n + 1, [0i32; 2]))`, `[0; 2]` typed `[0i32; 2]` to match the
