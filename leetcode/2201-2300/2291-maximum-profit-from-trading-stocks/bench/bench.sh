@@ -121,8 +121,8 @@ fi
 echo
 
 bench_begin id=2291 slug=maximum-profit-from-trading-stocks group=2201-2300 \
-    title="Rearrange Characters to Make Target String" \
-    workload="200 passes over 10^4 pairs of up to 100 and 10 letters; sink=checksum" sink="$expected"
+    title="Maximum Profit From Trading Stocks" \
+    workload="100 markets of 500 stocks, budget 1000; sink=checksum" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30

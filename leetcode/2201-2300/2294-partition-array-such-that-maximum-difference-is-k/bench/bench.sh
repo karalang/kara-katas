@@ -121,8 +121,8 @@ fi
 echo
 
 bench_begin id=2294 slug=partition-array-such-that-maximum-difference-is-k group=2201-2300 \
-    title="Rearrange Characters to Make Target String" \
-    workload="200 passes over 10^4 pairs of up to 100 and 10 letters; sink=checksum" sink="$expected"
+    title="Partition Array Such That Maximum Difference Is K" \
+    workload="5 passes over 20 arrays of 10^5; sink=checksum" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30
