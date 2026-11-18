@@ -1,0 +1,257 @@
+// LeetCode #2283: Check if Number Has Equal Digit Count and Digit Value
+// -- the differential. The six arms, against the statement read
+// literally: for every index, the occurrences of its digit found by
+// splitting the string on it, against the digit standing there. No
+// counts table. 300 random strings of 1 to 10 digits, each below 3, at
+// most the length, or any; then 30 self-describing strings with one
+// place changed or not; then 30 strings whose digits sum to their
+// length. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  true only when the digits sum to the length
+// P3  a true string with its first digit below 9 raised by one: false
+// P4  true exactly when the string is its own description, the count of
+//     each index's digit written in place
+// P5  a true string shorter than 10 with a 0 appended: false
+// P6  each arm agrees with at least three of the other five
+
+// ---- digits.kara: the ★ arm, ten counts and a check of each place
+fn star_digit_count(num: Str) -> bool {
+    let mut counts = [0; 10];
+    for c in num.chars() {
+        counts[c.to_digit(10).unwrap()] += 1;
+    }
+    for (i, c) in num.chars().enumerate() {
+        if counts[i] != c.to_digit(10).unwrap() {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- digits_naive.kara: a walk of the string for each place
+fn naive_digit_count(num: Str) -> bool {
+    let digits: Vec[i64] = num.chars().map(|c| (c.to_digit(10).unwrap()) as i64).collect();
+    for i in 0..digits.len() {
+        let mut times = 0;
+        for d in digits.iter() {
+            if d == i {
+                times += 1;
+            }
+        }
+        if times != digits[i] {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- digits_map.kara: a `Map` from character to count
+fn map_digit_count(num: Str) -> bool {
+    let mut counts: Map[char, i64] = Map.new();
+    for c in num.chars() {
+        counts[c] = counts.get(c).unwrap_or(0) + 1;
+    }
+    for (i, c) in num.chars().enumerate() {
+        let index = (b'0' + i as u8) as char;
+        if counts.get(index).unwrap_or(0) != c.to_digit(10).unwrap() {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- digits_struct.kara: `struct Tally` asked about each place
+struct StructTally {
+    counts: Array[i64, 10],
+}
+
+impl StructTally {
+    fn of(num: Str) -> StructTally {
+        let mut counts = [0; 10];
+        for c in num.chars() {
+            counts[c.to_digit(10).unwrap()] += 1;
+        }
+        StructTally { counts: counts }
+    }
+
+    fn says(self, index: i64, digit: i64) -> bool {
+        self.counts[index] == digit
+    }
+}
+
+fn struct_digit_count(num: Str) -> bool {
+    let tally = StructTally.of(num);
+    let mut index = 0;
+    for c in num.chars() {
+        if not tally.says(index, c.to_digit(10).unwrap()) {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
+// ---- digits_iter.kara: `enumerate`, `all`, `filter` and `count`
+fn iter_digit_count(num: Str) -> bool {
+    num.chars()
+        .enumerate()
+        .all(|(i, c)| num.chars().filter(|d| d.to_digit(10).unwrap() == i).count() == c.to_digit(10).unwrap())
+}
+
+// ---- digits_solution.kara: LeetCode's Rust template
+impl Solution {
+    pub fn digit_count(num: String) -> bool {
+        let mut cnt = [0usize; 10];
+        for b in num.bytes() {
+            cnt[(b - b'0') as usize] += 1;
+        }
+        num.bytes().iter().enumerate().all(|(i, b)| cnt[i] == (b - b'0'))
+    }
+}
+
+struct Solution {}
+
+fn solution_digit_count(num: Str) -> bool {
+    Solution.digit_count(num.to_string())
+}
+
+
+// ---- the statement read literally
+
+fn literal(num: Str) -> bool {
+    let n = num.len();
+    for i in 0..n {
+        let digit = i.to_string();
+        let occurs = num.split(digit).count() - 1;
+        let stands = num.chars().nth(i).unwrap().to_digit(10).unwrap();
+        if occurs != stands {
+            return false;
+        }
+    }
+    true
+}
+
+fn answer(arm: i64, num: Str) -> bool {
+    match arm {
+        0 => star_digit_count(num),
+        1 => naive_digit_count(num),
+        2 => map_digit_count(num),
+        3 => struct_digit_count(num),
+        4 => iter_digit_count(num),
+        _ => solution_digit_count(num),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn digit(d: i64) -> char {
+    (b'0' + d as u8) as char
+}
+
+fn main() {
+    let names = ["star", "naive", "map", "struct", "iter", "solution"];
+    let known = ["1210", "2020", "21200", "3211000", "42101000", "521001000", "6210001000"];
+    let mut seed = 2283;
+    let mut cases: Vec[String] = Vec.new();
+    for c in 0..360 {
+        let mut num = String.new();
+        if c < 300 {
+            let n = next_random(mut seed) % 10 + 1;
+            let high = [3, n.min(9) + 1, 10][c % 3];
+            for _ in 0..n {
+                num.push(digit(next_random(mut seed) % high));
+            }
+        } else if c < 330 {
+            let base = ref known[next_random(mut seed) % 7];
+            let at = next_random(mut seed) % base.len();
+            let to = next_random(mut seed) % 3;
+            for (k, ch) in base.chars().enumerate() {
+                if k == at and to > 0 {
+                    num.push(digit((ch.to_digit(10).unwrap() + to) % 10));
+                } else {
+                    num.push(ch);
+                }
+            }
+        } else {
+            let n = next_random(mut seed) % 10 + 1;
+            let mut left = n;
+            for k in 0..n {
+                let d = if k == n - 1 { left } else { next_random(mut seed) % (left.min(9) + 1) };
+                let d = d.min(9);
+                num.push(digit(d));
+                left -= d;
+            }
+        }
+        cases.push(num);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for num in cases.iter() {
+        let truth = literal(num);
+        check = (check * 31 + (if truth { 1 } else { 0 })) % 1000000007;
+        let n = num.len();
+        let digits: Vec[i64] = num.chars().map(|ch| ch.to_digit(10).unwrap() as i64).collect();
+        let sum = digits.iter().sum();
+        let mut raised = String.new();
+        let mut done = false;
+        for d in digits.iter() {
+            if not done and d < 9 {
+                raised.push(digit(d + 1));
+                done = true;
+            } else {
+                raised.push(digit(d));
+            }
+        }
+        let mut description = String.new();
+        for i in 0..n {
+            description.push(digit(digits.iter().filter(|d| d == i).count().min(9)));
+        }
+        let mut longer = num.clone();
+        longer.push('0');
+        let got: Vec[bool] = (0..6).map(|arm| answer(arm, num)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                not value or sum == n,
+                not value or not done or not answer(arm, raised),
+                value == (description == num),
+                not value or n >= 10 or not answer(arm, longer),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{num} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

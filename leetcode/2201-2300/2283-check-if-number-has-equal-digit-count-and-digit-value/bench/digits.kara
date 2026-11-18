@@ -1,0 +1,55 @@
+// LeetCode #2283: Check if Number Has Equal Digit Count and Digit Value
+// -- the bench, the ★ arm. Ten counts, then a check of each place.
+// O(n).
+
+fn digit_count(num: Str) -> bool {
+    let mut counts = [0; 10];
+    for c in num.chars() {
+        counts[c.to_digit(10).unwrap()] += 1;
+    }
+    for (i, c) in num.chars().enumerate() {
+        if counts[i] != c.to_digit(10).unwrap() {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- bench harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 10^5 strings built once, every eighth a self-describing one and the
+    // rest 1 to 10 random digits each at most the length; then 100 passes
+    // over all of them, counting those that hold
+    let known = ["1210", "2020", "21200", "3211000", "42101000", "521001000", "6210001000"];
+    let mut seed = 2283;
+    let mut nums: Vec[String] = Vec.new();
+    for k in 0..100000 {
+        if k % 8 == 0 {
+            nums.push(known[next_random(mut seed) % 7].clone());
+        } else {
+            let n = next_random(mut seed) % 10 + 1;
+            let mut num = String.new();
+            for _ in 0..n {
+                num.push((b'0' + (next_random(mut seed) % (n.min(9) + 1)) as u8) as char);
+            }
+            nums.push(num);
+        }
+    }
+    let mut check = 0;
+    for _ in 0..100 {
+        let mut held = 0;
+        for num in nums.iter() {
+            if digit_count(num) {
+                held += 1;
+            }
+        }
+        check = (check * 31 + held) % 1000000007;
+    }
+    println(f"100 passes over 10^5 strings: checksum {check}");
+}
