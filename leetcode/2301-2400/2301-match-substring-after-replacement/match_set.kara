@@ -1,0 +1,78 @@
+// LeetCode #2301: Match Substring After Replacement -- the mappings as a
+// `Set[(char, char)]`: a letter of `sub` matches the letter of `s`
+// opposite it when the two are equal or the pair is in the set.
+// O(n * k + m) expected.
+
+fn match_replacement(s: Str, sub: Str, mappings: Vec[(char, char)]) -> bool {
+    let mut pairs: Set[(char, char)] = Set.new();
+    for pair in mappings.iter() {
+        pairs.insert(pair);
+    }
+    let s: Vec[char] = s.chars().collect();
+    let sub: Vec[char] = sub.chars().collect();
+    for start in 0..=s.len() - sub.len() {
+        let mut j = 0;
+        while j < sub.len() and (sub[j] == s[start + j] or pairs.contains((sub[j], s[start + j]))) {
+            j += 1;
+        }
+        if j == sub.len() {
+            return true;
+        }
+    }
+    false
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples; then `sub` the whole of `s`, no mappings,
+    // a chain of mappings, which does not compose, and a letter mapped to
+    // itself
+    let cases: Vec[(Str, Str, Vec[(char, char)])] = [
+        ("fool3e7bar", "leet", [('e', '3'), ('t', '7'), ('t', '8')]),
+        ("fooleetbar", "f00l", [('o', '0')]),
+        ("Fool33tbaR", "leetd", [('e', '3'), ('t', '7'), ('t', '8'), ('d', 'b'), ('p', 'b')]),
+        ("abc", "abc", []),
+        ("abcabd", "abd", []),
+        ("xcz", "xaz", [('a', 'b'), ('b', 'c')]),
+        ("q9q", "q9q", [('q', 'q')]),
+    ];
+    for (s, sub, mappings) in cases.iter() {
+        println(f"{s} {sub}: {match_replacement(s, sub, mappings)}");
+    }
+    // 2000 random cases: `s` of 1 to 30 letters and `sub` of 1 to 8 but
+    // no longer, both from `abcAB01`, and 0 to 12 mappings between them
+    let letters: Vec[char] = "abcAB01".chars().collect();
+    let mut seed = 2301;
+    let mut found = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 30 + 1;
+        let k = next_random(mut seed) % n.min(8) + 1;
+        let mut s = String.new();
+        for _ in 0..n {
+            s.push(letters[next_random(mut seed) % 7]);
+        }
+        let mut sub = String.new();
+        for _ in 0..k {
+            sub.push(letters[next_random(mut seed) % 7]);
+        }
+        let mut mappings: Vec[(char, char)] = Vec.new();
+        for _ in 0..next_random(mut seed) % 13 {
+            let old = letters[next_random(mut seed) % 7];
+            let new = letters[next_random(mut seed) % 7];
+            mappings.push((old, new));
+        }
+        let ok = match_replacement(s, sub, mappings);
+        if ok {
+            found += 1;
+        }
+        check = (check * 31 + if ok { n * 100 + k } else { 7 }) % 1000000007;
+    }
+    println(f"2000 cases: {found} match, checksum {check}");
+}

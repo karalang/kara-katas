@@ -1,0 +1,75 @@
+// LeetCode #2301: Match Substring After Replacement -- the bench, the ★
+// arm. A table of which letter may stand for which, then every start of
+// `sub` in `s` checked against it.
+
+fn match_replacement(s: Str, sub: Str, mappings: Vec[(char, char)]) -> bool {
+    let mut can: Vec[bool] = Vec.filled(128 * 128, false);
+    for c in 0..128 {
+        can[c * 128 + c] = true;
+    }
+    for (old, new) in mappings.iter() {
+        can[(old as i64) * 128 + (new as i64)] = true;
+    }
+    let s = s.bytes();
+    let sub = sub.bytes();
+    for start in 0..=s.len() - sub.len() {
+        let mut all = true;
+        for j in 0..sub.len() {
+            if not can[(sub[j] as i64) * 128 + s[start + j]] {
+                all = false;
+                break;
+            }
+        }
+        if all {
+            return true;
+        }
+    }
+    false
+}
+
+// ---- bench harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 50 cases built once: `s` of 20000 letters from `ab`, `sub` of 40
+    // from `abc`, `c` half the time, and 1000 mappings, `c` to `a`
+    // and `c` to `b` among them and the rest from `xyz` to `ab`; then 20
+    // passes, pass `p` matching case `c`'s `sub` and mappings against case
+    // `c + p`'s `s`
+    let mut seed = 2301;
+    let mut texts: Vec[String] = Vec.new();
+    let mut subs: Vec[String] = Vec.new();
+    let mut maps: Vec[Vec[(char, char)]] = Vec.new();
+    let ab: Vec[char] = "ab".chars().collect();
+    let xyz: Vec[char] = "xyz".chars().collect();
+    for _ in 0..50 {
+        let mut s = String.new();
+        for _ in 0..20000 {
+            s.push(ab[next_random(mut seed) % 2]);
+        }
+        let mut sub = String.new();
+        for _ in 0..40 {
+            let r = next_random(mut seed) % 4;
+            sub.push(if r < 2 { 'c' } else { ab[r - 2] });
+        }
+        let mut mappings: Vec[(char, char)] = [('c', 'a'), ('c', 'b')];
+        for _ in 0..998 {
+            mappings.push((xyz[next_random(mut seed) % 3], ab[next_random(mut seed) % 2]));
+        }
+        texts.push(s);
+        subs.push(sub);
+        maps.push(mappings);
+    }
+    let mut check = 0;
+    for pass in 0..20 {
+        for c in 0..50 {
+            let ok = match_replacement(texts[(c + pass) % 50], subs[c], maps[c]);
+            check = (check * 31 + if ok { c + 1 } else { 0 }) % 1000000007;
+        }
+    }
+    println(f"20 passes over 50 cases of 20000 letters: checksum {check}");
+}

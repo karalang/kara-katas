@@ -1,0 +1,305 @@
+// LeetCode #2301: Match Substring After Replacement -- the
+// differential. The six arms, against the statement read literally: at
+// each start, each letter of `sub` lists what it may become, itself
+// first and then the new letter of every mapping whose old letter it
+// is, and the letter of `s` opposite it must be in that list. No table,
+// no set, no bits. 300 random cases of `s` of 1 to 30 letters and `sub`
+// of 1 to 8 from `abcAB01` with 0 to 12 mappings; then 30 whose `sub` is
+// a window of `s` with some letters swapped back through a mapping, so
+// that it matches; then 30 of `s` up to 200 letters, `sub` up to 30 and
+// up to 40 mappings. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  `s` with letters added at both ends: a match stays a match
+// P3  the mappings in reverse order, each written twice: the same answer
+// P4  `sub` a window of `s`, with the same mappings: a match
+// P5  a mapping from every letter to `Z`, which is in neither `s` nor
+//     `sub`: the same answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- match.kara: the ★ arm, a table of which letter may stand for which
+fn star_match(s: Str, sub: Str, mappings: Vec[(char, char)]) -> bool {
+    let mut can: Vec[bool] = Vec.filled(128 * 128, false);
+    for c in 0..128 {
+        can[c * 128 + c] = true;
+    }
+    for (old, new) in mappings.iter() {
+        can[(old as i64) * 128 + (new as i64)] = true;
+    }
+    let s = s.bytes();
+    let sub = sub.bytes();
+    for start in 0..=s.len() - sub.len() {
+        let mut all = true;
+        for j in 0..sub.len() {
+            if not can[(sub[j] as i64) * 128 + s[start + j]] {
+                all = false;
+                break;
+            }
+        }
+        if all {
+            return true;
+        }
+    }
+    false
+}
+
+// ---- match_naive.kara: the mappings searched for each letter
+fn naive_match(s: Str, sub: Str, mappings: Vec[(char, char)]) -> bool {
+    let s: Vec[char] = s.chars().collect();
+    let sub: Vec[char] = sub.chars().collect();
+    let mut start = 0;
+    while start + sub.len() <= s.len() {
+        let mut all = true;
+        for j in 0..sub.len() {
+            let want = s[start + j];
+            if sub[j] == want {
+                continue;
+            }
+            let mut mapped = false;
+            for (old, new) in mappings.iter() {
+                if old == sub[j] and new == want {
+                    mapped = true;
+                }
+            }
+            if not mapped {
+                all = false;
+            }
+        }
+        if all {
+            return true;
+        }
+        start += 1;
+    }
+    false
+}
+
+// ---- match_set.kara: a `Set[(char, char)]` of the mappings
+fn set_match(s: Str, sub: Str, mappings: Vec[(char, char)]) -> bool {
+    let mut pairs: Set[(char, char)] = Set.new();
+    for pair in mappings.iter() {
+        pairs.insert(pair);
+    }
+    let s: Vec[char] = s.chars().collect();
+    let sub: Vec[char] = sub.chars().collect();
+    for start in 0..=s.len() - sub.len() {
+        let mut j = 0;
+        while j < sub.len() and (sub[j] == s[start + j] or pairs.contains((sub[j], s[start + j]))) {
+            j += 1;
+        }
+        if j == sub.len() {
+            return true;
+        }
+    }
+    false
+}
+
+// ---- match_mask.kara: each letter's stand-ins as the bits of a `u128`
+fn mask_match(s: Str, sub: Str, mappings: Vec[(char, char)]) -> bool {
+    let mut masks: Vec[u128] = Vec.new();
+    for c in 0..128 {
+        masks.push(1u128 << c);
+    }
+    for (old, new) in mappings.iter() {
+        masks[old as i64] |= 1u128 << (new as i64);
+    }
+    let s = s.bytes();
+    let sub = sub.bytes();
+    let k = sub.len();
+    for start in 0..s.len() - k + 1 {
+        if (0..k).all(|j| masks[sub[j]] >> s[start + j] & 1 == 1) {
+            return true;
+        }
+    }
+    false
+}
+
+// ---- match_iter.kara: `fold`, `windows`, `any`, `zip` and `all`
+fn iter_match(s: Str, sub: Str, mappings: Vec[(char, char)]) -> bool {
+    let into: Map[char, Vec[char]] = mappings.iter().fold(Map.new(), |m: own Map[char, Vec[char]], (old, new)| {
+        let mut m = m;
+        m.entry(old).or_insert(Vec.new()).push(new);
+        m
+    });
+    let s: Vec[char] = s.chars().collect();
+    let sub: Vec[char] = sub.chars().collect();
+    s.windows(sub.len()).into_iter().any(|w| {
+        sub.iter().zip(w.iter()).all(|(a, b)| a == b or into.get(a).is_some_and(|v| v.contains(b)))
+    })
+}
+
+// ---- match_solution.kara: LeetCode's Rust template
+struct Solution {}
+
+impl Solution {
+    pub fn match_replacement(s: String, sub: String, mappings: Vec[Vec[char]]) -> bool {
+        let mut m = Vec.filled(128, Vec.filled(128, false));
+        for p in ref mappings {
+            m[p[0] as usize][p[1] as usize] = true;
+        }
+        let s = s.bytes();
+        let sub = sub.bytes();
+        for i in 0..=s.len() - sub.len() {
+            let mut ok = true;
+            for j in 0..sub.len() {
+                let (a, b) = (sub[j], s[i + j]);
+                if a != b and not m[a as usize][b as usize] {
+                    ok = false;
+                    break;
+                }
+            }
+            if ok {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+fn solution_match(s: Str, sub: Str, mappings: Vec[(char, char)]) -> bool {
+    let pairs: Vec[Vec[char]] = mappings.iter().map(|(a, b)| [a, b].to_vec()).collect();
+    Solution.match_replacement(s.to_string(), sub.to_string(), pairs)
+}
+
+// ---- the statement read literally
+
+fn literal(s: Str, sub: Str, mappings: Vec[(char, char)]) -> bool {
+    let s: Vec[char] = s.chars().collect();
+    let sub: Vec[char] = sub.chars().collect();
+    let mut start = 0;
+    while start + sub.len() <= s.len() {
+        let mut every = true;
+        for j in 0..sub.len() {
+            let mut may: Vec[char] = [sub[j]].to_vec();
+            for (old, new) in mappings.iter() {
+                if old == sub[j] {
+                    may.push(new);
+                }
+            }
+            if not may.contains(s[start + j]) {
+                every = false;
+            }
+        }
+        if every {
+            return true;
+        }
+        start += 1;
+    }
+    false
+}
+
+fn answer(arm: i64, s: Str, sub: Str, mappings: Vec[(char, char)]) -> bool {
+    match arm {
+        0 => star_match(s, sub, mappings),
+        1 => naive_match(s, sub, mappings),
+        2 => set_match(s, sub, mappings),
+        3 => mask_match(s, sub, mappings),
+        4 => iter_match(s, sub, mappings),
+        _ => solution_match(s, sub, mappings),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "naive", "set", "mask", "iter", "solution"];
+    let letters: Vec[char] = "abcAB01".chars().collect();
+    let mut seed = 2301;
+    let mut cases: Vec[(String, String, Vec[(char, char)])] = Vec.new();
+    for c in 0..360 {
+        let (most_s, most_sub, most_maps) = if c < 330 { (30, 8, 12) } else { (200, 30, 40) };
+        let n = next_random(mut seed) % most_s + 1;
+        let k = next_random(mut seed) % n.min(most_sub) + 1;
+        let mut s: Vec[char] = Vec.new();
+        for _ in 0..n {
+            s.push(letters[next_random(mut seed) % 7]);
+        }
+        let mut mappings: Vec[(char, char)] = Vec.new();
+        for _ in 0..next_random(mut seed) % (most_maps + 1) {
+            mappings.push((letters[next_random(mut seed) % 7], letters[next_random(mut seed) % 7]));
+        }
+        let mut sub: Vec[char] = Vec.new();
+        if c >= 300 and c < 330 {
+            // a window of `s`, some letters put back to an old letter that
+            // a mapping turns into them
+            let at = next_random(mut seed) % (n - k + 1);
+            for j in 0..k {
+                let mut x = s[at + j];
+                for (old, new) in mappings.iter() {
+                    if new == s[at + j] and next_random(mut seed) % 2 == 0 {
+                        x = old;
+                    }
+                }
+                sub.push(x);
+            }
+        } else {
+            for _ in 0..k {
+                sub.push(letters[next_random(mut seed) % 7]);
+            }
+        }
+        let s: String = s.iter().collect();
+        let sub: String = sub.iter().collect();
+        cases.push((s, sub, mappings));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (s, sub, mappings) in cases.iter() {
+        let truth = literal(s, sub, mappings);
+        check = (check * 31 + if truth { s.len() * 100 + sub.len() } else { 7 }) % 1000000007;
+        let wider = f"0{s}Ab";
+        let mut twice: Vec[(char, char)] = Vec.new();
+        for m in mappings.iter().rev() {
+            twice.push(m);
+            twice.push(m);
+        }
+        let at = s.len() / 3;
+        let window: String = s.chars().skip(at).take(sub.len().min(s.len() - at)).collect();
+        let mut to_z = mappings.clone();
+        for x in letters.iter() {
+            to_z.push((x, 'Z'));
+        }
+        let got: Vec[bool] = (0..6).map(|arm| answer(arm, s, sub, mappings)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                not value or answer(arm, wider, sub, mappings),
+                answer(arm, s, sub, twice) == value,
+                answer(arm, s, window, mappings),
+                answer(arm, s, sub, to_z) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{s} {sub} {mappings} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
