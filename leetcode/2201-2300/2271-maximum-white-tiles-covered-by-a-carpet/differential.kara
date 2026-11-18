@@ -1,0 +1,308 @@
+// LeetCode #2271: Maximum White Tiles Covered by a Carpet -- the
+// differential. The six arms, against the statement read literally: the
+// carpet laid at every start from where it first touches a tile to the
+// last tile's end, each tile's overlap with it summed, the most kept. No
+// sort, and no start taken to be a tile's. 300 random sets of 1 to 8
+// tiles, lengths to 1, 4 or 10 and gaps to 0, 2 or 10, carpets of 1 to
+// 30; then 30 of tiles touching end to end; then 30 under a carpet
+// longer than them all. Every case is drawn before any arm answers.
+//
+// P1  the count is the literal reading's
+// P2  the tiles mirrored, each [l, r] made [1000 - r, 1000 - l]: the same
+//     count
+// P3  the tiles moved 10^6 along: the same count
+// P4  at most the carpet's length and the white tiles there are, and at
+//     least the longest tile's length or the carpet's, whichever is less
+// P5  the carpet one longer: the same count or one more
+// P6  each arm agrees with at least three of the other five
+
+// ---- carpet.kara: the ★ arm, from each tile's start, two indexes
+fn star_maximum_white_tiles(tiles: Vec[Vec[i64]], carpet_len: i64) -> i64 {
+    let mut sorted = tiles.clone();
+    sorted.sort();
+    let m = sorted.len();
+    let mut best = 0;
+    let mut whole = 0;
+    let mut j = 0;
+    for i in 0..m {
+        let end = sorted[i][0] + carpet_len - 1;
+        while j < m and sorted[j][1] <= end {
+            whole += sorted[j][1] - sorted[j][0] + 1;
+            j += 1;
+        }
+        let part = if j < m and sorted[j][0] <= end { end - sorted[j][0] + 1 } else { 0 };
+        best = best.max(whole + part);
+        if j > i {
+            whole -= sorted[i][1] - sorted[i][0] + 1;
+        } else {
+            j = i + 1;
+        }
+    }
+    best
+}
+
+// ---- carpet_binary.kara: prefix sums and a binary search
+fn binary_maximum_white_tiles(tiles: Vec[Vec[i64]], carpet_len: i64) -> i64 {
+    let mut sorted = tiles.clone();
+    sorted.sort();
+    let m = sorted.len();
+    let mut prefix = Vec.filled(m + 1, 0);
+    for i in 0..m {
+        prefix[i + 1] = prefix[i] + sorted[i][1] - sorted[i][0] + 1;
+    }
+    let mut best = 0;
+    for i in 0..m {
+        let end = sorted[i][0] + carpet_len - 1;
+        // the first tile starting past `end`, in `i + 1..=m`
+        let mut lo = i + 1;
+        let mut hi = m;
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            if sorted[mid][0] > end {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        let over = (sorted[lo - 1][1] - end).max(0);
+        best = best.max(prefix[lo] - prefix[i] - over);
+    }
+    best
+}
+
+// ---- carpet_ends.kara: carpets ending at each tile's end
+fn ends_maximum_white_tiles(tiles: Vec[Vec[i64]], carpet_len: i64) -> i64 {
+    let mut sorted = tiles.clone();
+    sorted.sort();
+    let mut best = 0;
+    let mut whole = 0;
+    let mut i = 0;
+    for j in 0..sorted.len() {
+        whole += sorted[j][1] - sorted[j][0] + 1;
+        let start = sorted[j][1] - carpet_len + 1;
+        while sorted[i][1] < start {
+            whole -= sorted[i][1] - sorted[i][0] + 1;
+            i += 1;
+        }
+        let cut = (start - sorted[i][0]).max(0);
+        best = best.max(whole - cut);
+    }
+    best
+}
+
+// ---- carpet_struct.kara: `struct Reach` laid and lifted
+struct StructReach {
+    tiles: Vec[Vec[i64]],
+    next: i64,
+    whole: i64,
+}
+
+impl StructReach {
+    fn lay(mut ref self, i: i64, carpet_len: i64) -> i64 {
+        if self.next < i {
+            self.next = i;
+        }
+        let end = self.tiles[i][0] + carpet_len - 1;
+        while self.next < self.tiles.len() and self.tiles[self.next][1] <= end {
+            self.whole += self.tiles[self.next][1] - self.tiles[self.next][0] + 1;
+            self.next += 1;
+        }
+        if self.next < self.tiles.len() and self.tiles[self.next][0] <= end {
+            self.whole + end - self.tiles[self.next][0] + 1
+        } else {
+            self.whole
+        }
+    }
+
+    fn lift(mut ref self, i: i64) {
+        if self.next > i {
+            self.whole -= self.tiles[i][1] - self.tiles[i][0] + 1;
+        }
+    }
+}
+
+fn struct_maximum_white_tiles(tiles: Vec[Vec[i64]], carpet_len: i64) -> i64 {
+    let mut sorted = tiles.clone();
+    sorted.sort();
+    let m = sorted.len();
+    let mut reach = StructReach { tiles: sorted, next: 0, whole: 0 };
+    let mut best = 0;
+    for i in 0..m {
+        best = best.max(reach.lay(i, carpet_len));
+        reach.lift(i);
+    }
+    best
+}
+
+// ---- carpet_iter.kara: `scan` sums and `partition_point`
+fn iter_maximum_white_tiles(tiles: Vec[Vec[i64]], carpet_len: i64) -> i64 {
+    let mut sorted = tiles.clone();
+    sorted.sort();
+    let mut prefix: Vec[i64] = [0].to_vec();
+    prefix.extend(sorted.iter().scan(0, |sum, t| {
+        let sum = sum + t[1] - t[0] + 1;
+        Some((sum, sum))
+    }));
+    (0..sorted.len())
+        .map(|i| {
+            let end = sorted[i][0] + carpet_len - 1;
+            let j = sorted.partition_point(|t| t[0] <= end);
+            prefix[j] - prefix[i] - (sorted[j - 1][1] - end).max(0)
+        })
+        .max()
+        .unwrap()
+}
+
+// ---- carpet_solution.kara: LeetCode's Rust template
+impl Solution {
+    pub fn maximum_white_tiles(tiles: own Vec[Vec[i32]], carpet_len: i32) -> i32 {
+        let mut tiles = tiles;
+        tiles.sort();
+        let mut ans: i32 = 0;
+        let mut cover: i32 = 0;
+        let mut j = 0;
+        for i in 0..tiles.len() {
+            let e = tiles[i][0] + carpet_len - 1;
+            while j < tiles.len() and tiles[j][1] <= e {
+                cover += tiles[j][1] - tiles[j][0] + 1;
+                j += 1;
+            }
+            if j == tiles.len() {
+                return ans.max(cover);
+            }
+            ans = ans.max(cover + (e - tiles[j][0] + 1).max(0));
+            cover -= tiles[i][1] - tiles[i][0] + 1;
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_maximum_white_tiles(tiles: Vec[Vec[i64]], carpet_len: i64) -> i64 {
+    let t: Vec[Vec[i32]] = tiles.iter().map(|r| r.iter().map(|x| x as i32).collect()).collect();
+    Solution.maximum_white_tiles(t, carpet_len as i32)
+}
+
+
+// ---- the statement read literally
+
+fn literal(tiles: Vec[Vec[i64]], carpet_len: i64) -> i64 {
+    let mut lowest = tiles[0][0];
+    let mut highest = tiles[0][1];
+    for t in tiles.iter() {
+        lowest = lowest.min(t[0]);
+        highest = highest.max(t[1]);
+    }
+    let mut best = 0;
+    for start in lowest - carpet_len + 1..=highest {
+        let end = start + carpet_len - 1;
+        let mut covered = 0;
+        for t in tiles.iter() {
+            let from = start.max(t[0]);
+            let to = end.min(t[1]);
+            if from <= to {
+                covered += to - from + 1;
+            }
+        }
+        best = best.max(covered);
+    }
+    best
+}
+
+fn answer(arm: i64, tiles: Vec[Vec[i64]], carpet_len: i64) -> i64 {
+    match arm {
+        0 => star_maximum_white_tiles(tiles, carpet_len),
+        1 => binary_maximum_white_tiles(tiles, carpet_len),
+        2 => ends_maximum_white_tiles(tiles, carpet_len),
+        3 => struct_maximum_white_tiles(tiles, carpet_len),
+        4 => iter_maximum_white_tiles(tiles, carpet_len),
+        _ => solution_maximum_white_tiles(tiles, carpet_len),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "binary", "ends", "struct", "iter", "solution"];
+    let mut seed = 2271;
+    let mut cases: Vec[(Vec[Vec[i64]], i64)] = Vec.new();
+    for c in 0..360 {
+        let m = next_random(mut seed) % 8 + 1;
+        let long = [1, 4, 10][c % 3];
+        let gap = if c < 300 { [0, 2, 10][c / 3 % 3] } else if c < 330 { 0 } else { 5 };
+        let mut tiles: Vec[Vec[i64]] = Vec.new();
+        let mut at = 1;
+        for _ in 0..m {
+            at += next_random(mut seed) % (gap + 1);
+            let end = at + next_random(mut seed) % long;
+            tiles.push([at, end].to_vec());
+            at = end + 1;
+        }
+        for i in (1..m).rev() {
+            let k = next_random(mut seed) % (i + 1);
+            tiles.swap(i, k);
+        }
+        let carpet_len = if c < 330 { next_random(mut seed) % 30 + 1 } else { at + next_random(mut seed) % 10 };
+        cases.push((tiles, carpet_len));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (tiles, carpet_len) in cases.iter() {
+        let truth = literal(tiles, carpet_len);
+        check = (check * 31 + truth) % 1000000007;
+        let mut white = 0;
+        let mut longest = 0;
+        for t in tiles.iter() {
+            white += t[1] - t[0] + 1;
+            longest = longest.max(t[1] - t[0] + 1);
+        }
+        let mirrored: Vec[Vec[i64]] = tiles.iter().map(|t| [1000 - t[1], 1000 - t[0]].to_vec()).collect();
+        let moved: Vec[Vec[i64]] = tiles.iter().map(|t| [t[0] + 1000000, t[1] + 1000000].to_vec()).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, tiles, carpet_len)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let longer = answer(arm, tiles, carpet_len + 1);
+            let verdicts = [
+                value == truth,
+                answer(arm, mirrored, carpet_len) == value,
+                answer(arm, moved, carpet_len) == value,
+                value <= carpet_len.min(white) and value >= carpet_len.min(longest),
+                longer == value or longer == value + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{tiles}, {carpet_len} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
