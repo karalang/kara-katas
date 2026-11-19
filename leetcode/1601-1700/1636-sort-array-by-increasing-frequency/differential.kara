@@ -1,0 +1,218 @@
+// LeetCode #1636: Sort Array by Increasing Frequency -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random arrays of
+// 1 to 10 values: every other one with values -2 to 2, so counts tie
+// often, the rest -20 to 20. Every array is drawn before any arm answers.
+//
+// P1  the order is the statement read literally
+// P2  the array reversed gives the same order
+// P3  the order is a rearrangement of the array
+// P4  every value plus one gives the same order, every value plus one
+// P5  the counts never fall along the order, and equal counts put larger
+//     values first
+// P6  each arm agrees with at least two of the other three
+
+// ---- frequency.kara: the ★ arm: a sort by (count, -value)
+
+fn star_arm(nums: Vec[i32]) -> Vec[i32] {
+    let mut count: Map[i32, i64] = Map.new();
+    for x in nums.iter() {
+        *count.entry(x).or_insert(0) += 1;
+    }
+    let mut sorted = nums.clone();
+    sorted.sort_by_key(|x| (count[x], -x));
+    sorted
+}
+
+// ---- frequency_buckets.kara: counting, the values written out by count
+
+fn buckets_arm(nums: Vec[i32]) -> Vec[i32] {
+    let mut count: Array[i64, 201] = [0; 201];
+    for x in nums.iter() {
+        count[x + 100] += 1;
+    }
+    let most = count.iter().max().unwrap();
+    let mut sorted: Vec[i32] = Vec.new();
+    for times in 1..=most {
+        for slot in (0..201).rev() {
+            if count[slot] == times {
+                for _ in 0..times {
+                    sorted.push(slot as i32 - 100);
+                }
+            }
+        }
+    }
+    sorted
+}
+
+// ---- frequency_pairs.kara: the distinct values sorted, then written out
+
+fn pairs_arm(nums: Vec[i32]) -> Vec[i32] {
+    let mut count: Map[i32, i64] = Map.new();
+    for x in nums.iter() {
+        *count.entry(x).or_insert(0) += 1;
+    }
+    let mut pairs: Vec[(i64, i32)] = count.iter().map(|(value, times)| (times, value)).collect();
+    pairs.sort_by(|a, b| a.0.cmp(b.0).then(b.1.cmp(a.1)));
+    let mut sorted: Vec[i32] = Vec.new();
+    for (times, value) in pairs.iter() {
+        for _ in 0..times {
+            sorted.push(value);
+        }
+    }
+    sorted
+}
+
+// ---- frequency_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn frequency_sort(nums: own Vec[i32]) -> Vec[i32] {
+        let mut cnt: Map[i32, i32] = Map.new();
+        for x in ref nums {
+            *cnt.entry(x).or_insert(0) += 1;
+        }
+        let mut nums = nums;
+        nums.sort_by(|a, b| cnt[a].cmp(cnt[b]).then(b.cmp(a)));
+        nums
+    }
+}
+
+fn solution_arm(nums: own Vec[i32]) -> Vec[i32] {
+    SolutionArm.frequency_sort(nums)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(k: i64, nums: Vec[i32]) -> Vec[i32] {
+    match k {
+        0 => star_arm(nums),
+        1 => buckets_arm(nums),
+        2 => pairs_arm(nums),
+        _ => solution_arm(nums.clone()),
+    }
+}
+
+fn arm_name(k: i64) -> String {
+    ["frequency", "buckets", "pairs", "solution"][k].to_string()
+}
+
+fn occurrences(nums: Vec[i32], x: i32) -> i64 {
+    nums.iter().filter(|y| y == x).count()
+}
+
+// ---- the statement read literally: the value that comes first is the
+// one that occurs least often, the largest of those on a tie; take one of
+// it out, and repeat with what is left
+
+fn literal(nums: Vec[i32]) -> Vec[i32] {
+    let mut left = nums.clone();
+    let mut order: Vec[i32] = Vec.new();
+    while left.len() > 0 {
+        let mut best = 0;
+        for i in 1..left.len() {
+            let (a, b) = (occurrences(nums, left[i]), occurrences(nums, left[best]));
+            if a < b or a == b and left[i] > left[best] {
+                best = i;
+            }
+        }
+        order.push(left[best]);
+        left.remove(best);
+    }
+    order
+}
+
+// P5: counts never fall, and ties put the larger value first
+fn keeps_the_order(nums: Vec[i32], order: Vec[i32]) -> bool {
+    for i in 1..order.len() {
+        let (a, b) = (occurrences(nums, order[i - 1]), occurrences(nums, order[i]));
+        if a > b or a == b and order[i - 1] < order[i] {
+            return false;
+        }
+    }
+    true
+}
+
+fn main() {
+    let mut seed = 1636;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[Vec[i32]] = [];
+    for p in 0..problems {
+        // every other array with values -2 to 2, so counts tie often
+        let spread = if p % 2 == 0 { 2 } else { 20 };
+        let n = next_random(mut seed) % 10 + 1;
+        let mut nums: Vec[i32] = [];
+        for _ in 0..n {
+            nums.push((next_random(mut seed) % (2 * spread + 1) - spread) as i32);
+        }
+        cases.push(nums);
+    }
+    for p in 0..problems {
+        let nums = cases[p].clone();
+        let reversed: Vec[i32] = nums.iter().rev().cloned().collect();
+        let shifted: Vec[i32] = nums.iter().map(|x| x + 1).collect();
+        let mut by_value = nums.clone();
+        by_value.sort();
+        let want = literal(nums);
+        for x in want.iter() {
+            check = (check * 31 + x + 1000) % 1000000007;
+        }
+        let mut answers: Vec[Vec[i32]] = [];
+        for k in 0..4 {
+            let got = arm(k, nums);
+            let mut got_by_value = got.clone();
+            got_by_value.sort();
+            let got_shifted: Vec[i32] = got.iter().map(|x| x + 1).collect();
+            let failed = [
+                got != want,
+                arm(k, reversed) != got,
+                got_by_value != by_value,
+                arm(k, shifted) != got_shifted,
+                not keeps_the_order(nums, got),
+            ];
+            answers.push(got);
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({nums}), {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P6
+        for k in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[k]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}
