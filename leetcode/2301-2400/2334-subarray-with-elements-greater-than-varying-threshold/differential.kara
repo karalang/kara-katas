@@ -1,0 +1,318 @@
+// LeetCode #2334: Subarray With Elements Greater Than Varying Threshold --
+// the differential. The six arms, against the statement read literally:
+// every length k from n down, and every subarray of that length, each of
+// its elements held to being greater than threshold / k, read as the
+// fraction it is, so that the element times k must exceed the
+// threshold; the first length with a subarray that passes is the
+// answer. Any size that works may be returned, and every arm returns the
+// largest. 300 random cases of 1 to 8 values from 1 to 10, threshold 1
+// to 40; then 30 of up to 30 values from 1 to 3, so that equal values
+// run together, threshold 1 to 60; then 30 of up to 300 values up to
+// 10^9, threshold up to 10^9. Every case is drawn before any arm
+// answers.
+//
+// P1  up to 30 values, the answer is the literal reading's
+// P2  the answer is -1 or from 1 to n, and then some subarray of that
+//     length passes
+// P3  the values reversed: the same answer
+// P4  the threshold one lower: no smaller an answer; and just below the
+//     least value times n, where that is at most 10^9: n
+// P5  no length longer than the answer has a subarray that passes
+// P6  each arm agrees with at least three of the other five
+
+// ---- star (threshold.kara) -----------------------------------------------
+
+fn star_valid_subarray_size(nums: Vec[i64], threshold: i64) -> i64 {
+    let n = nums.len();
+    // left[i]: the nearest index before i holding a smaller value, or -1;
+    // right[i]: the nearest after it, or n
+    let mut left: Vec[i64] = Vec.filled(n, -1);
+    let mut right: Vec[i64] = Vec.filled(n, n);
+    let mut stack: Vec[i64] = Vec.new();
+    for i in 0..n {
+        while stack.len() > 0 and nums[stack[stack.len() - 1]] >= nums[i] {
+            right[stack.pop().unwrap()] = i;
+        }
+        if stack.len() > 0 {
+            left[i] = stack[stack.len() - 1];
+        }
+        stack.push(i);
+    }
+    let mut best = -1;
+    for i in 0..n {
+        let width = right[i] - left[i] - 1;
+        if nums[i] * width > threshold {
+            best = best.max(width);
+        }
+    }
+    best
+}
+
+// ---- naive (threshold_naive.kara) ----------------------------------------
+
+fn naive_valid_subarray_size(nums: Vec[i64], threshold: i64) -> i64 {
+    let n = nums.len();
+    let mut best = -1;
+    for start in 0..n {
+        let mut least = nums[start];
+        for end in start..n {
+            least = least.min(nums[end]);
+            let length = end - start + 1;
+            if least * length > threshold {
+                best = best.max(length);
+            }
+        }
+    }
+    best
+}
+
+// ---- union (threshold_union.kara) ----------------------------------------
+
+fn union_find(parent: mut ref Vec[i64], i: i64) -> i64 {
+    let mut root = i;
+    while parent[root] != root {
+        root = parent[root];
+    }
+    let mut at = i;
+    while parent[at] != root {
+        let next = parent[at];
+        parent[at] = root;
+        at = next;
+    }
+    root
+}
+
+fn union_valid_subarray_size(nums: Vec[i64], threshold: i64) -> i64 {
+    let n = nums.len();
+    let mut order: Vec[i64] = (0..n).collect();
+    order.sort_by_key(|i| -nums[i]);
+    let mut parent: Vec[i64] = (0..n).collect();
+    let mut size: Vec[i64] = Vec.filled(n, 1);
+    let mut taken: Vec[bool] = Vec.filled(n, false);
+    let mut best = -1;
+    for i in order.iter() {
+        taken[i] = true;
+        for other in [i - 1, i + 1] {
+            if other >= 0 and other < n and taken[other] {
+                let a = union_find(mut parent, i);
+                let b = union_find(mut parent, other);
+                if a != b {
+                    parent[b] = a;
+                    size[a] += size[b];
+                }
+            }
+        }
+        let run = size[union_find(mut parent, i)];
+        if nums[i] * run > threshold {
+            best = best.max(run);
+        }
+    }
+    best
+}
+
+// ---- split (threshold_split.kara) ----------------------------------------
+
+fn split_widest(nums: Vec[i64], low: i64, high: i64, threshold: i64) -> i64 {
+    if low >= high {
+        return -1;
+    }
+    let mut least = low;
+    for i in low + 1..high {
+        if nums[i] < nums[least] {
+            least = i;
+        }
+    }
+    let here = if nums[least] * (high - low) > threshold { high - low } else { -1 };
+    here.max(split_widest(nums, low, least, threshold)).max(split_widest(nums, least + 1, high, threshold))
+}
+
+fn split_valid_subarray_size(nums: Vec[i64], threshold: i64) -> i64 {
+    split_widest(nums, 0, nums.len(), threshold)
+}
+
+// ---- iter (threshold_iter.kara) ------------------------------------------
+
+fn iter_valid_subarray_size(nums: Vec[i64], threshold: i64) -> i64 {
+    let n = nums.len();
+    (0..n).map(|i| {
+        let left = (0..i).rev().find(|j| nums[j] < nums[i]).unwrap_or(-1);
+        let right = (i + 1..n).find(|j| nums[j] < nums[i]).unwrap_or(n);
+        (nums[i], right - left - 1)
+    }).filter(|(value, width)| value * width > threshold).map(|(_, width)| width).max().unwrap_or(-1)
+}
+
+// ---- solution (threshold_solution.kara) ----------------------------------
+
+impl Solution {
+    pub fn valid_subarray_size(nums: Vec[i32], threshold: i32) -> i32 {
+        let n = nums.len();
+        let mut left = Vec.filled(n, -1i32);
+        let mut right = Vec.filled(n, n as i32);
+        let mut stack: Vec[i64] = Vec.new();
+        for i in 0..n {
+            while let Some(top) = stack.last().cloned() {
+                if nums[top] >= nums[i] {
+                    right[top] = i as i32;
+                    stack.pop();
+                } else {
+                    break;
+                }
+            }
+            if let Some(top) = stack.last().cloned() {
+                left[i] = top as i32;
+            }
+            stack.push(i);
+        }
+        let mut ans: i32 = -1;
+        for i in 0..n {
+            let k = (right[i] - left[i] - 1) as i64;
+            if nums[i] * k > threshold {
+                ans = ans.max(k as i32);
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_valid_subarray_size(nums: Vec[i64], threshold: i64) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.valid_subarray_size(nums, threshold as i32)
+}
+// ---- the statement read literally ------------------------------------------
+
+// whether every element of nums[start..start + k] is greater than
+// threshold / k
+fn passes(nums: Vec[i64], start: i64, k: i64, threshold: i64) -> bool {
+    for i in start..start + k {
+        if nums[i] * k <= threshold {
+            return false;
+        }
+    }
+    true
+}
+
+fn literal(nums: Vec[i64], threshold: i64) -> i64 {
+    let n = nums.len();
+    for k in (1..=n).rev() {
+        for start in 0..=n - k {
+            if passes(nums, start, k, threshold) {
+                return k;
+            }
+        }
+    }
+    -1
+}
+
+fn answer(arm: i64, nums: Vec[i64], threshold: i64) -> i64 {
+    match arm {
+        0 => star_valid_subarray_size(nums, threshold),
+        1 => naive_valid_subarray_size(nums, threshold),
+        2 => union_valid_subarray_size(nums, threshold),
+        3 => split_valid_subarray_size(nums, threshold),
+        4 => iter_valid_subarray_size(nums, threshold),
+        _ => solution_valid_subarray_size(nums, threshold),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn draw(seed: mut ref i64, top: i64) -> i64 {
+    let wide = next_random(mut seed) * 32768 + next_random(mut seed);
+    wide % top + 1
+}
+
+fn main() {
+    let names = ["star", "naive", "union", "split", "iter", "solution"];
+    let mut seed = 2334;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..360 {
+        let (n, top, most) = if c < 300 {
+            (draw(mut seed, 8), 10, 40)
+        } else if c < 330 {
+            (draw(mut seed, 30), 3, 60)
+        } else {
+            (draw(mut seed, 300), 1000000000, 1000000000)
+        };
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            nums.push(draw(mut seed, top));
+        }
+        let threshold = draw(mut seed, most);
+        cases.push((nums, threshold));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (nums, threshold)) in cases.iter().enumerate() {
+        let n = nums.len();
+        let small = c < 330;
+        let truth = if small { literal(nums, threshold) } else { -2 };
+        if small {
+            check = (check * 31 + truth + 1) % 1000000007;
+        }
+        let least = nums.iter().min().unwrap();
+        let below = least * n - 1;
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums, threshold)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut fits = value == -1;
+            if value >= 1 and value <= n {
+                for start in 0..=n - value {
+                    if passes(nums, start, value, threshold) {
+                        fits = true;
+                    }
+                }
+            }
+            let mut longest = true;
+            for k in value.max(0) + 1..=n {
+                for start in 0..=n - k {
+                    if passes(nums, start, k, threshold) {
+                        longest = false;
+                    }
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                fits,
+                answer(arm, reversed, threshold) == value,
+                answer(arm, nums, threshold - 1) >= value and (below < 1 or below > 1000000000 or answer(arm, nums, below) == n),
+                longest,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

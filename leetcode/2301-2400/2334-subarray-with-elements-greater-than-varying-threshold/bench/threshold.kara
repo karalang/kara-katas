@@ -1,0 +1,55 @@
+// LeetCode #2334: Subarray With Elements Greater Than Varying Threshold --
+// the bench, the ★ arm. The nearest smaller element on either side from
+// a monotonic stack, and the widest run whose least element times its
+// width exceeds the threshold. O(n).
+
+fn valid_subarray_size(nums: Vec[i64], threshold: i64) -> i64 {
+    let n = nums.len();
+    let mut left: Vec[i64] = Vec.filled(n, -1);
+    let mut right: Vec[i64] = Vec.filled(n, n);
+    let mut stack: Vec[i64] = Vec.new();
+    for i in 0..n {
+        while stack.len() > 0 and nums[stack[stack.len() - 1]] >= nums[i] {
+            right[stack.pop().unwrap()] = i;
+        }
+        if stack.len() > 0 {
+            left[i] = stack[stack.len() - 1];
+        }
+        stack.push(i);
+    }
+    let mut best = -1;
+    for i in 0..n {
+        let width = right[i] - left[i] - 1;
+        if nums[i] * width > threshold {
+            best = best.max(width);
+        }
+    }
+    best
+}
+
+// the `index`th value of a scramble that never repeats below 2^31 - 1
+fn scrambled(index: i64) -> i64 {
+    index * 2654435761 % 2147483647
+}
+
+fn main() {
+    // 10 arrays of 10^5 values from 1 to 10^9, built once; 5 passes,
+    // array `a` in pass `p` against the threshold
+    // ((10a + p) * 7919 mod 1000 + 1) * 10^6
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    for a in 0..10 {
+        let mut nums: Vec[i64] = Vec.new();
+        for i in 0..100000 {
+            nums.push(scrambled(a * 100000 + i) % 1000000000 + 1);
+        }
+        arrays.push(nums);
+    }
+    let mut check = 0;
+    for p in 0..5 {
+        for a in 0..10 {
+            let threshold = ((10 * a + p) * 7919 % 1000 + 1) * 1000000;
+            check = (check * 31 + valid_subarray_size(arrays[a], threshold) + 1) % 1000000007;
+        }
+    }
+    println(f"5 passes over 10 arrays of 10^5 values: checksum {check}");
+}
