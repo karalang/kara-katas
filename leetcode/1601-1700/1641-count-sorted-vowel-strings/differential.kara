@@ -1,0 +1,192 @@
+// LeetCode #1641: Count Sorted Vowel Strings -- the differential.
+//
+// Four arms on every n of the constraints, 1 to 50; the statement read
+// literally where its 5^n strings can be listed, n up to 7.
+//
+// P1  the count is the statement read literally (n up to 7)
+// P2  one letter more gives more strings
+// P3  the count times n is the count for n - 1 times n + 4, as
+//     C(n + 4, 4) and C(n + 3, 4) stand
+// P4  the count at n is the sum, over the vowel a string starts with, of
+//     the strings of n - 1 letters over that vowel and the later ones,
+//     counted on their own up to n = 7
+// P5  the count is at least n + 1 (one vowel or two) and at most 5^n
+//     (n up to 20)
+// P6  each arm agrees with at least two of the other three
+
+// ---- vowels.kara: the ★ arm: counts by last vowel
+
+fn star_arm(n: i64) -> i64 {
+    let mut ending: Array[i64, 5] = [1; 5];
+    for _ in 1..n {
+        for v in 1..5 {
+            ending[v] += ending[v - 1];
+        }
+    }
+    ending.iter().sum()
+}
+
+// ---- vowels_formula.kara: the closed form
+
+fn formula_arm(n: i64) -> i64 {
+    (n + 1) * (n + 2) * (n + 3) * (n + 4) / 24
+}
+
+// ---- vowels_build.kara: every string built, with a memo
+
+fn build_count_from(left: i64, lowest: i64, memo: mut ref Map[(i64, i64), i64]) -> i64 {
+    if left == 0 {
+        return 1;
+    }
+    if let Some(known) = memo.get((left, lowest)) {
+        return known;
+    }
+    let mut count = 0;
+    for vowel in lowest..5 {
+        count += build_count_from(left - 1, vowel, mut memo);
+    }
+    memo.insert((left, lowest), count);
+    count
+}
+
+fn build_arm(n: i64) -> i64 {
+    let mut memo: Map[(i64, i64), i64] = Map.new();
+    build_count_from(n, 0, mut memo)
+}
+
+// ---- vowels_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn count_vowel_strings(n: i32) -> i32 {
+        let n = n as i64;
+        let mut dp = Vec.filled(n + 1, [0i32; 6]);
+        for j in 0..5 {
+            dp[1][j] = (5 - j) as i32;
+        }
+        for i in 2..=n {
+            for j in (0..5).rev() {
+                dp[i][j] = dp[i][j + 1] + dp[i - 1][j];
+            }
+        }
+        dp[n][0]
+    }
+}
+
+fn solution_arm(n: i64) -> i64 {
+    SolutionArm.count_vowel_strings(n as i32)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn arm(k: i64, n: i64) -> i64 {
+    match k {
+        0 => star_arm(n),
+        1 => formula_arm(n),
+        2 => build_arm(n),
+        _ => solution_arm(n),
+    }
+}
+
+fn arm_name(k: i64) -> String {
+    ["vowels", "formula", "build", "solution"][k].to_string()
+}
+
+// ---- the statement read literally: every string of n letters from the
+// first `vowels` of "aeiou", counted when each letter is no earlier than
+// the one before
+
+fn sorted_strings(n: i64, vowels: i64) -> i64 {
+    let mut total = 1;
+    for _ in 0..n {
+        total *= vowels;
+    }
+    let mut count = 0;
+    for code in 0..total {
+        // the string's letters, as base-`vowels` digits
+        let mut rest = code;
+        let mut last = -1;
+        let mut sorted = true;
+        for _ in 0..n {
+            let letter = rest % vowels;
+            rest /= vowels;
+            if letter < last {
+                sorted = false;
+            }
+            last = letter;
+        }
+        if sorted {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn main() {
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for n in 1..=50 {
+        let want = if n <= 7 { sorted_strings(n, 5) } else { -1 };
+        if want >= 0 {
+            check = (check * 31 + want) % 1000000007;
+        }
+        // the strings of n - 1 letters over the last v vowels, v = 1 to 5
+        let mut split = 0;
+        if n <= 7 {
+            for v in 1..=5 {
+                split += sorted_strings(n - 1, v);
+            }
+        }
+        let mut answers: Vec[i64] = [];
+        for k in 0..4 {
+            let got = arm(k, n);
+            answers.push(got);
+            let mut most = 1;
+            for _ in 0..min(n, 20) {
+                most *= 5;
+            }
+            let failed = [
+                want >= 0 and got != want,
+                n > 1 and got <= arm(k, n - 1),
+                n > 1 and got * n != arm(k, n - 1) * (n + 4),
+                n <= 7 and got != split,
+                got < n + 1 or n <= 20 and got > most,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"n = {n}, {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P6
+        for k in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[k]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"n = {n}, {arm_name(k)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"50 problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}
