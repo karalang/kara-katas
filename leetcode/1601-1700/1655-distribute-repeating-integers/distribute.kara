@@ -1,0 +1,82 @@
+// LeetCode #1655: Distribute Repeating Integers -- the ★ arm.
+//
+// Only how many times each value occurs matters. `can[mask]` says
+// whether the values counted so far can serve the customers in `mask`;
+// each new count serves any submask of the customers not yet served whose
+// wants it covers. O(k 3^m) for k distinct values and m customers.
+
+fn can_distribute(nums: Vec[i32], quantity: Vec[i32]) -> bool {
+    let mut counts: Map[i32, i64] = Map.new();
+    for x in nums.iter() {
+        counts[x] = counts.get(x).unwrap_or(0) + 1;
+    }
+    let m = quantity.len();
+    let full = (1 << m) - 1;
+    // want[mask]: what the customers in mask want together
+    let mut want = Vec.filled(1 << m, 0);
+    for mask in 1..=full {
+        let low = mask.trailing_zeros();
+        want[mask] = want[mask & (mask - 1)] + quantity[low];
+    }
+    let mut can = Vec.filled(1 << m, false);
+    can[0] = true;
+    for count in counts.values() {
+        let before = can.clone();
+        for mask in 0..=full {
+            if not before[mask] {
+                continue;
+            }
+            let rest = full & ~mask;
+            let mut sub = rest;
+            while sub > 0 {
+                if want[sub] <= count {
+                    can[mask | sub] = true;
+                }
+                sub = (sub - 1) & rest;
+            }
+        }
+    }
+    can[full]
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random problems: up to `size` numbers from up to `values`
+// distinct values, and 1 to `customers` customers each wanting 1 to
+// `most`; how many can be served, and a checksum
+fn batch(count: i64, size: i64, values: i64, customers: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut served = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % size + 1;
+        let distinct = next_random(mut seed) % values + 1;
+        let nums: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % distinct + 1) as i32).collect();
+        let m = next_random(mut seed) % customers + 1;
+        let quantity: Vec[i32] = (0..m).map(|_| (next_random(mut seed) % most + 1) as i32).collect();
+        let answer = can_distribute(nums, quantity);
+        if answer {
+            served += 1;
+        }
+        check = (check * 31 + (if answer { 2 } else { 1 })) % 1000000007;
+    }
+    println(f"{count} problems of up to {size} numbers and {customers} customers: {served} served, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then one customer wanting everything,
+    // and two wanting more than one value holds
+    println(can_distribute([1, 2, 3, 4], [2]));
+    println(can_distribute([1, 2, 3, 3], [2]));
+    println(can_distribute([1, 1, 2, 2], [2, 2]));
+    println(can_distribute([7, 7, 7], [3]));
+    println(can_distribute([1, 1, 1, 2, 2], [2, 2, 1]));
+    let mut seed = 1655;
+    batch(3000, 12, 4, 4, 4, mut seed);
+    batch(300, 1000, 50, 10, 30, mut seed);
+    batch(30, 100000, 50, 10, 1000, mut seed);
+}

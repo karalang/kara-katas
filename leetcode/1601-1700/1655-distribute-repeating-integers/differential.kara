@@ -1,0 +1,301 @@
+// LeetCode #1655: Distribute Repeating Integers -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random problems
+// of 1 to 10 numbers from 1 to 4 values and 1 to 4 customers wanting 1
+// to 4. Every problem is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the customers in reverse order give the same answer
+// P3  the numbers relabelled and reversed give the same answer
+// P4  one more customer never makes a problem servable
+// P5  each arm agrees with at least two of the other three
+
+// ---- distribute.kara: the ★ arm: a subset DP over the customers
+
+fn star_arm(nums: Vec[i32], quantity: Vec[i32]) -> bool {
+    let mut counts: Map[i32, i64] = Map.new();
+    for x in nums.iter() {
+        counts[x] = counts.get(x).unwrap_or(0) + 1;
+    }
+    let m = quantity.len();
+    let full = (1 << m) - 1;
+    // want[mask]: what the customers in mask want together
+    let mut want = Vec.filled(1 << m, 0);
+    for mask in 1..=full {
+        let low = mask.trailing_zeros();
+        want[mask] = want[mask & (mask - 1)] + quantity[low];
+    }
+    let mut can = Vec.filled(1 << m, false);
+    can[0] = true;
+    for count in counts.values() {
+        let before = can.clone();
+        for mask in 0..=full {
+            if not before[mask] {
+                continue;
+            }
+            let rest = full & ~mask;
+            let mut sub = rest;
+            while sub > 0 {
+                if want[sub] <= count {
+                    can[mask | sub] = true;
+                }
+                sub = (sub - 1) & rest;
+            }
+        }
+    }
+    can[full]
+}
+
+// ---- distribute_backtrack.kara: backtracking, largest want first
+
+fn backtrack_arm(nums: Vec[i32], quantity: Vec[i32]) -> bool {
+    let mut counts: Map[i32, i32] = Map.new();
+    for x in nums.iter() {
+        *counts.entry(x).or_insert(0) += 1;
+    }
+    let mut left: Vec[i32] = counts.values().collect();
+    left.sort();
+    let mut wants = quantity.clone();
+    wants.sort_by(|a, b| b.cmp(a));
+    backtrack_serve(wants, 0, mut left)
+}
+
+fn backtrack_serve(wants: Slice[i32], i: i64, left: mut ref Vec[i32]) -> bool {
+    if i == wants.len() {
+        return true;
+    }
+    for j in 0..left.len() {
+        if left[j] < wants[i] or (j > 0 and left[j] == left[j - 1]) {
+            continue;
+        }
+        left[j] -= wants[i];
+        let done = backtrack_serve(wants, i + 1, mut left);
+        left[j] += wants[i];
+        if done {
+            return true;
+        }
+    }
+    false
+}
+
+// ---- distribute_memo.kara: memoised search over (value, customers left)
+
+fn memo_arm(nums: Vec[i32], quantity: Vec[i32]) -> bool {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut counts: Vec[i32] = Vec.new();
+    let mut run = 0;
+    for i in 0..sorted.len() {
+        run += 1;
+        if i + 1 == sorted.len() or sorted[i + 1] != sorted[i] {
+            counts.push(run);
+            run = 0;
+        }
+    }
+    let m = quantity.len();
+    let mut want: Vec[i32] = Vec.filled(1 << m, 0);
+    for mask in 0..1 << m {
+        for c in 0..m {
+            if mask >> c & 1 == 1 {
+                want[mask] += quantity[c];
+            }
+        }
+    }
+    let mut memo: Map[(i64, i64), bool] = Map.new();
+    memo_fits(counts, want, 0, (1 << m) - 1, mut memo)
+}
+
+fn memo_fits(counts: Slice[i32], want: Slice[i32], v: i64, mask: i64, memo: mut ref Map[(i64, i64), bool]) -> bool {
+    if mask == 0 {
+        return true;
+    }
+    if v == counts.len() {
+        return false;
+    }
+    if let Some(known) = memo.get((v, mask)) {
+        return known;
+    }
+    let mut ok = memo_fits(counts, want, v + 1, mask, mut memo);
+    let mut sub = mask;
+    while not ok and sub > 0 {
+        if want[sub] <= counts[v] {
+            ok = memo_fits(counts, want, v + 1, mask ^ sub, mut memo);
+        }
+        sub = (sub - 1) & mask;
+    }
+    memo[(v, mask)] = ok;
+    ok
+}
+
+// ---- distribute_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn can_distribute(nums: Vec[i32], quantity: Vec[i32]) -> bool {
+        let mut freq: Map[i32, i32] = Map.new();
+        for x in ref nums {
+            *freq.entry(x).or_insert(0) += 1;
+        }
+        let m = quantity.len();
+        let full = (1usize << m) - 1;
+        let mut sum = Vec.filled(1 << m, 0i32);
+        for mask in 1..=full {
+            for i in 0..m {
+                if mask & (1 << i) != 0 {
+                    sum[mask] = sum[mask ^ (1 << i)] + quantity[i];
+                    break;
+                }
+            }
+        }
+        let mut dp = Vec.filled(1 << m, false);
+        dp[0] = true;
+        for (_, c) in freq.iter() {
+            let mut next = dp.clone();
+            for mask in 0..=full {
+                if not dp[mask] {
+                    continue;
+                }
+                let rest = full ^ mask;
+                let mut sub = rest;
+                while sub > 0 {
+                    if sum[sub] <= c {
+                        next[mask | sub] = true;
+                    }
+                    sub = (sub - 1) & rest;
+                }
+            }
+            dp = next;
+        }
+        dp[full]
+    }
+}
+
+fn solution_arm(nums: Vec[i32], quantity: Vec[i32]) -> bool {
+    SolutionArm.can_distribute(nums, quantity)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(which: i64, nums: Vec[i32], quantity: Vec[i32]) -> bool {
+    match which {
+        0 => star_arm(nums, quantity),
+        1 => backtrack_arm(nums, quantity),
+        2 => memo_arm(nums, quantity),
+        _ => solution_arm(nums, quantity),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["distribute", "backtrack", "memo", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every way of giving each customer one
+// of the values is tried, and the problem is servable when, for some way,
+// every value occurs at least as often as its customers want together
+
+fn literal(nums: Vec[i32], quantity: Vec[i32]) -> bool {
+    let mut values: Vec[i32] = nums.clone();
+    values.sort();
+    values.dedup();
+    let k = values.len();
+    let m = quantity.len();
+    let mut ways = 1;
+    for _ in 0..m {
+        ways *= k;
+    }
+    for way in 0..ways {
+        let mut given: Vec[i64] = Vec.filled(k, 0);
+        let mut code = way;
+        for c in 0..m {
+            given[code % k] += quantity[c];
+            code /= k;
+        }
+        let mut fits = true;
+        for v in 0..k {
+            let occurs = nums.iter().filter(|x| x == values[v]).count();
+            if given[v] > occurs {
+                fits = false;
+            }
+        }
+        if fits {
+            return true;
+        }
+    }
+    false
+}
+
+fn main() {
+    let mut seed = 1655;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i32], Vec[i32], i32)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 10 + 1;
+        let distinct = next_random(mut seed) % 4 + 1;
+        let nums: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % distinct + 1) as i32).collect();
+        let m = next_random(mut seed) % 4 + 1;
+        let quantity: Vec[i32] = (0..m).map(|_| (next_random(mut seed) % 4 + 1) as i32).collect();
+        let extra = (next_random(mut seed) % 4 + 1) as i32;
+        cases.push((nums, quantity, extra));
+    }
+    for (p, (nums, quantity, extra)) in cases.iter().enumerate() {
+        let want = literal(nums, quantity);
+        check = (check * 31 + (if want { 2 } else { 1 })) % 1000000007;
+        let reversed: Vec[i32] = quantity.iter().rev().collect();
+        let relabelled: Vec[i32] = nums.iter().rev().map(|x| 100 - x).collect();
+        let mut more = quantity.clone();
+        more.push(extra);
+        let mut answers: Vec[bool] = Vec.new();
+        for k in 0..4 {
+            let got = arm(k, nums, quantity);
+            answers.push(got);
+            let failed = [
+                got != want,
+                arm(k, nums, reversed) != got,
+                arm(k, relabelled, quantity) != got,
+                arm(k, nums, more) and not got,
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({nums}, {quantity}), {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for k in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[k]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}
