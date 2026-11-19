@@ -1,0 +1,69 @@
+// LeetCode #1629: Slowest Key -- each letter's longest press, then the
+// letters from z down.
+//
+// A `[i64; 26]` holds the longest press of each letter, filled from the
+// bytes of the keys and the gaps between release times; then the first
+// letter, counting down from `z`, whose longest press is the longest of
+// all is the answer, which settles a tie for the larger key with no
+// comparison of keys. O(n + 26).
+
+fn slowest_key(release_times: Vec[i32], keys_pressed: String) -> char {
+    let keys = keys_pressed.bytes();
+    let mut longest = [0; 26];
+    for i in 0..release_times.len() {
+        let start = if i == 0 { 0 } else { release_times[i - 1] };
+        let slot = (keys[i] - b'a') as i64;
+        longest[slot] = max(longest[slot], release_times[i] - start);
+    }
+    let top = longest.iter().max().unwrap();
+    let mut letter = 25;
+    while longest[letter] != top {
+        letter -= 1;
+    }
+    (b'a' + letter as u8) as char
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random problems of 2 to `most` presses from the first `letters`
+// letters, each held 1 to `longest` ms; every answer key strung together
+// while the string is short, and a checksum over them all
+fn batch(count: i64, most: i64, letters: i64, longest: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut answers = String.new();
+    for _ in 0..count {
+        let n = next_random(mut seed) % (most - 1) + 2;
+        let mut release_times: Vec[i32] = Vec.new();
+        let mut keys_pressed = String.new();
+        let mut time = 0;
+        for _ in 0..n {
+            time += next_random(mut seed) % longest + 1;
+            release_times.push(time as i32);
+            keys_pressed.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+        }
+        let key = slowest_key(release_times, keys_pressed);
+        if answers.len() < 40 {
+            answers.push(key);
+        }
+        check = (check * 31 + key as i64) % 1000000007;
+    }
+    println(f"{count} problems of up to {most} presses: {answers}..., checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then a tie on the first press, and a tie
+    // won by the larger key though it comes first
+    println(slowest_key([9, 29, 49, 50], "cbcd"));
+    println(slowest_key([12, 23, 36, 46, 62], "spuda"));
+    println(slowest_key([5, 10], "ab"));
+    println(slowest_key([4, 8, 9], "zab"));
+    let mut seed = 1629;
+    batch(3000, 6, 3, 4, mut seed);
+    batch(300, 1000, 26, 100, mut seed);
+    batch(10, 1000, 26, 30000, mut seed);
+}
