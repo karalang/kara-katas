@@ -1,0 +1,278 @@
+// LeetCode #1638: Count Substrings That Differ by One Character -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random pairs of
+// words of 1 to 6 letters: every other pair from the letters a and b, so
+// long runs match, the rest from a to e. Every pair is drawn before any
+// arm answers.
+//
+// P1  the count is the statement read literally
+// P2  the two words swapped give the same count
+// P3  both words reversed give the same count
+// P4  the letters renamed alike in both words, a to b, b to c and so on
+//     round to a, give the same count
+// P5  the count is at least the number of mismatched letter pairs, and at
+//     most the number of pairs of substrings of equal length
+// P6  each arm agrees with at least two of the other three
+
+// ---- differ.kara: the ★ arm: matching runs around each mismatch
+
+fn star_arm(s: String, t: String) -> i64 {
+    let (a, b) = (s.bytes(), t.bytes());
+    let (n, m) = (a.len(), b.len());
+    // left[i + 1][j + 1]: the matching run ending at (i, j)
+    let mut left: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.filled(m + 1, 0));
+    for i in 0..n {
+        for j in 0..m {
+            if a[i] == b[j] {
+                left[i + 1][j + 1] = left[i][j] + 1;
+            }
+        }
+    }
+    // right[i][j]: the matching run starting at (i, j)
+    let mut right: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.filled(m + 1, 0));
+    for i in (0..n).rev() {
+        for j in (0..m).rev() {
+            if a[i] == b[j] {
+                right[i][j] = right[i + 1][j + 1] + 1;
+            }
+        }
+    }
+    let mut count = 0;
+    for i in 0..n {
+        for j in 0..m {
+            if a[i] != b[j] {
+                count += (left[i][j] + 1) * (right[i + 1][j + 1] + 1);
+            }
+        }
+    }
+    count
+}
+
+// ---- differ_brute.kara: every pair of starts, extended
+
+fn brute_arm(s: String, t: String) -> i64 {
+    let a: Vec[char] = s.chars().collect();
+    let b: Vec[char] = t.chars().collect();
+    let mut count = 0;
+    for i in 0..a.len() {
+        for j in 0..b.len() {
+            let mut mismatches = 0;
+            let mut k = 0;
+            while i + k < a.len() and j + k < b.len() {
+                if a[i + k] != b[j + k] {
+                    mismatches += 1;
+                    if mismatches > 1 {
+                        break;
+                    }
+                }
+                if mismatches == 1 {
+                    count += 1;
+                }
+                k += 1;
+            }
+        }
+    }
+    count
+}
+
+// ---- differ_diagonal.kara: one walk per diagonal
+
+fn diagonal_arm(s: String, t: String) -> i64 {
+    let (a, b) = (s.bytes(), t.bytes());
+    let (n, m) = (a.len(), b.len());
+    let mut count = 0;
+    for offset in -(m - 1)..n {
+        // the diagonal starts at (max(offset, 0), max(-offset, 0))
+        let mut (i, j) = (max(offset, 0), max(-offset, 0));
+        let mut before = 0;
+        let mut since = 0;
+        let mut seen = false;
+        while i < n and j < m {
+            if a[i] == b[j] {
+                since += 1;
+            } else {
+                before = since;
+                since = 0;
+                seen = true;
+            }
+            if seen {
+                count += before + 1;
+            }
+            i += 1;
+            j += 1;
+        }
+    }
+    count
+}
+
+// ---- differ_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn count_substrings(s: String, t: String) -> i32 {
+        let (s, t) = (s.bytes(), t.bytes());
+        let (m, n) = (s.len(), t.len());
+        let mut ans = 0;
+        for i in 0..m {
+            for j in 0..n {
+                if s[i] != t[j] {
+                    let mut l = 0;
+                    while l < i and l < j and s[i - l - 1] == t[j - l - 1] {
+                        l += 1;
+                    }
+                    let mut r = 0;
+                    while i + r + 1 < m and j + r + 1 < n and s[i + r + 1] == t[j + r + 1] {
+                        r += 1;
+                    }
+                    ans += (l + 1) * (r + 1);
+                }
+            }
+        }
+        ans as i32
+    }
+}
+
+fn solution_arm(s: String, t: String) -> i64 {
+    SolutionArm.count_substrings(s, t)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(k: i64, s: String, t: String) -> i64 {
+    match k {
+        0 => star_arm(s, t),
+        1 => brute_arm(s, t),
+        2 => diagonal_arm(s, t),
+        _ => solution_arm(s, t),
+    }
+}
+
+fn arm_name(k: i64) -> String {
+    ["differ", "brute", "diagonal", "solution"][k].to_string()
+}
+
+fn random_word(letters: i64, seed: mut ref i64) -> String {
+    let n = next_random(mut seed) % 6 + 1;
+    let mut word = String.new();
+    for _ in 0..n {
+        word.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+    }
+    word
+}
+
+// every letter one on, round within the first five
+fn renamed(word: String) -> String {
+    word.chars().map(|c| (b'a' + (c as u32 as u8 - b'a' + 1) % 5) as char).collect()
+}
+
+fn reversed(word: String) -> String {
+    word.chars().rev().collect()
+}
+
+// ---- the statement read literally: every substring of s against every
+// substring of t of the same length, counted when exactly one position
+// differs
+
+fn literal(s: String, t: String) -> i64 {
+    let a: Vec[char] = s.chars().collect();
+    let b: Vec[char] = t.chars().collect();
+    let mut count = 0;
+    for i in 0..a.len() {
+        for j in 0..b.len() {
+            for length in 1..=min(a.len() - i, b.len() - j) {
+                let differing = (0..length).filter(|k| a[i + k] != b[j + k]).count();
+                if differing == 1 {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
+}
+
+fn main() {
+    let mut seed = 1638;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(String, String)] = [];
+    for p in 0..problems {
+        // every other pair from a and b, so long runs match
+        let letters = if p % 2 == 0 { 2 } else { 5 };
+        let s = random_word(letters, mut seed);
+        let t = random_word(letters, mut seed);
+        cases.push((s, t));
+    }
+    for p in 0..problems {
+        let (s, t) = cases[p].clone();
+        let (n, m) = (s.len(), t.len());
+        // the mismatched letter pairs, and the pairs of equal length
+        let mut mismatched = 0;
+        for x in s.chars() {
+            for y in t.chars() {
+                if x != y {
+                    mismatched += 1;
+                }
+            }
+        }
+        let mut equal_length = 0;
+        for length in 1..=min(n, m) {
+            equal_length += (n - length + 1) * (m - length + 1);
+        }
+        let want = literal(s, t);
+        check = (check * 31 + want + 1) % 1000000007;
+        let mut answers: Vec[i64] = [];
+        for k in 0..4 {
+            let got = arm(k, s, t);
+            answers.push(got);
+            let failed = [
+                got != want,
+                arm(k, t, s) != got,
+                arm(k, reversed(s), reversed(t)) != got,
+                arm(k, renamed(s), renamed(t)) != got,
+                got < mismatched or got > equal_length,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({s}, {t}), {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P6
+        for k in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[k]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

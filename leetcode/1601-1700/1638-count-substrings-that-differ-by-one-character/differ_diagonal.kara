@@ -1,0 +1,81 @@
+// LeetCode #1638: Count Substrings That Differ by One Character -- one
+// walk per diagonal, in constant space.
+//
+// A pair of equal-length substrings lies on one diagonal, the positions
+// (i, j) with i - j fixed. Walking a diagonal, keep the run of matches
+// before the latest mismatch and the run since it: each step that ends a
+// pair with exactly one mismatch adds the earlier run plus one, the
+// choices of where the pair starts. O(nm) time, O(1) extra space.
+
+fn count_substrings(s: String, t: String) -> i64 {
+    let (a, b) = (s.bytes(), t.bytes());
+    let (n, m) = (a.len(), b.len());
+    let mut count = 0;
+    for offset in -(m - 1)..n {
+        // the diagonal starts at (max(offset, 0), max(-offset, 0))
+        let mut (i, j) = (max(offset, 0), max(-offset, 0));
+        let mut before = 0;
+        let mut since = 0;
+        let mut seen = false;
+        while i < n and j < m {
+            if a[i] == b[j] {
+                since += 1;
+            } else {
+                before = since;
+                since = 0;
+                seen = true;
+            }
+            if seen {
+                count += before + 1;
+            }
+            i += 1;
+            j += 1;
+        }
+    }
+    count
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(most: i64, letters: i64, seed: mut ref i64) -> String {
+    let n = next_random(mut seed) % most + 1;
+    let mut word = String.new();
+    for _ in 0..n {
+        word.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+    }
+    word
+}
+
+// `count` random pairs of words of 1 to `most` letters from the first
+// `letters` of the alphabet; the counts summed, and a checksum
+fn batch(count: i64, most: i64, letters: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let s = random_word(most, letters, mut seed);
+        let t = random_word(most, letters, mut seed);
+        let pairs = count_substrings(s, t);
+        total += pairs;
+        check = (check * 31 + pairs + 1) % 1000000007;
+    }
+    println(f"{count} pairs of up to {most} letters: counts sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then one letter alike, one letter apart,
+    // and words with no letter in common
+    println(count_substrings("aba", "baba"));
+    println(count_substrings("ab", "bb"));
+    println(count_substrings("a", "a"));
+    println(count_substrings("abe", "bbc"));
+    println(count_substrings("aaa", "bbb"));
+    let mut seed = 1638;
+    batch(3000, 6, 2, mut seed);
+    batch(300, 100, 3, mut seed);
+    batch(20, 100, 26, mut seed);
+}
