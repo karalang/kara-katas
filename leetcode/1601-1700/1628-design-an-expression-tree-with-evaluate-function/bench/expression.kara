@@ -1,0 +1,153 @@
+// LeetCode #1628: Design an Expression Tree With Evaluate Function -- the
+// bench: the ★ arm on 20000 random postfix expressions of 50 operands,
+// all drawn first, each built into a tree of `dyn Node` and evaluated.
+
+trait Node {
+    fn evaluate(self) -> i64;
+}
+
+struct Number {
+    value: i64,
+}
+
+struct Add {
+    left: dyn Node,
+    right: dyn Node,
+}
+
+struct Subtract {
+    left: dyn Node,
+    right: dyn Node,
+}
+
+struct Multiply {
+    left: dyn Node,
+    right: dyn Node,
+}
+
+struct Divide {
+    left: dyn Node,
+    right: dyn Node,
+}
+
+impl Node for Number {
+    fn evaluate(self) -> i64 {
+        self.value
+    }
+}
+
+impl Node for Add {
+    fn evaluate(self) -> i64 {
+        self.left.evaluate() + self.right.evaluate()
+    }
+}
+
+impl Node for Subtract {
+    fn evaluate(self) -> i64 {
+        self.left.evaluate() - self.right.evaluate()
+    }
+}
+
+impl Node for Multiply {
+    fn evaluate(self) -> i64 {
+        self.left.evaluate() * self.right.evaluate()
+    }
+}
+
+impl Node for Divide {
+    fn evaluate(self) -> i64 {
+        self.left.evaluate() / self.right.evaluate()
+    }
+}
+
+// the node for an operator token over its two operands
+fn operator(token: Str, left: own dyn Node, right: own dyn Node) -> dyn Node {
+    match token {
+        "+" => Add { left, right },
+        "-" => Subtract { left, right },
+        "*" => Multiply { left, right },
+        _ => Divide { left, right },
+    }
+}
+
+struct TreeBuilder {}
+
+impl TreeBuilder {
+    fn build_tree(self, postfix: Vec[String]) -> dyn Node {
+        let mut stack: Vec[dyn Node] = Vec.new();
+        for token in postfix.iter() {
+            match i64.parse(token) {
+                Ok(value) => stack.push(Number { value }),
+                Err(_) => {
+                    let right = stack.pop().unwrap();
+                    let left = stack.pop().unwrap();
+                    stack.push(operator(token, left, right));
+                }
+            }
+        }
+        stack.pop().unwrap()
+    }
+}
+
+fn evaluate_postfix(postfix: Vec[String]) -> i64 {
+    let builder = TreeBuilder {};
+    let tree = builder.build_tree(postfix);
+    tree.evaluate()
+}
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A random expression of `leaves` operands below `top`, written postfix
+// onto `tokens`; returns its value. An operator that would divide by zero
+// or leave 10^9 in absolute value is swapped for one that does not, as
+// LeetCode promises.
+fn expression(leaves: i64, top: i64, seed: mut ref i64, tokens: mut ref Vec[String]) -> i64 {
+    if leaves == 1 {
+        let v = next_random(mut seed) % top;
+        tokens.push(f"{v}");
+        return v;
+    }
+    let left = next_random(mut seed) % (leaves - 1) + 1;
+    let a = expression(left, top, mut seed, mut tokens);
+    let b = expression(leaves - left, top, mut seed, mut tokens);
+    let mut op = ["+", "-", "*", "/"][next_random(mut seed) % 4].clone();
+    if op == "/" and b == 0 {
+        op = "*";
+    }
+    if op == "*" and (a * b).abs() > 1000000000 {
+        op = "+";
+    }
+    if op == "+" and (a + b).abs() > 1000000000 {
+        op = "-";
+    }
+    if op == "-" and (a - b).abs() > 1000000000 {
+        op = "+";
+    }
+    tokens.push(op.clone());
+    match op.as_str() {
+        "+" => a + b,
+        "-" => a - b,
+        "*" => a * b,
+        _ => a / b,
+    }
+}
+
+fn main() {
+    let mut seed = 1628;
+    let mut expressions: Vec[Vec[String]] = Vec.new();
+    for _ in 0..20000 {
+        let mut postfix: Vec[String] = Vec.new();
+        expression(50, 100001, mut seed, mut postfix);
+        expressions.push(postfix);
+    }
+    let mut check = 0;
+    let mut total = 0;
+    for postfix in expressions.iter() {
+        let got = evaluate_postfix(postfix);
+        total += got;
+        check = ((check * 31 + got + 1) % 1000000007 + 1000000007) % 1000000007;
+    }
+    println(f"20000 expressions of 50 operands: values sum to {total}, checksum {check}");
+}

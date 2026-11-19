@@ -1,0 +1,124 @@
+// LeetCode #1628: Design an Expression Tree With Evaluate Function -- the
+// tree as a `shared enum`.
+//
+// One `Expr` type with a variant per operator, each holding its two
+// operands as counted handles, and `evaluate` one `match`. The postfix is
+// read onto a stack of `Expr`. O(n) to build and to evaluate.
+
+shared enum Expr {
+    Number(i64),
+    Add(Expr, Expr),
+    Subtract(Expr, Expr),
+    Multiply(Expr, Expr),
+    Divide(Expr, Expr),
+}
+
+impl Expr {
+    fn evaluate(self) -> i64 {
+        match self {
+            Expr.Number(value) => value,
+            Expr.Add(left, right) => left.evaluate() + right.evaluate(),
+            Expr.Subtract(left, right) => left.evaluate() - right.evaluate(),
+            Expr.Multiply(left, right) => left.evaluate() * right.evaluate(),
+            Expr.Divide(left, right) => left.evaluate() / right.evaluate(),
+        }
+    }
+}
+
+fn build_tree(postfix: Vec[String]) -> Expr {
+    let mut stack: Vec[Expr] = Vec.new();
+    for token in postfix.iter() {
+        let node = match token.as_str() {
+            "+" | "-" | "*" | "/" => {
+                let right = stack.pop().unwrap();
+                let left = stack.pop().unwrap();
+                match token.as_str() {
+                    "+" => Expr.Add(left, right),
+                    "-" => Expr.Subtract(left, right),
+                    "*" => Expr.Multiply(left, right),
+                    _ => Expr.Divide(left, right),
+                }
+            }
+            number => Expr.Number(i64.parse(number).unwrap()),
+        };
+        stack.push(node);
+    }
+    stack.pop().unwrap()
+}
+
+fn evaluate_postfix(postfix: Vec[String]) -> i64 {
+    build_tree(postfix).evaluate()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    ((check * 31 + x + 1) % 1000000007 + 1000000007) % 1000000007
+}
+
+// A random expression of `leaves` operands below `top`, written postfix
+// onto `tokens`; returns its value. An operator that would divide by zero
+// or leave 10^9 in absolute value is swapped for one that does not, as
+// LeetCode promises.
+fn expression(leaves: i64, top: i64, seed: mut ref i64, tokens: mut ref Vec[String]) -> i64 {
+    if leaves == 1 {
+        let v = next_random(mut seed) % top;
+        tokens.push(f"{v}");
+        return v;
+    }
+    let left = next_random(mut seed) % (leaves - 1) + 1;
+    let a = expression(left, top, mut seed, mut tokens);
+    let b = expression(leaves - left, top, mut seed, mut tokens);
+    let mut op = ["+", "-", "*", "/"][next_random(mut seed) % 4].clone();
+    if op == "/" and b == 0 {
+        op = "*";
+    }
+    if op == "*" and (a * b).abs() > 1000000000 {
+        op = "+";
+    }
+    if op == "+" and (a + b).abs() > 1000000000 {
+        op = "-";
+    }
+    if op == "-" and (a - b).abs() > 1000000000 {
+        op = "+";
+    }
+    tokens.push(op.clone());
+    match op.as_str() {
+        "+" => a + b,
+        "-" => a - b,
+        "*" => a * b,
+        _ => a / b,
+    }
+}
+
+// `count` random expressions of 1 to `most` operands below `top`; their
+// values summed, and a checksum
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let mut postfix: Vec[String] = Vec.new();
+        expression(next_random(mut seed) % most + 1, top, mut seed, mut postfix);
+        let got = evaluate_postfix(postfix);
+        total += got;
+        check = mix(check, got);
+    }
+    println(f"{count} expressions of up to {most} operands: values sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then one operand alone, and a division
+    // that truncates toward zero
+    println(evaluate_postfix(["3", "4", "+", "2", "*", "7", "/"]));
+    println(evaluate_postfix(["4", "5", "2", "7", "+", "-", "*"]));
+    println(evaluate_postfix(["100000"]));
+    println(evaluate_postfix(["0", "7", "-", "2", "/"]));
+    let mut seed = 1628;
+    batch(3000, 8, 10, mut seed);
+    batch(300, 50, 100001, mut seed);
+}

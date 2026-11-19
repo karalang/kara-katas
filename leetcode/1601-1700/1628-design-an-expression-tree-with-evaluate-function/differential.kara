@@ -1,0 +1,361 @@
+// LeetCode #1628: Design an Expression Tree With Evaluate Function -- the
+// differential.
+//
+// Three arms against the statement read literally, on 3000 random postfix
+// expressions of 1 to 12 operands: every other one with operands below 10,
+// so zeros are common, the rest below 100001. Every expression is drawn
+// before any arm answers.
+//
+// P1  the value is the postfix evaluated on a stack, with no tree
+// P2  adding 0 leaves the value
+// P3  multiplying by 1 and dividing by 1 leave the value
+// P4  0 minus the expression is the value negated
+// P5  the expression minus itself is 0
+// P6  each arm agrees with at least one of the other two
+
+// ---- expression.kara: the ★ arm: a Node trait, one struct per operator, dyn Node operands
+
+trait Node {
+    fn evaluate(self) -> i64;
+}
+
+struct Number {
+    value: i64,
+}
+
+struct Add {
+    left: dyn Node,
+    right: dyn Node,
+}
+
+struct Subtract {
+    left: dyn Node,
+    right: dyn Node,
+}
+
+struct Multiply {
+    left: dyn Node,
+    right: dyn Node,
+}
+
+struct Divide {
+    left: dyn Node,
+    right: dyn Node,
+}
+
+impl Node for Number {
+    fn evaluate(self) -> i64 {
+        self.value
+    }
+}
+
+impl Node for Add {
+    fn evaluate(self) -> i64 {
+        self.left.evaluate() + self.right.evaluate()
+    }
+}
+
+impl Node for Subtract {
+    fn evaluate(self) -> i64 {
+        self.left.evaluate() - self.right.evaluate()
+    }
+}
+
+impl Node for Multiply {
+    fn evaluate(self) -> i64 {
+        self.left.evaluate() * self.right.evaluate()
+    }
+}
+
+impl Node for Divide {
+    fn evaluate(self) -> i64 {
+        self.left.evaluate() / self.right.evaluate()
+    }
+}
+
+// the node for an operator token over its two operands
+fn operator(token: Str, left: own dyn Node, right: own dyn Node) -> dyn Node {
+    match token {
+        "+" => Add { left, right },
+        "-" => Subtract { left, right },
+        "*" => Multiply { left, right },
+        _ => Divide { left, right },
+    }
+}
+
+struct TreeBuilder {}
+
+impl TreeBuilder {
+    fn build_tree(self, postfix: Vec[String]) -> dyn Node {
+        let mut stack: Vec[dyn Node] = Vec.new();
+        for token in postfix.iter() {
+            match i64.parse(token) {
+                Ok(value) => stack.push(Number { value }),
+                Err(_) => {
+                    let right = stack.pop().unwrap();
+                    let left = stack.pop().unwrap();
+                    stack.push(operator(token, left, right));
+                }
+            }
+        }
+        stack.pop().unwrap()
+    }
+}
+
+fn star_arm(postfix: Vec[String]) -> i64 {
+    let builder = TreeBuilder {};
+    let tree = builder.build_tree(postfix);
+    tree.evaluate()
+}
+
+// ---- expression_enum.kara: a shared enum Expr
+
+shared enum Expr {
+    Number(i64),
+    Add(Expr, Expr),
+    Subtract(Expr, Expr),
+    Multiply(Expr, Expr),
+    Divide(Expr, Expr),
+}
+
+impl Expr {
+    fn evaluate(self) -> i64 {
+        match self {
+            Expr.Number(value) => value,
+            Expr.Add(left, right) => left.evaluate() + right.evaluate(),
+            Expr.Subtract(left, right) => left.evaluate() - right.evaluate(),
+            Expr.Multiply(left, right) => left.evaluate() * right.evaluate(),
+            Expr.Divide(left, right) => left.evaluate() / right.evaluate(),
+        }
+    }
+}
+
+fn enum_build_tree(postfix: Vec[String]) -> Expr {
+    let mut stack: Vec[Expr] = Vec.new();
+    for token in postfix.iter() {
+        let node = match token.as_str() {
+            "+" | "-" | "*" | "/" => {
+                let right = stack.pop().unwrap();
+                let left = stack.pop().unwrap();
+                match token.as_str() {
+                    "+" => Expr.Add(left, right),
+                    "-" => Expr.Subtract(left, right),
+                    "*" => Expr.Multiply(left, right),
+                    _ => Expr.Divide(left, right),
+                }
+            }
+            number => Expr.Number(i64.parse(number).unwrap()),
+        };
+        stack.push(node);
+    }
+    stack.pop().unwrap()
+}
+
+fn enum_arm(postfix: Vec[String]) -> i64 {
+    enum_build_tree(postfix).evaluate()
+}
+
+// ---- expression_arena.kara: the tree in one Vec, evaluated in arena order
+
+struct ArenaNode {
+    token: u8,
+    value: i64,
+    left: i64,
+    right: i64,
+}
+
+struct ExpressionTree {
+    nodes: Vec[ArenaNode],
+    root: i64,
+}
+
+impl ExpressionTree {
+    fn build(postfix: Vec[String]) -> ExpressionTree {
+        let mut nodes: Vec[ArenaNode] = Vec.new();
+        let mut stack: Vec[i64] = Vec.new();
+        for token in postfix.iter() {
+            let first = token.bytes()[0];
+            if first.is_ascii_digit() {
+                nodes.push(ArenaNode { token: b'#', value: i64.parse(token).unwrap(), left: -1, right: -1 });
+            } else {
+                let right = stack.pop().unwrap();
+                let left = stack.pop().unwrap();
+                nodes.push(ArenaNode { token: first, value: 0, left, right });
+            }
+            stack.push(nodes.len() - 1);
+        }
+        ExpressionTree { nodes, root: stack.pop().unwrap() }
+    }
+
+    fn evaluate(self) -> i64 {
+        let mut values: Vec[i64] = Vec.filled(self.nodes.len(), 0);
+        for (i, node) in self.nodes.iter().enumerate() {
+            values[i] = match node.token {
+                b'#' => node.value,
+                b'+' => values[node.left] + values[node.right],
+                b'-' => values[node.left] - values[node.right],
+                b'*' => values[node.left] * values[node.right],
+                _ => values[node.left] / values[node.right],
+            };
+        }
+        values[self.root]
+    }
+}
+
+fn arena_arm(postfix: Vec[String]) -> i64 {
+    ExpressionTree.build(postfix).evaluate()
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A random expression of `leaves` operands below `top`, written postfix
+// onto `tokens`; returns its value. An operator that would divide by zero
+// or leave 10^9 in absolute value is swapped for one that does not, as
+// LeetCode promises.
+fn expression(leaves: i64, top: i64, seed: mut ref i64, tokens: mut ref Vec[String]) -> i64 {
+    if leaves == 1 {
+        let v = next_random(mut seed) % top;
+        tokens.push(f"{v}");
+        return v;
+    }
+    let left = next_random(mut seed) % (leaves - 1) + 1;
+    let a = expression(left, top, mut seed, mut tokens);
+    let b = expression(leaves - left, top, mut seed, mut tokens);
+    let mut op = ["+", "-", "*", "/"][next_random(mut seed) % 4].clone();
+    if op == "/" and b == 0 {
+        op = "*";
+    }
+    if op == "*" and (a * b).abs() > 1000000000 {
+        op = "+";
+    }
+    if op == "+" and (a + b).abs() > 1000000000 {
+        op = "-";
+    }
+    if op == "-" and (a - b).abs() > 1000000000 {
+        op = "+";
+    }
+    tokens.push(op.clone());
+    match op.as_str() {
+        "+" => a + b,
+        "-" => a - b,
+        "*" => a * b,
+        _ => a / b,
+    }
+}
+
+fn arm(k: i64, postfix: Vec[String]) -> i64 {
+    match k {
+        0 => star_arm(postfix),
+        1 => enum_arm(postfix),
+        _ => arena_arm(postfix),
+    }
+}
+
+fn arm_name(k: i64) -> String {
+    ["expression", "enum", "arena"][k].to_string()
+}
+
+// the postfix with `before` put in front and `after` behind
+fn wrapped(before: Vec[String], postfix: Vec[String], after: Vec[String]) -> Vec[String] {
+    let mut out = before.clone();
+    out.extend(postfix.iter().cloned());
+    out.extend(after.iter().cloned());
+    out
+}
+
+// ---- the statement read literally: postfix evaluated on a stack of
+// values, an operator taking the top value as its right operand, with no
+// tree at all
+
+fn literal(postfix: Vec[String]) -> i64 {
+    let mut values: Vec[i64] = [];
+    for token in postfix.iter() {
+        if token == "+" or token == "-" or token == "*" or token == "/" {
+            let b = values.pop().unwrap();
+            let a = values.pop().unwrap();
+            values.push(if token == "+" {
+                a + b
+            } else if token == "-" {
+                a - b
+            } else if token == "*" {
+                a * b
+            } else {
+                a / b
+            });
+        } else {
+            values.push(i64.parse(token).unwrap());
+        }
+    }
+    values[0]
+}
+
+fn main() {
+    let mut seed = 1628;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[Vec[String]] = [];
+    for p in 0..problems {
+        // every other case with operands below 10, so zeros are common
+        let top = if p % 2 == 0 { 10 } else { 100001 };
+        let mut postfix: Vec[String] = [];
+        expression(next_random(mut seed) % 12 + 1, top, mut seed, mut postfix);
+        cases.push(postfix);
+    }
+    for p in 0..problems {
+        let postfix = cases[p].clone();
+        let want = literal(postfix);
+        check = (check * 31 + want % 1000000007 + 1000000008) % 1000000007;
+        let mut answers: Vec[i64] = [];
+        for k in 0..3 {
+            let got = arm(k, postfix);
+            answers.push(got);
+            let failed = [
+                got != want,
+                arm(k, wrapped([], postfix, ["0", "+"])) != got,
+                arm(k, wrapped([], postfix, ["1", "*"])) != got or arm(k, wrapped([], postfix, ["1", "/"])) != got,
+                arm(k, wrapped(["0"], postfix, ["-"])) != -got,
+                arm(k, wrapped(postfix, postfix, ["-"])) != 0,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({postfix}), {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P6
+        for k in 0..3 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[k]).count() - 1;
+            if agree < 1 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 3 arms: {failures} failures");
+}

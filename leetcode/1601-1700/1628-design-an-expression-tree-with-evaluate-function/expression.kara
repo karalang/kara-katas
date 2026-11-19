@@ -1,0 +1,175 @@
+// LeetCode #1628: Design an Expression Tree With Evaluate Function -- the
+// ★ arm.
+//
+// The design LeetCode asks for, made modular as its follow-up asks: a
+// `Node` trait with `evaluate`, one struct per operator holding its two
+// operands as `dyn Node`, and a `TreeBuilder` whose `build_tree` reads the
+// postfix tokens onto a stack of `dyn Node`, an operator popping its right
+// operand, then its left. A new operator is a new struct and one line in
+// `operator`. O(n) to build and to evaluate.
+
+trait Node {
+    fn evaluate(self) -> i64;
+}
+
+struct Number {
+    value: i64,
+}
+
+struct Add {
+    left: dyn Node,
+    right: dyn Node,
+}
+
+struct Subtract {
+    left: dyn Node,
+    right: dyn Node,
+}
+
+struct Multiply {
+    left: dyn Node,
+    right: dyn Node,
+}
+
+struct Divide {
+    left: dyn Node,
+    right: dyn Node,
+}
+
+impl Node for Number {
+    fn evaluate(self) -> i64 {
+        self.value
+    }
+}
+
+impl Node for Add {
+    fn evaluate(self) -> i64 {
+        self.left.evaluate() + self.right.evaluate()
+    }
+}
+
+impl Node for Subtract {
+    fn evaluate(self) -> i64 {
+        self.left.evaluate() - self.right.evaluate()
+    }
+}
+
+impl Node for Multiply {
+    fn evaluate(self) -> i64 {
+        self.left.evaluate() * self.right.evaluate()
+    }
+}
+
+impl Node for Divide {
+    fn evaluate(self) -> i64 {
+        self.left.evaluate() / self.right.evaluate()
+    }
+}
+
+// the node for an operator token over its two operands
+fn operator(token: Str, left: own dyn Node, right: own dyn Node) -> dyn Node {
+    match token {
+        "+" => Add { left, right },
+        "-" => Subtract { left, right },
+        "*" => Multiply { left, right },
+        _ => Divide { left, right },
+    }
+}
+
+struct TreeBuilder {}
+
+impl TreeBuilder {
+    fn build_tree(self, postfix: Vec[String]) -> dyn Node {
+        let mut stack: Vec[dyn Node] = Vec.new();
+        for token in postfix.iter() {
+            match i64.parse(token) {
+                Ok(value) => stack.push(Number { value }),
+                Err(_) => {
+                    let right = stack.pop().unwrap();
+                    let left = stack.pop().unwrap();
+                    stack.push(operator(token, left, right));
+                }
+            }
+        }
+        stack.pop().unwrap()
+    }
+}
+
+fn evaluate_postfix(postfix: Vec[String]) -> i64 {
+    let builder = TreeBuilder {};
+    let tree = builder.build_tree(postfix);
+    tree.evaluate()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    ((check * 31 + x + 1) % 1000000007 + 1000000007) % 1000000007
+}
+
+// A random expression of `leaves` operands below `top`, written postfix
+// onto `tokens`; returns its value. An operator that would divide by zero
+// or leave 10^9 in absolute value is swapped for one that does not, as
+// LeetCode promises.
+fn expression(leaves: i64, top: i64, seed: mut ref i64, tokens: mut ref Vec[String]) -> i64 {
+    if leaves == 1 {
+        let v = next_random(mut seed) % top;
+        tokens.push(f"{v}");
+        return v;
+    }
+    let left = next_random(mut seed) % (leaves - 1) + 1;
+    let a = expression(left, top, mut seed, mut tokens);
+    let b = expression(leaves - left, top, mut seed, mut tokens);
+    let mut op = ["+", "-", "*", "/"][next_random(mut seed) % 4].clone();
+    if op == "/" and b == 0 {
+        op = "*";
+    }
+    if op == "*" and (a * b).abs() > 1000000000 {
+        op = "+";
+    }
+    if op == "+" and (a + b).abs() > 1000000000 {
+        op = "-";
+    }
+    if op == "-" and (a - b).abs() > 1000000000 {
+        op = "+";
+    }
+    tokens.push(op.clone());
+    match op.as_str() {
+        "+" => a + b,
+        "-" => a - b,
+        "*" => a * b,
+        _ => a / b,
+    }
+}
+
+// `count` random expressions of 1 to `most` operands below `top`; their
+// values summed, and a checksum
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let mut postfix: Vec[String] = Vec.new();
+        expression(next_random(mut seed) % most + 1, top, mut seed, mut postfix);
+        let got = evaluate_postfix(postfix);
+        total += got;
+        check = mix(check, got);
+    }
+    println(f"{count} expressions of up to {most} operands: values sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then one operand alone, and a division
+    // that truncates toward zero
+    println(evaluate_postfix(["3", "4", "+", "2", "*", "7", "/"]));
+    println(evaluate_postfix(["4", "5", "2", "7", "+", "-", "*"]));
+    println(evaluate_postfix(["100000"]));
+    println(evaluate_postfix(["0", "7", "-", "2", "/"]));
+    let mut seed = 1628;
+    batch(3000, 8, 10, mut seed);
+    batch(300, 50, 100001, mut seed);
+}
