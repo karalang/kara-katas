@@ -1,0 +1,88 @@
+// LeetCode #1656: Design an Ordered Stream -- a map of pending values.
+//
+// Values not yet returned wait in a `Map` by id; an insert at the pointer
+// takes out the run of ids that follow it. Each value is held only until
+// it is returned. O(1) amortised per insert.
+
+struct OrderedStream {
+    pending: Map[i32, String],
+    next: i32,
+}
+
+impl OrderedStream {
+    fn new(n: i32) -> OrderedStream {
+        OrderedStream { pending: Map.new(), next: 1 }
+    }
+
+    fn insert(mut ref self, id_key: i32, value: own String) -> Vec[String] {
+        self.pending.insert(id_key, value);
+        let mut chunk = Vec.new();
+        while let Some(v) = self.pending.remove(self.next) {
+            chunk.push(v);
+            self.next += 1;
+        }
+        chunk
+    }
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random streams of 1 to `most` pairs, inserted in a random
+// order, each value five random letters; the chunks returned, the values
+// in them, and a checksum over every value in the order returned
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut chunks = 0;
+    let mut values = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let mut order: Vec[i32] = (1..=n).map(|i| i as i32).collect();
+        for i in (1..n).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            order.swap(i, j);
+        }
+        let mut stream = OrderedStream.new(n as i32);
+        for id in order.iter() {
+            let mut value = String.new();
+            for _ in 0..5 {
+                value.push((b'a' + (next_random(mut seed) % 26) as u8) as char);
+            }
+            let chunk = stream.insert(id, value);
+            if not chunk.is_empty() {
+                chunks += 1;
+            }
+            for v in chunk.iter() {
+                values += 1;
+                for b in v.bytes() {
+                    check = (check * 31 + b) % 1000000007;
+                }
+            }
+        }
+    }
+    println(f"{count} streams of up to {most} pairs: {chunks} chunks, {values} values, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's example
+    let mut stream = OrderedStream.new(5);
+    println(stream.insert(3, "ccccc"));
+    println(stream.insert(1, "aaaaa"));
+    println(stream.insert(2, "bbbbb"));
+    println(stream.insert(5, "eeeee"));
+    println(stream.insert(4, "ddddd"));
+    // one pair; then pairs in order, each a chunk of its own
+    let mut one = OrderedStream.new(1);
+    println(one.insert(1, "x"));
+    let mut sorted = OrderedStream.new(3);
+    for id in 1..=3 {
+        println(sorted.insert(id as i32, f"v{id}"));
+    }
+    let mut seed = 1656;
+    batch(3000, 10, mut seed);
+    batch(100, 1000, mut seed);
+}

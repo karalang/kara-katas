@@ -1,0 +1,275 @@
+// LeetCode #1656: Design an Ordered Stream -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random streams
+// of 1 to 8 pairs inserted in a random order. Every stream is drawn
+// before any arm runs.
+//
+// P1  every chunk is the statement read literally
+// P2  the chunks together are every value, in id order
+// P3  a chunk is empty exactly when the id inserted is not the first
+//     one not yet returned
+// P4  the values written in capitals give the same chunks in capitals
+// P5  each arm agrees with at least two of the other three
+
+// ---- stream.kara: the ★ arm: a slot per id and a pointer
+
+struct StarStream {
+    slots: Vec[Option[String]],
+    next: i64,
+}
+
+impl StarStream {
+    fn new(n: i32) -> StarStream {
+        StarStream { slots: Vec.filled(n as i64 + 1, None), next: 1 }
+    }
+
+    fn insert(mut ref self, id_key: i32, value: own String) -> Vec[String] {
+        self.slots[id_key] = Some(value);
+        let mut chunk = Vec.new();
+        while self.next < self.slots.len() {
+            match self.slots[self.next] {
+                Some(v) => chunk.push(v.clone()),
+                None => break,
+            }
+            self.next += 1;
+        }
+        chunk
+    }
+}
+
+// ---- stream_map.kara: a map of pending values
+
+struct MapStream {
+    pending: Map[i32, String],
+    next: i32,
+}
+
+impl MapStream {
+    fn new(n: i32) -> MapStream {
+        MapStream { pending: Map.new(), next: 1 }
+    }
+
+    fn insert(mut ref self, id_key: i32, value: own String) -> Vec[String] {
+        self.pending.insert(id_key, value);
+        let mut chunk = Vec.new();
+        while let Some(v) = self.pending.remove(self.next) {
+            chunk.push(v);
+            self.next += 1;
+        }
+        chunk
+    }
+}
+
+// ---- stream_heap.kara: a heap of pending ids
+
+struct HeapStream {
+    pending: PriorityQueue[(i32, String)],
+    next: i32,
+}
+
+impl HeapStream {
+    fn new(n: i32) -> HeapStream {
+        HeapStream { pending: PriorityQueue.new(), next: 1 }
+    }
+
+    fn insert(mut ref self, id_key: i32, value: own String) -> Vec[String] {
+        self.pending.push((id_key, value));
+        let mut chunk = Vec.new();
+        while let Some((id, _)) = self.pending.peek() {
+            if id != self.next {
+                break;
+            }
+            let (_, v) = self.pending.pop().unwrap();
+            chunk.push(v);
+            self.next += 1;
+        }
+        chunk
+    }
+}
+
+// ---- stream_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionStream {
+    data: Vec[String],
+    ptr: i64,
+}
+
+/**
+ * `&self` means the method takes an immutable reference.
+ * If you need a mutable reference, change it to `&mut self` instead.
+ */
+impl SolutionStream {
+
+    fn new(n: i32) -> Self {
+        SolutionStream { data: Vec.filled(n, String.new()), ptr: 0 }
+    }
+
+    fn insert(mut ref self, id_key: i32, value: own String) -> Vec[String] {
+        self.data[id_key - 1] = value;
+        let mut res = Vec.new();
+        while self.ptr < self.data.len() and not self.data[self.ptr].is_empty() {
+            res.push(self.data[self.ptr].clone());
+            self.ptr += 1;
+        }
+        res
+    }
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the chunk each insert returns, the pairs inserted in the order given
+fn run(which: i64, n: i32, pairs: Slice[(i32, String)]) -> Vec[Vec[String]] {
+    let mut chunks = Vec.new();
+    match which {
+        0 => {
+            let mut s = StarStream.new(n);
+            for (id, v) in pairs.iter() {
+                chunks.push(s.insert(id, v.clone()));
+            }
+        }
+        1 => {
+            let mut s = MapStream.new(n);
+            for (id, v) in pairs.iter() {
+                chunks.push(s.insert(id, v.clone()));
+            }
+        }
+        2 => {
+            let mut s = HeapStream.new(n);
+            for (id, v) in pairs.iter() {
+                chunks.push(s.insert(id, v.clone()));
+            }
+        }
+        _ => {
+            let mut s = SolutionStream.new(n);
+            for (id, v) in pairs.iter() {
+                chunks.push(s.insert(id, v.clone()));
+            }
+        }
+    }
+    chunks
+}
+
+fn arm_name(a: i64) -> String {
+    ["stream", "map", "heap", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: after each insert, the values of
+// ids 1 to k are returned all together so far, k being the most for which
+// every one of them has been inserted; each chunk is the values of the
+// ids the latest insert brought into that run
+
+fn literal(n: i32, pairs: Slice[(i32, String)]) -> Vec[Vec[String]] {
+    let mut inserted: Vec[Option[String]] = Vec.filled(n as i64 + 1, None);
+    let mut returned = 0;
+    let mut chunks = Vec.new();
+    for (id, v) in pairs.iter() {
+        inserted[id] = Some(v.clone());
+        let mut k = 0;
+        while k < n as i64 and inserted[k + 1].is_some() {
+            k += 1;
+        }
+        let mut chunk = Vec.new();
+        for i in returned + 1..=k {
+            chunk.push(inserted[i].clone().unwrap());
+        }
+        returned = k;
+        chunks.push(chunk);
+    }
+    chunks
+}
+
+fn main() {
+    let mut seed = 1656;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(i32, Vec[(i32, String)])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 8 + 1;
+        let mut order: Vec[i32] = (1..=n).map(|i| i as i32).collect();
+        for i in (1..n).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            order.swap(i, j);
+        }
+        let mut pairs: Vec[(i32, String)] = Vec.new();
+        for id in order.iter() {
+            let mut value = String.new();
+            for _ in 0..3 {
+                value.push((b'a' + (next_random(mut seed) % 26) as u8) as char);
+            }
+            pairs.push((id, value));
+        }
+        cases.push((n as i32, pairs));
+    }
+    for (p, (n, pairs)) in cases.iter().enumerate() {
+        let want = literal(n, pairs);
+        for chunk in want.iter() {
+            check = (check * 31 + chunk.len() + 1) % 1000000007;
+        }
+        let mut by_id: Vec[(i32, String)] = pairs.clone();
+        by_id.sort();
+        let in_order: Vec[String] = by_id.iter().map(|(_, v)| v.clone()).collect();
+        let capitals: Vec[(i32, String)] = pairs.iter().map(|(id, v)| (id, v.to_uppercase())).collect();
+        let mut answers: Vec[Vec[Vec[String]]] = Vec.new();
+        for k in 0..4 {
+            let got = run(k, n, pairs);
+            answers.push(got.clone());
+            let all: Vec[String] = got.iter().flat_map(|c| c.iter().cloned()).collect();
+            // the first id not yet returned before each insert
+            let mut first = 1;
+            let mut p3 = false;
+            for i in 0..pairs.len() {
+                if got[i].is_empty() == (pairs[i].0 == first) {
+                    p3 = true;
+                }
+                first += got[i].len() as i32;
+            }
+            let upper: Vec[Vec[String]] = got.iter().map(|c| c.iter().map(|v| v.to_uppercase()).collect()).collect();
+            let failed = [
+                got != want,
+                all != in_order,
+                p3,
+                run(k, n, capitals) != upper,
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({pairs}), {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for k in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[k]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

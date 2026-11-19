@@ -1,0 +1,73 @@
+// LeetCode #1656: Design an Ordered Stream -- the bench: the ★ arm on 2000
+// random streams of 1000 pairs, each inserted in a random order with a
+// value of five random letters, all drawn first.
+
+struct OrderedStream {
+    slots: Vec[Option[String]],
+    next: i64,
+}
+
+impl OrderedStream {
+    fn new(n: i32) -> OrderedStream {
+        OrderedStream { slots: Vec.filled(n as i64 + 1, None), next: 1 }
+    }
+
+    fn insert(mut ref self, id_key: i32, value: own String) -> Vec[String] {
+        self.slots[id_key] = Some(value);
+        let mut chunk = Vec.new();
+        while self.next < self.slots.len() {
+            match self.slots[self.next] {
+                Some(v) => chunk.push(v.clone()),
+                None => break,
+            }
+            self.next += 1;
+        }
+        chunk
+    }
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1656;
+    let n = 1000;
+    let mut streams: Vec[Vec[(i32, String)]] = Vec.new();
+    for _ in 0..2000 {
+        let mut order: Vec[i32] = (1..=n).map(|i| i as i32).collect();
+        for i in (1..n).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            order.swap(i, j);
+        }
+        let mut pairs: Vec[(i32, String)] = Vec.new();
+        for id in order.iter() {
+            let mut value = String.new();
+            for _ in 0..5 {
+                value.push((b'a' + (next_random(mut seed) % 26) as u8) as char);
+            }
+            pairs.push((id, value));
+        }
+        streams.push(pairs);
+    }
+    let mut check = 0;
+    let mut chunks = 0;
+    for pairs in streams.iter() {
+        let mut stream = OrderedStream.new(n as i32);
+        for (id, value) in pairs.iter() {
+            let chunk = stream.insert(id, value.clone());
+            if not chunk.is_empty() {
+                chunks += 1;
+            }
+            for v in chunk.iter() {
+                for b in v.bytes() {
+                    check = (check * 31 + b) % 1000000007;
+                }
+            }
+        }
+    }
+    println(f"2000 streams of 1000 pairs: {chunks} chunks, checksum {check}");
+}
