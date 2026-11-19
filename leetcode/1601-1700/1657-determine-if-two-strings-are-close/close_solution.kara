@@ -1,0 +1,96 @@
+// LeetCode #1657: Determine if Two Strings Are Close -- LeetCode's Rust
+// template, as written there, carried over by `karac fix`.
+//
+// Two `[i32; 26]` counts, the same letters checked with `zip`, then both
+// sorted and compared. O(n).
+
+struct Solution {}
+
+impl Solution {
+    pub fn close_strings(word1: String, word2: String) -> bool {
+        if word1.len() != word2.len() {
+            return false;
+        }
+        let mut f1 = [0i32; 26];
+        let mut f2 = [0i32; 26];
+        for b in word1.bytes() {
+            f1[(b - b'a') as usize] += 1;
+        }
+        for b in word2.bytes() {
+            f2[(b - b'a') as usize] += 1;
+        }
+        if f1.iter().zip(f2.iter()).any(|(a, b)| (*a == 0) != (*b == 0)) {
+            return false;
+        }
+        f1.sort();
+        f2.sort();
+        f1 == f2
+    }
+}
+
+fn close_strings(word1: String, word2: String) -> bool {
+    Solution.close_strings(word1, word2)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(n: i64, letters: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+    }
+    s
+}
+
+// `count` random pairs of words of 1 to `most` letters from the first 1
+// to `letters` of the alphabet; half of the second words are the first
+// shuffled with two of its letters swapped throughout, which keeps them
+// close; how many pairs are close, and a checksum
+fn batch(count: i64, most: i64, letters: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut close = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let alphabet = next_random(mut seed) % letters + 1;
+        let word1 = random_word(n, alphabet, mut seed);
+        let word2 = if next_random(mut seed) % 2 == 0 {
+            random_word(next_random(mut seed) % most + 1, alphabet, mut seed)
+        } else {
+            let mut cs: Vec[char] = word1.chars().collect();
+            for i in (1..cs.len()).rev() {
+                let j = next_random(mut seed) % (i + 1);
+                cs.swap(i, j);
+            }
+            let a = (b'a' + (next_random(mut seed) % alphabet) as u8) as char;
+            let b = (b'a' + (next_random(mut seed) % alphabet) as u8) as char;
+            cs.iter().map(|c| if c == a { b } else if c == b { a } else { c }).collect()
+        };
+        let answer = close_strings(word1, word2);
+        if answer {
+            close += 1;
+        }
+        check = (check * 31 + (if answer { 2 } else { 1 })) % 1000000007;
+    }
+    println(f"{count} pairs of up to {most} letters from {letters}: {close} close, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then lengths that differ, a letter only
+    // one side has, and two words with the same counts on different
+    // letters
+    println(close_strings("abc", "bca"));
+    println(close_strings("a", "aa"));
+    println(close_strings("cabbba", "abbccc"));
+    println(close_strings("ab", "abb"));
+    println(close_strings("aab", "aac"));
+    println(close_strings("aabbb", "aaabb"));
+    let mut seed = 1657;
+    batch(3000, 8, 3, mut seed);
+    batch(1000, 1000, 26, mut seed);
+    batch(20, 100000, 26, mut seed);
+}

@@ -1,0 +1,264 @@
+// LeetCode #1657: Determine if Two Strings Are Close -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random pairs of
+// words of 1 to 6 letters from the first 1 to 3 of the alphabet, half of
+// the second words made close by construction. Every pair is drawn before
+// any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the words swapped give the same answer
+// P3  the first word reversed gives the same answer
+// P4  both words relabelled by one shift of the alphabet give the same
+//     answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- close.kara: the ★ arm: the same letters and the same sorted counts
+
+fn star_arm(word1: String, word2: String) -> bool {
+    let mut count1 = [0; 26];
+    let mut count2 = [0; 26];
+    for b in word1.bytes() {
+        count1[b - b'a'] += 1;
+    }
+    for b in word2.bytes() {
+        count2[b - b'a'] += 1;
+    }
+    for i in 0..26 {
+        if (count1[i] == 0) != (count2[i] == 0) {
+            return false;
+        }
+    }
+    count1.sort();
+    count2.sort();
+    count1 == count2
+}
+
+// ---- close_maps.kara: maps of counts and of counts of counts
+
+fn maps_arm(word1: String, word2: String) -> bool {
+    let counts1 = maps_letter_counts(word1);
+    let counts2 = maps_letter_counts(word2);
+    let keys1: SortedSet[char] = counts1.keys().collect();
+    let keys2: SortedSet[char] = counts2.keys().collect();
+    keys1 == keys2 and maps_count_of_counts(counts1) == maps_count_of_counts(counts2)
+}
+
+fn maps_letter_counts(word: String) -> Map[char, i64] {
+    let mut counts = Map.new();
+    for c in word.chars() {
+        *counts.entry(c).or_insert(0) += 1;
+    }
+    counts
+}
+
+fn maps_count_of_counts(counts: Map[char, i64]) -> SortedMap[i64, i64] {
+    let mut by_count = SortedMap.new();
+    for n in counts.values() {
+        *by_count.entry(n).or_insert(0) += 1;
+    }
+    by_count
+}
+
+// ---- close_buckets.kara: a letter mask and count buckets
+
+fn buckets_arm(word1: String, word2: String) -> bool {
+    if word1.len() != word2.len() {
+        return false;
+    }
+    let (mask1, buckets1) = buckets_profile(word1);
+    let (mask2, buckets2) = buckets_profile(word2);
+    mask1 == mask2 and buckets1 == buckets2
+}
+
+fn buckets_profile(word: String) -> (i64, Vec[i64]) {
+    let mut counts = [0; 26];
+    let mut mask = 0;
+    for b in word.bytes() {
+        let i = (b - b'a') as i64;
+        counts[i] += 1;
+        mask |= 1 << i;
+    }
+    let mut buckets = Vec.filled(word.len() + 1, 0);
+    for c in counts.iter() {
+        buckets[c] += 1;
+    }
+    (mask, buckets)
+}
+
+// ---- close_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn close_strings(word1: String, word2: String) -> bool {
+        if word1.len() != word2.len() {
+            return false;
+        }
+        let mut f1 = [0i32; 26];
+        let mut f2 = [0i32; 26];
+        for b in word1.bytes() {
+            f1[(b - b'a') as usize] += 1;
+        }
+        for b in word2.bytes() {
+            f2[(b - b'a') as usize] += 1;
+        }
+        if f1.iter().zip(f2.iter()).any(|(a, b)| (*a == 0) != (*b == 0)) {
+            return false;
+        }
+        f1.sort();
+        f2.sort();
+        f1 == f2
+    }
+}
+
+fn solution_arm(word1: String, word2: String) -> bool {
+    SolutionArm.close_strings(word1, word2)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(which: i64, word1: String, word2: String) -> bool {
+    match which {
+        0 => star_arm(word1, word2),
+        1 => maps_arm(word1, word2),
+        2 => buckets_arm(word1, word2),
+        _ => solution_arm(word1, word2),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["close", "maps", "buckets", "solution"][a].to_string()
+}
+
+fn random_word(n: i64, letters: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+    }
+    s
+}
+
+// ---- the statement read literally: every word the two operations reach
+// from the first, searched breadth first, swapping any two positions or
+// any two letters the word holds, everywhere
+
+fn literal(word1: String, word2: String) -> bool {
+    let mut seen: Set[String] = Set.new();
+    seen.insert(word1.clone());
+    let mut queue: VecDeque[String] = VecDeque.new();
+    queue.push_back(word1.clone());
+    while let Some(w) = queue.pop_front() {
+        if w == word2 {
+            return true;
+        }
+        let cs: Vec[char] = w.chars().collect();
+        let mut next: Vec[String] = Vec.new();
+        for i in 0..cs.len() {
+            for j in i + 1..cs.len() {
+                let mut swapped = cs.clone();
+                swapped.swap(i, j);
+                next.push(swapped.iter().collect());
+            }
+        }
+        for a in 0..cs.len() {
+            for b in 0..cs.len() {
+                let (x, y) = (cs[a], cs[b]);
+                if x != y {
+                    next.push(cs.iter().map(|c| if c == x { y } else if c == y { x } else { c }).collect());
+                }
+            }
+        }
+        for v in next.into_iter() {
+            if seen.insert(v.clone()) {
+                queue.push_back(v);
+            }
+        }
+    }
+    false
+}
+
+fn shifted(word: String) -> String {
+    word.chars().map(|c| ((c as u32 as u8 - b'a' + 7) % 26 + b'a') as char).collect()
+}
+
+fn main() {
+    let mut seed = 1657;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(String, String)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 6 + 1;
+        let alphabet = next_random(mut seed) % 3 + 1;
+        let word1 = random_word(n, alphabet, mut seed);
+        let word2 = if next_random(mut seed) % 2 == 0 {
+            random_word(next_random(mut seed) % 6 + 1, alphabet, mut seed)
+        } else {
+            let mut cs: Vec[char] = word1.chars().collect();
+            for i in (1..cs.len()).rev() {
+                let j = next_random(mut seed) % (i + 1);
+                cs.swap(i, j);
+            }
+            let a = (b'a' + (next_random(mut seed) % alphabet) as u8) as char;
+            let b = (b'a' + (next_random(mut seed) % alphabet) as u8) as char;
+            cs.iter().map(|c| if c == a { b } else if c == b { a } else { c }).collect()
+        };
+        cases.push((word1, word2));
+    }
+    for (p, (word1, word2)) in cases.iter().enumerate() {
+        let want = literal(word1, word2);
+        check = (check * 31 + (if want { 2 } else { 1 })) % 1000000007;
+        let reversed: String = word1.chars().rev().collect();
+        let mut answers: Vec[bool] = Vec.new();
+        for k in 0..4 {
+            let got = arm(k, word1, word2);
+            answers.push(got);
+            let failed = [
+                got != want,
+                arm(k, word2, word1) != got,
+                arm(k, reversed, word2) != got,
+                arm(k, shifted(word1), shifted(word2)) != got,
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({word1}, {word2}), {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for k in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[k]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}
