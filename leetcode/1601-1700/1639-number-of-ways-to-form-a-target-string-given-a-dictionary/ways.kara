@@ -1,0 +1,79 @@
+// LeetCode #1639: Number of Ways to Form a Target String Given a
+// Dictionary -- the ★ arm.
+//
+// Only how many words hold each letter in each column matters. Walk the
+// columns left to right with ways[i], the number of ways to have formed
+// the first i letters of the target from the columns so far; a column can
+// add the (i + 1)th letter to any of those, once per word that has it
+// there. Updating i from the top down lets one array serve. O(Lw + Lt)
+// for words of length L, w words and a target of t letters.
+
+const MODULUS: i64 = 1000000007;
+
+fn num_ways(words: Vec[String], target: String) -> i64 {
+    let length = words[0].len();
+    let goal = target.bytes();
+    let mut ways: Vec[i64] = Vec.filled(goal.len() + 1, 0);
+    ways[0] = 1;
+    for column in 0..length {
+        let mut count: Array[i64, 26] = [0; 26];
+        for word in words.iter() {
+            count[word.bytes()[column] - b'a'] += 1;
+        }
+        for i in (0..min(column + 1, goal.len())).rev() {
+            let have = count[goal[i] - b'a'];
+            ways[i + 1] = (ways[i + 1] + ways[i] * have) % MODULUS;
+        }
+    }
+    ways[goal.len()]
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(length: i64, letters: i64, seed: mut ref i64) -> String {
+    let mut word = String.new();
+    for _ in 0..length {
+        word.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+    }
+    word
+}
+
+// `count` random dictionaries of 1 to `most` words of one length from 1
+// to `long`, and a target of 1 to that length plus one, all from the first
+// `letters` of the alphabet; the ways summed, and a checksum
+fn batch(count: i64, most: i64, long: i64, letters: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let length = next_random(mut seed) % long + 1;
+        let mut words: Vec[String] = Vec.new();
+        for _ in 0..n {
+            words.push(random_word(length, letters, mut seed));
+        }
+        let target = random_word(next_random(mut seed) % (length + 1) + 1, letters, mut seed);
+        let ways = num_ways(words, target);
+        total += ways;
+        check = (check * 31 + ways + 1) % 1000000007;
+    }
+    println(f"{count} dictionaries of up to {most} words: ways sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then a target longer than the words, a
+    // letter no word has, and one word that is the target
+    println(num_ways(["acca", "bbbb", "caca"], "aba"));
+    println(num_ways(["abba", "baab"], "bab"));
+    println(num_ways(["ab", "ba"], "aba"));
+    println(num_ways(["abc", "abc"], "ad"));
+    println(num_ways(["xyz"], "xyz"));
+    let mut seed = 1639;
+    batch(3000, 4, 5, 2, mut seed);
+    batch(100, 50, 60, 3, mut seed);
+    batch(3, 1000, 1000, 26, mut seed);
+}

@@ -1,0 +1,276 @@
+// LeetCode #1639: Number of Ways to Form a Target String Given a
+// Dictionary -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random
+// dictionaries of 1 to 3 words of 1 to 5 letters, and targets of 1 to 4
+// letters: every other one from the letters a and b, the rest a to c.
+// Every case is drawn before any arm answers.
+//
+// P1  the ways are the statement read literally
+// P2  the words in reverse order give the same ways
+// P3  the letters renamed alike, a to b, b to c, c to a, give the same ways
+// P4  every word listed twice multiplies the ways by 2 for each target
+//     letter
+// P5  a target longer than the words has no way, and no target has more
+//     ways than C(L, t) choices of columns times n^t choices of words
+// P6  each arm agrees with at least two of the other three
+
+// ---- ways.kara: the ★ arm: one array of ways, column by column
+
+const STAR_MODULUS: i64 = 1000000007;
+
+fn star_arm(words: Vec[String], target: String) -> i64 {
+    let length = words[0].len();
+    let goal = target.bytes();
+    let mut ways: Vec[i64] = Vec.filled(goal.len() + 1, 0);
+    ways[0] = 1;
+    for column in 0..length {
+        let mut count: Array[i64, 26] = [0; 26];
+        for word in words.iter() {
+            count[word.bytes()[column] - b'a'] += 1;
+        }
+        for i in (0..min(column + 1, goal.len())).rev() {
+            let have = count[goal[i] - b'a'];
+            ways[i + 1] = (ways[i + 1] + ways[i] * have) % STAR_MODULUS;
+        }
+    }
+    ways[goal.len()]
+}
+
+// ---- ways_table.kara: the full table over prefixes and columns
+
+const TABLE_MODULUS: i64 = 1000000007;
+
+fn table_arm(words: Vec[String], target: String) -> i64 {
+    let length = words[0].len();
+    let mut count: Vec[Array[i64, 26]] = Vec.filled(length, [0; 26]);
+    for word in words.iter() {
+        for (k, letter) in word.bytes().iter().enumerate() {
+            count[k][letter - b'a'] += 1;
+        }
+    }
+    let goal = target.bytes();
+    let t = goal.len();
+    let mut formed: Vec[Vec[i64]] = Vec.filled(t + 1, Vec.filled(length + 1, 0));
+    for k in 0..=length {
+        formed[0][k] = 1;
+    }
+    for i in 1..=t {
+        for k in 1..=length {
+            let letter = goal[i - 1] - b'a';
+            formed[i][k] = (formed[i][k - 1] + formed[i - 1][k - 1] * count[k - 1][letter]) % TABLE_MODULUS;
+        }
+    }
+    formed[t][length]
+}
+
+// ---- ways_memo.kara: recursion with a memo
+
+const MEMO_MODULUS: i64 = 1000000007;
+
+fn memo_ways(i: i64, k: i64, goal: Slice[u8], count: Vec[Array[i64, 26]], memo: mut ref Map[(i64, i64), i64]) -> i64 {
+    if i == goal.len() {
+        return 1;
+    }
+    if goal.len() - i > count.len() - k {
+        return 0;
+    }
+    if let Some(known) = memo.get((i, k)) {
+        return known;
+    }
+    let take = count[k][goal[i] - b'a'] * memo_ways(i + 1, k + 1, goal, count, mut memo) % MEMO_MODULUS;
+    let skip = memo_ways(i, k + 1, goal, count, mut memo);
+    let total = (take + skip) % MEMO_MODULUS;
+    memo.insert((i, k), total);
+    total
+}
+
+fn memo_arm(words: Vec[String], target: String) -> i64 {
+    let mut count: Vec[Array[i64, 26]] = Vec.filled(words[0].len(), [0; 26]);
+    for word in words.iter() {
+        for (k, letter) in word.bytes().iter().enumerate() {
+            count[k][letter - b'a'] += 1;
+        }
+    }
+    let mut memo: Map[(i64, i64), i64] = Map.new();
+    memo_ways(0, 0, target.bytes(), count, mut memo)
+}
+
+// ---- ways_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn num_ways(words: Vec[String], target: String) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let m = words[0].len();
+        let n = target.len();
+        let mut cnt = Vec.filled(m, [0; 26]);
+        for w in ref words {
+            for (j, c) in w.bytes().iter().enumerate() {
+                cnt[j][(c - b'a') as usize] += 1;
+            }
+        }
+        let t = target.bytes();
+        let mut dp = Vec.filled(n + 1, 0);
+        dp[0] = 1;
+        for j in 0..m {
+            for i in (0..n).rev() {
+                dp[i + 1] = (dp[i + 1] + dp[i] * cnt[j][(t[i] - b'a') as usize]) % MOD;
+            }
+        }
+        dp[n] as i32
+    }
+}
+
+fn solution_arm(words: Vec[String], target: String) -> i64 {
+    SolutionArm.num_ways(words, target)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(k: i64, words: Vec[String], target: String) -> i64 {
+    match k {
+        0 => star_arm(words, target),
+        1 => table_arm(words, target),
+        2 => memo_arm(words, target),
+        _ => solution_arm(words, target),
+    }
+}
+
+fn arm_name(k: i64) -> String {
+    ["ways", "table", "memo", "solution"][k].to_string()
+}
+
+fn random_word(length: i64, letters: i64, seed: mut ref i64) -> String {
+    let mut word = String.new();
+    for _ in 0..length {
+        word.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+    }
+    word
+}
+
+// every letter one on, round within the first three
+fn renamed(word: String) -> String {
+    word.chars().map(|c| (b'a' + (c as u32 as u8 - b'a' + 1) % 3) as char).collect()
+}
+
+// ---- the statement read literally: build the target letter by letter,
+// each from some word's letter at a column right of the last one used,
+// and count every way of choosing the columns and the words
+
+fn build(words: Vec[Vec[char]], goal: Vec[char], i: i64, after: i64) -> i64 {
+    if i == goal.len() {
+        return 1;
+    }
+    let mut count = 0;
+    for column in after..words[0].len() {
+        for word in words.iter() {
+            if word[column] == goal[i] {
+                count += build(words, goal, i + 1, column + 1);
+            }
+        }
+    }
+    count
+}
+
+fn literal(words: Vec[String], target: String) -> i64 {
+    let letters: Vec[Vec[char]] = words.iter().map(|w| w.chars().collect()).collect();
+    build(letters, target.chars().collect(), 0, 0)
+}
+
+fn choose(n: i64, k: i64) -> i64 {
+    if k > n {
+        return 0;
+    }
+    let mut c = 1;
+    for i in 0..k {
+        c = c * (n - i) / (i + 1);
+    }
+    c
+}
+
+fn main() {
+    let mut seed = 1639;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[String], String)] = [];
+    for p in 0..problems {
+        // every other case from the letters a and b
+        let letters = if p % 2 == 0 { 2 } else { 3 };
+        let n = next_random(mut seed) % 3 + 1;
+        let length = next_random(mut seed) % 5 + 1;
+        let mut words: Vec[String] = [];
+        for _ in 0..n {
+            words.push(random_word(length, letters, mut seed));
+        }
+        let target = random_word(next_random(mut seed) % 4 + 1, letters, mut seed);
+        cases.push((words, target));
+    }
+    for p in 0..problems {
+        let (words, target) = cases[p].clone();
+        let (n, length, t) = (words.len(), words[0].len(), target.len());
+        let reversed: Vec[String] = words.iter().rev().cloned().collect();
+        let renamed_words: Vec[String] = words.iter().map(|w| renamed(w)).collect();
+        let mut doubled = words.clone();
+        doubled.extend(words.iter().cloned());
+        let mut most = choose(length, t);
+        for _ in 0..t {
+            most *= n;
+        }
+        let want = literal(words, target);
+        check = (check * 31 + want + 1) % 1000000007;
+        let mut answers: Vec[i64] = [];
+        for k in 0..4 {
+            let got = arm(k, words, target);
+            answers.push(got);
+            let failed = [
+                got != want,
+                arm(k, reversed, target) != got,
+                arm(k, renamed_words, renamed(target)) != got,
+                arm(k, doubled, target) != got * (1 << t),
+                t > length and got != 0 or got > most,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({words}, {target}), {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P6
+        for k in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[k]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}
