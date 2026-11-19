@@ -26,8 +26,8 @@ bitmasks.
 | `palindromes_submask.kara` | `within[m]`, the longest palindrome using only positions in `m`, from its submasks one position smaller; each palindromic mask pairs with `within` of its complement. O(2^n n) |
 | `palindromes_iter.kara` | the palindromic masks from `filter` over `1..1 << n` (a mask tested by `zip` with its reverse and `all`), then `flat_map` over ordered disjoint pairs and `max`. O(4^n) |
 | `palindromes_peel.kara` | a mask tested by peeling its lowest and highest set bits (`trailing_zeros`, `leading_zeros`), the palindromic masks sorted longest first, and the pair search cut off once no pair can win. O(4^n) worst |
-| `palindromes_solution.kara` | LeetCode's Rust template (`impl Solution`, `as_bytes`, `usize` masks, `(mut i, mut j)`, an `&str` wrapper), carried by `karac fix` to one remaining error: blocked by B-2026-11-07-3 |
-| `differential.kara` | the five arms that check against the statement read literally, six properties |
+| `palindromes_solution.kara` | LeetCode's Rust template (`impl Solution`, `as_bytes`, `usize` masks, `(mut i, mut j)`, an `&str` wrapper), carried by `karac fix` in three rounds, the last giving `best` its `i32` |
+| `differential.kara` | the five arms written in Kāra against the statement read literally, six properties |
 
 Every arm prints the same 10 lines: the answers for LeetCode's three
 examples and five more; then the sum and a checksum of the answers for 1500
@@ -37,7 +37,7 @@ output is byte-identical.
 
 ## Differential
 
-`differential.kara` holds copies of the five arms that check and the
+`differential.kara` holds copies of the five arms written in Kāra and the
 statement read literally: every way of giving each position to the first
 subsequence, the second, or neither, kept when both are non-empty
 palindromes, the largest product of their lengths. It checks 1000 problems
@@ -110,7 +110,7 @@ ones).
 
 ## Verification
 
-Every arm but the Rust template prints the same output as `palindromes.py`
+Every arm, the Rust template included, prints the same output as `palindromes.py`
 under `karac __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`,
 and `karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no
 error. `karac run` and a `karac build` binary print the same output for
@@ -129,12 +129,13 @@ by `.eq(..)`, which the library does not have (`docs/library/iterators.md`
 lists no `eq`); it reads `zip(..).all(..)`.
 
 The Rust arm was written as LeetCode's Rust template. `karac fix` carries
-it in two rounds (twelve edits, then six) to one error it has no fix for:
-`let mut best = 0;` takes `i64` on the spot, so the `i32` return is
-refused (and `best.max(x * y)` over `i32` lengths was too, until a
-method's argument widened in kara B-2026-11-17-90). Rust types that literal
-`i32` from its later uses; design.md §8 says Kāra's literals default last
-too, and B-2026-11-07-3 tracks that the checker does not yet. The `&str`
+it in three rounds (twelve edits, then six, then one). The last is
+`let mut best = 0;` to `let mut best: i32 = 0;`: `best = best.max(x * y)`
+over `i32` lengths widens into the literal's `i64` rather than fixing it,
+as design.md §8 Literals rules (a method or an operator beside a type that
+widens into the default leaves the literal at `i64`, B-2026-11-17-129), so
+the `i32` return is refused, and the refusal carries the annotation as its
+fix. Rust types that literal `i32` from its later uses. The `&str`
 wrapper had no working fix before this kata: the `&T` edit made it `ref
 Str`, and a `String` argument does not pass as `ref Str`, so every call
 failed with no fix. `&str` now becomes `Str` in one edit (kara f753a3e8bb,
