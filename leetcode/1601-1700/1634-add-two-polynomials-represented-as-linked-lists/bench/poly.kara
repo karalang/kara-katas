@@ -1,0 +1,95 @@
+// LeetCode #1634: Add Two Polynomials Represented as Linked Lists -- the
+// bench: the ★ arm on 10 random pairs of polynomials with powers below
+// 400000, each power present at even odds with a coefficient from -3 to 3
+// but not 0, all drawn first as terms; each pair is built into two lists
+// and added.
+
+shared struct PolyNode {
+    coefficient: i64,
+    power: i64,
+    mut next: Option[PolyNode],
+}
+
+fn add_poly(poly1: Option[PolyNode], poly2: Option[PolyNode]) -> Option[PolyNode] {
+    let head = PolyNode { coefficient: 0, power: 0, next: None };
+    let mut tail = head;
+    let mut (a, b) = (poly1, poly2);
+    while a.is_some() or b.is_some() {
+        let (coefficient, power) = match (a, b) {
+            (Some(x), Some(y)) if x.power == y.power => {
+                a = x.next;
+                b = y.next;
+                (x.coefficient + y.coefficient, x.power)
+            }
+            (Some(x), Some(y)) if x.power < y.power => {
+                b = y.next;
+                (y.coefficient, y.power)
+            }
+            (Some(x), _) => {
+                a = x.next;
+                (x.coefficient, x.power)
+            }
+            (None, Some(y)) => {
+                b = y.next;
+                (y.coefficient, y.power)
+            }
+            (None, None) => break,
+        };
+        if coefficient != 0 {
+            let node = PolyNode { coefficient, power, next: None };
+            tail.next = Some(node);
+            tail = node;
+        }
+    }
+    head.next
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn from_terms(terms: Vec[Array[i64, 2]]) -> Option[PolyNode] {
+    let mut head: Option[PolyNode] = None;
+    for term in terms.iter().rev() {
+        head = Some(PolyNode { coefficient: term[0], power: term[1], next: head });
+    }
+    head
+}
+
+fn random_terms(seed: mut ref i64) -> Vec[Array[i64, 2]] {
+    let mut terms: Vec[Array[i64, 2]] = Vec.new();
+    for power in (0..400000).rev() {
+        if next_random(mut seed) % 2 == 0 {
+            let mut coefficient = next_random(mut seed) % 6 - 3;
+            if coefficient >= 0 {
+                coefficient += 1;
+            }
+            terms.push([coefficient, power]);
+        }
+    }
+    terms
+}
+
+fn main() {
+    let mut seed = 1634;
+    let mut pairs: Vec[(Vec[Array[i64, 2]], Vec[Array[i64, 2]])] = Vec.new();
+    for _ in 0..10 {
+        let poly1 = random_terms(mut seed);
+        let poly2 = random_terms(mut seed);
+        pairs.push((poly1, poly2));
+    }
+    let mut check = 0;
+    let mut terms = 0;
+    for (poly1, poly2) in pairs.iter() {
+        let mut node = add_poly(from_terms(poly1), from_terms(poly2));
+        while let Some(n) = node {
+            terms += 1;
+            check = ((check * 31 + n.coefficient + 1000000) % 1000000007 * 31 + n.power) % 1000000007;
+            node = n.next;
+        }
+    }
+    println(f"10 pairs of up to 400000 terms: {terms} terms, checksum {check}");
+}

@@ -1,0 +1,115 @@
+// LeetCode #1634: Add Two Polynomials Represented as Linked Lists -- a
+// sorted map.
+//
+// Every term of both lists is added into a `SortedMap` from power to
+// coefficient, which walks its powers from lowest to highest; pushing
+// each nonzero term onto the front of a new list leaves the highest power
+// first. O((m + n) log(m + n)).
+
+shared struct PolyNode {
+    coefficient: i64,
+    power: i64,
+    mut next: Option[PolyNode],
+}
+
+fn add_poly(poly1: Option[PolyNode], poly2: Option[PolyNode]) -> Option[PolyNode] {
+    let mut sums: SortedMap[i64, i64] = SortedMap.new();
+    for poly in [poly1, poly2] {
+        let mut node = poly;
+        while let Some(n) = node {
+            *sums.entry(n.power).or_insert(0) += n.coefficient;
+            node = ref n.next;
+        }
+    }
+    let mut head: Option[PolyNode] = None;
+    for (power, coefficient) in sums.iter() {
+        if coefficient != 0 {
+            head = Some(PolyNode { coefficient, power, next: head });
+        }
+    }
+    head
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a list from [coefficient, power] pairs, in the order given
+fn from_terms(terms: Vec[Array[i64, 2]]) -> Option[PolyNode] {
+    let mut head: Option[PolyNode] = None;
+    for term in terms.iter().rev() {
+        head = Some(PolyNode { coefficient: term[0], power: term[1], next: head });
+    }
+    head
+}
+
+fn to_terms(poly: Option[PolyNode]) -> Vec[Array[i64, 2]] {
+    let mut terms: Vec[Array[i64, 2]] = Vec.new();
+    let mut node = poly;
+    while let Some(n) = node {
+        terms.push([n.coefficient, n.power]);
+        node = n.next;
+    }
+    terms
+}
+
+// a random polynomial of up to `most` terms with powers below `powers`,
+// each coefficient from -`spread` to `spread` but not 0
+fn random_terms(most: i64, powers: i64, spread: i64, seed: mut ref i64) -> Vec[Array[i64, 2]] {
+    let count = min(next_random(mut seed) % (most + 1), powers);
+    let mut chosen: Set[i64] = Set.new();
+    while chosen.len() < count {
+        chosen.insert(next_random(mut seed) % powers);
+    }
+    let mut taken: Vec[i64] = chosen.into_iter().collect();
+    taken.sort();
+    let mut terms: Vec[Array[i64, 2]] = Vec.new();
+    for power in taken.iter().rev() {
+        let mut coefficient = next_random(mut seed) % (2 * spread) - spread;
+        if coefficient >= 0 {
+            coefficient += 1;
+        }
+        terms.push([coefficient, power]);
+    }
+    terms
+}
+
+// `count` random pairs of polynomials added; the terms counted, the
+// coefficients summed, and a checksum over every term
+fn batch(count: i64, most: i64, powers: i64, spread: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut terms = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let poly1 = random_terms(most, powers, spread, mut seed);
+        let poly2 = random_terms(most, powers, spread, mut seed);
+        for term in to_terms(add_poly(from_terms(poly1), from_terms(poly2))) {
+            terms += 1;
+            total += term[0];
+            check = ((check * 31 + term[0] + 1000000) % 1000000007 * 31 + term[1]) % 1000000007;
+        }
+    }
+    println(f"{count} pairs of up to {most} terms: {terms} terms, coefficients sum to {total}, checksum {check}");
+}
+
+fn show(poly1: Vec[Array[i64, 2]], poly2: Vec[Array[i64, 2]]) {
+    println(to_terms(add_poly(from_terms(poly1), from_terms(poly2))));
+}
+
+fn main() {
+    // LeetCode's three examples, then two empty lists, one empty, and
+    // terms that cancel in the middle
+    show([[1, 1]], [[1, 0]]);
+    show([[2, 2], [4, 1], [3, 0]], [[3, 2], [-4, 1], [-1, 0]]);
+    show([[1, 2]], [[-1, 2]]);
+    show([], []);
+    show([[5, 3], [1, 0]], []);
+    show([[1, 4], [2, 2], [3, 1]], [[-1, 3], [-2, 2], [7, 0]]);
+    let mut seed = 1634;
+    batch(3000, 5, 8, 3, mut seed);
+    batch(300, 50, 100, 1000, mut seed);
+    batch(5, 5000, 10000, 5, mut seed);
+}

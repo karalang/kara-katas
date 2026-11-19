@@ -1,0 +1,255 @@
+// LeetCode #1634: Add Two Polynomials Represented as Linked Lists -- the
+// differential.
+//
+// Three arms against the statement read literally, on 3000 random pairs
+// of polynomials of up to six terms with powers below 8: every other pair
+// with coefficients 1 and -1, so terms cancel often, the rest -3 to 3.
+// Every pair is drawn before any arm answers.
+//
+// P1  the sum is the statement read literally
+// P2  adding the other way round gives the same sum
+// P3  adding the second's negation to the sum gives back the first
+// P4  adding a third polynomial is the same grouped either way
+// P5  the sum's powers fall strictly, no coefficient is 0, and its
+//     coefficients total the two inputs' totals
+// P6  each arm agrees with at least one of the other two
+
+// ---- poly.kara: the ★ arm: one merging walk
+
+fn star_arm(poly1: Option[PolyNode], poly2: Option[PolyNode]) -> Option[PolyNode] {
+    let head = PolyNode { coefficient: 0, power: 0, next: None };
+    let mut tail = head;
+    let mut (a, b) = (poly1, poly2);
+    while a.is_some() or b.is_some() {
+        let (coefficient, power) = match (a, b) {
+            (Some(x), Some(y)) if x.power == y.power => {
+                a = x.next;
+                b = y.next;
+                (x.coefficient + y.coefficient, x.power)
+            }
+            (Some(x), Some(y)) if x.power < y.power => {
+                b = y.next;
+                (y.coefficient, y.power)
+            }
+            (Some(x), _) => {
+                a = x.next;
+                (x.coefficient, x.power)
+            }
+            (None, Some(y)) => {
+                b = y.next;
+                (y.coefficient, y.power)
+            }
+            (None, None) => break,
+        };
+        if coefficient != 0 {
+            let node = PolyNode { coefficient, power, next: None };
+            tail.next = Some(node);
+            tail = node;
+        }
+    }
+    head.next
+}
+
+// ---- poly_recursive.kara: recursion on the leading terms
+
+fn recursive_arm(poly1: Option[PolyNode], poly2: Option[PolyNode]) -> Option[PolyNode] {
+    match (poly1, poly2) {
+        (None, rest) | (rest, None) => rest,
+        (Some(x), Some(y)) => {
+            if x.power > y.power {
+                Some(PolyNode { coefficient: x.coefficient, power: x.power, next: recursive_arm(x.next, Some(y)) })
+            } else if x.power < y.power {
+                Some(PolyNode { coefficient: y.coefficient, power: y.power, next: recursive_arm(Some(x), y.next) })
+            } else {
+                let rest = recursive_arm(x.next, y.next);
+                let coefficient = x.coefficient + y.coefficient;
+                if coefficient == 0 {
+                    rest
+                } else {
+                    Some(PolyNode { coefficient, power: x.power, next: rest })
+                }
+            }
+        }
+    }
+}
+
+// ---- poly_map.kara: a sorted map from power to coefficient
+
+fn map_arm(poly1: Option[PolyNode], poly2: Option[PolyNode]) -> Option[PolyNode] {
+    let mut sums: SortedMap[i64, i64] = SortedMap.new();
+    for poly in [poly1, poly2] {
+        let mut node = poly;
+        while let Some(n) = node {
+            *sums.entry(n.power).or_insert(0) += n.coefficient;
+            node = ref n.next;
+        }
+    }
+    let mut head: Option[PolyNode] = None;
+    for (power, coefficient) in sums.iter() {
+        if coefficient != 0 {
+            head = Some(PolyNode { coefficient, power, next: head });
+        }
+    }
+    head
+}
+
+// ---- the harness ----------------------------------------------------------
+
+shared struct PolyNode {
+    coefficient: i64,
+    power: i64,
+    mut next: Option[PolyNode],
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(k: i64, poly1: Vec[Array[i64, 2]], poly2: Vec[Array[i64, 2]]) -> Vec[Array[i64, 2]] {
+    let (a, b) = (from_terms(poly1), from_terms(poly2));
+    to_terms(match k {
+        0 => star_arm(a, b),
+        1 => recursive_arm(a, b),
+        _ => map_arm(a, b),
+    })
+}
+
+fn arm_name(k: i64) -> String {
+    ["poly", "recursive", "map"][k].to_string()
+}
+
+fn from_terms(terms: Vec[Array[i64, 2]]) -> Option[PolyNode] {
+    let mut head: Option[PolyNode] = None;
+    for term in terms.iter().rev() {
+        head = Some(PolyNode { coefficient: term[0], power: term[1], next: head });
+    }
+    head
+}
+
+fn to_terms(poly: Option[PolyNode]) -> Vec[Array[i64, 2]] {
+    let mut terms: Vec[Array[i64, 2]] = Vec.new();
+    let mut node = poly;
+    while let Some(n) = node {
+        terms.push([n.coefficient, n.power]);
+        node = n.next;
+    }
+    terms
+}
+
+fn negated(terms: Vec[Array[i64, 2]]) -> Vec[Array[i64, 2]] {
+    terms.iter().map(|t| [-t[0], t[1]]).collect()
+}
+
+fn coefficients(terms: Vec[Array[i64, 2]]) -> i64 {
+    terms.iter().map(|t| t[0]).sum()
+}
+
+// ---- the statement read literally: a polynomial is its coefficient at
+// each power, so the sum is the two added power by power, written out
+// from the highest power down with every zero left out
+
+fn literal(poly1: Vec[Array[i64, 2]], poly2: Vec[Array[i64, 2]]) -> Vec[Array[i64, 2]] {
+    let mut at: Vec[i64] = Vec.filled(8, 0);
+    for term in poly1.iter().chain(poly2.iter()) {
+        at[term[1]] += term[0];
+    }
+    let mut terms: Vec[Array[i64, 2]] = Vec.new();
+    for power in (0..8).rev() {
+        if at[power] != 0 {
+            terms.push([at[power], power]);
+        }
+    }
+    terms
+}
+
+// up to six terms with distinct powers below 8, highest first,
+// coefficients from -`spread` to `spread` but not 0
+fn random_terms(spread: i64, seed: mut ref i64) -> Vec[Array[i64, 2]] {
+    let mut terms: Vec[Array[i64, 2]] = Vec.new();
+    for power in (0..8).rev() {
+        if next_random(mut seed) % 8 < 3 and terms.len() < 6 {
+            let mut coefficient = next_random(mut seed) % (2 * spread) - spread;
+            if coefficient >= 0 {
+                coefficient += 1;
+            }
+            terms.push([coefficient, power]);
+        }
+    }
+    terms
+}
+
+fn main() {
+    let mut seed = 1634;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[Array[i64, 2]], Vec[Array[i64, 2]], Vec[Array[i64, 2]])] = [];
+    for p in 0..problems {
+        // every other pair with coefficients 1 and -1, so terms cancel often
+        let spread = if p % 2 == 0 { 1 } else { 3 };
+        let poly1 = random_terms(spread, mut seed);
+        let poly2 = random_terms(spread, mut seed);
+        let poly3 = random_terms(spread, mut seed);
+        cases.push((poly1, poly2, poly3));
+    }
+    for p in 0..problems {
+        let (poly1, poly2, poly3) = cases[p].clone();
+        let want = literal(poly1, poly2);
+        for term in want.iter() {
+            check = ((check * 31 + term[0] + 1000000) % 1000000007 * 31 + term[1]) % 1000000007;
+        }
+        let mut answers: Vec[Vec[Array[i64, 2]]] = [];
+        for k in 0..3 {
+            let got = arm(k, poly1, poly2);
+            let mut falls = true;
+            for i in 1..got.len() {
+                if got[i - 1][1] <= got[i][1] {
+                    falls = false;
+                }
+            }
+            let failed = [
+                got != want,
+                arm(k, poly2, poly1) != got,
+                arm(k, got, negated(poly2)) != poly1,
+                arm(k, got, poly3) != arm(k, poly1, arm(k, poly2, poly3)),
+                not falls or got.iter().any(|t| t[0] == 0) or coefficients(got) != coefficients(poly1) + coefficients(poly2),
+            ];
+            answers.push(got);
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({poly1} + {poly2}), {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P6
+        for k in 0..3 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[k]).count() - 1;
+            if agree < 1 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 3 arms: {failures} failures");
+}
