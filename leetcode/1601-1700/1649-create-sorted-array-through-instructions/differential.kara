@@ -1,0 +1,258 @@
+// LeetCode #1649: Create Sorted Array through Instructions -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random lists
+// of 1 to 10 instructions: every other list from 1 to 3, so values repeat
+// often, the rest from 1 to 20. Every list is drawn before any arm
+// answers.
+//
+// P1  the cost is the statement read literally
+// P2  every value v turned to top + 1 - v, which swaps less and greater,
+//     gives the same cost
+// P3  one more instruction above every other costs nothing more
+// P4  every value raised by 50 gives the same cost
+// P5  each arm agrees with at least two of the other three
+
+// ---- sorted.kara: the ★ arm: a Fenwick tree over the values
+
+fn star_arm(instructions: Vec[i32]) -> i32 {
+    const MOD: i64 = 1_000_000_007;
+    let top = instructions.iter().max().unwrap() as i64;
+    let mut tree = Vec.filled(top + 1, 0);
+    let mut cost = 0;
+    for (inserted, v) in instructions.iter().enumerate() {
+        let v = v as i64;
+        let less = star_prefix(tree, v - 1);
+        let greater = inserted - star_prefix(tree, v);
+        cost = (cost + min(less, greater)) % MOD;
+        let mut i = v;
+        while i <= top {
+            tree[i] += 1;
+            i += i & -i;
+        }
+    }
+    cost as i32
+}
+
+// how many values from 1 to `v` are in the tree
+fn star_prefix(tree: Slice[i64], v: i64) -> i64 {
+    let mut total = 0;
+    let mut i = v;
+    while i > 0 {
+        total += tree[i];
+        i -= i & -i;
+    }
+    total
+}
+
+// ---- sorted_insert.kara: the sorted array itself, two partition points per insertion
+
+fn insert_arm(instructions: Vec[i32]) -> i32 {
+    const MOD: i64 = 1_000_000_007;
+    let mut nums: Vec[i32] = Vec.new();
+    let mut cost = 0;
+    for v in instructions.iter() {
+        let less = nums.partition_point(|x| x < v);
+        let not_greater = nums.partition_point(|x| x <= v);
+        cost = (cost + min(less, nums.len() - not_greater)) % MOD;
+        nums.insert(not_greater, v);
+    }
+    cost as i32
+}
+
+// ---- sorted_segment.kara: a bottom-up segment tree of counts
+
+fn segment_range_count(tree: Slice[i64], size: i64, low: i64, high: i64) -> i64 {
+    // values low..high, the leaves size + low .. size + high
+    let mut (l, r) = (low + size, high + size);
+    let mut total = 0;
+    while l < r {
+        if l % 2 == 1 {
+            total += tree[l];
+            l += 1;
+        }
+        if r % 2 == 1 {
+            r -= 1;
+            total += tree[r];
+        }
+        l /= 2;
+        r /= 2;
+    }
+    total
+}
+
+fn segment_arm(instructions: Vec[i32]) -> i32 {
+    const MOD: i64 = 1_000_000_007;
+    let top = instructions.iter().max().unwrap() as i64;
+    let mut size = 1;
+    while size <= top {
+        size *= 2;
+    }
+    let mut tree = Vec.filled(2 * size, 0);
+    let mut cost = 0;
+    for v in instructions.iter() {
+        let v = v as i64;
+        let less = segment_range_count(tree, size, 0, v);
+        let greater = segment_range_count(tree, size, v + 1, size);
+        cost = (cost + min(less, greater)) % MOD;
+        let mut at = v + size;
+        while at > 0 {
+            tree[at] += 1;
+            at /= 2;
+        }
+    }
+    cost as i32
+}
+
+// ---- sorted_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+const N: i64 = 100_001;
+
+fn solution_update(bit: mut ref Vec[i32], i: i64) {
+    let mut i = i;
+    while i <= N {
+        bit[i] += 1;
+        i += i & i.wrapping_neg();
+    }
+}
+
+fn solution_query(bit: Vec[i32], i: i64) -> i32 {
+    let mut i = i;
+    let mut s: i32 = 0;
+    while i > 0 {
+        s += bit[i];
+        i -= i & i.wrapping_neg();
+    }
+    s
+}
+
+impl SolutionArm {
+    pub fn create_sorted_array(instructions: Vec[i32]) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let mut bit = Vec.filled(N + 1, 0);
+        let mut ans: i64 = 0;
+        for (i, x) in instructions.iter().enumerate() {
+            let x = x as i64;
+            let less = solution_query(bit, x - 1);
+            let greater = i as i32 - solution_query(bit, x);
+            ans = (ans + less.min(greater)) % MOD;
+            solution_update(mut bit, x);
+        }
+        ans as i32
+    }
+}
+
+fn solution_arm(instructions: Vec[i32]) -> i32 {
+    SolutionArm.create_sorted_array(instructions)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, instructions: own Vec[i32]) -> i64 {
+    match a {
+        0 => star_arm(instructions),
+        1 => insert_arm(instructions),
+        2 => segment_arm(instructions),
+        _ => solution_arm(instructions),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["sorted", "insert", "segment", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: each instruction counts, among those
+// before it, the ones strictly less and the ones strictly greater, and
+// costs the smaller
+
+fn literal(instructions: Slice[i32]) -> i64 {
+    let mut cost = 0;
+    for i in 0..instructions.len() {
+        let mut less = 0;
+        let mut greater = 0;
+        for j in 0..i {
+            if instructions[j] < instructions[i] {
+                less += 1;
+            } else if instructions[j] > instructions[i] {
+                greater += 1;
+            }
+        }
+        cost += min(less, greater);
+    }
+    cost
+}
+
+fn main() {
+    let mut seed = 1649;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[Vec[i32]] = Vec.new();
+    for p in 0..problems {
+        // every other list from 1 to 3, so values repeat often
+        let top = if p % 2 == 0 { 3 } else { 20 };
+        let n = next_random(mut seed) % 10 + 1;
+        cases.push((0..n).map(|_| (next_random(mut seed) % top + 1) as i32).collect());
+    }
+    for (p, instructions) in cases.iter().enumerate() {
+        let want = literal(instructions);
+        check = (check * 31 + want + 1) % 1000000007;
+        let top = instructions.iter().max().unwrap();
+        let flipped: Vec[i32] = instructions.iter().map(|v| top + 1 - v).collect();
+        let mut longer = instructions.clone();
+        longer.push(top + 1);
+        let raised: Vec[i32] = instructions.iter().map(|v| v + 50).collect();
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, instructions.clone());
+            answers.push(got);
+            let failed = [
+                got != want,
+                arm(a, flipped.clone()) != got,
+                arm(a, longer.clone()) != got,
+                arm(a, raised.clone()) != got,
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({instructions}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

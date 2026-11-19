@@ -1,0 +1,87 @@
+// LeetCode #1649: Create Sorted Array through Instructions -- LeetCode's
+// Rust template, as written there, carried over by `karac fix`.
+//
+// A Fenwick tree in a `vec![0; 100_002]`, LeetCode's whole value range,
+// with `update` and `query` as nested functions. O(n log 10^5).
+
+struct Solution {}
+
+const N: i64 = 100_001;
+
+fn update(bit: mut ref Vec[i32], i: i64) {
+    let mut i = i;
+    while i <= N {
+        bit[i] += 1;
+        i += i & i.wrapping_neg();
+    }
+}
+
+fn query(bit: Vec[i32], i: i64) -> i32 {
+    let mut i = i;
+    let mut s: i32 = 0;
+    while i > 0 {
+        s += bit[i];
+        i -= i & i.wrapping_neg();
+    }
+    s
+}
+
+impl Solution {
+    pub fn create_sorted_array(instructions: Vec[i32]) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let mut bit = Vec.filled(N + 1, 0);
+        let mut ans: i64 = 0;
+        for (i, x) in instructions.iter().enumerate() {
+            let x = x as i64;
+            let less = query(bit, x - 1);
+            let greater = i as i32 - query(bit, x);
+            ans = (ans + less.min(greater)) % MOD;
+            update(mut bit, x);
+        }
+        ans as i32
+    }
+}
+
+fn create_sorted_array(instructions: Vec[i32]) -> i32 {
+    Solution.create_sorted_array(instructions)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random lists of 1 to `most` instructions from 1 to `top`; the
+// costs summed, and a checksum
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let mut instructions: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            instructions.push((next_random(mut seed) % top + 1) as i32);
+        }
+        let cost = create_sorted_array(instructions);
+        total += cost;
+        check = (check * 31 + cost + 1) % 1000000007;
+    }
+    println(f"{count} lists of up to {most} instructions up to {top}: costs sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then one instruction, a list rising,
+    // and one falling
+    println(create_sorted_array([1, 5, 6, 2]));
+    println(create_sorted_array([1, 2, 3, 6, 5, 4]));
+    println(create_sorted_array([1, 3, 3, 3, 2, 4, 2, 1, 2]));
+    println(create_sorted_array([7]));
+    println(create_sorted_array([1, 2, 3, 4, 5]));
+    println(create_sorted_array([5, 4, 3, 2, 1]));
+    let mut seed = 1649;
+    batch(3000, 8, 5, mut seed);
+    batch(300, 1000, 1000, mut seed);
+    batch(3, 20000, 100000, mut seed);
+}
