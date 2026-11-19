@@ -1,0 +1,246 @@
+// LeetCode #1640: Check Array Formation Through Concatenation -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random cases of
+// 1 to 6 distinct values cut into pieces of 1 to 3 and shuffled: a third
+// left so, a third with two of the array's values swapped, a third with
+// one replaced. Every case is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the pieces in reverse order give the same answer
+// P3  every value negated gives the same answer
+// P4  the array reversed, and every piece reversed, gives the same answer
+// P5  an array that can be formed holds exactly the pieces' values
+// P6  each arm agrees with at least two of the other three
+
+// ---- formation.kara: the ★ arm: a map from each piece's first value
+
+fn star_arm(arr: Vec[i32], pieces: Vec[Vec[i32]]) -> bool {
+    let mut starting: Map[i32, i64] = Map.new();
+    for (k, piece) in pieces.iter().enumerate() {
+        starting.insert(piece[0], k);
+    }
+    let mut i = 0;
+    while i < arr.len() {
+        let Some(k) = starting.get(arr[i]) else {
+            return false;
+        };
+        for value in pieces[k].iter() {
+            if i >= arr.len() or arr[i] != value {
+                return false;
+            }
+            i += 1;
+        }
+    }
+    true
+}
+
+// ---- formation_scan.kara: a scan for the next piece
+
+fn scan_arm(arr: Vec[i32], pieces: Vec[Vec[i32]]) -> bool {
+    let mut i = 0;
+    while i < arr.len() {
+        match pieces.iter().find(|piece| piece[0] == arr[i]) {
+            Some(piece) if i + piece.len() <= arr.len() and arr[i..i + piece.len()] == piece => i += piece.len(),
+            _ => return false,
+        }
+    }
+    true
+}
+
+// ---- formation_places.kara: every value's place
+
+fn places_arm(arr: Vec[i32], pieces: Vec[Vec[i32]]) -> bool {
+    let place: Map[i32, i64] = arr.iter().enumerate().map(|(k, v)| (v, k)).collect();
+    let mut covered = 0;
+    for piece in pieces.iter() {
+        let Some(first) = place.get(piece[0]) else {
+            return false;
+        };
+        for (k, value) in piece.iter().enumerate() {
+            if place.get(value).cloned() != Some(first + k) {
+                return false;
+            }
+        }
+        covered += piece.len();
+    }
+    covered == arr.len()
+}
+
+// ---- formation_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn can_form_array(arr: Vec[i32], pieces: Vec[Vec[i32]]) -> bool {
+        let map: Map[i32, i64] = pieces.iter().enumerate().map(|(i, p)| (p[0], i)).collect();
+        let mut i = 0;
+        while i < arr.len() {
+            match map.get(arr[i]) {
+                Some(k) => {
+                    let p = ref pieces[k];
+                    if arr.len() - i < p.len() or arr[i..i + p.len()] != p.as_slice() {
+                        return false;
+                    }
+                    i += p.len();
+                }
+                None => return false,
+            }
+        }
+        true
+    }
+}
+
+fn solution_arm(arr: Vec[i32], pieces: Vec[Vec[i32]]) -> bool {
+    SolutionArm.can_form_array(arr, pieces)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(k: i64, arr: Vec[i32], pieces: Vec[Vec[i32]]) -> bool {
+    match k {
+        0 => star_arm(arr, pieces),
+        1 => scan_arm(arr, pieces),
+        2 => places_arm(arr, pieces),
+        _ => solution_arm(arr, pieces),
+    }
+}
+
+fn arm_name(k: i64) -> String {
+    ["formation", "scan", "places", "solution"][k].to_string()
+}
+
+// ---- the statement read literally: try every order of the pieces, and
+// see whether any of them, joined end to end, is the array
+
+fn any_order(arr: Vec[i32], pieces: Vec[Vec[i32]], used: mut ref Vec[bool], joined: mut ref Vec[i32]) -> bool {
+    if joined.len() == arr.len() {
+        return used.iter().all(|u| u) and joined == arr;
+    }
+    for k in 0..pieces.len() {
+        if used[k] {
+            continue;
+        }
+        used[k] = true;
+        let before = joined.len();
+        joined.extend(pieces[k].iter().cloned());
+        let found = joined.len() <= arr.len() and any_order(arr, pieces, mut used, mut joined);
+        joined.truncate(before);
+        used[k] = false;
+        if found {
+            return true;
+        }
+    }
+    false
+}
+
+fn literal(arr: Vec[i32], pieces: Vec[Vec[i32]]) -> bool {
+    let mut used: Vec[bool] = Vec.filled(pieces.len(), false);
+    let mut joined: Vec[i32] = Vec.new();
+    any_order(arr, pieces, mut used, mut joined)
+}
+
+fn main() {
+    let mut seed = 1640;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i32], Vec[Vec[i32]])] = [];
+    for p in 0..problems {
+        let n = next_random(mut seed) % 6 + 1;
+        let mut chosen: Set[i64] = Set.new();
+        let mut arr: Vec[i32] = [];
+        while arr.len() < n {
+            let v = next_random(mut seed) % 12 + 1;
+            if chosen.insert(v) {
+                arr.push(v as i32);
+            }
+        }
+        let mut pieces: Vec[Vec[i32]] = [];
+        let mut start = 0;
+        while start < n {
+            let end = min(n, start + next_random(mut seed) % 3 + 1);
+            pieces.push(arr[start..end].to_vec());
+            start = end;
+        }
+        for k in (1..pieces.len()).rev() {
+            let j = next_random(mut seed) % (k + 1);
+            pieces.swap(k, j);
+        }
+        // a third left so, a third with two values swapped, a third with
+        // one replaced
+        if p % 3 == 1 and n > 1 {
+            let (a, b) = (next_random(mut seed) % n, next_random(mut seed) % n);
+            arr.swap(a, b);
+        } else if p % 3 == 2 {
+            let k = next_random(mut seed) % n;
+            arr[k] = 13;
+        }
+        cases.push((arr, pieces));
+    }
+    for p in 0..problems {
+        let (arr, pieces) = cases[p].clone();
+        let reversed_pieces: Vec[Vec[i32]] = pieces.iter().rev().cloned().collect();
+        let negated_arr: Vec[i32] = arr.iter().map(|v| -v).collect();
+        let negated_pieces: Vec[Vec[i32]] = pieces.iter().map(|q| q.iter().map(|v| -v).collect()).collect();
+        let backward_arr: Vec[i32] = arr.iter().rev().cloned().collect();
+        let backward_pieces: Vec[Vec[i32]] = pieces.iter().map(|q| q.iter().rev().cloned().collect()).collect();
+        let mut arr_values = arr.clone();
+        arr_values.sort();
+        let mut piece_values: Vec[i32] = pieces.iter().flat_map(|q| q.iter().cloned()).collect();
+        piece_values.sort();
+        let want = literal(arr, pieces);
+        check = (check * 31 + if want { 2 } else { 1 }) % 1000000007;
+        let mut answers: Vec[bool] = [];
+        for k in 0..4 {
+            let got = arm(k, arr, pieces);
+            answers.push(got);
+            let failed = [
+                got != want,
+                arm(k, arr, reversed_pieces) != got,
+                arm(k, negated_arr, negated_pieces) != got,
+                arm(k, backward_arr, backward_pieces) != got,
+                got and arr_values != piece_values,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({arr}, {pieces}), {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P6
+        for k in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[k]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}
