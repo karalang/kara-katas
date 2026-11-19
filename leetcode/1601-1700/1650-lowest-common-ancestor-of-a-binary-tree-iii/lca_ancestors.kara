@@ -1,0 +1,139 @@
+// LeetCode #1650: Lowest Common Ancestor of a Binary Tree III -- a set of
+// ancestors.
+//
+// Climb from p to the root, putting every value on the way, p's own
+// included, in a `Set`; then climb from q until it reaches one of them.
+// O(h) time and space.
+
+fn lowest_common_ancestor(p: Node, q: Node) -> Node {
+    let mut ancestors: Set[i32] = Set.new();
+    let mut at = Some(p);
+    while let Some(n) = at {
+        ancestors.insert(n.val);
+        at = n.parent;
+    }
+    let mut b = q;
+    while not ancestors.contains(b.val) {
+        b = b.parent.expect("the referent is alive");
+    }
+    b
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+shared struct Node {
+    mut val: i32,
+    mut left: Option[Node],
+    mut right: Option[Node],
+    mut parent: weak Node,
+}
+
+fn leaf(val: i32) -> Node {
+    Node { val: val, left: None, right: None, parent: None }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` nodes holding 0 to n - 1 shuffled, each hung from a random node
+// already placed, down a random walk to the first free child; the nodes
+// in the order placed, the root first
+fn random_tree(n: i64, seed: mut ref i64) -> Vec[Node] {
+    let mut values: Vec[i32] = (0..n).map(|v| v as i32).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        values.swap(i, j);
+    }
+    let mut nodes: Vec[Node] = Vec.new();
+    for i in 0..n {
+        let node = leaf(values[i]);
+        if i > 0 {
+            let mut at = nodes[next_random(mut seed) % i];
+            loop {
+                if next_random(mut seed) % 2 == 0 {
+                    match at.left {
+                        Some(child) => at = child,
+                        None => {
+                            node.parent = at;
+                            at.left = Some(node);
+                            break;
+                        }
+                    }
+                } else {
+                    match at.right {
+                        Some(child) => at = child,
+                        None => {
+                            node.parent = at;
+                            at.right = Some(node);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        nodes.push(node);
+    }
+    nodes
+}
+
+// the node holding `val`
+fn find(nodes: Slice[Node], val: i32) -> Node {
+    for n in nodes.iter() {
+        if n.val == val {
+            return n;
+        }
+    }
+    panic("no such node");
+}
+
+// `count` random trees of 2 to `most` nodes, each asked about 5 pairs of
+// its nodes; the answers summed, and a checksum
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % (most - 1) + 2;
+        let nodes = random_tree(n, mut seed);
+        for _ in 0..5 {
+            let p = next_random(mut seed) % n;
+            let mut q = next_random(mut seed) % n;
+            if q == p {
+                q = (q + 1) % n;
+            }
+            let found = lowest_common_ancestor(nodes[p], nodes[q]).val as i64;
+            total += found;
+            check = (check * 31 + found + 1) % 1000000007;
+        }
+    }
+    println(f"{count} trees of up to {most} nodes: answers sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then p the parent of q, and both leaves
+    // of a line, each named by its value
+    let mut example: Vec[Node] = [3, 5, 1, 6, 2, 0, 8, 7, 4].iter().map(|v| leaf(v)).collect();
+    // 3 has 5 and 1; 5 has 6 and 2; 1 has 0 and 8; 2 has 7 and 4
+    for (parent, left, right) in [(3i32, 5i32, 1i32), (5, 6, 2), (1, 0, 8), (2, 7, 4)] {
+        let p = find(example, parent);
+        let (l, r) = (find(example, left), find(example, right));
+        l.parent = p;
+        r.parent = p;
+        p.left = Some(l);
+        p.right = Some(r);
+    }
+    println(lowest_common_ancestor(find(example, 5), find(example, 1)).val);
+    println(lowest_common_ancestor(find(example, 5), find(example, 4)).val);
+    let pair = [leaf(1), leaf(2)];
+    pair[1].parent = pair[0];
+    pair[0].left = Some(pair[1]);
+    println(lowest_common_ancestor(pair[0], pair[1]).val);
+    println(lowest_common_ancestor(find(example, 2), find(example, 7)).val);
+    println(lowest_common_ancestor(find(example, 7), find(example, 8)).val);
+    example.clear();
+    let mut seed = 1650;
+    batch(3000, 8, mut seed);
+    batch(300, 1000, mut seed);
+    batch(30, 100000, mut seed);
+}

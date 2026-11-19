@@ -1,0 +1,106 @@
+// LeetCode #1650: Lowest Common Ancestor of a Binary Tree III -- the
+// bench: the ★ arm on 30 random trees of 100000 nodes with parent links,
+// each asked about 50000 pairs of its nodes, all drawn first.
+
+fn lowest_common_ancestor(p: Node, q: Node) -> Node {
+    let mut a = p;
+    let mut b = q;
+    while a.val != b.val {
+        a = match a.parent {
+            Some(up) => up,
+            None => q,
+        };
+        b = match b.parent {
+            Some(up) => up,
+            None => p,
+        };
+    }
+    a
+}
+
+// ---- the harness ----------------------------------------------------------
+
+shared struct Node {
+    mut val: i32,
+    mut left: Option[Node],
+    mut right: Option[Node],
+    mut parent: weak Node,
+}
+
+fn leaf(val: i32) -> Node {
+    Node { val: val, left: None, right: None, parent: None }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` nodes holding 0 to n - 1 shuffled, each hung from a random node
+// already placed, down a random walk to the first free child; the nodes
+// in the order placed, the root first
+fn random_tree(n: i64, seed: mut ref i64) -> Vec[Node] {
+    let mut values: Vec[i32] = (0..n).map(|v| v as i32).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        values.swap(i, j);
+    }
+    let mut nodes: Vec[Node] = Vec.new();
+    for i in 0..n {
+        let node = leaf(values[i]);
+        if i > 0 {
+            let mut at = nodes[next_random(mut seed) % i];
+            loop {
+                if next_random(mut seed) % 2 == 0 {
+                    match at.left {
+                        Some(child) => at = child,
+                        None => {
+                            node.parent = at;
+                            at.left = Some(node);
+                            break;
+                        }
+                    }
+                } else {
+                    match at.right {
+                        Some(child) => at = child,
+                        None => {
+                            node.parent = at;
+                            at.right = Some(node);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        nodes.push(node);
+    }
+    nodes
+}
+
+fn main() {
+    let mut seed = 1650;
+    let mut trees: Vec[(Vec[Node], Vec[(i64, i64)])] = Vec.new();
+    for _ in 0..30 {
+        let nodes = random_tree(100000, mut seed);
+        let mut pairs: Vec[(i64, i64)] = Vec.new();
+        for _ in 0..50000 {
+            let p = next_random(mut seed) % 100000;
+            let mut q = next_random(mut seed) % 100000;
+            if q == p {
+                q = (q + 1) % 100000;
+            }
+            pairs.push((p, q));
+        }
+        trees.push((nodes, pairs));
+    }
+    let mut check = 0;
+    let mut total = 0;
+    for (nodes, pairs) in trees.iter() {
+        for (p, q) in pairs.iter() {
+            let found = lowest_common_ancestor(nodes[p], nodes[q]).val as i64;
+            total += found;
+            check = (check * 31 + found + 1) % 1000000007;
+        }
+    }
+    println(f"30 trees of 100000 nodes, 50000 pairs each: answers sum to {total}, checksum {check}");
+}

@@ -1,0 +1,293 @@
+// LeetCode #1650: Lowest Common Ancestor of a Binary Tree III -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random trees
+// of 2 to 8 nodes with parent links, each asked about one pair of its
+// nodes. Every case is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  p and q swapped give the same answer
+// P3  an answer other than p, asked about with p, is its own answer
+// P4  the mirrored tree gives the same answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- lca.kara: the ★ arm: two climbers that start over from the other's node
+
+fn star_arm(p: Node, q: Node) -> Node {
+    let mut a = p;
+    let mut b = q;
+    while a.val != b.val {
+        a = match a.parent {
+            Some(up) => up,
+            None => q,
+        };
+        b = match b.parent {
+            Some(up) => up,
+            None => p,
+        };
+    }
+    a
+}
+
+// ---- lca_ancestors.kara: p's ancestors in a set, q climbs to them
+
+fn ancestors_arm(p: Node, q: Node) -> Node {
+    let mut ancestors: Set[i32] = Set.new();
+    let mut at = Some(p);
+    while let Some(n) = at {
+        ancestors.insert(n.val);
+        at = n.parent;
+    }
+    let mut b = q;
+    while not ancestors.contains(b.val) {
+        b = b.parent.expect("the referent is alive");
+    }
+    b
+}
+
+// ---- lca_depth.kara: the deeper lifted level, then both together
+
+fn depth_of(node: Node) -> i64 {
+    let mut d = 0;
+    let mut at = node.parent;
+    while let Some(n) = at {
+        d += 1;
+        at = n.parent;
+    }
+    d
+}
+
+fn depth_arm(p: Node, q: Node) -> Node {
+    let mut (a, b) = (p, q);
+    let mut (da, db) = (depth_of(p), depth_of(q));
+    while da > db {
+        a = a.parent.expect("the referent is alive");
+        da -= 1;
+    }
+    while db > da {
+        b = b.parent.expect("the referent is alive");
+        db -= 1;
+    }
+    while a.val != b.val {
+        a = a.parent.expect("the referent is alive");
+        b = b.parent.expect("the referent is alive");
+    }
+    a
+}
+
+// ---- lca_root.kara: to the root, then #236's search down
+
+fn root_search(node: Option[Node], p: i32, q: i32) -> Option[Node] {
+    let n = node?;
+    if n.val == p or n.val == q {
+        return Some(n);
+    }
+    let left = root_search(n.left, p, q);
+    let right = root_search(n.right, p, q);
+    if left.is_some() and right.is_some() {
+        return Some(n);
+    }
+    left.or(right)
+}
+
+fn root_arm(p: Node, q: Node) -> Node {
+    let mut root = p;
+    while let Some(up) = root.parent {
+        root = up;
+    }
+    root_search(Some(root), p.val, q.val).unwrap()
+}
+
+// ---- the harness ----------------------------------------------------------
+
+shared struct Node {
+    mut val: i32,
+    mut left: Option[Node],
+    mut right: Option[Node],
+    mut parent: weak Node,
+}
+
+fn leaf(val: i32) -> Node {
+    Node { val: val, left: None, right: None, parent: None }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` nodes holding 0 to n - 1 shuffled, each hung from a random node
+// already placed, down a random walk to the first free child; the nodes
+// in the order placed, the root first
+fn random_tree(n: i64, seed: mut ref i64) -> Vec[Node] {
+    let mut values: Vec[i32] = (0..n).map(|v| v as i32).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        values.swap(i, j);
+    }
+    let mut nodes: Vec[Node] = Vec.new();
+    for i in 0..n {
+        let node = leaf(values[i]);
+        if i > 0 {
+            let mut at = nodes[next_random(mut seed) % i];
+            loop {
+                if next_random(mut seed) % 2 == 0 {
+                    match at.left {
+                        Some(child) => at = child,
+                        None => {
+                            node.parent = at;
+                            at.left = Some(node);
+                            break;
+                        }
+                    }
+                } else {
+                    match at.right {
+                        Some(child) => at = child,
+                        None => {
+                            node.parent = at;
+                            at.right = Some(node);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        nodes.push(node);
+    }
+    nodes
+}
+
+// the node holding `val`
+fn find(nodes: Slice[Node], val: i32) -> Node {
+    for n in nodes.iter() {
+        if n.val == val {
+            return n;
+        }
+    }
+    panic("no such node");
+}
+
+fn arm(a: i64, p: Node, q: Node) -> i32 {
+    let found = match a {
+        0 => star_arm(p, q),
+        1 => ancestors_arm(p, q),
+        2 => depth_arm(p, q),
+        _ => root_arm(p, q),
+    };
+    found.val
+}
+
+fn arm_name(a: i64) -> String {
+    ["lca", "ancestors", "depth", "root"][a].to_string()
+}
+
+// the tree under `node` with every node's children swapped, built anew
+// with its parent links, each new node also put in `out`
+fn mirrored(node: Option[Node], parent: Option[Node], out: mut ref Vec[Node]) -> Option[Node] {
+    let n = node?;
+    let copy = leaf(n.val);
+    if let Some(up) = parent {
+        copy.parent = up;
+    }
+    out.push(copy);
+    copy.left = mirrored(n.right, Some(copy), mut out);
+    copy.right = mirrored(n.left, Some(copy), mut out);
+    Some(copy)
+}
+
+// ---- the statement read literally: a node is a common ancestor when
+// both p and q are among its descendants, itself included, found by
+// walking down its children; the lowest is the one with the fewest
+
+fn descendants(node: Option[Node], out: mut ref Vec[i32]) {
+    if let Some(n) = node {
+        out.push(n.val);
+        descendants(n.left, mut out);
+        descendants(n.right, mut out);
+    }
+}
+
+fn literal(nodes: Slice[Node], p: i32, q: i32) -> i32 {
+    let mut best = -1;
+    let mut fewest = 1000000;
+    for n in nodes.iter() {
+        let mut below: Vec[i32] = Vec.new();
+        descendants(Some(n), mut below);
+        if below.contains(p) and below.contains(q) and below.len() < fewest {
+            fewest = below.len();
+            best = n.val;
+        }
+    }
+    best
+}
+
+fn main() {
+    let mut seed = 1650;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[Node], i64, i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 7 + 2;
+        let nodes = random_tree(n, mut seed);
+        let p = next_random(mut seed) % n;
+        let mut q = next_random(mut seed) % n;
+        if q == p {
+            q = (q + 1) % n;
+        }
+        cases.push((nodes, p, q));
+    }
+    for (problem, (nodes, p, q)) in cases.iter().enumerate() {
+        let (pn, qn) = (nodes[p], nodes[q]);
+        let want = literal(nodes, pn.val, qn.val);
+        check = (check * 31 + want + 1) % 1000000007;
+        let mut flipped: Vec[Node] = Vec.new();
+        let _ = mirrored(Some(nodes[0]), None, mut flipped);
+        let (fp, fq) = (find(flipped, pn.val), find(flipped, qn.val));
+        let mut answers: Vec[i32] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, pn, qn);
+            answers.push(got);
+            let failed = [
+                got != want,
+                arm(a, qn, pn) != got,
+                got != pn.val and arm(a, find(nodes, got), pn) != got,
+                arm(a, fp, fq) != got,
+            ];
+            for k in 0..4 {
+                checks += 1;
+                if failed[k] {
+                    failures += 1;
+                    by_property[k + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {problem} ({pn.val}, {qn.val}), {arm_name(a)}: P{k + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {problem}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for k in 1..6 {
+            if by_property[k] > 0 {
+                counts.push(f"P{k}: {by_property[k]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}
