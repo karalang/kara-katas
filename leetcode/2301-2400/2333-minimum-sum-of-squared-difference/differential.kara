@@ -1,0 +1,358 @@
+// LeetCode #2333: Minimum Sum of Squared Difference -- the differential.
+// The six arms, against the statement read literally: every way to
+// spend at most k1 moves of +1 or -1 on nums1 and at most k2 on nums2,
+// each value's change tried from -k to k with the rest left for the
+// values after it, and the least sum of squared differences kept. No
+// gaps and no greed. 300 random cases of 1 to 4 pairs up to 8, k1 and
+// k2 from 0 to 3; then 30 of up to 12 pairs up to 30 with up to 400
+// moves, often enough to close every gap; then 30 of up to 300 pairs up
+// to 10^5 with up to 20000 moves. Every case is drawn before any arm
+// answers.
+//
+// P1  up to 4 pairs and 3 moves a side, the answer is the literal
+//     reading's
+// P2  the answer is at most the sum of the squared gaps, at least the
+//     gaps' sum less the moves, squared, over n, and 0 when the moves
+//     cover every gap
+// P3  nums1 and nums2 swapped and both reversed: the same answer
+// P4  every value 7 higher and k1 and k2 traded: the same answer
+// P5  one move more saves no more than the move before it, and an odd
+//     amount or nothing
+// P6  each arm agrees with at least three of the other five
+
+// ---- star (squares.kara) -------------------------------------------------
+
+fn star_min_sum_square_diff(nums1: Vec[i64], nums2: Vec[i64], k1: i64, k2: i64) -> i64 {
+    let mut count: Vec[i64] = Vec.filled(100001, 0);
+    let mut top = 0;
+    for i in 0..nums1.len() {
+        let gap = (nums1[i] - nums2[i]).abs();
+        count[gap] += 1;
+        top = top.max(gap);
+    }
+    let mut moves = k1 + k2;
+    let mut level = top;
+    while level > 0 and moves >= count[level] {
+        moves -= count[level];
+        count[level - 1] += count[level];
+        count[level] = 0;
+        level -= 1;
+    }
+    if level > 0 {
+        count[level] -= moves;
+        count[level - 1] += moves;
+    }
+    let mut total = 0;
+    for gap in 1..=level {
+        total += count[gap] * gap * gap;
+    }
+    total
+}
+
+// ---- sorted (squares_sorted.kara) ----------------------------------------
+
+fn sorted_min_sum_square_diff(nums1: Vec[i64], nums2: Vec[i64], k1: i64, k2: i64) -> i64 {
+    let mut gaps: Vec[i64] = Vec.new();
+    for i in 0..nums1.len() {
+        gaps.push((nums1[i] - nums2[i]).abs());
+    }
+    gaps.sort();
+    gaps.reverse();
+    let n = gaps.len();
+    gaps.push(0);
+    let mut moves = k1 + k2;
+    let mut width = 1;
+    let mut level = gaps[0];
+    while width <= n {
+        let cost = width * (level - gaps[width]);
+        if cost > moves {
+            break;
+        }
+        moves -= cost;
+        level = gaps[width];
+        width += 1;
+    }
+    if width > n {
+        return 0;
+    }
+    let lower = level - moves / width;
+    let extra = moves % width;
+    let mut total = (width - extra) * lower * lower + extra * (lower - 1) * (lower - 1);
+    for i in width..n {
+        total += gaps[i] * gaps[i];
+    }
+    total
+}
+
+// ---- search (squares_search.kara) ----------------------------------------
+
+fn search_excess(gaps: Vec[i64], cap: i64) -> i64 {
+    let mut cost = 0;
+    for gap in gaps.iter() {
+        if gap > cap {
+            cost += gap - cap;
+        }
+    }
+    cost
+}
+
+fn search_min_sum_square_diff(nums1: Vec[i64], nums2: Vec[i64], k1: i64, k2: i64) -> i64 {
+    let mut gaps: Vec[i64] = Vec.new();
+    for i in 0..nums1.len() {
+        gaps.push((nums1[i] - nums2[i]).abs());
+    }
+    let moves = k1 + k2;
+    let mut low = 0;
+    let mut high = 100000;
+    while low < high {
+        let cap = (low + high) / 2;
+        if search_excess(gaps, cap) <= moves {
+            high = cap;
+        } else {
+            low = cap + 1;
+        }
+    }
+    let cap = low;
+    if cap == 0 {
+        return 0;
+    }
+    let left = moves - search_excess(gaps, cap);
+    let mut total = 0;
+    for gap in gaps.iter() {
+        let kept = gap.min(cap);
+        total += kept * kept;
+    }
+    total - left * (cap * cap - (cap - 1) * (cap - 1))
+}
+
+// ---- heap (squares_heap.kara) --------------------------------------------
+
+fn heap_min_sum_square_diff(nums1: Vec[i64], nums2: Vec[i64], k1: i64, k2: i64) -> i64 {
+    let mut gaps: PriorityQueue[i64] = PriorityQueue.max_first();
+    for i in 0..nums1.len() {
+        gaps.push((nums1[i] - nums2[i]).abs());
+    }
+    let mut moves = k1 + k2;
+    while moves > 0 {
+        let largest = gaps.pop().unwrap();
+        if largest == 0 {
+            gaps.push(0);
+            break;
+        }
+        gaps.push(largest - 1);
+        moves -= 1;
+    }
+    let mut total = 0;
+    while let Some(gap) = gaps.pop() {
+        total += gap * gap;
+    }
+    total
+}
+
+// ---- iter (squares_iter.kara) --------------------------------------------
+
+fn iter_min_sum_square_diff(nums1: Vec[i64], nums2: Vec[i64], k1: i64, k2: i64) -> i64 {
+    let mut gaps: Vec[i64] = nums1.iter().zip(nums2.iter()).map(|(a, b)| (a - b).abs()).collect();
+    gaps.sort();
+    gaps.reverse();
+    gaps.push(0);
+    let moves = k1 + k2;
+    let n = gaps.len() - 1;
+    // the cost of bringing the `w` largest down to gaps[w], for w from 1
+    let costs: Vec[i64] = (1..=n).scan(0, |sum, w| {
+        let sum = sum + gaps[w - 1];
+        Some((sum, sum - w * gaps[w]))
+    }).collect();
+    let Some(short) = costs.iter().position(|cost| cost > moves) else {
+        return 0;
+    };
+    // the `width` largest can only reach gaps[width - 1], plus what the
+    // rest of the moves pay for
+    let width = short + 1;
+    let spent = if short == 0 { 0 } else { costs[short - 1] };
+    let level = gaps[width - 1];
+    let lower = level - (moves - spent) / width;
+    let extra = (moves - spent) % width;
+    let rest: i64 = gaps.iter().skip(width).map(|g| g * g).sum();
+    (width - extra) * lower * lower + extra * (lower - 1) * (lower - 1) + rest
+}
+
+// ---- solution (squares_solution.kara) ------------------------------------
+
+impl Solution {
+    pub fn min_sum_square_diff(nums1: Vec[i32], nums2: Vec[i32], k1: i32, k2: i32) -> i64 {
+        let mut diff: Vec[i64] = nums1.iter().zip(nums2.iter()).map(|(a, b)| (a - b).abs() as i64).collect();
+        diff.sort_by(|a, b| b.cmp(a));
+        diff.push(0);
+        let n = nums1.len();
+        let mut k = (k1 + k2) as i64;
+        for i in 0..n {
+            let w = i + 1;
+            let cost = w * (diff[i] - diff[i + 1]);
+            if cost > k {
+                let lower = diff[i] - k / w;
+                let extra = k % w;
+                let mut ans = (w - extra) * lower * lower + extra * (lower - 1) * (lower - 1);
+                for j in i + 1..n {
+                    ans += diff[j] * diff[j];
+                }
+                return ans;
+            }
+            k -= cost;
+        }
+        0
+    }
+}
+
+struct Solution {}
+
+fn solution_min_sum_square_diff(nums1: Vec[i64], nums2: Vec[i64], k1: i64, k2: i64) -> i64 {
+    let nums1: Vec[i32] = nums1.iter().map(|x| x as i32).collect();
+    let nums2: Vec[i32] = nums2.iter().map(|x| x as i32).collect();
+    Solution.min_sum_square_diff(nums1, nums2, k1 as i32, k2 as i32)
+}
+// ---- the statement read literally ------------------------------------------
+
+// every change of nums[i..] that spends at most `left` moves
+fn spend(nums: Vec[i64], i: i64, left: i64, out: mut ref Vec[Vec[i64]]) {
+    if i == nums.len() {
+        out.push(nums.clone());
+        return;
+    }
+    for change in -left..=left {
+        let mut changed = nums.clone();
+        changed[i] += change;
+        spend(changed, i + 1, left - change.abs(), mut out);
+    }
+}
+
+fn literal(nums1: Vec[i64], nums2: Vec[i64], k1: i64, k2: i64) -> i64 {
+    let mut firsts: Vec[Vec[i64]] = Vec.new();
+    spend(nums1, 0, k1, mut firsts);
+    let mut seconds: Vec[Vec[i64]] = Vec.new();
+    spend(nums2, 0, k2, mut seconds);
+    let mut best = -1;
+    for a in firsts.iter() {
+        for b in seconds.iter() {
+            let mut sum = 0;
+            for i in 0..a.len() {
+                sum += (a[i] - b[i]) * (a[i] - b[i]);
+            }
+            if best < 0 or sum < best {
+                best = sum;
+            }
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, nums1: Vec[i64], nums2: Vec[i64], k1: i64, k2: i64) -> i64 {
+    match arm {
+        0 => star_min_sum_square_diff(nums1, nums2, k1, k2),
+        1 => sorted_min_sum_square_diff(nums1, nums2, k1, k2),
+        2 => search_min_sum_square_diff(nums1, nums2, k1, k2),
+        3 => heap_min_sum_square_diff(nums1, nums2, k1, k2),
+        4 => iter_min_sum_square_diff(nums1, nums2, k1, k2),
+        _ => solution_min_sum_square_diff(nums1, nums2, k1, k2),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_nums(seed: mut ref i64, n: i64, top: i64) -> Vec[i64] {
+    let mut nums: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        nums.push(next_random(mut seed) % (top + 1));
+    }
+    nums
+}
+
+fn main() {
+    let names = ["star", "sorted", "search", "heap", "iter", "solution"];
+    let mut seed = 2333;
+    let mut cases: Vec[(Vec[i64], Vec[i64], i64, i64)] = Vec.new();
+    for c in 0..360 {
+        let (n, top, most) = if c < 300 {
+            (next_random(mut seed) % 4 + 1, 8, 3)
+        } else if c < 330 {
+            (next_random(mut seed) % 12 + 1, 30, 200)
+        } else {
+            (next_random(mut seed) % 300 + 1, 100000, 10000)
+        };
+        let nums1 = random_nums(mut seed, n, top);
+        let nums2 = random_nums(mut seed, n, top);
+        let k1 = next_random(mut seed) % (most + 1);
+        let k2 = next_random(mut seed) % (most + 1);
+        cases.push((nums1, nums2, k1, k2));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (nums1, nums2, k1, k2)) in cases.iter().enumerate() {
+        let n = nums1.len();
+        let small = c < 300;
+        let truth = if small { literal(nums1, nums2, k1, k2) } else { -1 };
+        if small {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let mut gaps = 0;
+        let mut squares = 0;
+        for i in 0..n {
+            let gap = (nums1[i] - nums2[i]).abs();
+            gaps += gap;
+            squares += gap * gap;
+        }
+        let moves = k1 + k2;
+        let short = (gaps - moves).max(0);
+        let reversed1: Vec[i64] = nums2.iter().rev().collect();
+        let reversed2: Vec[i64] = nums1.iter().rev().collect();
+        let higher1: Vec[i64] = nums1.iter().map(|x| x + 7).collect();
+        let higher2: Vec[i64] = nums2.iter().map(|x| x + 7).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums1, nums2, k1, k2)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let one_more = answer(arm, nums1, nums2, k1 + 1, k2);
+            let two_more = answer(arm, nums1, nums2, k1 + 1, k2 + 1);
+            let saved = value - one_more;
+            let verdicts = [
+                not small or value == truth,
+                value <= squares and value * n >= short * short and (short > 0 or value == 0),
+                answer(arm, reversed1, reversed2, k1, k2) == value,
+                answer(arm, higher1, higher2, k2, k1) == value,
+                saved >= one_more - two_more and one_more >= two_more and (saved == 0 or saved % 2 == 1),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

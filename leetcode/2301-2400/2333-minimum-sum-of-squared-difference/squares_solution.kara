@@ -1,0 +1,82 @@
+// LeetCode #2333: Minimum Sum of Squared Difference -- LeetCode's Rust
+// template as a Rust user fills it in, carried by `karac fix`: the gaps
+// from `zip` with `&` patterns as `i64`, `sort_unstable_by` largest
+// first, and a `usize` walk that brings the largest down together until
+// the moves run short.
+
+impl Solution {
+    pub fn min_sum_square_diff(nums1: Vec[i32], nums2: Vec[i32], k1: i32, k2: i32) -> i64 {
+        let mut diff: Vec[i64] = nums1.iter().zip(nums2.iter()).map(|(a, b)| (a - b).abs() as i64).collect();
+        diff.sort_by(|a, b| b.cmp(a));
+        diff.push(0);
+        let n = nums1.len();
+        let mut k = (k1 + k2) as i64;
+        for i in 0..n {
+            let w = i + 1;
+            let cost = w * (diff[i] - diff[i + 1]);
+            if cost > k {
+                let lower = diff[i] - k / w;
+                let extra = k % w;
+                let mut ans = (w - extra) * lower * lower + extra * (lower - 1) * (lower - 1);
+                for j in i + 1..n {
+                    ans += diff[j] * diff[j];
+                }
+                return ans;
+            }
+            k -= cost;
+        }
+        0
+    }
+}
+
+struct Solution {}
+
+fn min_sum_square_diff(nums1: Vec[i64], nums2: Vec[i64], k1: i64, k2: i64) -> i64 {
+    let nums1: Vec[i32] = nums1.iter().map(|x| x as i32).collect();
+    let nums2: Vec[i32] = nums2.iter().map(|x| x as i32).collect();
+    Solution.min_sum_square_diff(nums1, nums2, k1 as i32, k2 as i32)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_nums(seed: mut ref i64, n: i64, top: i64) -> Vec[i64] {
+    let mut nums: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        nums.push(next_random(mut seed) % (top + 1));
+    }
+    nums
+}
+
+fn main() {
+    // LeetCode's two examples; then moves enough to close every gap, no
+    // gap at all, one pair 10^5 apart with 10^9 moves of k1 alone, and
+    // 2000 pairs up to 10^5 with 60000 moves
+    println(f"{min_sum_square_diff([1, 2, 3, 4].to_vec(), [2, 10, 20, 19].to_vec(), 0, 0)}");
+    println(f"{min_sum_square_diff([1, 4, 10, 12].to_vec(), [5, 8, 6, 9].to_vec(), 1, 1)}");
+    println(f"{min_sum_square_diff([7, 0, 3].to_vec(), [2, 4, 3].to_vec(), 4, 5)}");
+    println(f"{min_sum_square_diff([5, 5, 5].to_vec(), [5, 5, 5].to_vec(), 3, 0)}");
+    println(f"{min_sum_square_diff([0].to_vec(), [100000].to_vec(), 1000000000, 0)}");
+    let mut seed = 2333;
+    let big1 = random_nums(mut seed, 2000, 100000);
+    let big2 = random_nums(mut seed, 2000, 100000);
+    println(f"{min_sum_square_diff(big1, big2, 25000, 35000)}");
+    // 2000 random cases of 1 to 12 pairs up to 30, k1 and k2 from 0 to 40
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let nums1 = random_nums(mut seed, n, 30);
+        let nums2 = random_nums(mut seed, n, 30);
+        let k1 = next_random(mut seed) % 41;
+        let k2 = next_random(mut seed) % 41;
+        let least = min_sum_square_diff(nums1, nums2, k1, k2);
+        check = (check * 31 + least) % 1000000007;
+        total += least;
+    }
+    println(f"2000 cases: checksum {check}, total {total}");
+}

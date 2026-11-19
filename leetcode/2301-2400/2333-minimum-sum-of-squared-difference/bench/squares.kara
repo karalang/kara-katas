@@ -1,0 +1,62 @@
+// LeetCode #2333: Minimum Sum of Squared Difference -- the bench, the ★
+// arm. The gaps counted by size; from the largest down, all the gaps at
+// a size drop a level while the moves cover them, and the moves left
+// take that many of the rest one lower. O(n + 10^5).
+
+fn min_sum_square_diff(nums1: Vec[i64], nums2: Vec[i64], k1: i64, k2: i64) -> i64 {
+    let mut count: Vec[i64] = Vec.filled(100001, 0);
+    let mut top = 0;
+    for i in 0..nums1.len() {
+        let gap = (nums1[i] - nums2[i]).abs();
+        count[gap] += 1;
+        top = top.max(gap);
+    }
+    let mut moves = k1 + k2;
+    let mut level = top;
+    while level > 0 and moves >= count[level] {
+        moves -= count[level];
+        count[level - 1] += count[level];
+        count[level] = 0;
+        level -= 1;
+    }
+    if level > 0 {
+        count[level] -= moves;
+        count[level - 1] += moves;
+    }
+    let mut total = 0;
+    for gap in 1..=level {
+        total += count[gap] * gap * gap;
+    }
+    total
+}
+
+// the `index`th value of a scramble that never repeats below 2^31 - 1
+fn scrambled(index: i64) -> i64 {
+    index * 2654435761 % 2147483647
+}
+
+fn main() {
+    // 10 cases of 2*10^4 pairs up to 10^5, built once; 10 passes, case
+    // `c` in pass `p` with k1 = (10c + p) * 3*10^6 mod 4*10^8 and
+    // k2 = (7p + c) * 5*10^6 mod 3*10^8
+    let mut cases: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    for c in 0..10 {
+        let mut nums1: Vec[i64] = Vec.new();
+        let mut nums2: Vec[i64] = Vec.new();
+        for i in 0..20000 {
+            nums1.push(scrambled(c * 40000 + i) % 100001);
+            nums2.push(scrambled(c * 40000 + 20000 + i) % 100001);
+        }
+        cases.push((nums1, nums2));
+    }
+    let mut check = 0;
+    for p in 0..10 {
+        for c in 0..10 {
+            let (nums1, nums2) = ref cases[c];
+            let k1 = (10 * c + p) * 3000000 % 400000000;
+            let k2 = (7 * p + c) * 5000000 % 300000000;
+            check = (check * 31 + min_sum_square_diff(nums1, nums2, k1, k2)) % 1000000007;
+        }
+    }
+    println(f"10 passes over 10 cases of 2*10^4 pairs: checksum {check}");
+}
