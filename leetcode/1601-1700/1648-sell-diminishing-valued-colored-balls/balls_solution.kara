@@ -1,0 +1,87 @@
+// LeetCode #1648: Sell Diminishing-Valued Colored Balls -- LeetCode's Rust
+// template, as written there, carried over by `karac fix`.
+//
+// The inventory sorted largest first with `sort_unstable_by` and walked
+// in layers, as the ★ arm, each layer's rows summed by a helper. O(n log
+// n).
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_profit(inventory: own Vec[i32], orders: i32) -> i32 {
+        let mut inventory = inventory;
+        const MOD: i64 = 1_000_000_007;
+        inventory.sort_by(|a, b| b.cmp(a));
+        inventory.push(0);
+        let mut orders = orders as i64;
+        let mut ans: i64 = 0;
+        let range_sum = |hi: i64, lo: i64| { (hi + lo + 1) * (hi - lo) / 2 % MOD };
+        for i in 0..inventory.len() - 1 {
+            let cnt = i + 1;
+            let hi = inventory[i] as i64;
+            let lo = inventory[i + 1] as i64;
+            if hi == lo {
+                continue;
+            }
+            if cnt * (hi - lo) < orders {
+                ans = (ans + range_sum(hi, lo) * cnt) % MOD;
+                orders -= cnt * (hi - lo);
+            } else {
+                let full = orders / cnt;
+                let rem = orders % cnt;
+                ans = (ans + range_sum(hi, hi - full) * cnt) % MOD;
+                ans = (ans + rem * (hi - full)) % MOD;
+                return ans as i32;
+            }
+        }
+        ans as i32
+    }
+}
+
+fn max_profit(inventory: own Vec[i32], orders: i32) -> i32 {
+    Solution.max_profit(inventory, orders)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random inventories of 1 to `most` colors with up to `top` balls
+// each, and an order for 1 to all of the balls, at most 10^9; the profits
+// summed, and a checksum
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let mut inventory: Vec[i32] = Vec.new();
+        let mut balls = 0;
+        for _ in 0..n {
+            let b = (next_random(mut seed) * 32768 + next_random(mut seed)) % top + 1;
+            inventory.push(b as i32);
+            balls += b;
+        }
+        let orders = (next_random(mut seed) * 32768 + next_random(mut seed)) % min(balls, 1000000000) + 1;
+        let profit = max_profit(inventory, orders as i32);
+        total += profit;
+        check = (check * 31 + profit + 1) % 1000000007;
+    }
+    println(f"{count} inventories of up to {most} colors: profits sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then one color sold out, every ball worth
+    // the same, and the largest case, which wraps the modulus
+    println(max_profit([2, 5], 4));
+    println(max_profit([3, 5], 6));
+    println(max_profit([7], 7));
+    println(max_profit([4, 4, 4], 5));
+    println(max_profit([1000000000], 1000000000));
+    let mut seed = 1648;
+    batch(3000, 4, 6, mut seed);
+    batch(1000, 100, 1000000000, mut seed);
+    batch(20, 100000, 1000000000, mut seed);
+}

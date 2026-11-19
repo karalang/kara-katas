@@ -1,0 +1,263 @@
+// LeetCode #1648: Sell Diminishing-Valued Colored Balls -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random
+// inventories of 1 to 5 colors with 1 to 8 balls each, and an order for 1
+// to all of the balls. Every case is drawn before any arm answers.
+//
+// P1  the profit is the statement read literally
+// P2  the inventory reversed gives the same profit
+// P3  one more order, while balls are left, adds between 0 and the
+//     largest count
+// P4  one more color of a single ball leaves the profit as it is
+// P5  each arm agrees with at least two of the other three
+
+// ---- balls.kara: the ★ arm: sorted, sold from the top down in layers
+
+fn star_arm(inventory: Vec[i32], orders: i32) -> i32 {
+    const MOD: i64 = 1_000_000_007;
+    let mut counts: Vec[i64] = inventory.iter().map(|b| b as i64).collect();
+    counts.sort();
+    counts.reverse();
+    counts.push(0);
+    let mut orders = orders as i64;
+    let mut profit = 0;
+    for i in 0..counts.len() - 1 {
+        let width = i + 1;
+        let (high, low) = (counts[i], counts[i + 1]);
+        if high == low {
+            continue;
+        }
+        // sum of high, high - 1, ..., stop + 1, `width` times over
+        let series = |stop: i64| (high + stop + 1) * (high - stop) / 2 % MOD * width % MOD;
+        if width * (high - low) < orders {
+            profit = (profit + series(low)) % MOD;
+            orders -= width * (high - low);
+        } else {
+            let rows = orders / width;
+            let rest = orders % width;
+            profit = (profit + series(high - rows)) % MOD;
+            profit = (profit + rest * (high - rows) % MOD) % MOD;
+            return profit as i32;
+        }
+    }
+    profit as i32
+}
+
+// ---- balls_search.kara: a binary search on the last price
+
+fn search_sold_above(inventory: Slice[i32], t: i64) -> i64 {
+    inventory.iter().map(|b| max(b as i64 - t, 0)).sum()
+}
+
+fn search_arm(inventory: Vec[i32], orders: i32) -> i32 {
+    const MOD: i64 = 1_000_000_007;
+    let orders = orders as i64;
+    let mut (low, high) = (0, inventory.iter().max().unwrap() as i64);
+    while low < high {
+        let middle = (low + high) / 2;
+        if search_sold_above(inventory, middle) <= orders {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    let t = low;
+    let mut profit = 0;
+    for b in inventory.iter() {
+        let b = b as i64;
+        if b > t {
+            profit = (profit + (b + t + 1) * (b - t) / 2) % MOD;
+        }
+    }
+    let rest = orders - search_sold_above(inventory, t);
+    ((profit + rest % MOD * t) % MOD) as i32
+}
+
+// ---- balls_heap.kara: a heap of levels
+
+import std.cmp.Reverse;
+
+fn heap_arm(inventory: Vec[i32], orders: i32) -> i32 {
+    const MOD: i64 = 1_000_000_007;
+    let mut heap: PriorityQueue[Reverse[i64]] = PriorityQueue.new();
+    for b in inventory.iter() {
+        heap.push(Reverse { value: b });
+    }
+    let mut orders = orders as i64;
+    let mut profit = 0;
+    let mut width = 0;
+    let mut level = heap.pop().unwrap().value;
+    width += 1;
+    while orders > 0 {
+        while let Some(top) = heap.peek() {
+            if top.value != level {
+                break;
+            }
+            heap.pop();
+            width += 1;
+        }
+        let next = match heap.peek() {
+            Some(top) => top.value,
+            None => 0,
+        };
+        let block = width * (level - next);
+        let take = min(block, orders);
+        let rows = take / width;
+        let rest = take % width;
+        let bottom = level - rows;
+        profit = (profit + (level + bottom + 1) * rows / 2 % MOD * width % MOD) % MOD;
+        profit = (profit + rest * bottom % MOD) % MOD;
+        orders -= take;
+        level = next;
+    }
+    profit as i32
+}
+
+// ---- balls_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn max_profit(inventory: own Vec[i32], orders: i32) -> i32 {
+        let mut inventory = inventory;
+        const MOD: i64 = 1_000_000_007;
+        inventory.sort_by(|a, b| b.cmp(a));
+        inventory.push(0);
+        let mut orders = orders as i64;
+        let mut ans: i64 = 0;
+        let range_sum = |hi: i64, lo: i64| { (hi + lo + 1) * (hi - lo) / 2 % MOD };
+        for i in 0..inventory.len() - 1 {
+            let cnt = i + 1;
+            let hi = inventory[i] as i64;
+            let lo = inventory[i + 1] as i64;
+            if hi == lo {
+                continue;
+            }
+            if cnt * (hi - lo) < orders {
+                ans = (ans + range_sum(hi, lo) * cnt) % MOD;
+                orders -= cnt * (hi - lo);
+            } else {
+                let full = orders / cnt;
+                let rem = orders % cnt;
+                ans = (ans + range_sum(hi, hi - full) * cnt) % MOD;
+                ans = (ans + rem * (hi - full)) % MOD;
+                return ans as i32;
+            }
+        }
+        ans as i32
+    }
+}
+
+fn solution_arm(inventory: own Vec[i32], orders: i32) -> i32 {
+    SolutionArm.max_profit(inventory, orders)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, inventory: own Vec[i32], orders: i64) -> i64 {
+    match a {
+        0 => star_arm(inventory, orders as i32),
+        1 => search_arm(inventory, orders as i32),
+        2 => heap_arm(inventory, orders as i32),
+        _ => solution_arm(inventory, orders as i32),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["balls", "search", "heap", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: one ball at a time, each from a
+// color with the most balls left, worth that many
+
+fn literal(inventory: Slice[i32], orders: i64) -> i64 {
+    let mut left: Vec[i64] = inventory.iter().map(|b| b as i64).collect();
+    let mut profit = 0;
+    for _ in 0..orders {
+        let mut best = 0;
+        for i in 1..left.len() {
+            if left[i] > left[best] {
+                best = i;
+            }
+        }
+        profit += left[best];
+        left[best] -= 1;
+    }
+    profit
+}
+
+fn main() {
+    let mut seed = 1648;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i32], i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 5 + 1;
+        let inventory: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % 8 + 1) as i32).collect();
+        let balls: i64 = inventory.iter().map(|b| b as i64).sum();
+        let orders = next_random(mut seed) % balls + 1;
+        cases.push((inventory, orders));
+    }
+    for (p, (inventory, orders)) in cases.iter().enumerate() {
+        let balls: i64 = inventory.iter().map(|b| b as i64).sum();
+        let top = inventory.iter().max().unwrap() as i64;
+        let want = literal(inventory, orders);
+        check = (check * 31 + want + 1) % 1000000007;
+        let reversed: Vec[i32] = inventory.iter().rev().map(|b| *b).collect();
+        let mut wider = inventory.clone();
+        wider.push(1);
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, inventory.clone(), orders);
+            answers.push(got);
+            let more = if orders < balls { arm(a, inventory.clone(), orders + 1) } else { got };
+            let failed = [
+                got != want,
+                arm(a, reversed.clone(), orders) != got,
+                more < got or more > got + top,
+                arm(a, wider.clone(), orders) != got,
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({inventory}, {orders}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}
