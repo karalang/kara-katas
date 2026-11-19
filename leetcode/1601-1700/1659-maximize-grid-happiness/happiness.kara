@@ -1,0 +1,106 @@
+// LeetCode #1659: Maximize Grid Happiness -- the ★ arm.
+//
+// The cells in reading order, each left empty or given an introvert or
+// an extrovert. A cell's neighbours already decided are the one above,
+// which is the cell n back, and the one to the left, so the last n
+// choices are all the state needed: a base-3 number, the oldest choice
+// in its top digit. Memoised over (cell, introverts left, extroverts
+// left, last n choices). O(mn I E 3^n).
+
+const INTROVERT: i64 = 1;
+const EXTROVERT: i64 = 2;
+
+// what placing `a` next to `b` adds, both sides counted
+fn pair(a: i64, b: i64) -> i64 {
+    if a == 0 or b == 0 {
+        return 0;
+    }
+    let mut score = 0;
+    for p in [a, b] {
+        score += if p == INTROVERT { -30 } else { 20 };
+    }
+    score
+}
+
+struct Grid {
+    m: i64,
+    n: i64,
+    top: i64,
+    memo: Vec[i64],
+}
+
+impl Grid {
+    fn best(mut ref self, cell: i64, introverts: i64, extroverts: i64, last: i64) -> i64 {
+        if cell == self.m * self.n or (introverts == 0 and extroverts == 0) {
+            return 0;
+        }
+        let key = ((cell * 7 + introverts) * 7 + extroverts) * self.top + last;
+        if self.memo[key] >= 0 {
+            return self.memo[key];
+        }
+        let up = last / (self.top / 3);
+        let left = if cell % self.n == 0 { 0 } else { last % 3 };
+        let shifted = last % (self.top / 3) * 3;
+        // leave the cell empty
+        let mut best = self.best(cell + 1, introverts, extroverts, shifted);
+        if introverts > 0 {
+            let gain = 120 + pair(INTROVERT, up) + pair(INTROVERT, left);
+            best = max(best, gain + self.best(cell + 1, introverts - 1, extroverts, shifted + INTROVERT));
+        }
+        if extroverts > 0 {
+            let gain = 40 + pair(EXTROVERT, up) + pair(EXTROVERT, left);
+            best = max(best, gain + self.best(cell + 1, introverts, extroverts - 1, shifted + EXTROVERT));
+        }
+        self.memo[key] = best;
+        best
+    }
+}
+
+fn get_max_grid_happiness(m: i32, n: i32, introverts_count: i32, extroverts_count: i32) -> i32 {
+    let m = m as i64;
+    let n = n as i64;
+    let mut top = 1;
+    for _ in 0..n {
+        top *= 3;
+    }
+    let mut grid = Grid { m, n, top, memo: Vec.filled(m * n * 49 * top, -1) };
+    grid.best(0, introverts_count, extroverts_count, 0) as i32
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random grids up to `most` by `most` with up to `people`
+// introverts and extroverts each; every answer summed, and a checksum
+fn batch(count: i64, most: i64, people: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let m = (next_random(mut seed) % most + 1) as i32;
+        let n = (next_random(mut seed) % most + 1) as i32;
+        let introverts = (next_random(mut seed) % (people + 1)) as i32;
+        let extroverts = (next_random(mut seed) % (people + 1)) as i32;
+        let answer = get_max_grid_happiness(m, n, introverts, extroverts);
+        total += answer;
+        check = (check * 31 + answer + 1) % 1000000007;
+    }
+    println(f"{count} grids up to {most} by {most} with up to {people} of each: happiness sums to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then nobody to place, one row, and the
+    // largest grid with everyone
+    println(get_max_grid_happiness(2, 3, 1, 2));
+    println(get_max_grid_happiness(3, 1, 2, 1));
+    println(get_max_grid_happiness(2, 2, 4, 0));
+    println(get_max_grid_happiness(4, 4, 0, 0));
+    println(get_max_grid_happiness(1, 5, 2, 3));
+    println(get_max_grid_happiness(5, 5, 6, 6));
+    let mut seed = 1659;
+    batch(300, 3, 3, mut seed);
+    batch(200, 5, 6, mut seed);
+}

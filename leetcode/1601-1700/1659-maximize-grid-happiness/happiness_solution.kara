@@ -1,0 +1,92 @@
+// LeetCode #1659: Maximize Grid Happiness -- LeetCode's Rust template, as
+// written there, carried over by `karac fix`.
+//
+// The ★ arm's memoised search over (cell, introverts, extroverts, last n
+// choices as a base-3 mask), in a flat `Vec<i32>` indexed by `usize`.
+// O(mn I E 3^n).
+
+struct Solution {}
+
+fn cost(a: i64, b: i64) -> i32 {
+    if a == 0 or b == 0 {
+        return 0;
+    }
+    let x = if a == 1 { -30 } else { 20 };
+    let y = if b == 1 { -30 } else { 20 };
+    x + y
+}
+
+fn dfs(pos: i64, ic: i64, ec: i64, mask: i64, m: i64, n: i64, p3: i64, memo: mut ref Vec[i32]) -> i32 {
+    if pos == m * n or (ic == 0 and ec == 0) {
+        return 0;
+    }
+    let key = ((pos * 7 + ic) * 7 + ec) * p3 + mask;
+    if memo[key] != -1 {
+        return memo[key];
+    }
+    let up = mask / (p3 / 3);
+    let left = if pos % n == 0 { 0 } else { mask % 3 };
+    let next = (mask * 3) % p3;
+    let mut res = dfs(pos + 1, ic, ec, next, m, n, p3, mut memo);
+    if ic > 0 {
+        let gain = 120 + cost(1, up) + cost(1, left);
+        res = res.max(gain + dfs(pos + 1, ic - 1, ec, next + 1, m, n, p3, mut memo));
+    }
+    if ec > 0 {
+        let gain = 40 + cost(2, up) + cost(2, left);
+        res = res.max(gain + dfs(pos + 1, ic, ec - 1, next + 2, m, n, p3, mut memo));
+    }
+    memo[key] = res;
+    res
+}
+
+impl Solution {
+    pub fn get_max_grid_happiness(m: i32, n: i32, introverts_count: i32, extroverts_count: i32) -> i32 {
+        let (m, n) = (m as i64, n as i64);
+        let p3 = 3.pow(n as u32);
+        let mut memo = Vec.filled(m * n * 7 * 7 * p3, -1i32);
+        dfs(0, introverts_count, extroverts_count, 0, m, n, p3, mut memo)
+    }
+}
+
+fn get_max_grid_happiness(m: i32, n: i32, introverts_count: i32, extroverts_count: i32) -> i32 {
+    Solution.get_max_grid_happiness(m, n, introverts_count, extroverts_count)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random grids up to `most` by `most` with up to `people`
+// introverts and extroverts each; every answer summed, and a checksum
+fn batch(count: i64, most: i64, people: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let m = (next_random(mut seed) % most + 1) as i32;
+        let n = (next_random(mut seed) % most + 1) as i32;
+        let introverts = (next_random(mut seed) % (people + 1)) as i32;
+        let extroverts = (next_random(mut seed) % (people + 1)) as i32;
+        let answer = get_max_grid_happiness(m, n, introverts, extroverts);
+        total += answer;
+        check = (check * 31 + answer + 1) % 1000000007;
+    }
+    println(f"{count} grids up to {most} by {most} with up to {people} of each: happiness sums to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then nobody to place, one row, and the
+    // largest grid with everyone
+    println(get_max_grid_happiness(2, 3, 1, 2));
+    println(get_max_grid_happiness(3, 1, 2, 1));
+    println(get_max_grid_happiness(2, 2, 4, 0));
+    println(get_max_grid_happiness(4, 4, 0, 0));
+    println(get_max_grid_happiness(1, 5, 2, 3));
+    println(get_max_grid_happiness(5, 5, 6, 6));
+    let mut seed = 1659;
+    batch(300, 3, 3, mut seed);
+    batch(200, 5, 6, mut seed);
+}

@@ -1,0 +1,108 @@
+// LeetCode #1659: Maximize Grid Happiness -- cell by cell, bottom up.
+//
+// The ★ arm's state turned into a table filled from the last cell back:
+// for each cell, the best for every (introverts left, extroverts left,
+// last n choices), the row after it rolled over. The last n choices are
+// kept as a `Vec` window rather than a number, and keyed in a `Map`.
+// O(mn I E 3^n).
+
+fn get_max_grid_happiness(m: i32, n: i32, introverts_count: i32, extroverts_count: i32) -> i32 {
+    let (m, n) = (m as i64, n as i64);
+    let mut best: Map[(i64, i64, Vec[i64]), i64] = Map.new();
+    let windows = all_windows(n);
+    for cell in (0..m * n).rev() {
+        let mut here: Map[(i64, i64, Vec[i64]), i64] = Map.new();
+        for i in 0..=introverts_count as i64 {
+            for e in 0..=extroverts_count as i64 {
+                for w in windows.iter() {
+                    let up = w[0];
+                    let left = if cell % n == 0 { 0 } else { w[n - 1] };
+                    let mut options = [(0, i, e, 0)];
+                    if i > 0 {
+                        options.push((1, i - 1, e, 120 + score(1, up) + score(1, left)));
+                    }
+                    if e > 0 {
+                        options.push((2, i, e - 1, 40 + score(2, up) + score(2, left)));
+                    }
+                    let mut top = i64.MIN;
+                    for (kind, ni, ne, gain) in options {
+                        let mut next_w: Vec[i64] = w[1..].to_vec();
+                        next_w.push(kind);
+                        let rest = best.get((ni, ne, next_w)).unwrap_or(0);
+                        top = max(top, gain + rest);
+                    }
+                    here.insert((i, e, w.clone()), top);
+                }
+            }
+        }
+        best = here;
+    }
+    let start = (introverts_count as i64, extroverts_count as i64, Vec.filled(n, 0));
+    best[start] as i32
+}
+
+// every window of n choices, each 0, 1 or 2
+fn all_windows(n: i64) -> Vec[Vec[i64]] {
+    let mut out: Vec[Vec[i64]] = [Vec.new()];
+    for _ in 0..n {
+        let mut longer = Vec.new();
+        for w in out.iter() {
+            for k in 0..3 {
+                let mut v = w.clone();
+                v.push(k);
+                longer.push(v);
+            }
+        }
+        out = longer;
+    }
+    out
+}
+
+// what a person of kind `a` gains or loses beside one of kind `b`, both
+// sides counted
+fn score(a: i64, b: i64) -> i64 {
+    if b == 0 {
+        return 0;
+    }
+    let own = if a == 1 { -30 } else { 20 };
+    let theirs = if b == 1 { -30 } else { 20 };
+    own + theirs
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random grids up to `most` by `most` with up to `people`
+// introverts and extroverts each; every answer summed, and a checksum
+fn batch(count: i64, most: i64, people: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let m = (next_random(mut seed) % most + 1) as i32;
+        let n = (next_random(mut seed) % most + 1) as i32;
+        let introverts = (next_random(mut seed) % (people + 1)) as i32;
+        let extroverts = (next_random(mut seed) % (people + 1)) as i32;
+        let answer = get_max_grid_happiness(m, n, introverts, extroverts);
+        total += answer;
+        check = (check * 31 + answer + 1) % 1000000007;
+    }
+    println(f"{count} grids up to {most} by {most} with up to {people} of each: happiness sums to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then nobody to place, one row, and the
+    // largest grid with everyone
+    println(get_max_grid_happiness(2, 3, 1, 2));
+    println(get_max_grid_happiness(3, 1, 2, 1));
+    println(get_max_grid_happiness(2, 2, 4, 0));
+    println(get_max_grid_happiness(4, 4, 0, 0));
+    println(get_max_grid_happiness(1, 5, 2, 3));
+    println(get_max_grid_happiness(5, 5, 6, 6));
+    let mut seed = 1659;
+    batch(300, 3, 3, mut seed);
+    batch(200, 5, 6, mut seed);
+}

@@ -1,0 +1,406 @@
+// LeetCode #1659: Maximize Grid Happiness -- the differential.
+//
+// Four arms against the statement read literally, on every grid up to 3
+// by 3 with up to 3 introverts and up to 3 extroverts: 144 problems.
+//
+// P1  the answer is the statement read literally
+// P2  the grid turned on its side gives the same answer
+// P3  one more introvert or extrovert allowed never lowers the answer
+// P4  one more row never lowers the answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- happiness.kara: the ★ arm: memoised cell by cell, the last n choices in base 3
+
+const STAR_INTROVERT: i64 = 1;
+const STAR_EXTROVERT: i64 = 2;
+
+// what placing `a` next to `b` adds, both sides counted
+fn star_pair(a: i64, b: i64) -> i64 {
+    if a == 0 or b == 0 {
+        return 0;
+    }
+    let mut score = 0;
+    for p in [a, b] {
+        score += if p == STAR_INTROVERT { -30 } else { 20 };
+    }
+    score
+}
+
+struct StarGrid {
+    m: i64,
+    n: i64,
+    top: i64,
+    memo: Vec[i64],
+}
+
+impl StarGrid {
+    fn best(mut ref self, cell: i64, introverts: i64, extroverts: i64, last: i64) -> i64 {
+        if cell == self.m * self.n or (introverts == 0 and extroverts == 0) {
+            return 0;
+        }
+        let key = ((cell * 7 + introverts) * 7 + extroverts) * self.top + last;
+        if self.memo[key] >= 0 {
+            return self.memo[key];
+        }
+        let up = last / (self.top / 3);
+        let left = if cell % self.n == 0 { 0 } else { last % 3 };
+        let shifted = last % (self.top / 3) * 3;
+        // leave the cell empty
+        let mut best = self.best(cell + 1, introverts, extroverts, shifted);
+        if introverts > 0 {
+            let gain = 120 + star_pair(STAR_INTROVERT, up) + star_pair(STAR_INTROVERT, left);
+            best = max(best, gain + self.best(cell + 1, introverts - 1, extroverts, shifted + STAR_INTROVERT));
+        }
+        if extroverts > 0 {
+            let gain = 40 + star_pair(STAR_EXTROVERT, up) + star_pair(STAR_EXTROVERT, left);
+            best = max(best, gain + self.best(cell + 1, introverts, extroverts - 1, shifted + STAR_EXTROVERT));
+        }
+        self.memo[key] = best;
+        best
+    }
+}
+
+fn star_arm(m: i32, n: i32, introverts_count: i32, extroverts_count: i32) -> i32 {
+    let m = m as i64;
+    let n = n as i64;
+    let mut top = 1;
+    for _ in 0..n {
+        top *= 3;
+    }
+    let mut grid = StarGrid { m, n, top, memo: Vec.filled(m * n * 49 * top, -1) };
+    grid.best(0, introverts_count, extroverts_count, 0) as i32
+}
+
+// ---- happiness_rows.kara: row by row over base-3 row patterns
+
+fn rows_arm(m: i32, n: i32, introverts_count: i32, extroverts_count: i32) -> i32 {
+    let (m, n) = (m as i64, n as i64);
+    let (most_i, most_e) = (introverts_count as i64, extroverts_count as i64);
+    let mut patterns = 1;
+    for _ in 0..n {
+        patterns *= 3;
+    }
+    let cells: Vec[Vec[i64]] = (0..patterns).map(|p| rows_digits(p, n)).collect();
+    let mut ins = Vec.filled(patterns, 0);
+    let mut exs = Vec.filled(patterns, 0);
+    let mut inner = Vec.filled(patterns, 0);
+    for p in 0..patterns {
+        let row = ref cells[p];
+        for j in 0..n {
+            match row[j] {
+                1 => {
+                    ins[p] += 1;
+                    inner[p] += 120;
+                }
+                2 => {
+                    exs[p] += 1;
+                    inner[p] += 40;
+                }
+                _ => {}
+            }
+            if j > 0 {
+                inner[p] += rows_meet(row[j - 1], row[j]);
+            }
+        }
+    }
+    let mut between = Vec.filled(patterns * patterns, 0);
+    for p in 0..patterns {
+        for q in 0..patterns {
+            for j in 0..n {
+                between[p * patterns + q] += rows_meet(cells[p][j], cells[q][j]);
+            }
+        }
+    }
+    // dp[(p * (I + 1) + i) * (E + 1) + e]: the best with the last row
+    // `p`, i introverts and e extroverts used
+    let size = patterns * (most_i + 1) * (most_e + 1);
+    let unreachable = i64.MIN;
+    let mut dp = Vec.filled(size, unreachable);
+    dp[0] = 0;
+    for _ in 0..m {
+        let mut next = Vec.filled(size, unreachable);
+        for p in 0..patterns {
+            for i in 0..=most_i {
+                for e in 0..=most_e {
+                    let here = dp[(p * (most_i + 1) + i) * (most_e + 1) + e];
+                    if here == unreachable {
+                        continue;
+                    }
+                    for q in 0..patterns {
+                        let (ni, ne) = (i + ins[q], e + exs[q]);
+                        if ni > most_i or ne > most_e {
+                            continue;
+                        }
+                        let at = (q * (most_i + 1) + ni) * (most_e + 1) + ne;
+                        next[at] = max(next[at], here + inner[q] + between[p * patterns + q]);
+                    }
+                }
+            }
+        }
+        dp = next;
+    }
+    dp.iter().max().unwrap() as i32
+}
+
+// the n base-3 rows_digits of p, the first cell in the lowest
+fn rows_digits(p: i64, n: i64) -> Vec[i64] {
+    let mut out = Vec.new();
+    let mut rest = p;
+    for _ in 0..n {
+        out.push(rest % 3);
+        rest /= 3;
+    }
+    out
+}
+
+// what two neighbours of kinds a and b add between them
+fn rows_meet(a: i64, b: i64) -> i64 {
+    match (a, b) {
+        (1, 1) => -60,
+        (1, 2) | (2, 1) => -10,
+        (2, 2) => 40,
+        _ => 0,
+    }
+}
+
+// ---- happiness_table.kara: cell by cell bottom up, windows in a map
+
+fn table_arm(m: i32, n: i32, introverts_count: i32, extroverts_count: i32) -> i32 {
+    let (m, n) = (m as i64, n as i64);
+    let mut best: Map[(i64, i64, Vec[i64]), i64] = Map.new();
+    let windows = table_all_windows(n);
+    for cell in (0..m * n).rev() {
+        let mut here: Map[(i64, i64, Vec[i64]), i64] = Map.new();
+        for i in 0..=introverts_count as i64 {
+            for e in 0..=extroverts_count as i64 {
+                for w in windows.iter() {
+                    let up = w[0];
+                    let left = if cell % n == 0 { 0 } else { w[n - 1] };
+                    let mut options = [(0, i, e, 0)];
+                    if i > 0 {
+                        options.push((1, i - 1, e, 120 + table_score(1, up) + table_score(1, left)));
+                    }
+                    if e > 0 {
+                        options.push((2, i, e - 1, 40 + table_score(2, up) + table_score(2, left)));
+                    }
+                    let mut top = i64.MIN;
+                    for (kind, ni, ne, gain) in options {
+                        let mut next_w: Vec[i64] = w[1..].to_vec();
+                        next_w.push(kind);
+                        let rest = best.get((ni, ne, next_w)).unwrap_or(0);
+                        top = max(top, gain + rest);
+                    }
+                    here.insert((i, e, w.clone()), top);
+                }
+            }
+        }
+        best = here;
+    }
+    let start = (introverts_count as i64, extroverts_count as i64, Vec.filled(n, 0));
+    best[start] as i32
+}
+
+// every window of n choices, each 0, 1 or 2
+fn table_all_windows(n: i64) -> Vec[Vec[i64]] {
+    let mut out: Vec[Vec[i64]] = [Vec.new()];
+    for _ in 0..n {
+        let mut longer = Vec.new();
+        for w in out.iter() {
+            for k in 0..3 {
+                let mut v = w.clone();
+                v.push(k);
+                longer.push(v);
+            }
+        }
+        out = longer;
+    }
+    out
+}
+
+// what a person of kind `a` gains or loses beside one of kind `b`, both
+// sides counted
+fn table_score(a: i64, b: i64) -> i64 {
+    if b == 0 {
+        return 0;
+    }
+    let own = if a == 1 { -30 } else { 20 };
+    let theirs = if b == 1 { -30 } else { 20 };
+    own + theirs
+}
+
+// ---- happiness_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+fn solution_cost(a: i64, b: i64) -> i32 {
+    if a == 0 or b == 0 {
+        return 0;
+    }
+    let x = if a == 1 { -30 } else { 20 };
+    let y = if b == 1 { -30 } else { 20 };
+    x + y
+}
+
+fn solution_dfs(pos: i64, ic: i64, ec: i64, mask: i64, m: i64, n: i64, p3: i64, memo: mut ref Vec[i32]) -> i32 {
+    if pos == m * n or (ic == 0 and ec == 0) {
+        return 0;
+    }
+    let key = ((pos * 7 + ic) * 7 + ec) * p3 + mask;
+    if memo[key] != -1 {
+        return memo[key];
+    }
+    let up = mask / (p3 / 3);
+    let left = if pos % n == 0 { 0 } else { mask % 3 };
+    let next = (mask * 3) % p3;
+    let mut res = solution_dfs(pos + 1, ic, ec, next, m, n, p3, mut memo);
+    if ic > 0 {
+        let gain = 120 + solution_cost(1, up) + solution_cost(1, left);
+        res = res.max(gain + solution_dfs(pos + 1, ic - 1, ec, next + 1, m, n, p3, mut memo));
+    }
+    if ec > 0 {
+        let gain = 40 + solution_cost(2, up) + solution_cost(2, left);
+        res = res.max(gain + solution_dfs(pos + 1, ic, ec - 1, next + 2, m, n, p3, mut memo));
+    }
+    memo[key] = res;
+    res
+}
+
+impl SolutionArm {
+    pub fn get_max_grid_happiness(m: i32, n: i32, introverts_count: i32, extroverts_count: i32) -> i32 {
+        let (m, n) = (m as i64, n as i64);
+        let p3 = 3.pow(n as u32);
+        let mut memo = Vec.filled(m * n * 7 * 7 * p3, -1i32);
+        solution_dfs(0, introverts_count, extroverts_count, 0, m, n, p3, mut memo)
+    }
+}
+
+fn solution_arm(m: i32, n: i32, introverts_count: i32, extroverts_count: i32) -> i32 {
+    SolutionArm.get_max_grid_happiness(m, n, introverts_count, extroverts_count)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn arm(which: i64, m: i32, n: i32, introverts: i32, extroverts: i32) -> i32 {
+    match which {
+        0 => star_arm(m, n, introverts, extroverts),
+        1 => rows_arm(m, n, introverts, extroverts),
+        2 => table_arm(m, n, introverts, extroverts),
+        _ => solution_arm(m, n, introverts, extroverts),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["happiness", "rows", "table", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every way of leaving each cell empty
+// or putting an introvert or an extrovert in it, within the counts, each
+// person's happiness counted from its own neighbours, the best total
+
+fn literal(m: i32, n: i32, introverts: i32, extroverts: i32) -> i32 {
+    let mut grid = Vec.filled(m as i64 * n as i64, 0);
+    fill(m, n, 0, introverts, extroverts, mut grid) as i32
+}
+
+fn fill(m: i64, n: i64, cell: i64, introverts: i64, extroverts: i64, grid: mut ref Vec[i64]) -> i64 {
+    if cell == m * n {
+        return happiness(m, n, grid);
+    }
+    let mut best = fill(m, n, cell + 1, introverts, extroverts, mut grid);
+    if introverts > 0 {
+        grid[cell] = 1;
+        best = max(best, fill(m, n, cell + 1, introverts - 1, extroverts, mut grid));
+    }
+    if extroverts > 0 {
+        grid[cell] = 2;
+        best = max(best, fill(m, n, cell + 1, introverts, extroverts - 1, mut grid));
+    }
+    grid[cell] = 0;
+    best
+}
+
+fn happiness(m: i64, n: i64, grid: Slice[i64]) -> i64 {
+    let mut total = 0;
+    for r in 0..m {
+        for c in 0..n {
+            let kind = grid[r * n + c];
+            if kind == 0 {
+                continue;
+            }
+            let mut neighbours = 0;
+            for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                let (nr, nc) = (r + dr, c + dc);
+                if nr >= 0 and nr < m and nc >= 0 and nc < n and grid[nr * n + nc] != 0 {
+                    neighbours += 1;
+                }
+            }
+            total += if kind == 1 { 120 - 30 * neighbours } else { 40 + 20 * neighbours };
+        }
+    }
+    total
+}
+
+fn main() {
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut cases: Vec[(i32, i32, i32, i32)] = Vec.new();
+    for m in 1..=3 {
+        for n in 1..=3 {
+            for introverts in 0..=3 {
+                for extroverts in 0..=3 {
+                    cases.push((m, n, introverts, extroverts));
+                }
+            }
+        }
+    }
+    let problems = cases.len();
+    for (p, (m, n, introverts, extroverts)) in cases.iter().enumerate() {
+        let want = literal(m, n, introverts, extroverts);
+        check = (check * 31 + want + 1) % 1000000007;
+        let mut answers: Vec[i32] = Vec.new();
+        for k in 0..4 {
+            let got = arm(k, m, n, introverts, extroverts);
+            answers.push(got);
+            let failed = [
+                got != want,
+                arm(k, n, m, introverts, extroverts) != got,
+                arm(k, m, n, introverts + 1, extroverts) < got or arm(k, m, n, introverts, extroverts + 1) < got,
+                arm(k, m + 1, n, introverts, extroverts) < got,
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({m} by {n}, {introverts} introverts, {extroverts} extroverts), {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for k in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[k]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

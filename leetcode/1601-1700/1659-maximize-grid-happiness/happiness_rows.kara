@@ -1,0 +1,135 @@
+// LeetCode #1659: Maximize Grid Happiness -- row by row.
+//
+// Every way of filling one row is a base-3 pattern; for each, how many
+// introverts and extroverts it holds and the happiness inside the row,
+// and for each pair of patterns the happiness between two rows, are
+// worked out once. Then a DP over rows keeps, for each pattern of the
+// last row and each count used, the best so far. O(m 9^n I E).
+
+fn get_max_grid_happiness(m: i32, n: i32, introverts_count: i32, extroverts_count: i32) -> i32 {
+    let (m, n) = (m as i64, n as i64);
+    let (most_i, most_e) = (introverts_count as i64, extroverts_count as i64);
+    let mut patterns = 1;
+    for _ in 0..n {
+        patterns *= 3;
+    }
+    let cells: Vec[Vec[i64]] = (0..patterns).map(|p| digits(p, n)).collect();
+    let mut ins = Vec.filled(patterns, 0);
+    let mut exs = Vec.filled(patterns, 0);
+    let mut inner = Vec.filled(patterns, 0);
+    for p in 0..patterns {
+        let row = ref cells[p];
+        for j in 0..n {
+            match row[j] {
+                1 => {
+                    ins[p] += 1;
+                    inner[p] += 120;
+                }
+                2 => {
+                    exs[p] += 1;
+                    inner[p] += 40;
+                }
+                _ => {}
+            }
+            if j > 0 {
+                inner[p] += meet(row[j - 1], row[j]);
+            }
+        }
+    }
+    let mut between = Vec.filled(patterns * patterns, 0);
+    for p in 0..patterns {
+        for q in 0..patterns {
+            for j in 0..n {
+                between[p * patterns + q] += meet(cells[p][j], cells[q][j]);
+            }
+        }
+    }
+    // dp[(p * (I + 1) + i) * (E + 1) + e]: the best with the last row
+    // `p`, i introverts and e extroverts used
+    let size = patterns * (most_i + 1) * (most_e + 1);
+    let unreachable = i64.MIN;
+    let mut dp = Vec.filled(size, unreachable);
+    dp[0] = 0;
+    for _ in 0..m {
+        let mut next = Vec.filled(size, unreachable);
+        for p in 0..patterns {
+            for i in 0..=most_i {
+                for e in 0..=most_e {
+                    let here = dp[(p * (most_i + 1) + i) * (most_e + 1) + e];
+                    if here == unreachable {
+                        continue;
+                    }
+                    for q in 0..patterns {
+                        let (ni, ne) = (i + ins[q], e + exs[q]);
+                        if ni > most_i or ne > most_e {
+                            continue;
+                        }
+                        let at = (q * (most_i + 1) + ni) * (most_e + 1) + ne;
+                        next[at] = max(next[at], here + inner[q] + between[p * patterns + q]);
+                    }
+                }
+            }
+        }
+        dp = next;
+    }
+    dp.iter().max().unwrap() as i32
+}
+
+// the n base-3 digits of p, the first cell in the lowest
+fn digits(p: i64, n: i64) -> Vec[i64] {
+    let mut out = Vec.new();
+    let mut rest = p;
+    for _ in 0..n {
+        out.push(rest % 3);
+        rest /= 3;
+    }
+    out
+}
+
+// what two neighbours of kinds a and b add between them
+fn meet(a: i64, b: i64) -> i64 {
+    match (a, b) {
+        (1, 1) => -60,
+        (1, 2) | (2, 1) => -10,
+        (2, 2) => 40,
+        _ => 0,
+    }
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random grids up to `most` by `most` with up to `people`
+// introverts and extroverts each; every answer summed, and a checksum
+fn batch(count: i64, most: i64, people: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let m = (next_random(mut seed) % most + 1) as i32;
+        let n = (next_random(mut seed) % most + 1) as i32;
+        let introverts = (next_random(mut seed) % (people + 1)) as i32;
+        let extroverts = (next_random(mut seed) % (people + 1)) as i32;
+        let answer = get_max_grid_happiness(m, n, introverts, extroverts);
+        total += answer;
+        check = (check * 31 + answer + 1) % 1000000007;
+    }
+    println(f"{count} grids up to {most} by {most} with up to {people} of each: happiness sums to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then nobody to place, one row, and the
+    // largest grid with everyone
+    println(get_max_grid_happiness(2, 3, 1, 2));
+    println(get_max_grid_happiness(3, 1, 2, 1));
+    println(get_max_grid_happiness(2, 2, 4, 0));
+    println(get_max_grid_happiness(4, 4, 0, 0));
+    println(get_max_grid_happiness(1, 5, 2, 3));
+    println(get_max_grid_happiness(5, 5, 6, 6));
+    let mut seed = 1659;
+    batch(300, 3, 3, mut seed);
+    batch(200, 5, 6, mut seed);
+}
