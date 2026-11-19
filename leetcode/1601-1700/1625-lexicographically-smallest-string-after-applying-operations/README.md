@@ -111,7 +111,7 @@ compiled program and one of Python, with kara `eb32a1ff0` on LLVM 22:
 | Python | 8.3 s |
 
 Kāra is ahead of both Rust builds and Go, and a third behind C. The work
-is building about 4 million strings of 100 digits, one push per digit,
+is building 872440 strings of 100 digits, one push per digit,
 and comparing each with the best; C writes into a buffer and compares
 with `strcmp`. Why Kāra beats Rust here was not looked into.
 
