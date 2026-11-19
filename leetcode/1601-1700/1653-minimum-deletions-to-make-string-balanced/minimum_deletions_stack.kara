@@ -1,0 +1,59 @@
+// LeetCode #1653: Minimum Deletions to Make String Balanced -- a stack of
+// letters.
+//
+// Every "ba" pair, one b above an a after it, needs one deletion, and
+// deleting one of a pair never helps another. Push each letter; an a
+// meeting a b on top pops it and counts one. O(n).
+
+fn minimum_deletions(s: String) -> i64 {
+    let mut stack: Vec[char] = Vec.new();
+    let mut deletions = 0;
+    for c in s.chars() {
+        if c == 'a' and stack.last() == Some('b') {
+            stack.pop();
+            deletions += 1;
+        } else {
+            stack.push(c);
+        }
+    }
+    deletions
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random strings of 1 to `most` letters, each an `a` or a `b`;
+// every answer summed, and a checksum
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let mut s = String.new();
+        for _ in 0..n {
+            s.push(if next_random(mut seed) % 2 == 0 { 'a' } else { 'b' });
+        }
+        let answer = minimum_deletions(s);
+        total += answer;
+        check = (check * 31 + answer + 1) % 1000000007;
+    }
+    println(f"{count} strings of up to {most} letters: deletions sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then one letter, all of one letter, and
+    // every b before every a
+    println(minimum_deletions("aababbab"));
+    println(minimum_deletions("bbaaaaabb"));
+    println(minimum_deletions("a"));
+    println(minimum_deletions("bbbb"));
+    println(minimum_deletions("bbbaa"));
+    let mut seed = 1653;
+    batch(3000, 10, mut seed);
+    batch(1000, 1000, mut seed);
+    batch(20, 100000, mut seed);
+}

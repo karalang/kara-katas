@@ -1,0 +1,198 @@
+// LeetCode #1653: Minimum Deletions to Make String Balanced -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random strings
+// of 1 to 10 a's and b's. Every string is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the string reversed with a and b swapped gives the same answer
+// P3  a b added at the end or an a at the start gives the same answer
+// P4  an a added at the end adds 0 or 1 to the answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- minimum_deletions.kara: the ★ arm: one pass, each a deleted or every b before it
+
+fn star_arm(s: String) -> i64 {
+    let mut deletions = 0;
+    let mut bs = 0;
+    for c in s.chars() {
+        if c == 'b' {
+            bs += 1;
+        } else {
+            deletions = min(deletions + 1, bs);
+        }
+    }
+    deletions
+}
+
+// ---- minimum_deletions_split.kara: every split point
+
+fn split_arm(s: String) -> i64 {
+    let bytes = s.bytes();
+    let mut a_after = bytes.iter().filter(|b| b == b'a').count();
+    let mut b_before = 0;
+    let mut best = a_after;
+    for b in bytes.iter() {
+        if b == b'a' {
+            a_after -= 1;
+        } else {
+            b_before += 1;
+        }
+        best = min(best, a_after + b_before);
+    }
+    best
+}
+
+// ---- minimum_deletions_stack.kara: a stack of letters, one deletion per ba pair
+
+fn stack_arm(s: String) -> i64 {
+    let mut stack: Vec[char] = Vec.new();
+    let mut deletions = 0;
+    for c in s.chars() {
+        if c == 'a' and stack.last() == Some('b') {
+            stack.pop();
+            deletions += 1;
+        } else {
+            stack.push(c);
+        }
+    }
+    deletions
+}
+
+// ---- minimum_deletions_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn minimum_deletions(s: String) -> i32 {
+        let mut dp: i32 = 0;
+        let mut b_count = 0;
+        for c in s.bytes() {
+            if c == b'b' {
+                b_count += 1;
+            } else {
+                dp = min(dp + 1, b_count);
+            }
+        }
+        dp
+    }
+}
+
+fn solution_arm(s: String) -> i64 {
+    SolutionArm.minimum_deletions(s)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, s: String) -> i64 {
+    match a {
+        0 => star_arm(s),
+        1 => split_arm(s),
+        2 => stack_arm(s),
+        _ => solution_arm(s),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["minimum_deletions", "split", "stack", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every way of keeping some of the
+// letters is tried, and the fewest deletions among those that leave no b
+// before an a is the answer
+
+fn literal(s: String) -> i64 {
+    let letters: Vec[char] = s.chars().collect();
+    let n = letters.len();
+    let mut best = n;
+    for kept in 0..(1 << n) {
+        let mut seen_b = false;
+        let mut balanced = true;
+        let mut deleted = 0;
+        for i in 0..n {
+            if kept >> i & 1 == 0 {
+                deleted += 1;
+            } else if letters[i] == 'b' {
+                seen_b = true;
+            } else if seen_b {
+                balanced = false;
+            }
+        }
+        if balanced {
+            best = min(best, deleted);
+        }
+    }
+    best
+}
+
+fn main() {
+    let mut seed = 1653;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[String] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 10 + 1;
+        let mut s = String.new();
+        for _ in 0..n {
+            s.push(if next_random(mut seed) % 2 == 0 { 'a' } else { 'b' });
+        }
+        cases.push(s);
+    }
+    for (p, s) in cases.iter().enumerate() {
+        let want = literal(s);
+        check = (check * 31 + want + 1) % 1000000007;
+        let mirrored: String = s.chars().rev().map(|c| if c == 'a' { 'b' } else { 'a' }).collect();
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, s);
+            answers.push(got);
+            let more = arm(a, s + "a");
+            let failed = [
+                got != want,
+                arm(a, mirrored) != got,
+                arm(a, s + "b") != got or arm(a, "a" + s) != got,
+                more < got or more > got + 1,
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({s}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}
