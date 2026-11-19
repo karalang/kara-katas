@@ -1,0 +1,313 @@
+// LeetCode #1627: Graph Connectivity With Threshold -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random problems
+// of 1 to 8 queries: every other one of 1 to 12 cities, the rest of 1 to
+// 30, the threshold anywhere from 0 to n. Every random choice is drawn
+// before any arm answers.
+//
+// P1  the answers are the statement read literally
+// P2  every query written the other way round gives the same answer
+// P3  a pair connected under threshold + 1 is connected under threshold
+// P4  a city is connected to itself, and under threshold 0 every pair is
+//     connected
+// P5  a pair connected among n cities is connected among n + 1
+// P6  each arm agrees with at least two of the other three
+
+// ---- cities.kara: the ★ arm: a union-find joining each z to its multiples
+
+fn star_find(parent: mut ref Vec[i32], x: i32) -> i32 {
+    let mut root = x;
+    while parent[root] != root {
+        root = parent[root];
+    }
+    let mut x = x;
+    while parent[x] != root {
+        let next = parent[x];
+        parent[x] = root;
+        x = next;
+    }
+    root
+}
+
+fn star_arm(n: i32, threshold: i32, queries: Vec[Vec[i32]]) -> Vec[bool] {
+    let mut parent: Vec[i32] = (0..=n).collect();
+    for z in threshold + 1..=n {
+        for m in (2 * z..=n).step_by(z) {
+            let (a, b) = (star_find(mut parent, z), star_find(mut parent, m));
+            if a != b {
+                parent[b] = a;
+            }
+        }
+    }
+    queries.iter().map(|q| star_find(mut parent, q[0]) == star_find(mut parent, q[1])).collect()
+}
+
+// ---- cities_flood.kara: group labels flooded through the divisors
+
+fn flood_arm(n: i32, threshold: i32, queries: Vec[Vec[i32]]) -> Vec[bool] {
+    let n = n as i64;
+    let threshold = threshold as i64;
+    let mut group: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut spent: Vec[bool] = Vec.filled(n + 1, false);
+    let mut groups = 0;
+    for start in 1..=n {
+        if group[start] != 0 {
+            continue;
+        }
+        groups += 1;
+        group[start] = groups;
+        let mut queue: VecDeque[i64] = VecDeque.new();
+        queue.push_back(start);
+        while let Some(city) = queue.pop_front() {
+            let mut divisors: Vec[i64] = Vec.new();
+            let mut d = 1;
+            while d * d <= city {
+                if city % d == 0 {
+                    divisors.push(d);
+                    divisors.push(city / d);
+                }
+                d += 1;
+            }
+            for z in divisors {
+                if z <= threshold or spent[z] {
+                    continue;
+                }
+                spent[z] = true;
+                let mut m = z;
+                while m <= n {
+                    if group[m] == 0 {
+                        group[m] = groups;
+                        queue.push_back(m);
+                    }
+                    m += z;
+                }
+            }
+        }
+    }
+    queries.iter().map(|q| group[q[0]] == group[q[1]]).collect()
+}
+
+// ---- cities_dsu.kara: a struct Dsu, the multiples joined as a chain
+
+struct Dsu {
+    parent: Vec[i64],
+    rank: Vec[i64],
+}
+
+impl Dsu {
+    fn new(n: i64) -> Dsu {
+        Dsu { parent: (0..n).collect(), rank: Vec.filled(n, 0) }
+    }
+
+    fn find(mut ref self, x: i64) -> i64 {
+        let mut x = x;
+        while self.parent[x] != x {
+            self.parent[x] = self.parent[self.parent[x]];
+            x = self.parent[x];
+        }
+        x
+    }
+
+    fn union(mut ref self, a: i64, b: i64) {
+        let (a, b) = (self.find(a), self.find(b));
+        if a == b {
+            return;
+        }
+        if self.rank[a] < self.rank[b] {
+            self.parent[a] = b;
+        } else if self.rank[a] > self.rank[b] {
+            self.parent[b] = a;
+        } else {
+            self.parent[b] = a;
+            self.rank[a] += 1;
+        }
+    }
+
+    fn connected(mut ref self, a: i64, b: i64) -> bool {
+        self.find(a) == self.find(b)
+    }
+}
+
+fn dsu_arm(n: i32, threshold: i32, queries: Vec[Vec[i32]]) -> Vec[bool] {
+    let n = n as i64;
+    let mut dsu = Dsu.new(n + 1);
+    for z in threshold as i64 + 1..=n / 2 {
+        let mut m = 2 * z;
+        while m <= n {
+            dsu.union(m - z, m);
+            m += z;
+        }
+    }
+    let mut answers: Vec[bool] = Vec.new();
+    for q in queries.iter() {
+        answers.push(dsu.connected(q[0], q[1]));
+    }
+    answers
+}
+
+// ---- cities_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+fn solution_find(parent: mut ref Vec[usize], x: usize) -> usize {
+    if parent[x] != x {
+        let p = parent[x];
+        parent[x] = solution_find(mut parent, p);
+    }
+    parent[x]
+}
+
+impl SolutionArm {
+    pub fn are_connected(n: i32, threshold: i32, queries: Vec[Vec[i32]]) -> Vec[bool] {
+        let n = n as usize;
+        let mut parent: Vec[usize] = (0..=n).collect();
+        for z in (threshold as usize + 1)..=n {
+            let mut m = 2 * z;
+            while m <= n {
+                let a = solution_find(mut parent, z);
+                let b = solution_find(mut parent, m);
+                if a != b {
+                    parent[a] = b;
+                }
+                m += z;
+            }
+        }
+        queries
+            .iter()
+            .map(|q| solution_find(mut parent, q[0] as usize) == solution_find(mut parent, q[1] as usize))
+            .collect()
+    }
+}
+
+fn solution_arm(n: i32, threshold: i32, queries: Vec[Vec[i32]]) -> Vec[bool] {
+    SolutionArm.are_connected(n, threshold, queries)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(k: i64, n: i64, threshold: i64, queries: Vec[Vec[i32]]) -> Vec[bool] {
+    let (n, threshold) = (n as i32, threshold as i32);
+    match k {
+        0 => star_arm(n, threshold, queries),
+        1 => flood_arm(n, threshold, queries),
+        2 => dsu_arm(n, threshold, queries),
+        _ => solution_arm(n, threshold, queries),
+    }
+}
+
+fn arm_name(k: i64) -> String {
+    ["cities", "flood", "dsu", "solution"][k].to_string()
+}
+
+// true when every answer that `stronger` gives is also given by `weaker`
+fn implies(stronger: Vec[bool], weaker: Vec[bool]) -> bool {
+    stronger.iter().zip(weaker.iter()).all(|(s, w)| not s or w)
+}
+
+// ---- the statement read literally: an edge between every two cities
+// whose greatest common divisor is above the threshold, and each query a
+// flood from its first city over those edges
+
+fn gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+fn literal(n: i64, threshold: i64, queries: Vec[Vec[i32]]) -> Vec[bool] {
+    let mut answers: Vec[bool] = [];
+    for q in queries.iter() {
+        let mut seen: Vec[bool] = Vec.filled(n + 1, false);
+        let mut stack: Vec[i64] = [q[0]];
+        seen[q[0]] = true;
+        while let Some(x) = stack.pop() {
+            for y in 1..=n {
+                if not seen[y] and gcd(x, y) > threshold {
+                    seen[y] = true;
+                    stack.push(y);
+                }
+            }
+        }
+        answers.push(seen[q[1]]);
+    }
+    answers
+}
+
+fn main() {
+    let mut seed = 1627;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(i64, i64, Vec[Vec[i32]])] = [];
+    for p in 0..problems {
+        // every other case with few cities, so most thresholds join some
+        let most = if p % 2 == 0 { 12 } else { 30 };
+        let n = next_random(mut seed) % most + 1;
+        let threshold = next_random(mut seed) % (n + 1);
+        let mut queries: Vec[Vec[i32]] = [];
+        for _ in 0..next_random(mut seed) % 8 + 1 {
+            let a = next_random(mut seed) % n + 1;
+            let b = next_random(mut seed) % n + 1;
+            queries.push([a as i32, b as i32]);
+        }
+        cases.push((n, threshold, queries));
+    }
+    for p in 0..problems {
+        let (n, threshold, queries) = cases[p].clone();
+        let reversed: Vec[Vec[i32]] = queries.iter().map(|q| [q[1], q[0]]).collect();
+        let itself: Vec[Vec[i32]] = queries.iter().map(|q| [q[0], q[0]]).collect();
+        let want = literal(n, threshold, queries);
+        for answer in want.iter() {
+            check = (check * 31 + *answer as i64 + 1) % 1000000007;
+        }
+        let mut answers: Vec[Vec[bool]] = [];
+        for k in 0..4 {
+            let got = arm(k, n, threshold, queries);
+            answers.push(got.clone());
+            let failed = [
+                got != want,
+                arm(k, n, threshold, reversed) != got,
+                not implies(arm(k, n, threshold + 1, queries), got),
+                arm(k, n, threshold, itself).contains(false) or arm(k, n, 0, queries).contains(false),
+                not implies(got, arm(k, n + 1, threshold, queries)),
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} (n {n}, threshold {threshold}, {queries}), {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P6
+        for k in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[k]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}
