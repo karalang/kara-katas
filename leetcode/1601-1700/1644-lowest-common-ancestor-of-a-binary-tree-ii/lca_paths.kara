@@ -1,0 +1,164 @@
+// LeetCode #1644: Lowest Common Ancestor of a Binary Tree II -- paths.
+//
+// The path from the root to p and the path to q, each by a depth-first
+// search that keeps the nodes on the way; if either is not found there
+// is no answer, and otherwise the answer is the last node the two paths
+// share. O(n).
+
+fn path_to(node: Option[TreeNode], target: i32, path: mut ref Vec[TreeNode]) -> bool {
+    let Some(n) = node else {
+        return false;
+    };
+    path.push(n);
+    if n.val == target or path_to(n.left, target, mut path) or path_to(n.right, target, mut path) {
+        return true;
+    }
+    path.pop();
+    false
+}
+
+fn lowest_common_ancestor(root: Option[TreeNode], p: TreeNode, q: TreeNode) -> Option[TreeNode] {
+    let mut to_p: Vec[TreeNode] = Vec.new();
+    let mut to_q: Vec[TreeNode] = Vec.new();
+    if not path_to(root, p.val, mut to_p) or not path_to(root, q.val, mut to_q) {
+        return None;
+    }
+    let mut last = None;
+    for (a, b) in to_p.iter().zip(to_q.iter()) {
+        if a.val != b.val {
+            break;
+        }
+        last = Some(a);
+    }
+    last.cloned()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn leaf(val: i32) -> TreeNode {
+    TreeNode { val: val, left: None, right: None }
+}
+
+// a tree from LeetCode's level order, `None` for a missing child
+fn from_level(values: Slice[Option[i32]]) -> Option[TreeNode] {
+    let root = leaf(values[0].unwrap());
+    let mut waiting: VecDeque[TreeNode] = VecDeque.new();
+    waiting.push_back(root);
+    let mut i = 1;
+    while i < values.len() {
+        let parent = waiting.pop_front().unwrap();
+        if let Some(v) = values[i] {
+            let child = leaf(v);
+            parent.left = Some(child);
+            waiting.push_back(child);
+        }
+        i += 1;
+        if i < values.len() {
+            if let Some(v) = values[i] {
+                let child = leaf(v);
+                parent.right = Some(child);
+                waiting.push_back(child);
+            }
+            i += 1;
+        }
+    }
+    Some(root)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` nodes holding 0 to n - 1 shuffled, each hung from a random node
+// already placed, down a random walk to the first free child
+fn random_tree(n: i64, seed: mut ref i64) -> Option[TreeNode] {
+    let mut values: Vec[i32] = (0..n).map(|v| v as i32).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        values.swap(i, j);
+    }
+    let mut nodes: Vec[TreeNode] = Vec.new();
+    for i in 0..n {
+        let node = leaf(values[i]);
+        if i > 0 {
+            let mut at = nodes[next_random(mut seed) % i];
+            loop {
+                if next_random(mut seed) % 2 == 0 {
+                    match at.left {
+                        Some(child) => at = child,
+                        None => {
+                            at.left = Some(node);
+                            break;
+                        }
+                    }
+                } else {
+                    match at.right {
+                        Some(child) => at = child,
+                        None => {
+                            at.right = Some(node);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        nodes.push(node);
+    }
+    Some(nodes[0])
+}
+
+// p and q are passed as nodes of their own: the values are unique, and
+// every arm compares by value
+fn answer(root: Option[TreeNode], p: i32, q: i32) -> i64 {
+    match lowest_common_ancestor(root, leaf(p), leaf(q)) {
+        Some(node) => node.val,
+        None => -1,
+    }
+}
+
+// `count` random trees of 1 to `most` nodes, each asked about 5 pairs of
+// values, some of them not in the tree; the answers plus one summed, a
+// missing ancestor counted as 0, and a checksum
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let root = random_tree(n, mut seed);
+        let range = n + n / 4 + 1;
+        for _ in 0..5 {
+            let p = next_random(mut seed) % range;
+            let mut q = next_random(mut seed) % range;
+            if q == p {
+                q = (q + 1) % range;
+            }
+            let found = answer(root, p as i32, q as i32);
+            total += found + 1;
+            check = (check * 31 + found + 2) % 1000000007;
+        }
+    }
+    println(f"{count} trees of up to {most} nodes: answers sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then p the root, both in one line down,
+    // and neither in the tree
+    let example = from_level([Some(3), Some(5), Some(1), Some(6), Some(2), Some(0), Some(8), None, None, Some(7), Some(4)]);
+    println(answer(example, 5, 1));
+    println(answer(example, 5, 4));
+    println(answer(example, 5, 10));
+    println(answer(example, 3, 7));
+    println(answer(from_level([Some(1), Some(2), None, Some(3)]), 3, 2));
+    println(answer(example, 11, 12));
+    let mut seed = 1644;
+    batch(3000, 8, mut seed);
+    batch(300, 1000, mut seed);
+    batch(30, 10000, mut seed);
+}
