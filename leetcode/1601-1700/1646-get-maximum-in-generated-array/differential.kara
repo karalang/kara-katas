@@ -1,0 +1,211 @@
+// LeetCode #1646: Get Maximum in Generated Array -- the differential.
+//
+// Four arms against the statement read literally, on every n LeetCode
+// allows, 0 to 100.
+//
+// P1  the answer is the statement read literally
+// P2  the answer never falls as n grows by one
+// P3  for n of L bits the answer lies between the Fibonacci numbers F(L)
+//     and F(L + 1): the entries from 2^(L-1) on reach F(L + 1) at most,
+//     and those before reach F(L)
+// P4  an even n gives the same answer as n - 1
+// P5  each arm agrees with at least two of the other three
+
+// ---- generated.kara: the ★ arm: the array built, the largest kept
+
+fn star_arm(n: i32) -> i32 {
+    if n == 0 {
+        return 0;
+    }
+    let n = n as i64;
+    let mut nums = Vec.filled(n + 1, 0i32);
+    nums[1] = 1;
+    let mut best: i32 = 1;
+    for i in 2..=n {
+        nums[i] = if i % 2 == 0 { nums[i / 2] } else { nums[i / 2] + nums[i / 2 + 1] };
+        best = max(best, nums[i]);
+    }
+    best
+}
+
+// ---- generated_fusc.kara: each entry from the bits of its index
+
+fn fusc_entry(i: i64) -> i64 {
+    let mut (a, b) = (1, 0);
+    let mut i = i;
+    while i > 0 {
+        if i % 2 == 1 {
+            b += a;
+        } else {
+            a += b;
+        }
+        i /= 2;
+    }
+    b
+}
+
+fn fusc_arm(n: i32) -> i32 {
+    (0..=n as i64).map(fusc_entry).max().unwrap() as i32
+}
+
+// ---- generated_recursive.kara: each entry by recursion on the index
+
+fn recursive_entry(i: i64) -> i64 {
+    if i < 2 {
+        return i;
+    }
+    if i % 2 == 0 {
+        recursive_entry(i / 2)
+    } else {
+        recursive_entry(i / 2) + recursive_entry(i / 2 + 1)
+    }
+}
+
+fn recursive_arm(n: i32) -> i32 {
+    let mut best = 0;
+    for i in 0..=n as i64 {
+        best = max(best, recursive_entry(i));
+    }
+    best as i32
+}
+
+// ---- generated_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn get_maximum_generated(n: i32) -> i32 {
+        if n == 0 {
+            return 0;
+        }
+        let n = n as i64;
+        let mut nums = Vec.filled(n + 1, 0i32);
+        nums[1] = 1;
+        for i in 2..=n {
+            nums[i] = if i % 2 == 0 {
+                nums[i / 2]
+            } else {
+                nums[i / 2] + nums[i / 2 + 1]
+            };
+        }
+        *nums.iter().max().unwrap()
+    }
+}
+
+fn solution_arm(n: i32) -> i32 {
+    SolutionArm.get_maximum_generated(n)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn arm(a: i64, n: i32) -> i32 {
+    match a {
+        0 => star_arm(n),
+        1 => fusc_arm(n),
+        2 => recursive_arm(n),
+        _ => solution_arm(n),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["generated", "fusc", "recursive", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: `nums` of length n + 1, nums[0] = 0,
+// nums[1] = 1, and for every i, nums[2 * i] = nums[i] when
+// 2 <= 2 * i <= n and nums[2 * i + 1] = nums[i] + nums[i + 1] when
+// 2 <= 2 * i + 1 <= n, filled for i counting up; the answer is the
+// largest
+
+fn literal(n: i64) -> i64 {
+    let mut nums: Vec[i64] = Vec.filled(n + 1, 0);
+    if n >= 1 {
+        nums[1] = 1;
+    }
+    for i in 0..=n {
+        if 2 <= 2 * i and 2 * i <= n {
+            nums[2 * i] = nums[i];
+        }
+        if 2 <= 2 * i + 1 and 2 * i + 1 <= n {
+            nums[2 * i + 1] = nums[i] + nums[i + 1];
+        }
+    }
+    nums.iter().max().unwrap()
+}
+
+fn fibonacci(k: i64) -> i64 {
+    let mut (a, b) = (0, 1);
+    for _ in 0..k {
+        let next = a + b;
+        a = b;
+        b = next;
+    }
+    a
+}
+
+fn bit_length(n: i64) -> i64 {
+    let mut bits = 0;
+    let mut m = n;
+    while m > 0 {
+        bits += 1;
+        m /= 2;
+    }
+    bits
+}
+
+fn main() {
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    // every n LeetCode allows
+    let problems = 101;
+    for n in 0..problems {
+        let want = literal(n);
+        check = (check * 31 + want + 1) % 1000000007;
+        let bits = bit_length(n);
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, n as i32) as i64;
+            answers.push(got);
+            let failed = [
+                got != want,
+                n < 100 and arm(a, (n + 1) as i32) < got,
+                n >= 1 and (got < fibonacci(bits) or got > fibonacci(bits + 1)),
+                n >= 2 and n % 2 == 0 and arm(a, (n - 1) as i32) != got,
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"n = {n}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"n = {n}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

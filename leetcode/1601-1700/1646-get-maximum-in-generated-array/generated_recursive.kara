@@ -1,0 +1,60 @@
+// LeetCode #1646: Get Maximum in Generated Array -- recursive.
+//
+// The statement's two rules read as a recursion on the index, each entry
+// worked out afresh from the ones at half its index, with no array; the
+// largest over 0..=n is the answer. O(n log n), since the odd rule's two
+// calls differ by one and only one of them is odd.
+
+fn entry(i: i64) -> i64 {
+    if i < 2 {
+        return i;
+    }
+    if i % 2 == 0 {
+        entry(i / 2)
+    } else {
+        entry(i / 2) + entry(i / 2 + 1)
+    }
+}
+
+fn get_maximum_generated(n: i32) -> i32 {
+    let mut best = 0;
+    for i in 0..=n as i64 {
+        best = max(best, entry(i));
+    }
+    best as i32
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random n from 0 to `most`; the maxima summed, and a checksum
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % (most + 1);
+        let found = get_maximum_generated(n as i32);
+        total += found;
+        check = (check * 31 + found + 1) % 1000000007;
+    }
+    println(f"{count} random n up to {most}: maxima sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then the two smallest n and the largest
+    println(get_maximum_generated(7));
+    println(get_maximum_generated(2));
+    println(get_maximum_generated(3));
+    println(get_maximum_generated(0));
+    println(get_maximum_generated(1));
+    println(get_maximum_generated(100));
+    // every n in the range, in one line
+    let all: Vec[String] = (0..=100).map(|n| get_maximum_generated(n).to_string()).collect();
+    println(all.join(" "));
+    let mut seed = 1646;
+    batch(3000, 100, mut seed);
+}
