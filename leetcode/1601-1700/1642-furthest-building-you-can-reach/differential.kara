@@ -1,0 +1,236 @@
+// LeetCode #1642: Furthest Building You Can Reach -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random rows of
+// 1 to 8 buildings with 0 to 12 bricks and 0 to 2 ladders: every other
+// row with heights 1 to 4, so climbs are small and often equal, the rest
+// 1 to 20. Every row is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  five more bricks never take you less far
+// P3  one more ladder never takes you less far
+// P4  every building 100 higher gives the same answer
+// P5  the answer is a building of the row, and short of the last one
+//     only where the next step is a climb
+// P6  each arm agrees with at least two of the other three
+
+// ---- furthest.kara: the ★ arm: ladders on the largest climbs, in a heap
+
+fn star_arm(heights: Vec[i32], bricks: i32, ladders: i32) -> i64 {
+    let mut laddered: PriorityQueue[i32] = PriorityQueue.new();
+    let mut bricks = bricks;
+    for i in 1..heights.len() {
+        let climb = heights[i] - heights[i - 1];
+        if climb <= 0 {
+            continue;
+        }
+        laddered.push(climb);
+        if laddered.len() > ladders {
+            bricks -= laddered.pop().unwrap();
+            if bricks < 0 {
+                return i - 1;
+            }
+        }
+    }
+    heights.len() - 1
+}
+
+// ---- furthest_bricks.kara: bricks first, a ladder for the largest when they run short
+
+import std.cmp.Reverse;
+
+fn bricks_arm(heights: Vec[i32], bricks: i32, ladders: i32) -> i64 {
+    let mut paid: PriorityQueue[Reverse[i32]] = PriorityQueue.new();
+    let mut (bricks, ladders) = (bricks as i64, ladders);
+    for i in 1..heights.len() {
+        let climb = heights[i] - heights[i - 1];
+        if climb <= 0 {
+            continue;
+        }
+        paid.push(Reverse { value: climb });
+        bricks -= climb;
+        if bricks < 0 {
+            if ladders == 0 {
+                return i - 1;
+            }
+            let Reverse { value: largest } = paid.pop().unwrap();
+            bricks += largest;
+            ladders -= 1;
+        }
+    }
+    heights.len() - 1
+}
+
+// ---- furthest_search.kara: a binary search on the answer
+
+fn search_reachable(heights: Vec[i32], k: i64, bricks: i32, ladders: i32) -> bool {
+    let mut climbs: Vec[i64] = (1..=k).map(|i| (heights[i] - heights[i - 1]) as i64).filter(|c| c > 0).collect();
+    climbs.sort();
+    let paid = climbs.len() - min(climbs.len(), ladders as i64);
+    climbs[..paid].iter().sum() <= bricks
+}
+
+fn search_arm(heights: Vec[i32], bricks: i32, ladders: i32) -> i64 {
+    let mut (low, high) = (0, heights.len() - 1);
+    while low < high {
+        let middle = (low + high + 1) / 2;
+        if search_reachable(heights, middle, bricks, ladders) {
+            low = middle;
+        } else {
+            high = middle - 1;
+        }
+    }
+    low
+}
+
+// ---- furthest_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn furthest_building(heights: Vec[i32], bricks: i32, ladders: i32) -> i32 {
+        let mut bricks = bricks;
+        let mut heap = PriorityQueue.new();
+        for i in 1..heights.len() {
+            let d = heights[i] - heights[i - 1];
+            if d > 0 {
+                heap.push(d);
+                if heap.len() > ladders {
+                    bricks -= heap.pop().unwrap();
+                    if bricks < 0 {
+                        return (i - 1) as i32;
+                    }
+                }
+            }
+        }
+        (heights.len() - 1) as i32
+    }
+}
+
+fn solution_arm(heights: Vec[i32], bricks: i32, ladders: i32) -> i64 {
+    SolutionArm.furthest_building(heights, bricks, ladders)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(k: i64, heights: Vec[i32], bricks: i32, ladders: i32) -> i64 {
+    match k {
+        0 => star_arm(heights, bricks, ladders),
+        1 => bricks_arm(heights, bricks, ladders),
+        2 => search_arm(heights, bricks, ladders),
+        _ => solution_arm(heights, bricks, ladders),
+    }
+}
+
+fn arm_name(k: i64) -> String {
+    ["furthest", "bricks", "search", "solution"][k].to_string()
+}
+
+// ---- the statement read literally: building k can be reached when some
+// choice of which climbs on the way take a ladder, no more than there are
+// ladders, leaves the rest within the bricks; every choice is tried, and
+// the answer is the furthest such k
+
+fn literal(heights: Vec[i32], bricks: i32, ladders: i32) -> i64 {
+    let mut furthest = 0;
+    for k in 1..heights.len() {
+        let climbs: Vec[i32] = (1..=k).map(|i| heights[i] - heights[i - 1]).filter(|c| c > 0).collect();
+        let mut can = false;
+        for mask in 0..(1 << climbs.len()) {
+            let mut used = 0;
+            let mut spent = 0;
+            for j in 0..climbs.len() {
+                if mask >> j & 1 == 1 {
+                    used += 1;
+                } else {
+                    spent += climbs[j];
+                }
+            }
+            if used <= ladders and spent <= bricks {
+                can = true;
+            }
+        }
+        if not can {
+            break;
+        }
+        furthest = k;
+    }
+    furthest
+}
+
+fn main() {
+    let mut seed = 1642;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i32], i32, i32)] = [];
+    for p in 0..problems {
+        // every other row with heights 1 to 4, so climbs are small
+        let top = if p % 2 == 0 { 4 } else { 20 };
+        let n = next_random(mut seed) % 8 + 1;
+        let mut heights: Vec[i32] = [];
+        for _ in 0..n {
+            heights.push((next_random(mut seed) % top + 1) as i32);
+        }
+        let bricks = (next_random(mut seed) % 13) as i32;
+        let ladders = (next_random(mut seed) % 3) as i32;
+        cases.push((heights, bricks, ladders));
+    }
+    for p in 0..problems {
+        let (heights, bricks, ladders) = cases[p].clone();
+        let raised: Vec[i32] = heights.iter().map(|h| h + 100).collect();
+        let want = literal(heights, bricks, ladders);
+        check = (check * 31 + want + 1) % 1000000007;
+        let mut answers: Vec[i64] = [];
+        for k in 0..4 {
+            let got = arm(k, heights, bricks, ladders);
+            answers.push(got);
+            let last = heights.len() - 1;
+            let failed = [
+                got != want,
+                arm(k, heights, bricks + 5, ladders) < got,
+                arm(k, heights, bricks, ladders + 1) < got,
+                arm(k, raised, bricks, ladders) != got,
+                got < 0 or got > last or got < last and heights[got + 1] <= heights[got],
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({heights}, {bricks}, {ladders}), {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P6
+        for k in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[k]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}
