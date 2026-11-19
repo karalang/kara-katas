@@ -1,0 +1,119 @@
+// LeetCode #1632: Rank Transform of a Matrix -- LeetCode's Rust template,
+// as written there, carried over by `karac fix`.
+//
+// The values in a `BTreeMap` from value to cells, and per value a
+// union-find over rows and columns (column j is node m + j), its root's
+// rank the largest over the group. O(mn log mn).
+
+struct UnionFind {
+    parent: Vec[i64],
+}
+
+impl UnionFind {
+    fn new(n: i64) -> Self {
+        UnionFind { parent: (0..n).collect() }
+    }
+
+    fn find(mut ref self, x: i64) -> i64 {
+        if self.parent[x] != x {
+            self.parent[x] = self.find(self.parent[x]);
+        }
+        self.parent[x]
+    }
+
+    fn union(mut ref self, a: i64, b: i64) {
+        let ra = self.find(a);
+        let rb = self.find(b);
+        if ra != rb {
+            self.parent[ra] = rb;
+        }
+    }
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn matrix_rank_transform(matrix: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+        let m = matrix.len();
+        let n = matrix[0].len();
+        let mut groups: SortedMap[i32, Vec[(i64, i64)]] = SortedMap.new();
+        for i in 0..m {
+            for j in 0..n {
+                groups.entry(matrix[i][j]).or_insert_with(Vec.new).push((i, j));
+            }
+        }
+        let mut max_rank = Vec.filled(m + n, 0i32);
+        let mut answer = Vec.filled(m, Vec.filled(n, 0));
+        for (_, cells) in groups.iter() {
+            let mut uf = UnionFind.new(m + n);
+            for (i, j) in cells {
+                uf.union(i, m + j);
+            }
+            let mut best: Map[i64, i32] = Map.new();
+            for (i, j) in cells {
+                let root = uf.find(i);
+                let r = best.entry(root).or_insert(0);
+                *r = (*r).max(max_rank[i]).max(max_rank[m + j]);
+            }
+            for (i, j) in cells {
+                let root = uf.find(i);
+                let rank = best[root] + 1;
+                answer[i][j] = rank;
+                max_rank[i] = rank;
+                max_rank[m + j] = rank;
+            }
+        }
+        answer
+    }
+}
+
+fn matrix_rank_transform(matrix: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    Solution.matrix_rank_transform(matrix)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random matrices of 1 to `most` rows and columns, values from
+// -`spread` to `spread`; every rank summed, and a checksum over them all
+fn batch(count: i64, most: i64, spread: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let rows = next_random(mut seed) % most + 1;
+        let cols = next_random(mut seed) % most + 1;
+        let mut matrix: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..rows {
+            let mut row: Vec[i32] = Vec.new();
+            for _ in 0..cols {
+                row.push((next_random(mut seed) % (2 * spread + 1) - spread) as i32);
+            }
+            matrix.push(row);
+        }
+        for row in matrix_rank_transform(matrix) {
+            for rank in row {
+                total += rank;
+                check = (check * 31 + rank) % 1000000007;
+            }
+        }
+    }
+    println(f"{count} matrices of up to {most} x {most}: ranks sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's four examples, then one cell, and a column of one value
+    println(matrix_rank_transform([[1, 2], [3, 4]]));
+    println(matrix_rank_transform([[7, 7], [7, 7]]));
+    println(matrix_rank_transform([[20, -21, 14], [-19, 4, 19], [22, -47, 24], [-19, 4, 19]]));
+    println(matrix_rank_transform([[7, 3, 6], [1, 4, 5], [9, 8, 2]]));
+    println(matrix_rank_transform([[-5]]));
+    println(matrix_rank_transform([[3], [3], [3]]));
+    let mut seed = 1632;
+    batch(2000, 4, 3, mut seed);
+    batch(200, 30, 1000, mut seed);
+    batch(5, 200, 5, mut seed);
+}

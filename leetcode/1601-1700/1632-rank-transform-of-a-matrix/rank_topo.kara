@@ -1,0 +1,123 @@
+// LeetCode #1632: Rank Transform of a Matrix -- the longest path through
+// a graph, in topological order.
+//
+// Equal cells in one row or one column are one node, joined by a
+// union-find. Within each row and each column, sorted, every value
+// points at the next larger one. A cell's rank is then the number of
+// nodes on the longest path that ends at its node, found with Kahn's
+// algorithm: a node is taken once every node pointing at it has been,
+// and passes its rank plus one along. O(rc log rc).
+
+fn find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    if parent[x] != x {
+        parent[x] = find(mut parent, parent[x]);
+    }
+    parent[x]
+}
+
+// one row's or column's cells, as (value, cell id): equal neighbours
+// joined, and each step up to a larger value an edge
+fn link(line: mut ref Vec[(i32, i64)], parent: mut ref Vec[i64], steps: mut ref Vec[(i64, i64)]) {
+    line.sort();
+    for k in 1..line.len() {
+        let (low, high) = (line[k - 1], line[k]);
+        if low.0 == high.0 {
+            let (a, b) = (find(mut parent, low.1), find(mut parent, high.1));
+            parent[a] = b;
+        } else {
+            steps.push((low.1, high.1));
+        }
+    }
+}
+
+fn matrix_rank_transform(matrix: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    let rows = matrix.len();
+    let cols = matrix[0].len();
+    let cells = rows * cols;
+    let mut parent: Vec[i64] = (0..cells).collect();
+    let mut steps: Vec[(i64, i64)] = Vec.new();
+    for r in 0..rows {
+        let mut line: Vec[(i32, i64)] = (0..cols).map(|c| (matrix[r][c], r * cols + c)).collect();
+        link(mut line, mut parent, mut steps);
+    }
+    for c in 0..cols {
+        let mut line: Vec[(i32, i64)] = (0..rows).map(|r| (matrix[r][c], r * cols + c)).collect();
+        link(mut line, mut parent, mut steps);
+    }
+    // the edges between nodes, each named by its root
+    let mut next: Vec[Vec[i64]] = Vec.filled(cells, Vec.new());
+    let mut waiting: Vec[i64] = Vec.filled(cells, 0);
+    for (from, to) in steps.iter() {
+        let (a, b) = (find(mut parent, from), find(mut parent, to));
+        next[a].push(b);
+        waiting[b] += 1;
+    }
+    let mut rank: Vec[i32] = Vec.filled(cells, 1);
+    let mut ready: VecDeque[i64] = VecDeque.new();
+    for cell in 0..cells {
+        if find(mut parent, cell) == cell and waiting[cell] == 0 {
+            ready.push_back(cell);
+        }
+    }
+    while let Some(node) = ready.pop_front() {
+        for k in 0..next[node].len() {
+            let other = next[node][k];
+            rank[other] = rank[other].max(rank[node] + 1);
+            waiting[other] -= 1;
+            if waiting[other] == 0 {
+                ready.push_back(other);
+            }
+        }
+    }
+    let mut answer: Vec[Vec[i32]] = Vec.new();
+    for r in 0..rows {
+        answer.push((0..cols).map(|c| rank[find(mut parent, r * cols + c)]).collect());
+    }
+    answer
+}
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random matrices of 1 to `most` rows and columns, values from
+// -`spread` to `spread`; every rank summed, and a checksum over them all
+fn batch(count: i64, most: i64, spread: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let rows = next_random(mut seed) % most + 1;
+        let cols = next_random(mut seed) % most + 1;
+        let mut matrix: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..rows {
+            let mut row: Vec[i32] = Vec.new();
+            for _ in 0..cols {
+                row.push((next_random(mut seed) % (2 * spread + 1) - spread) as i32);
+            }
+            matrix.push(row);
+        }
+        for row in matrix_rank_transform(matrix) {
+            for rank in row {
+                total += rank;
+                check = (check * 31 + rank) % 1000000007;
+            }
+        }
+    }
+    println(f"{count} matrices of up to {most} x {most}: ranks sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's four examples, then one cell, and a column of one value
+    println(matrix_rank_transform([[1, 2], [3, 4]]));
+    println(matrix_rank_transform([[7, 7], [7, 7]]));
+    println(matrix_rank_transform([[20, -21, 14], [-19, 4, 19], [22, -47, 24], [-19, 4, 19]]));
+    println(matrix_rank_transform([[7, 3, 6], [1, 4, 5], [9, 8, 2]]));
+    println(matrix_rank_transform([[-5]]));
+    println(matrix_rank_transform([[3], [3], [3]]));
+    let mut seed = 1632;
+    batch(2000, 4, 3, mut seed);
+    batch(200, 30, 1000, mut seed);
+    batch(5, 200, 5, mut seed);
+}

@@ -1,0 +1,455 @@
+// LeetCode #1632: Rank Transform of a Matrix -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random matrices
+// of at most five rows and five columns: every other one with values -2 to
+// 2, so ties are common, the rest -50 to 50. Every matrix is drawn before
+// any arm answers.
+//
+// P1  the ranks are the statement read literally
+// P2  the matrix transposed transposes the ranks
+// P3  the matrix turned half round turns the ranks the same way
+// P4  every value mapped by v -> 3v + 7, which keeps their order, leaves
+//     the ranks
+// P5  the ranks keep every row's and column's order, equal values equal,
+//     the smallest value ranked 1, and none above the number of distinct
+//     values
+// P6  each arm agrees with at least two of the other three
+
+// ---- rank.kara: the ★ arm: a union-find per value
+
+fn star_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+fn star_arm(matrix: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    let (rows, cols) = (matrix.len(), matrix[0].len());
+    let mut cells: Vec[(i32, i64, i64)] = Vec.new();
+    for r in 0..rows {
+        for c in 0..cols {
+            cells.push((matrix[r][c], r, c));
+        }
+    }
+    cells.sort();
+    let mut row_max: Vec[i32] = Vec.filled(rows, 0);
+    let mut col_max: Vec[i32] = Vec.filled(cols, 0);
+    let mut answer: Vec[Vec[i32]] = Vec.filled(rows, Vec.filled(cols, 0));
+    let mut parent: Vec[i64] = (0..rows * cols).collect();
+    let mut start = 0;
+    while start < cells.len() {
+        let mut end = start;
+        while end < cells.len() and cells[end].0 == cells[start].0 {
+            end += 1;
+        }
+        // join the value's cells by row and by column
+        let mut first_in_row: Map[i64, i64] = Map.new();
+        let mut first_in_col: Map[i64, i64] = Map.new();
+        for (_, r, c) in cells[start..end].iter() {
+            let id = r * cols + c;
+            match first_in_row.get(r) {
+                Some(other) => {
+                    let (a, b) = (star_find(mut parent, id), star_find(mut parent, other));
+                    parent[a] = b;
+                }
+                None => {
+                    first_in_row.insert(r, id);
+                }
+            }
+            match first_in_col.get(c) {
+                Some(other) => {
+                    let (a, b) = (star_find(mut parent, id), star_find(mut parent, other));
+                    parent[a] = b;
+                }
+                None => {
+                    first_in_col.insert(c, id);
+                }
+            }
+        }
+        // each group's rank, from the largest in any of its rows and columns
+        let mut group_rank: Map[i64, i32] = Map.new();
+        for (_, r, c) in cells[start..end].iter() {
+            let root = star_find(mut parent, r * cols + c);
+            let rank = max(row_max[r], col_max[c]) + 1;
+            let best = group_rank.get(root).unwrap_or(0);
+            group_rank.insert(root, max(best, rank));
+        }
+        for (_, r, c) in cells[start..end].iter() {
+            let rank = group_rank[star_find(mut parent, r * cols + c)];
+            answer[r][c] = rank;
+            row_max[r] = rank;
+            col_max[c] = rank;
+        }
+        start = end;
+    }
+    answer
+}
+
+// ---- rank_bfs.kara: a breadth-first search over rows and columns per value
+
+fn bfs_arm(matrix: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    let rows = matrix.len();
+    let cols = matrix[0].len();
+    let mut by_value: SortedMap[i32, Vec[(i64, i64)]] = SortedMap.new();
+    for r in 0..rows {
+        for c in 0..cols {
+            by_value.entry(matrix[r][c]).or_insert(Vec.new()).push((r, c));
+        }
+    }
+    // the largest rank so far in each row, then each column
+    let mut most: Vec[i32] = Vec.filled(rows + cols, 0);
+    let mut answer = matrix.clone();
+    for (_, cells) in by_value.iter() {
+        let mut edges: Map[i64, Vec[i64]] = Map.new();
+        for (r, c) in cells.iter() {
+            edges.entry(r).or_insert(Vec.new()).push(rows + c);
+            edges.entry(rows + c).or_insert(Vec.new()).push(r);
+        }
+        let mut seen: Set[i64] = Set.new();
+        let mut ranked: Vec[(Vec[i64], i32)] = Vec.new();
+        for (r, _) in cells.iter() {
+            if seen.contains(r) {
+                continue;
+            }
+            seen.insert(r);
+            let mut group = [r];
+            let mut next = 0;
+            while next < group.len() {
+                let node = group[next];
+                next += 1;
+                for other in edges[node].iter() {
+                    if seen.insert(other) {
+                        group.push(other);
+                    }
+                }
+            }
+            let rank = group.iter().map(|node| most[node]).max().unwrap() + 1;
+            ranked.push((group, rank));
+        }
+        for (group, rank) in ranked.iter() {
+            for node in group.iter() {
+                most[node] = rank;
+            }
+        }
+        for (r, c) in cells.iter() {
+            answer[r][c] = most[r];
+        }
+    }
+    answer
+}
+
+// ---- rank_topo.kara: the longest path, in topological order
+
+fn topo_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    if parent[x] != x {
+        parent[x] = topo_find(mut parent, parent[x]);
+    }
+    parent[x]
+}
+
+// one row's or column's cells, as (value, cell id): equal neighbours
+// joined, and each step up to a larger value an edge
+fn topo_link(line: mut ref Vec[(i32, i64)], parent: mut ref Vec[i64], steps: mut ref Vec[(i64, i64)]) {
+    line.sort();
+    for k in 1..line.len() {
+        let (low, high) = (line[k - 1], line[k]);
+        if low.0 == high.0 {
+            let (a, b) = (topo_find(mut parent, low.1), topo_find(mut parent, high.1));
+            parent[a] = b;
+        } else {
+            steps.push((low.1, high.1));
+        }
+    }
+}
+
+fn topo_arm(matrix: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    let rows = matrix.len();
+    let cols = matrix[0].len();
+    let cells = rows * cols;
+    let mut parent: Vec[i64] = (0..cells).collect();
+    let mut steps: Vec[(i64, i64)] = Vec.new();
+    for r in 0..rows {
+        let mut line: Vec[(i32, i64)] = (0..cols).map(|c| (matrix[r][c], r * cols + c)).collect();
+        topo_link(mut line, mut parent, mut steps);
+    }
+    for c in 0..cols {
+        let mut line: Vec[(i32, i64)] = (0..rows).map(|r| (matrix[r][c], r * cols + c)).collect();
+        topo_link(mut line, mut parent, mut steps);
+    }
+    // the edges between nodes, each named by its root
+    let mut next: Vec[Vec[i64]] = Vec.filled(cells, Vec.new());
+    let mut waiting: Vec[i64] = Vec.filled(cells, 0);
+    for (from, to) in steps.iter() {
+        let (a, b) = (topo_find(mut parent, from), topo_find(mut parent, to));
+        next[a].push(b);
+        waiting[b] += 1;
+    }
+    let mut rank: Vec[i32] = Vec.filled(cells, 1);
+    let mut ready: VecDeque[i64] = VecDeque.new();
+    for cell in 0..cells {
+        if topo_find(mut parent, cell) == cell and waiting[cell] == 0 {
+            ready.push_back(cell);
+        }
+    }
+    while let Some(node) = ready.pop_front() {
+        for k in 0..next[node].len() {
+            let other = next[node][k];
+            rank[other] = rank[other].max(rank[node] + 1);
+            waiting[other] -= 1;
+            if waiting[other] == 0 {
+                ready.push_back(other);
+            }
+        }
+    }
+    let mut answer: Vec[Vec[i32]] = Vec.new();
+    for r in 0..rows {
+        answer.push((0..cols).map(|c| rank[topo_find(mut parent, r * cols + c)]).collect());
+    }
+    answer
+}
+
+// ---- rank_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionUnionFind {
+    parent: Vec[i64],
+}
+
+impl SolutionUnionFind {
+    fn new(n: i64) -> Self {
+        SolutionUnionFind { parent: (0..n).collect() }
+    }
+
+    fn find(mut ref self, x: i64) -> i64 {
+        if self.parent[x] != x {
+            self.parent[x] = self.find(self.parent[x]);
+        }
+        self.parent[x]
+    }
+
+    fn union(mut ref self, a: i64, b: i64) {
+        let ra = self.find(a);
+        let rb = self.find(b);
+        if ra != rb {
+            self.parent[ra] = rb;
+        }
+    }
+}
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn matrix_rank_transform(matrix: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+        let m = matrix.len();
+        let n = matrix[0].len();
+        let mut groups: SortedMap[i32, Vec[(i64, i64)]] = SortedMap.new();
+        for i in 0..m {
+            for j in 0..n {
+                groups.entry(matrix[i][j]).or_insert_with(Vec.new).push((i, j));
+            }
+        }
+        let mut max_rank = Vec.filled(m + n, 0i32);
+        let mut answer = Vec.filled(m, Vec.filled(n, 0));
+        for (_, cells) in groups.iter() {
+            let mut uf = SolutionUnionFind.new(m + n);
+            for (i, j) in cells {
+                uf.union(i, m + j);
+            }
+            let mut best: Map[i64, i32] = Map.new();
+            for (i, j) in cells {
+                let root = uf.find(i);
+                let r = best.entry(root).or_insert(0);
+                *r = (*r).max(max_rank[i]).max(max_rank[m + j]);
+            }
+            for (i, j) in cells {
+                let root = uf.find(i);
+                let rank = best[root] + 1;
+                answer[i][j] = rank;
+                max_rank[i] = rank;
+                max_rank[m + j] = rank;
+            }
+        }
+        answer
+    }
+}
+
+fn solution_arm(matrix: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    SolutionArm.matrix_rank_transform(matrix)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(k: i64, matrix: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    match k {
+        0 => star_arm(matrix),
+        1 => bfs_arm(matrix),
+        2 => topo_arm(matrix),
+        _ => solution_arm(matrix),
+    }
+}
+
+fn arm_name(k: i64) -> String {
+    ["rank", "bfs", "topo", "solution"][k].to_string()
+}
+
+fn transpose(matrix: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    (0..matrix[0].len()).map(|c| matrix.iter().map(|row| row[c]).collect()).collect()
+}
+
+fn turn(matrix: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    matrix.iter().rev().map(|row| row.iter().rev().cloned().collect()).collect()
+}
+
+// ---- the statement read literally: every rank starts at 1, and any two
+// cells in one row or column that break a rule are mended, the smaller
+// value's rank pushing the larger's above it and equal values taking the
+// larger of their two ranks, until nothing changes. Ranks only grow, and
+// each step is forced, so what is left is the smallest ranking that keeps
+// every rule.
+
+fn literal(matrix: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    let (rows, cols) = (matrix.len(), matrix[0].len());
+    let mut rank: Vec[Vec[i32]] = Vec.filled(rows, Vec.filled(cols, 1));
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for r in 0..rows {
+            for c in 0..cols {
+                for r2 in 0..rows {
+                    for c2 in 0..cols {
+                        if (r2 != r) == (c2 != c) {
+                            continue;
+                        }
+                        let (a, b) = (matrix[r][c], matrix[r2][c2]);
+                        let need = if a < b { rank[r][c] + 1 } else if a == b { rank[r][c] } else { 0 };
+                        if rank[r2][c2] < need {
+                            rank[r2][c2] = need;
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    rank
+}
+
+// P5: the ranks keep every rule, the smallest value ranks 1, and no rank
+// passes the number of distinct values
+fn keeps_the_rules(matrix: Vec[Vec[i32]], ranks: Vec[Vec[i32]]) -> bool {
+    let (rows, cols) = (matrix.len(), matrix[0].len());
+    let mut smallest = i32.MAX;
+    let mut values: Set[i32] = Set.new();
+    for row in matrix.iter() {
+        for value in row.iter() {
+            smallest = min(smallest, value);
+            values.insert(value);
+        }
+    }
+    for r in 0..rows {
+        for c in 0..cols {
+            let rank = ranks[r][c];
+            if rank < 1 or rank > values.len() as i32 or matrix[r][c] == smallest and rank != 1 {
+                return false;
+            }
+            for r2 in 0..rows {
+                for c2 in 0..cols {
+                    if (r2 != r) == (c2 != c) {
+                        continue;
+                    }
+                    let (a, b) = (matrix[r][c], matrix[r2][c2]);
+                    if a < b and rank >= ranks[r2][c2] or a == b and rank != ranks[r2][c2] {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+    true
+}
+
+fn main() {
+    let mut seed = 1632;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[Vec[Vec[i32]]] = [];
+    for p in 0..problems {
+        // every other matrix with values -2 to 2, so ties are common
+        let spread = if p % 2 == 0 { 2 } else { 50 };
+        let rows = next_random(mut seed) % 5 + 1;
+        let cols = next_random(mut seed) % 5 + 1;
+        let mut matrix: Vec[Vec[i32]] = [];
+        for _ in 0..rows {
+            let mut row: Vec[i32] = [];
+            for _ in 0..cols {
+                row.push((next_random(mut seed) % (2 * spread + 1) - spread) as i32);
+            }
+            matrix.push(row);
+        }
+        cases.push(matrix);
+    }
+    for p in 0..problems {
+        let matrix = cases[p].clone();
+        let mapped: Vec[Vec[i32]] = matrix.iter().map(|row| row.iter().map(|v| 3 * v + 7).collect()).collect();
+        let want = literal(matrix);
+        for row in want.iter() {
+            for rank in row.iter() {
+                check = (check * 31 + rank) % 1000000007;
+            }
+        }
+        let mut answers: Vec[Vec[Vec[i32]]] = [];
+        for k in 0..4 {
+            let got = arm(k, matrix);
+            let failed = [
+                got != want,
+                arm(k, transpose(matrix)) != transpose(got),
+                arm(k, turn(matrix)) != turn(got),
+                arm(k, mapped) != got,
+                not keeps_the_rules(matrix, got),
+            ];
+            answers.push(got);
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({matrix}), {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P6
+        for k in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[k]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

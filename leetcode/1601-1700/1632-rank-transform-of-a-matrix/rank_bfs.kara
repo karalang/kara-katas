@@ -1,0 +1,106 @@
+// LeetCode #1632: Rank Transform of a Matrix -- a breadth-first search
+// per value.
+//
+// The cells are again taken one value at a time, but with no union-find:
+// each row and each column is a node (column c is node rows + c), each
+// cell of the value an edge between its row and its column, and a
+// breadth-first search from every unseen node gathers one group. Its rank
+// is one more than the largest maximum among its rows and columns.
+// O(rc log rc).
+
+fn matrix_rank_transform(matrix: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    let rows = matrix.len();
+    let cols = matrix[0].len();
+    let mut by_value: SortedMap[i32, Vec[(i64, i64)]] = SortedMap.new();
+    for r in 0..rows {
+        for c in 0..cols {
+            by_value.entry(matrix[r][c]).or_insert(Vec.new()).push((r, c));
+        }
+    }
+    // the largest rank so far in each row, then each column
+    let mut most: Vec[i32] = Vec.filled(rows + cols, 0);
+    let mut answer = matrix.clone();
+    for (_, cells) in by_value.iter() {
+        let mut edges: Map[i64, Vec[i64]] = Map.new();
+        for (r, c) in cells.iter() {
+            edges.entry(r).or_insert(Vec.new()).push(rows + c);
+            edges.entry(rows + c).or_insert(Vec.new()).push(r);
+        }
+        let mut seen: Set[i64] = Set.new();
+        let mut ranked: Vec[(Vec[i64], i32)] = Vec.new();
+        for (r, _) in cells.iter() {
+            if seen.contains(r) {
+                continue;
+            }
+            seen.insert(r);
+            let mut group = [r];
+            let mut next = 0;
+            while next < group.len() {
+                let node = group[next];
+                next += 1;
+                for other in edges[node].iter() {
+                    if seen.insert(other) {
+                        group.push(other);
+                    }
+                }
+            }
+            let rank = group.iter().map(|node| most[node]).max().unwrap() + 1;
+            ranked.push((group, rank));
+        }
+        for (group, rank) in ranked.iter() {
+            for node in group.iter() {
+                most[node] = rank;
+            }
+        }
+        for (r, c) in cells.iter() {
+            answer[r][c] = most[r];
+        }
+    }
+    answer
+}
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random matrices of 1 to `most` rows and columns, values from
+// -`spread` to `spread`; every rank summed, and a checksum over them all
+fn batch(count: i64, most: i64, spread: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let rows = next_random(mut seed) % most + 1;
+        let cols = next_random(mut seed) % most + 1;
+        let mut matrix: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..rows {
+            let mut row: Vec[i32] = Vec.new();
+            for _ in 0..cols {
+                row.push((next_random(mut seed) % (2 * spread + 1) - spread) as i32);
+            }
+            matrix.push(row);
+        }
+        for row in matrix_rank_transform(matrix) {
+            for rank in row {
+                total += rank;
+                check = (check * 31 + rank) % 1000000007;
+            }
+        }
+    }
+    println(f"{count} matrices of up to {most} x {most}: ranks sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's four examples, then one cell, and a column of one value
+    println(matrix_rank_transform([[1, 2], [3, 4]]));
+    println(matrix_rank_transform([[7, 7], [7, 7]]));
+    println(matrix_rank_transform([[20, -21, 14], [-19, 4, 19], [22, -47, 24], [-19, 4, 19]]));
+    println(matrix_rank_transform([[7, 3, 6], [1, 4, 5], [9, 8, 2]]));
+    println(matrix_rank_transform([[-5]]));
+    println(matrix_rank_transform([[3], [3], [3]]));
+    let mut seed = 1632;
+    batch(2000, 4, 3, mut seed);
+    batch(200, 30, 1000, mut seed);
+    batch(5, 200, 5, mut seed);
+}
