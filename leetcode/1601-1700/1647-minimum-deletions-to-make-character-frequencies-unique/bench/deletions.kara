@@ -1,0 +1,48 @@
+// LeetCode #1647: Minimum Deletions to Make Character Frequencies Unique
+// -- the bench: the ★ arm on 500 random strings of 100000 letters, each
+// from the first 1 to 26 of the alphabet, all drawn first.
+
+fn min_deletions(s: String) -> i32 {
+    let mut counts = [0; 26];
+    for b in s.bytes() {
+        counts[b - b'a'] += 1;
+    }
+    counts.sort();
+    counts.reverse();
+    let mut deletions: i32 = 0;
+    let mut cap = counts[0];
+    for c in counts.iter() {
+        let keep = min(c, cap);
+        deletions += c - keep;
+        cap = max(keep - 1, 0);
+    }
+    deletions
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1647;
+    let mut strings: Vec[String] = Vec.new();
+    for _ in 0..500 {
+        let letters = next_random(mut seed) % 26 + 1;
+        let mut s = String.new();
+        for _ in 0..100000 {
+            s.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+        }
+        strings.push(s);
+    }
+    let mut check = 0;
+    let mut total = 0;
+    for s in strings.iter() {
+        let deletions = min_deletions(s);
+        total += deletions;
+        check = (check * 31 + deletions + 1) % 1000000007;
+    }
+    println(f"500 strings of 100000 letters: deletions sum to {total}, checksum {check}");
+}

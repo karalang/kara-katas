@@ -1,0 +1,68 @@
+// LeetCode #1647: Minimum Deletions to Make Character Frequencies Unique
+// -- buckets of counts.
+//
+// How many letters have each count, from the largest count down: of the
+// letters sharing a count all but one move down to the count below, one
+// deletion each, joining the letters already there. What reaches 0 is
+// gone. O(n).
+
+fn min_deletions(s: String) -> i32 {
+    let mut counts = [0; 26];
+    for b in s.bytes() {
+        counts[b - b'a'] += 1;
+    }
+    let top = counts.iter().max().unwrap();
+    let mut letters = Vec.filled(top + 1, 0);
+    for c in counts.iter() {
+        letters[c] += 1;
+    }
+    let mut deletions = 0;
+    for f in (1..=top).rev() {
+        if letters[f] > 1 {
+            let extra = letters[f] - 1;
+            deletions += extra;
+            letters[f - 1] += extra;
+        }
+    }
+    deletions
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random strings of 1 to `long` letters from the first `letters`
+// of the alphabet; the deletions summed, and a checksum
+fn batch(count: i64, long: i64, letters: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % long + 1;
+        let mut s = String.new();
+        for _ in 0..n {
+            s.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+        }
+        let deletions = min_deletions(s);
+        total += deletions;
+        check = (check * 31 + deletions + 1) % 1000000007;
+    }
+    println(f"{count} strings of up to {long} letters from {letters}: deletions sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then one letter, every letter once, and
+    // every letter the same number of times
+    println(min_deletions("aab"));
+    println(min_deletions("aaabbbcc"));
+    println(min_deletions("ceabaacb"));
+    println(min_deletions("z"));
+    println(min_deletions("abcdefghijklmnopqrstuvwxyz"));
+    println(min_deletions("aaaabbbbccccdddd"));
+    let mut seed = 1647;
+    batch(3000, 10, 4, mut seed);
+    batch(1000, 1000, 26, mut seed);
+    batch(20, 100000, 26, mut seed);
+}

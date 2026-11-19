@@ -1,0 +1,228 @@
+// LeetCode #1647: Minimum Deletions to Make Character Frequencies
+// Unique -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random strings
+// of 1 to 8 letters from the first 1 to 4 of the alphabet. Every string
+// is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the letters relabelled from the far end of the alphabet give the
+//     same answer
+// P3  one more letter, new to the string, adds 0 or 1 to the answer
+// P4  the string reversed gives the same answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- deletions.kara: the ★ arm: the counts sorted, each capped below the last
+
+fn star_arm(s: String) -> i32 {
+    let mut counts = [0; 26];
+    for b in s.bytes() {
+        counts[b - b'a'] += 1;
+    }
+    counts.sort();
+    counts.reverse();
+    let mut deletions: i32 = 0;
+    let mut cap = counts[0];
+    for c in counts.iter() {
+        let keep = min(c, cap);
+        deletions += c - keep;
+        cap = max(keep - 1, 0);
+    }
+    deletions
+}
+
+// ---- deletions_set.kara: each count stepped down past the counts taken
+
+fn set_arm(s: String) -> i32 {
+    let mut counts: Map[char, i32] = Map.new();
+    for c in s.chars() {
+        *counts.entry(c).or_insert(0) += 1;
+    }
+    let mut taken: Set[i32] = Set.new();
+    let mut deletions = 0;
+    for count in counts.values() {
+        let mut count = *count;
+        while count > 0 and taken.contains(count) {
+            count -= 1;
+            deletions += 1;
+        }
+        taken.insert(count);
+    }
+    deletions
+}
+
+// ---- deletions_buckets.kara: letters per count, the extra moved down
+
+fn buckets_arm(s: String) -> i32 {
+    let mut counts = [0; 26];
+    for b in s.bytes() {
+        counts[b - b'a'] += 1;
+    }
+    let top = counts.iter().max().unwrap();
+    let mut letters = Vec.filled(top + 1, 0);
+    for c in counts.iter() {
+        letters[c] += 1;
+    }
+    let mut deletions = 0;
+    for f in (1..=top).rev() {
+        if letters[f] > 1 {
+            let extra = letters[f] - 1;
+            deletions += extra;
+            letters[f - 1] += extra;
+        }
+    }
+    deletions
+}
+
+// ---- deletions_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn min_deletions(s: String) -> i32 {
+        let mut cnt = [0; 26];
+        for c in s.chars() {
+            cnt[(c as u32 as u8 - b'a') as usize] += 1;
+        }
+        let mut seen = Set.new();
+        let mut ans = 0;
+        for f in cnt.iter() {
+            let mut f = f;
+            while f > 0 and seen.contains(f) {
+                f -= 1;
+                ans += 1;
+            }
+            seen.insert(f);
+        }
+        ans
+    }
+}
+
+fn solution_arm(s: String) -> i32 {
+    SolutionArm.min_deletions(s)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, s: String) -> i64 {
+    match a {
+        0 => star_arm(s),
+        1 => set_arm(s),
+        2 => buckets_arm(s),
+        _ => solution_arm(s),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["deletions", "set", "buckets", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every way of keeping between 0 and
+// all of each letter is tried, and the fewest deletions among those whose
+// letters still present all have different counts is the answer
+
+fn fewest(counts: Slice[i64], at: i64, kept: mut ref Vec[i64]) -> i64 {
+    if at == counts.len() {
+        let mut present: Vec[i64] = kept.iter().filter(|k| k > 0).collect();
+        let before = present.len();
+        present.sort();
+        present.dedup();
+        if present.len() < before {
+            return 1000000;
+        }
+        return counts.iter().sum() - kept.iter().sum();
+    }
+    let mut best = 1000000;
+    for k in 0..=counts[at] {
+        kept.push(k);
+        best = min(best, fewest(counts, at + 1, mut kept));
+        kept.pop();
+    }
+    best
+}
+
+fn literal(s: String) -> i64 {
+    let mut counts: Vec[i64] = Vec.filled(26, 0);
+    for c in s.chars() {
+        counts[c as i64 - 'a' as i64] += 1;
+    }
+    let present: Vec[i64] = counts.iter().filter(|c| c > 0).collect();
+    let mut kept: Vec[i64] = Vec.new();
+    fewest(present, 0, mut kept)
+}
+
+fn main() {
+    let mut seed = 1647;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[String] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 8 + 1;
+        let letters = next_random(mut seed) % 4 + 1;
+        let mut s = String.new();
+        for _ in 0..n {
+            s.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+        }
+        cases.push(s);
+    }
+    for (p, s) in cases.iter().enumerate() {
+        let want = literal(s);
+        check = (check * 31 + want + 1) % 1000000007;
+        // the letters relabelled from the far end of the alphabet
+        let relabelled: String = s.chars().map(|c| ('z' as u32 - (c as u32 - 'a' as u32)) as u8 as char).collect();
+        let reversed: String = s.chars().rev().collect();
+        let longer = s + "z";
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, s);
+            answers.push(got);
+            let more = arm(a, longer);
+            let failed = [
+                got != want,
+                arm(a, relabelled) != got,
+                more < got or more > got + 1,
+                arm(a, reversed) != got,
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({s}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}
