@@ -33,7 +33,7 @@ and will be on the same depth; `toNode` is to the right of `fromNode`;
 | `correct.kara` ★ | a preorder walk, right before left, keeping the values met in a `Set`. The node the bad link points to is to the right of the bad node, so the walk has met it by the time it reaches the bad node: the first node whose right child is already in the set is the bad one, and its parent drops it. O(n) time and space |
 | `correct_levels.kara` | breadth first a whole level at a time, each node kept with its parent. A node's real children are on the level below, so the one whose right child is on its own level is the bad one; its parent lets go of it, whichever side it hangs on. O(n) time, O(width) space |
 | `correct_parents.kara` | breadth first, recording every link into each node and each node's distance from the root. The node the bad link points to is the only one with two links in, its real parent one level up and the bad node on its own level; the farther one is the bad node, and its own parent drops it. O(n) |
-| `correct_solution.kara` | a Rust solution as LeetCode's Rust users write it (`Rc<RefCell<TreeNode>>`, a `VecDeque` of (node, parent) pairs drained a level at a time, right child before left, `Rc::ptr_eq` to find the bad node's side), carried by `karac fix`. TEMPLATENOTE |
+| `correct_solution.kara` | a Rust solution as LeetCode's Rust users write it (`Rc<RefCell<TreeNode>>`, a `VecDeque` of (node, parent) pairs drained a level at a time, right child before left, `Rc::ptr_eq` to find the bad node's side), carried by `karac fix`, which made 33 changes in one pass |
 | `differential.kara` | the four arms against the statement read literally, five properties |
 
 The node is a `shared struct TreeNode` with `Option[TreeNode]` children,
@@ -75,7 +75,24 @@ it prints the first ten and then the count by property.
 
 ## Mutation testing
 
-MUTNOTE
+Ten edits to the differential, two or three to each arm, each run under
+`karac __mir-run` and `karac __mir-llvm-run`. All ten are killed, each
+the same way under both backends. One first try was replaced: the levels
+arm's bad node recognised only when its right child is on its own level
+and it has no left child.
+
+| # | mutation | failures by property |
+|---|---|---|
+| M1 | ★: the walk goes left before right | P1 3000, P2 1858, P4 1858, P5 3000 |
+| M2 | ★: the bad node kept, only its bad link cut | P1 3000, P5 3000 |
+| M3 | ★: a node's value recorded only when it has a left child | P1 2198, P2 2079, P4 2079, P5 2198 |
+| M4 | levels: the bad node taken for its parent's left child whenever there is one | P1 90, P2 90, P4 90, P5 90 |
+| M5 | levels: the bad node kept, only its bad link cut | P1 950, P5 950 |
+| M6 | levels: a bad node with a left child never found | P1 723, P2 606, P4 606, P5 723 |
+| M7 | parents: the nearer of the two links in taken for the bad node | panics, "key not found" |
+| M8 | parents: the links into even values never recorded | P1 796, P2 175, P4 175, P5 796 |
+| M9 | template: the bad node taken for its parent's left child whenever there is one | P1 90, P2 90, P4 90, P5 90 |
+| M10 | template: a bad right child dropped from the left | P1 521, P2 521, P4 521, P5 521 |
 
 ## Benchmarks
 
@@ -89,10 +106,27 @@ trees of 100000 nodes: 3999912 nodes kept, checksum 930068907`. The C
 build also runs clean under gcc's AddressSanitizer and
 UndefinedBehaviorSanitizer.
 
-TIMINGS
+Timings on a 4-core container, medians of eight interleaved runs of each
+compiled program and one of Python, with kara `ee08f070a` on LLVM 22:
+
+| | median |
+|---|---|
+| C (`clang -O3`) | 0.368 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 1.318 s |
+| Kāra (`karac build`) | 1.363 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 1.378 s |
+| Rust (`rustc -O`) | 1.392 s |
+| Go | 1.794 s |
+| Python | 30 s |
+
+The sequential Kāra build is 5% faster than Rust and level with Rust
+with overflow checks on, the equal-safety comparison (BENCHMARKS.md). C
+is the fastest here at 0.368 s.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
-the sequential lane. PARNOTE
+the sequential lane. A plain `karac build` parallelizes
+nothing here: its user time is not above its real time (1.261 s and
+1.377 s on one run).
 
 ## Verification
 
@@ -101,7 +135,7 @@ __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `SHA`.
+them, and `karac fix` has nothing left to change. Checked at kara `ee08f070a`.
 
 ## Writing it
 
@@ -128,4 +162,10 @@ refused, "expected '(TreeNode, Option[TreeNode])', found '(TreeNode,
 Option[ref TreeNode])'": a `Some(node)` pushed alone copied the handle
 in, and one inside a tuple did not. That was B-2026-11-19-91, fixed in kara `bd214fffc0`.
 
-TEMPLATEWRITE
+The template seeds its queue with `(root, None::<Rc<RefCell<TreeNode>>>)`,
+Rust's typed `None`. `karac fix` rewrote the inner type to `TreeNode` and
+then stopped at "Expected `)`, found `::`", with nothing to offer: the
+turbofish after a function name was named and fixed, one after `None` was
+not. That was B-2026-11-19-100, fixed in kara `ee08f070a`: the turbofish is now named
+and fixed to Kāra's typed `None`, `Option[TreeNode].None`, and the whole
+template carries in one pass.

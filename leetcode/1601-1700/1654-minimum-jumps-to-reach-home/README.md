@@ -100,10 +100,36 @@ prints `5000 problems up to 2000: jumps sum to 647895, 4369 unreachable,
 checksum 520322885`. The C build also runs clean under gcc's
 AddressSanitizer and UndefinedBehaviorSanitizer.
 
-TIMINGS
+Timings on a 4-core container, medians of eight interleaved runs of each
+compiled program and one of Python, with kara `ee08f070a` on LLVM 22:
+
+| | median |
+|---|---|
+| C (`clang -O3`) | 0.040 s |
+| Kāra (`karac build`) | 0.041 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.041 s |
+| Rust (`rustc -O`) | 0.041 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.042 s |
+| Go | 0.127 s |
+| Python | 4.5 s |
+
+The sequential Kāra build is level with Rust and level with Rust with
+overflow checks on, the equal-safety comparison (BENCHMARKS.md). C is
+the fastest here at 0.040 s.
+
+The ★ arm first kept its seen marks as `Vec.filled(limit + 1, [false,
+false])`, as Rust's `vec![[false, false]; n]` reads, and the Kāra build
+took 0.550 s, thirteen times Rust's. In Kāra a list literal is a `Vec`
+by default (design.md § List literals), so each of the 4000 or so marks
+was a heap `Vec[bool]` of its own, cloned in by `Vec.filled` for every
+problem; the fixed pair is `[false; 2]`, an `Array[bool, 2]` held
+inline, which is also what the Rust and C mirrors hold. Nothing in
+`karac check` points this out; that is B-2026-11-19-102.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
-the sequential lane. PARNOTE
+the sequential lane. A plain `karac build` parallelizes
+nothing here: its user time is not above its real time (0.032 s and
+0.036 s on one run).
 
 ## Verification
 
@@ -112,7 +138,7 @@ __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `SHA`.
+them, and `karac fix` has nothing left to change. Checked at kara `ee08f070a`.
 
 ## Writing it
 
@@ -121,7 +147,10 @@ turned into `not`, and lost the `as i64` on `blocked[f as i64]`. The
 levels arm also took `*forbidden.iter().max().unwrap_or(&0)`, whose `&`
 the fix dropped, and wrote `vec![..]`, which became list literals.
 
-LITERALNOTE
+The levels arm's `[(0, false)]`, rebuilt each round as `[(p + a,
+false)]`, met an `i32` position and was refused with no fix: the literal
+did not reach the refusal through the rebuilt list. Since kara
+`bd214fffc0` it does, and `karac fix` writes `[(0i32, false)]`.
 
 LeetCode's Rust template takes one `karac fix` of 24 edits: the `use
 std::collections::{HashSet, VecDeque};` line dropped, `struct Solution;`
@@ -129,4 +158,7 @@ to `struct Solution {}`, `Vec<i32>` to `Vec[i32]`, `HashSet<..>` and
 `HashSet::new()` to `Set[..]` and `Set.new()`, `VecDeque::new()` to
 `VecDeque.new()`, `forbidden.into_iter()` on the borrowed parameter to
 `forbidden.clone().into_iter()`, `&next` and `&prev` to `next` and
-`prev`, `&&` to `and` and `!` to `not`. TEMPLATENOTE
+`prev`, `&&` to `and` and `!` to `not`. Since kara `bd214fffc0` the same
+pass also writes the queue's first entry `(0i32, false, 0)`, the literal
+followed from the `while let Some(..) = queue.pop_front()` that reads it
+to the `i32` it meets.

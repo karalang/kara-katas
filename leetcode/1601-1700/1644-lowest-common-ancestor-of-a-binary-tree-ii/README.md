@@ -103,10 +103,27 @@ implementation prints `60 trees of 10000 nodes, 50 pairs each: answers
 sum to 10713104, checksum 342244860`. The C build also runs clean under
 gcc's AddressSanitizer and UndefinedBehaviorSanitizer.
 
-TIMINGS
+Timings on a 4-core container, medians of eight interleaved runs of each
+compiled program and one of Python, with kara `ee08f070a` on LLVM 22:
+
+| | median |
+|---|---|
+| C (`clang -O3`) | 0.448 s |
+| Go | 0.486 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.604 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.626 s |
+| Rust (`rustc -O`) | 0.632 s |
+| Kāra (`karac build`) | 0.639 s |
+| Python | 8.1 s |
+
+The sequential Kāra build is level with Rust and level with Rust with
+overflow checks on, the equal-safety comparison (BENCHMARKS.md). C is
+the fastest here at 0.448 s.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
-the sequential lane. PARNOTE
+the sequential lane. A plain `karac build` parallelizes
+nothing here: its user time is not above its real time (0.632 s and
+0.642 s on one run).
 
 ## Verification
 
@@ -115,7 +132,7 @@ All four arms print the same output as `lca.py` under `karac __mir-run`
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `SHA`.
+them, and `karac fix` has nothing left to change. Checked at kara `336218278`.
 
 ## Writing it
 
@@ -125,4 +142,8 @@ The paths arm returned `last`, an `Option` of a node borrowed from the
 path, and the fix added `.cloned()`. The parents and classic arms checked
 clean as first written, `let n = node?;` and `left.or(right)` included.
 
-TRACENOTE
+The classic arm's `let n = node?;` passes a `None` up from every empty
+subtree, and each one recorded an error-return trace frame, though a
+`None` is no error. The review thread ruled that an `Option`'s `?`
+records none, and since kara `bd214fffc0` it does not (design.md §
+Error return traces).

@@ -94,10 +94,27 @@ table written out in C. Every implementation prints `50000 cases of 100
 values: 34006 can be formed, checksum 278977467`. The C build also runs
 clean under gcc's AddressSanitizer and UndefinedBehaviorSanitizer.
 
-TIMINGS
+Timings on a 4-core container, medians of eight interleaved runs of each
+compiled program and one of Python, with kara `ee08f070a` on LLVM 22:
+
+| | median |
+|---|---|
+| C (`clang -O3`) | 0.321 s |
+| Rust (`rustc -O`) | 0.417 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.429 s |
+| Kāra (`karac build`) | 0.507 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.514 s |
+| Go | 0.593 s |
+| Python | 5.7 s |
+
+The sequential Kāra build takes 1.23x Rust's time and 1.20x that of Rust
+with overflow checks on, the equal-safety comparison (BENCHMARKS.md). C
+is the fastest here at 0.321 s.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
-the sequential lane. PARNOTE
+the sequential lane. A plain `karac build` parallelizes
+nothing here: its user time is not above its real time (0.438 s and
+0.512 s on one run).
 
 ## Verification
 
@@ -106,20 +123,23 @@ __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `SHA`.
+them, and `karac fix` has nothing left to change. Checked at kara `ee08f070a`.
 
 ## Writing it
 
 The ★ arm checked clean as first written, its `let Some(k) = .. else {
 return false; };` included.
 
-The scan arm first matched each piece as Rust does,
-`Some(piece) if arr[i..].starts_with(piece) => ..`, and the check
-refused it: "no method 'starts_with' on type 'Slice'". Kāra's
-sequences have no `starts_with` or `ends_with`; only `String`'s exist,
-and `karac fix` has nothing to offer. That is ROWID. The arm compares the
-slice the piece would cover instead,
-`i + piece.len() <= arr.len() and arr[i..i + piece.len()] == piece`.
+The scan arm matches each piece as Rust does,
+`Some(piece) if arr[i..].starts_with(piece) => ..`. When it was first
+written the check refused it, "no method 'starts_with' on type 'Slice'":
+Kāra's sequences had no `starts_with` or `ends_with` then, only
+`String`'s. Another session added both to `Slice` the same day
+(B-2026-11-19-84, kara `53f86eb75`), and the arm is written as above.
+Probing it found one more gap: on a receiver of unsuffixed literals,
+`[1, 2, 3].starts_with(piece)` was refused, "expected 'Slice[i64]', found
+'Vec[i64]'", because the slot's element was still an open literal when
+the `Vec` came to it. That was B-2026-11-19-101, fixed in kara `ee08f070a`.
 
 The places arm compared `place.get(value) != Some(first + k)`, an
 `Option[ref i64]` against an `Option[i64]`, which the check refused:

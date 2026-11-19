@@ -88,10 +88,27 @@ implementation prints `500 strings of 100000 letters: deletions sum to
 12687874, checksum 890383350`. The C build also runs clean under gcc's
 AddressSanitizer and UndefinedBehaviorSanitizer.
 
-TIMINGS
+Timings on a 4-core container, medians of eight interleaved runs of each
+compiled program and one of Python, with kara `ee08f070a` on LLVM 22:
+
+| | median |
+|---|---|
+| C (`clang -O3`) | 0.300 s |
+| Rust (`rustc -O`) | 0.311 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.316 s |
+| Kāra (`karac build`) | 0.327 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.328 s |
+| Go | 0.749 s |
+| Python | 14 s |
+
+The sequential Kāra build is 1.05x Rust and level with Rust with
+overflow checks on, the equal-safety comparison (BENCHMARKS.md). C is
+the fastest here at 0.300 s.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
-the sequential lane. PARNOTE
+the sequential lane. A plain `karac build` parallelizes
+nothing here: its user time is not above its real time (0.296 s and
+0.333 s on one run).
 
 ## Verification
 
@@ -101,7 +118,7 @@ All four arms print the same output as `minimum_deletions.py` under
 error. `karac run` and a `karac build` binary print the same output for
 them, the differential and the bench. `karac check` reports nothing on
 any of them, and `karac fix` has nothing left to change. Checked at kara
-`SHA`.
+`336218278`.
 
 ## Writing it
 

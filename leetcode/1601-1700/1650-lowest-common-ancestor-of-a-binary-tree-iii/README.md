@@ -109,10 +109,27 @@ implementation prints `30 trees of 100000 nodes, 50000 pairs each:
 answers sum to 80348337452, checksum 504282657`. The C build also runs
 clean under gcc's AddressSanitizer and UndefinedBehaviorSanitizer.
 
-TIMINGS
+Timings on a 4-core container, medians of eight interleaved runs of each
+compiled program and one of Python, with kara `ee08f070a` on LLVM 22:
+
+| | median |
+|---|---|
+| C (`clang -O3`) | 0.769 s |
+| Go | 0.796 s |
+| Kāra (`karac build`) | 1.019 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 1.028 s |
+| Rust (`rustc -O`) | 1.029 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 1.046 s |
+| Python | 17 s |
+
+The sequential Kāra build is level with Rust and level with Rust with
+overflow checks on, the equal-safety comparison (BENCHMARKS.md). C is
+the fastest here at 0.769 s.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
-the sequential lane. PARNOTE
+the sequential lane. A plain `karac build` parallelizes
+nothing here: its user time is not above its real time (0.897 s and
+1.018 s on one run).
 
 ## Verification
 
@@ -121,7 +138,7 @@ All four arms print the same output as `lca.py` under `karac __mir-run`
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `SHA`.
+them, and `karac fix` has nothing left to change. Checked at kara `336218278`.
 
 ## Writing it
 
@@ -134,4 +151,6 @@ the pattern. The harness's `for (parent, left, right) in [(3, 5, 1), ..]`
 passed the numbers where `i32` values are wanted, and the fix wrote the
 first tuple `(3i32, 5i32, 1i32)`.
 
-WEAKNOTE
+The ancestors arm's `at = at.parent.unwrap();` printed the
+`weak_read_unwrap` warning twice, once for the read and once for the
+assignment's value. Since kara `bd214fffc0` it prints once.

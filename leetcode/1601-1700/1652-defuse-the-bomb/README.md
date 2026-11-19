@@ -95,10 +95,27 @@ Every implementation prints `400 codes of 100000 numbers: answers sum to
 169336435775564, checksum 477717491`. The C build also runs clean under
 gcc's AddressSanitizer and UndefinedBehaviorSanitizer.
 
-TIMINGS
+Timings on a 4-core container, medians of eight interleaved runs of each
+compiled program and one of Python, with kara `ee08f070a` on LLVM 22:
+
+| | median |
+|---|---|
+| C (`clang -O3`) | 0.529 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.654 s |
+| Kāra (`karac build`) | 0.656 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.658 s |
+| Rust (`rustc -O`) | 0.784 s |
+| Go | 1.057 s |
+| Python | 24 s |
+
+The sequential Kāra build is 17% faster than Rust and level with Rust
+with overflow checks on, the equal-safety comparison (BENCHMARKS.md). C
+is the fastest here at 0.529 s.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
-the sequential lane. PARNOTE
+the sequential lane. A plain `karac build` parallelizes
+nothing here: its user time is not above its real time (0.574 s and
+0.656 s on one run).
 
 ## Verification
 
@@ -107,7 +124,7 @@ __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `SHA`.
+them, and `karac fix` has nothing left to change. Checked at kara `336218278`.
 
 ## Writing it
 
@@ -116,7 +133,11 @@ The ★ arm wrote `let (mut start, mut end)`, which `karac fix` turned into
 being returned in a `Vec[i32]`. The brute arm's `let mut sum = 0` inside
 the closure got the same `sum: i32`.
 
-PREFIXNOTE
+The prefix arm fills `Vec.filled(2 * n + 1, 0)` and reads its sums
+through an `if`, and the check refused the `i64` sums pushed into the
+`Vec[i32]` answer with no fix: the literal the fill took did not reach
+the refusal through the `if`. Since kara `bd214fffc0` the literal is
+followed there, and `karac fix` writes `Vec.filled(2 * n + 1, 0i32)`.
 
 LeetCode's Rust template takes one `karac fix` of 12 edits:
 `struct Solution;` to `struct Solution {}`, `Vec<i32>` to `Vec[i32]`,

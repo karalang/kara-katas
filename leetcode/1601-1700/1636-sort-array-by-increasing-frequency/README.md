@@ -94,10 +94,27 @@ that does less work. Every implementation prints `50000 arrays of 100
 values: checksum 858247459`. The C build also runs clean under gcc's
 AddressSanitizer and UndefinedBehaviorSanitizer.
 
-TIMINGS
+Timings on a 4-core container, medians of eight interleaved runs of each
+compiled program and one of Python, with kara `ee08f070a` on LLVM 22:
+
+| | median |
+|---|---|
+| C (`clang -O3`) | 0.473 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.986 s |
+| Rust (`rustc -O`) | 0.990 s |
+| Kāra (`karac build`) | 1.154 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 1.165 s |
+| Go | 1.853 s |
+| Python | 3.5 s |
+
+The sequential Kāra build takes 1.18x Rust's time and 1.18x that of Rust
+with overflow checks on, the equal-safety comparison (BENCHMARKS.md). C
+is the fastest here at 0.473 s.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
-the sequential lane. PARNOTE
+the sequential lane. A plain `karac build` parallelizes
+nothing here: its user time is not above its real time (1.101 s and
+1.135 s on one run).
 
 ## Verification
 
@@ -106,7 +123,7 @@ __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `SHA`.
+them, and `karac fix` has nothing left to change. Checked at kara `336218278`.
 
 ## Writing it
 

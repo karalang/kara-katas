@@ -1,0 +1,472 @@
+// LeetCode #1660: Correct a Binary Tree -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random trees of
+// 3 to 8 nodes, each broken once. Every case is drawn before any arm
+// answers, and each arm is given a tree of its own.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is a tree: no node is met twice
+// P3  the node the bad link pointed to is kept
+// P4  every value raised by 1000 gives the same answer, raised
+// P5  each arm agrees with at least two of the other three
+
+// ---- correct.kara: the ★ arm: a preorder walk right before left, a set of the values met
+
+fn star_correct(node: Option[TreeNode], seen: mut ref Set[i32]) -> Option[TreeNode] {
+    let node = node?;
+    if let Some(right) = node.right {
+        if seen.contains(right.val) {
+            return None;
+        }
+    }
+    seen.insert(node.val);
+    node.right = star_correct(node.right, mut seen);
+    node.left = star_correct(node.left, mut seen);
+    Some(node)
+}
+
+fn star_arm(root: Option[TreeNode]) -> Option[TreeNode] {
+    let mut seen = Set.new();
+    star_correct(root, mut seen)
+}
+
+// ---- correct_levels.kara: level by level, the node whose right child is on its own level
+
+fn levels_arm(root: Option[TreeNode]) -> Option[TreeNode] {
+    let mut level: Vec[(TreeNode, Option[TreeNode])] = match root {
+        Some(r) => [(r, None)],
+        None => return None,
+    };
+    while not level.is_empty() {
+        let on_level: Set[i32] = level.iter().map(|(node, _)| node.val).collect();
+        let mut below: Vec[(TreeNode, Option[TreeNode])] = Vec.new();
+        for (node, parent) in level.iter() {
+            if let Some(right) = node.right {
+                if on_level.contains(right.val) {
+                    let parent = parent.unwrap();
+                    if parent.left.is_some_and(|l| l.val == node.val) {
+                        parent.left = None;
+                    } else {
+                        parent.right = None;
+                    }
+                    return root;
+                }
+                below.push((right, Some(node)));
+            }
+            if let Some(left) = node.left {
+                below.push((left, Some(node)));
+            }
+        }
+        level = below;
+    }
+    root
+}
+
+// ---- correct_parents.kara: the node with two parents, the farther one dropped
+
+fn parents_arm(root: Option[TreeNode]) -> Option[TreeNode] {
+    let start = root?;
+    let mut parents: Map[i32, Vec[TreeNode]] = Map.new();
+    let mut distance: Map[i32, i64] = Map.new();
+    distance.insert(start.val, 0);
+    let mut queue = VecDeque.new();
+    queue.push_back(start);
+    let mut target: Option[i32] = None;
+    while let Some(node) = queue.pop_front() {
+        let d = distance[node.val];
+        for child in [node.left, node.right] {
+            if let Some(c) = child {
+                parents.entry(c.val).or_insert(Vec.new()).push(node);
+                if parents[c.val].len() == 2 {
+                    target = Some(c.val);
+                }
+                if not distance.contains_key(c.val) {
+                    distance.insert(c.val, d + 1);
+                    queue.push_back(c);
+                }
+            }
+        }
+    }
+    let pair = ref parents[target.unwrap()];
+    let bad = if distance[pair[0].val] > distance[pair[1].val] { pair[0] } else { pair[1] };
+    let up = parents[bad.val][0];
+    if up.left.is_some_and(|l| l.val == bad.val) {
+        up.left = None;
+    } else {
+        up.right = None;
+    }
+    root
+}
+
+// ---- correct_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn correct_binary_tree(root: Option[TreeNode]) -> Option[TreeNode] {
+        let mut seen = Set.new();
+        let mut q = VecDeque.new();
+        q.push_back((root.clone().unwrap(), Option[TreeNode].None));
+        while not q.is_empty() {
+            for _ in 0..q.len() {
+                let (node, parent) = q.pop_front().unwrap();
+                let right = node.right.clone();
+                if let Some(r) = ref right {
+                    if seen.contains(r.val) {
+                        let p = parent.unwrap();
+                        if p.left.as_ref().map_or(false, |l| l.ref_eq(node)) {
+                            p.left = None;
+                        } else {
+                            p.right = None;
+                        }
+                        return root;
+                    }
+                }
+                seen.insert(node.val);
+                if let Some(r) = right {
+                    q.push_back((r, Some(node.clone())));
+                }
+                if let Some(l) = node.left.clone() {
+                    q.push_back((l, Some(node.clone())));
+                }
+            }
+        }
+        root
+    }
+}
+
+fn solution_arm(root: Option[TreeNode]) -> Option[TreeNode] {
+    SolutionArm.correct_binary_tree(root)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn leaf(v: i32) -> TreeNode {
+    TreeNode { val: v, left: None, right: None }
+}
+
+// the tree LeetCode's level-order list describes, `None` for null
+fn from_level_order(items: Slice[Option[i32]]) -> TreeNode {
+    let root = leaf(items[0].unwrap());
+    let mut queue = VecDeque.new();
+    queue.push_back(root);
+    let mut i = 1;
+    while i < items.len() {
+        let node = queue.pop_front().unwrap();
+        for side in 0..2 {
+            if i < items.len() {
+                if let Some(v) = items[i] {
+                    let child = leaf(v);
+                    if side == 0 {
+                        node.left = Some(child);
+                    } else {
+                        node.right = Some(child);
+                    }
+                    queue.push_back(child);
+                }
+                i += 1;
+            }
+        }
+    }
+    root
+}
+
+// the node holding `val`, by a walk down the child links
+fn find(root: TreeNode, val: i32) -> TreeNode {
+    let mut stack = [root];
+    while let Some(node) = stack.pop() {
+        if node.val == val {
+            return node;
+        }
+        if let Some(l) = node.left {
+            stack.push(l);
+        }
+        if let Some(r) = node.right {
+            stack.push(r);
+        }
+    }
+    panic("no such node");
+}
+
+// LeetCode's level-order form of a tree, trailing nulls dropped
+fn written(root: Option[TreeNode]) -> String {
+    let mut items: Vec[String] = Vec.new();
+    let mut queue: VecDeque[Option[TreeNode]] = VecDeque.new();
+    queue.push_back(root);
+    while let Some(slot) = queue.pop_front() {
+        match slot {
+            Some(node) => {
+                items.push(f"{node.val}");
+                queue.push_back(node.left);
+                queue.push_back(node.right);
+            }
+            None => items.push("null"),
+        }
+    }
+    while items.last() == Some("null") {
+        items.pop();
+    }
+    "[" + items.join(",") + "]"
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a tree of `n` nodes holding 0 to n - 1 shuffled, each hung on a random
+// free child slot of the nodes before it; the root
+fn random_tree(n: i64, seed: mut ref i64) -> TreeNode {
+    let mut values: Vec[i32] = (0..n).map(|v| v as i32).collect();
+    for i in (1..n).rev() {
+        let j = (next_random(mut seed) * 32768 + next_random(mut seed)) % (i + 1);
+        values.swap(i, j);
+    }
+    let root = leaf(values[0]);
+    let mut free = [(root, true), (root, false)];
+    for i in 1..n {
+        let k = (next_random(mut seed) * 32768 + next_random(mut seed)) % free.len();
+        let (parent, left) = free.swap_remove(k);
+        let child = leaf(values[i]);
+        if left {
+            parent.left = Some(child);
+        } else {
+            parent.right = Some(child);
+        }
+        free.push((child, true));
+        free.push((child, false));
+    }
+    root
+}
+
+// the bug: a node with no right child pointed at a node to its right on
+// its own level, both drawn at random; the two nodes' values, or None
+// when no level has such a pair
+fn break_tree(root: TreeNode, seed: mut ref i64) -> Option[(i32, i32)] {
+    let mut pairs = 0;
+    let mut level = [root];
+    let mut levels: Vec[Vec[TreeNode]] = Vec.new();
+    while not level.is_empty() {
+        let mut below = Vec.new();
+        for (i, node) in level.iter().enumerate() {
+            if node.right.is_none() {
+                pairs += level.len() - 1 - i;
+            }
+            if let Some(l) = node.left {
+                below.push(l);
+            }
+            if let Some(r) = node.right {
+                below.push(r);
+            }
+        }
+        levels.push(level);
+        level = below;
+    }
+    if pairs == 0 {
+        return None;
+    }
+    let mut k = (next_random(mut seed) * 32768 + next_random(mut seed)) % pairs;
+    for level in levels.iter() {
+        for (i, node) in level.iter().enumerate() {
+            if node.right.is_none() {
+                let after = level.len() - 1 - i;
+                if k < after {
+                    let to = level[i + 1 + k];
+                    node.right = Some(to);
+                    return Some((node.val, to.val));
+                }
+                k -= after;
+            }
+        }
+    }
+    None
+}
+
+// a tree's level-order list, as LeetCode writes it
+fn items_of(root: TreeNode) -> Vec[Option[i32]] {
+    let mut items: Vec[Option[i32]] = Vec.new();
+    let mut queue: VecDeque[Option[TreeNode]] = VecDeque.new();
+    queue.push_back(Some(root));
+    while let Some(slot) = queue.pop_front() {
+        match slot {
+            Some(node) => {
+                items.push(Some(node.val));
+                queue.push_back(node.left);
+                queue.push_back(node.right);
+            }
+            None => items.push(None),
+        }
+    }
+    while items.last() == Some(None) {
+        items.pop();
+    }
+    items
+}
+
+// the tree `items` describes, every value raised by `shift`, with the
+// bad link from `from` to `to`
+fn broken(items: Slice[Option[i32]], from: i32, to: i32, shift: i32) -> TreeNode {
+    let raised: Vec[Option[i32]] = items.iter().map(|v| v.map(|x| x + shift)).collect();
+    let root = from_level_order(raised);
+    find(root, from + shift).right = Some(find(root, to + shift));
+    root
+}
+
+fn arm(which: i64, root: TreeNode) -> Option[TreeNode] {
+    match which {
+        0 => star_arm(Some(root)),
+        1 => levels_arm(Some(root)),
+        2 => parents_arm(Some(root)),
+        _ => solution_arm(Some(root)),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["correct", "levels", "parents", "solution"][a].to_string()
+}
+
+// whether a walk down the child links meets any node twice
+fn shares_a_node(root: Option[TreeNode]) -> bool {
+    let mut met: Set[i32] = Set.new();
+    let mut stack: Vec[Option[TreeNode]] = [root];
+    while let Some(slot) = stack.pop() {
+        if let Some(node) = slot {
+            if not met.insert(node.val) {
+                return true;
+            }
+            stack.push(node.left);
+            stack.push(node.right);
+        }
+    }
+    false
+}
+
+// whether a walk down the child links meets the node holding `val`
+fn holds(root: Option[TreeNode], val: i32) -> bool {
+    let mut stack: Vec[Option[TreeNode]] = [root];
+    while let Some(slot) = stack.pop() {
+        if let Some(node) = slot {
+            if node.val == val {
+                return true;
+            }
+            stack.push(node.left);
+            stack.push(node.right);
+        }
+    }
+    false
+}
+
+// every value lowered by `shift`, in place
+fn lower(root: Option[TreeNode], shift: i32) {
+    let mut stack: Vec[Option[TreeNode]] = [root];
+    while let Some(slot) = stack.pop() {
+        if let Some(node) = slot {
+            node.val -= shift;
+            stack.push(node.left);
+            stack.push(node.right);
+        }
+    }
+}
+
+// ---- the statement read literally: the tree as it was before the bug,
+// with the invalid node and every node under it removed; the node it
+// pointed to is on its own level, so never under it
+
+fn literal(items: Slice[Option[i32]], from: i32) -> String {
+    let root = from_level_order(items);
+    if root.val == from {
+        return written(None);
+    }
+    let mut stack = [root];
+    while let Some(node) = stack.pop() {
+        if node.left.is_some_and(|l| l.val == from) {
+            node.left = None;
+        }
+        if node.right.is_some_and(|r| r.val == from) {
+            node.right = None;
+        }
+        if let Some(l) = node.left {
+            stack.push(l);
+        }
+        if let Some(r) = node.right {
+            stack.push(r);
+        }
+    }
+    written(Some(root))
+}
+
+fn main() {
+    let mut seed = 1660;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[Option[i32]], i32, i32)] = Vec.new();
+    while cases.len() < problems {
+        let n = next_random(mut seed) % 6 + 3;
+        let root = random_tree(n, mut seed);
+        let items = items_of(root);
+        if let Some((from, to)) = break_tree(root, mut seed) {
+            cases.push((items, from, to));
+        }
+    }
+    for (p, (items, from, to)) in cases.iter().enumerate() {
+        let want = literal(items, from);
+        for b in want.bytes() {
+            check = (check * 31 + b) % 1000000007;
+        }
+        let mut answers: Vec[String] = Vec.new();
+        for k in 0..4 {
+            let got = arm(k, broken(items, from, to, 0));
+            let text = written(got);
+            answers.push(text.clone());
+            let raised = arm(k, broken(items, from, to, 1000));
+            lower(raised, 1000);
+            let failed = [
+                text != want,
+                shares_a_node(got),
+                not holds(got, to),
+                written(raised) != text,
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({written(Some(from_level_order(items)))}, {from} -> {to}), {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for k in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[k]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

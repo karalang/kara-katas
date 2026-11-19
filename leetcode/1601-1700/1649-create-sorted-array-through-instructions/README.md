@@ -96,10 +96,27 @@ prints `60 lists of 100000 instructions: costs sum to 14980499427,
 checksum 921702898`. The C build also runs clean under gcc's
 AddressSanitizer and UndefinedBehaviorSanitizer.
 
-TIMINGS
+Timings on a 4-core container, medians of eight interleaved runs of each
+compiled program and one of Python, with kara `ee08f070a` on LLVM 22:
+
+| | median |
+|---|---|
+| C (`clang -O3`) | 0.205 s |
+| Rust (`rustc -O`) | 0.239 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.252 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.265 s |
+| Kāra (`karac build`) | 0.269 s |
+| Go | 0.309 s |
+| Python | 15 s |
+
+The sequential Kāra build takes 1.11x Rust's time and 1.05x that of Rust
+with overflow checks on, the equal-safety comparison (BENCHMARKS.md). C
+is the fastest here at 0.205 s.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
-the sequential lane. PARNOTE
+the sequential lane. A plain `karac build` parallelizes
+nothing here: its user time is not above its real time (0.240 s and
+0.249 s on one run).
 
 ## Verification
 
@@ -108,7 +125,7 @@ __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `SHA`.
+them, and `karac fix` has nothing left to change. Checked at kara `336218278`.
 
 ## Writing it
 
@@ -118,7 +135,7 @@ LeetCode's Rust template first stopped at its `const N: usize =
 100_001;`: a one-letter name is Type class by design.md's naming table,
 and a `const` item's name must be Const class, so the check refused it
 with no fix. The review thread ruled that a name after `const` is a
-constant's whatever its length, and kara CONSTSHA amended CN-7 and
+constant's whatever its length, and kara `bd214fffc0` amended CN-7 and
 accepts it. The template then takes one `karac fix` of 30 edits: `struct
 Solution;` to `struct Solution {}`; the nested `update` and `query`, and
 the `const N` they read, hoisted to module scope; `usize` to `i64`

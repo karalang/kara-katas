@@ -104,10 +104,26 @@ C. Every implementation prints `12 matrices of 300 x 300: ranks sum to
 589176866, checksum 766437404`. The C build also runs clean under gcc's
 AddressSanitizer and UndefinedBehaviorSanitizer.
 
-TIMINGS
+Timings on a 4-core container, medians of eight interleaved runs of each
+compiled program and one of Python, with kara `ee08f070a` on LLVM 22:
+
+| | median |
+|---|---|
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.217 s |
+| Kāra (`karac build`) | 0.221 s |
+| Rust (`rustc -O`) | 0.231 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.231 s |
+| C (`clang -O3`) | 0.259 s |
+| Go | 0.452 s |
+| Python | 2.2 s |
+
+The sequential Kāra build is 6% faster than Rust and 6% faster than Rust
+with overflow checks on, the equal-safety comparison (BENCHMARKS.md).
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
-the sequential lane. PARNOTE
+the sequential lane. A plain `karac build` parallelizes
+nothing here: its user time is not above its real time (0.208 s and
+0.208 s on one run).
 
 ## Verification
 
@@ -116,7 +132,7 @@ __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `SHA`.
+them, and `karac fix` has nothing left to change. Checked at kara `336218278`.
 
 ## Writing it
 
@@ -127,8 +143,9 @@ the same code: "match arms have incompatible types: '()' and
 'Option[i64]'". The match is the last thing in a `for` body, where its
 value is thrown away, so the arm's value can be discarded with braces and
 `;`, but `karac fix` had nothing for it and the error points at the
-`match` rather than the arm; that is ROWID. The arm writes
-`None => { first_in_row.insert(r, id); }`.
+`match` rather than the arm. The arm writes
+`None => { first_in_row.insert(r, id); }`, and since kara `bd214fffc0`
+`karac fix` makes that change itself.
 
 The breadth-first arm's `let mut group = vec![r];` drew the deprecation
 warning for `vec!`, and `karac fix` wrote the list literal `[r]`. The
