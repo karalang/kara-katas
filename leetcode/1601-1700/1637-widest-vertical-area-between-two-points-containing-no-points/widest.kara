@@ -1,0 +1,53 @@
+// LeetCode #1637: Widest Vertical Area Between Two Points Containing No
+// Points -- the ★ arm.
+//
+// Only the x coordinates matter, and a vertical area holds no point
+// exactly when it lies between two neighbouring x values. Sort them and
+// take the widest step between neighbours. O(n log n).
+
+fn max_width_of_vertical_area(points: Vec[Vec[i32]]) -> i32 {
+    let mut xs: Vec[i32] = points.iter().map(|p| p[0]).collect();
+    xs.sort();
+    xs.windows(2).into_iter().map(|w| w[1] - w[0]).max().unwrap()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random sets of 2 to `most` points with coordinates 0 to `top`;
+// the widths summed, and a checksum
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % (most - 1) + 2;
+        let mut points: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..n {
+            let x = (next_random(mut seed) * 32768 + next_random(mut seed)) % (top + 1);
+            let y = next_random(mut seed) % (top + 1);
+            points.push([x as i32, y as i32]);
+        }
+        let width = max_width_of_vertical_area(points);
+        total += width;
+        check = (check * 31 + width + 1) % 1000000007;
+    }
+    println(f"{count} sets of up to {most} points: widths sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then two points on one line, two apart,
+    // and the widest gap at the edge
+    println(max_width_of_vertical_area([[8, 7], [9, 9], [7, 4], [9, 7]]));
+    println(max_width_of_vertical_area([[3, 1], [9, 0], [1, 0], [1, 4], [5, 3], [8, 8]]));
+    println(max_width_of_vertical_area([[4, 0], [4, 9]]));
+    println(max_width_of_vertical_area([[0, 0], [1000000000, 1000000000]]));
+    println(max_width_of_vertical_area([[1, 5], [2, 5], [3, 5], [90, 5]]));
+    let mut seed = 1637;
+    batch(3000, 6, 10, mut seed);
+    batch(300, 1000, 1000000000, mut seed);
+    batch(5, 100000, 1000000000, mut seed);
+}

@@ -1,0 +1,77 @@
+// LeetCode #1637: Widest Vertical Area Between Two Points Containing No
+// Points -- buckets, in linear time.
+//
+// With n x values between lo and hi, some step between neighbours is at
+// least (hi - lo) / (n - 1). Cut [lo, hi] into n - 1 buckets no wider
+// than that, rounded up: two values in one bucket are never the widest
+// step, so only the step from each nonempty bucket's largest value to the
+// next nonempty bucket's smallest can be. O(n).
+
+fn max_width_of_vertical_area(points: Vec[Vec[i32]]) -> i32 {
+    let xs: Vec[i64] = points.iter().map(|p| p[0] as i64).collect();
+    let n = xs.len();
+    let lo = xs.iter().min().unwrap();
+    let hi = xs.iter().max().unwrap();
+    if lo == hi {
+        return 0;
+    }
+    let size = max(1, (hi - lo + n - 2) / (n - 1));
+    let buckets = (hi - lo) / size + 1;
+    let mut smallest: Vec[Option[i64]] = Vec.filled(buckets, None);
+    let mut largest: Vec[Option[i64]] = Vec.filled(buckets, None);
+    for x in xs.iter() {
+        let b = (x - lo) / size;
+        smallest[b] = Some(smallest[b].map_or(x, |s| min(s, x)));
+        largest[b] = Some(largest[b].map_or(x, |l| max(l, x)));
+    }
+    let mut widest = 0;
+    let mut previous = lo;
+    for b in 0..buckets {
+        if let (Some(s), Some(l)) = (smallest[b], largest[b]) {
+            widest = max(widest, s - previous);
+            previous = l;
+        }
+    }
+    widest as i32
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random sets of 2 to `most` points with coordinates 0 to `top`;
+// the widths summed, and a checksum
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % (most - 1) + 2;
+        let mut points: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..n {
+            let x = (next_random(mut seed) * 32768 + next_random(mut seed)) % (top + 1);
+            let y = next_random(mut seed) % (top + 1);
+            points.push([x as i32, y as i32]);
+        }
+        let width = max_width_of_vertical_area(points);
+        total += width;
+        check = (check * 31 + width + 1) % 1000000007;
+    }
+    println(f"{count} sets of up to {most} points: widths sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then two points on one line, two apart,
+    // and the widest gap at the edge
+    println(max_width_of_vertical_area([[8, 7], [9, 9], [7, 4], [9, 7]]));
+    println(max_width_of_vertical_area([[3, 1], [9, 0], [1, 0], [1, 4], [5, 3], [8, 8]]));
+    println(max_width_of_vertical_area([[4, 0], [4, 9]]));
+    println(max_width_of_vertical_area([[0, 0], [1000000000, 1000000000]]));
+    println(max_width_of_vertical_area([[1, 5], [2, 5], [3, 5], [90, 5]]));
+    let mut seed = 1637;
+    batch(3000, 6, 10, mut seed);
+    batch(300, 1000, 1000000000, mut seed);
+    batch(5, 100000, 1000000000, mut seed);
+}
