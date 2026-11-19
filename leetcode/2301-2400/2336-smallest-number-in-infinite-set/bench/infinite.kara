@@ -1,0 +1,56 @@
+// LeetCode #2336: Smallest Number in Infinite Set -- the bench, the ★
+// arm. Every number from `next` on is still in the set, and the numbers
+// below it that were added back are kept in a `SortedSet`.
+
+struct SmallestInfiniteSet {
+    next: i64,
+    returned: SortedSet[i64],
+}
+
+impl SmallestInfiniteSet {
+    fn new() -> SmallestInfiniteSet {
+        SmallestInfiniteSet { next: 1, returned: SortedSet.new() }
+    }
+
+    fn pop_smallest(mut ref self) -> i64 {
+        if let Some(least) = self.returned.min().cloned() {
+            self.returned.remove(least);
+            return least;
+        }
+        self.next += 1;
+        self.next - 1
+    }
+
+    fn add_back(mut ref self, num: i64) {
+        if num < self.next {
+            self.returned.insert(num);
+        }
+    }
+}
+
+// the `index`th value of a scramble that never repeats below 2^31 - 1
+fn scrambled(index: i64) -> i64 {
+    index * 2654435761 % 2147483647
+}
+
+fn main() {
+    // 2*10^5 calls built once, two in three pops and the rest adding back
+    // a number from 1 to 5000; 50 passes, each on a fresh set
+    let mut ops: Vec[i64] = Vec.new();
+    for i in 0..200000 {
+        let r = scrambled(i);
+        ops.push(if r % 3 == 0 { r / 3 % 5000 + 1 } else { 0 });
+    }
+    let mut check = 0;
+    for _ in 0..50 {
+        let mut set = SmallestInfiniteSet.new();
+        for op in ops.iter() {
+            if op == 0 {
+                check = (check * 31 + set.pop_smallest()) % 1000000007;
+            } else {
+                set.add_back(op);
+            }
+        }
+    }
+    println(f"50 passes over 2*10^5 calls: checksum {check}");
+}

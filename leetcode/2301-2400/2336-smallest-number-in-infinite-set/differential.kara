@@ -1,0 +1,409 @@
+// LeetCode #2336: Smallest Number in Infinite Set -- the differential.
+// The six arms, against the statement read literally: the set holds
+// every positive integer, of which a sequence of c calls can only reach
+// 1 to c + 1, so a `Set[i64]` starts with those; popSmallest removes and
+// gives its `min`, and addBack inserts. No cursor and no order kept.
+// 300 random sequences of 1 to 40 calls, half of them pops, numbers
+// added back from 1 to 30; then 30 of up to 300 calls, three in four
+// pops, numbers up to 100; then 30 of up to 100 calls, three in four add
+// backs, numbers up to 10. Every sequence is drawn before any arm
+// answers.
+//
+// P1  the pops are the literal reading's
+// P2  every pop is at least 1, and no number is popped twice without an
+//     add back of it between
+// P3  each add back made twice in a row: the same pops
+// P4  an add back of 1000, never popped, after every call: the same
+//     pops
+// P5  a pop right after adding back n gives at most n
+// P6  each arm agrees with at least three of the other five
+
+// ---- star (infinite.kara) ------------------------------------------------
+
+struct StarArm {
+    next: i64,
+    returned: SortedSet[i64],
+}
+
+impl StarArm {
+    fn new() -> StarArm {
+        StarArm { next: 1, returned: SortedSet.new() }
+    }
+
+    fn pop_smallest(mut ref self) -> i64 {
+        if let Some(least) = self.returned.min().cloned() {
+            self.returned.remove(least);
+            return least;
+        }
+        self.next += 1;
+        self.next - 1
+    }
+
+    fn add_back(mut ref self, num: i64) {
+        if num < self.next {
+            self.returned.insert(num);
+        }
+    }
+}
+
+fn star_run(ops: Vec[i64]) -> Vec[i64] {
+    let mut set = StarArm.new();
+    let mut popped: Vec[i64] = Vec.new();
+    for op in ops.iter() {
+        if op == 0 {
+            popped.push(set.pop_smallest());
+        } else {
+            set.add_back(op);
+        }
+    }
+    popped
+}
+
+// ---- naive (infinite_naive.kara) -----------------------------------------
+
+struct NaiveArm {
+    popped: Vec[bool],
+}
+
+impl NaiveArm {
+    fn new() -> NaiveArm {
+        NaiveArm { popped: [false, false].to_vec() }
+    }
+
+    fn pop_smallest(mut ref self) -> i64 {
+        let mut n = 1;
+        while n < self.popped.len() and self.popped[n] {
+            n += 1;
+        }
+        if n == self.popped.len() {
+            self.popped.push(false);
+        }
+        self.popped[n] = true;
+        n
+    }
+
+    fn add_back(mut ref self, num: i64) {
+        if num < self.popped.len() {
+            self.popped[num] = false;
+        }
+    }
+}
+
+fn naive_run(ops: Vec[i64]) -> Vec[i64] {
+    let mut set = NaiveArm.new();
+    let mut popped: Vec[i64] = Vec.new();
+    for op in ops.iter() {
+        if op == 0 {
+            popped.push(set.pop_smallest());
+        } else {
+            set.add_back(op);
+        }
+    }
+    popped
+}
+
+// ---- heap (infinite_heap.kara) -------------------------------------------
+
+struct HeapArm {
+    next: i64,
+    queue: PriorityQueue[i64],
+    queued: Set[i64],
+}
+
+impl HeapArm {
+    fn new() -> HeapArm {
+        HeapArm { next: 1, queue: PriorityQueue.new(), queued: Set.new() }
+    }
+
+    fn pop_smallest(mut ref self) -> i64 {
+        if let Some(least) = self.queue.pop() {
+            self.queued.remove(least);
+            return least;
+        }
+        let n = self.next;
+        self.next += 1;
+        n
+    }
+
+    fn add_back(mut ref self, num: i64) {
+        if num < self.next and not self.queued.contains(num) {
+            self.queue.push(num);
+            self.queued.insert(num);
+        }
+    }
+}
+
+fn heap_run(ops: Vec[i64]) -> Vec[i64] {
+    let mut set = HeapArm.new();
+    let mut popped: Vec[i64] = Vec.new();
+    for op in ops.iter() {
+        if op == 0 {
+            popped.push(set.pop_smallest());
+        } else {
+            set.add_back(op);
+        }
+    }
+    popped
+}
+
+// ---- sorted (infinite_sorted.kara) ---------------------------------------
+
+struct SortedArm {
+    next: i64,
+    returned: Vec[i64],
+}
+
+impl SortedArm {
+    fn new() -> SortedArm {
+        SortedArm { next: 1, returned: Vec.new() }
+    }
+
+    fn pop_smallest(mut ref self) -> i64 {
+        if let Some(least) = self.returned.pop() {
+            return least;
+        }
+        self.next += 1;
+        self.next - 1
+    }
+
+    fn add_back(mut ref self, num: i64) {
+        if num >= self.next {
+            return;
+        }
+        let at = self.returned.partition_point(|x| x > num);
+        if at == self.returned.len() or self.returned[at] != num {
+            self.returned.insert(at, num);
+        }
+    }
+}
+
+fn sorted_run(ops: Vec[i64]) -> Vec[i64] {
+    let mut set = SortedArm.new();
+    let mut popped: Vec[i64] = Vec.new();
+    for op in ops.iter() {
+        if op == 0 {
+            popped.push(set.pop_smallest());
+        } else {
+            set.add_back(op);
+        }
+    }
+    popped
+}
+
+// ---- iter (infinite_iter.kara) -------------------------------------------
+
+struct IterArm {
+    popped: Set[i64],
+}
+
+impl IterArm {
+    fn new() -> IterArm {
+        IterArm { popped: Set.new() }
+    }
+
+    fn pop_smallest(mut ref self) -> i64 {
+        let n = (1..=self.popped.len() + 1).find(|n| not self.popped.contains(n)).unwrap();
+        self.popped.insert(n);
+        n
+    }
+
+    fn add_back(mut ref self, num: i64) {
+        self.popped.remove(num);
+    }
+}
+
+fn iter_run(ops: Vec[i64]) -> Vec[i64] {
+    let mut set = IterArm.new();
+    let mut popped: Vec[i64] = Vec.new();
+    for op in ops.iter() {
+        if op == 0 {
+            popped.push(set.pop_smallest());
+        } else {
+            set.add_back(op);
+        }
+    }
+    popped
+}
+
+// ---- solution (infinite_solution.kara) -----------------------------------
+
+struct SolutionArm {
+    cur: i32,
+    added: SortedSet[i32],
+}
+
+impl SolutionArm {
+    fn new() -> Self {
+        SolutionArm { cur: 1, added: SortedSet.new() }
+    }
+
+    fn pop_smallest(mut ref self) -> i32 {
+        if let Some(x) = self.added.iter().next().cloned() {
+            self.added.remove(x);
+            x
+        } else {
+            self.cur += 1;
+            self.cur - 1
+        }
+    }
+
+    fn add_back(mut ref self, num: i32) {
+        if num < self.cur {
+            self.added.insert(num);
+        }
+    }
+}
+
+fn solution_run(ops: Vec[i64]) -> Vec[i64] {
+    let mut set = SolutionArm.new();
+    let mut popped: Vec[i64] = Vec.new();
+    for op in ops.iter() {
+        if op == 0 {
+            popped.push(set.pop_smallest());
+        } else {
+            set.add_back(op as i32);
+        }
+    }
+    popped
+}
+// ---- the statement read literally ------------------------------------------
+
+fn literal(ops: Vec[i64]) -> Vec[i64] {
+    let mut set: Set[i64] = (1..=ops.len() + 1).collect();
+    let mut popped: Vec[i64] = Vec.new();
+    for op in ops.iter() {
+        if op == 0 {
+            let least = *set.iter().min().unwrap();
+            set.remove(least);
+            popped.push(least);
+        } else {
+            set.insert(op);
+        }
+    }
+    popped
+}
+
+fn answer(arm: i64, ops: Vec[i64]) -> Vec[i64] {
+    match arm {
+        0 => star_run(ops),
+        1 => naive_run(ops),
+        2 => heap_run(ops),
+        3 => sorted_run(ops),
+        4 => iter_run(ops),
+        _ => solution_run(ops),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "naive", "heap", "sorted", "iter", "solution"];
+    let mut seed = 2336;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..360 {
+        let (calls, pops_in_4, top) = if c < 300 {
+            (next_random(mut seed) % 40 + 1, 2, 30)
+        } else if c < 330 {
+            (next_random(mut seed) % 300 + 1, 3, 100)
+        } else {
+            (next_random(mut seed) % 100 + 1, 1, 10)
+        };
+        let mut ops: Vec[i64] = Vec.new();
+        for _ in 0..calls {
+            if next_random(mut seed) % 4 < pops_in_4 {
+                ops.push(0);
+            } else {
+                ops.push(next_random(mut seed) % top + 1);
+            }
+        }
+        cases.push(ops);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, ops) in cases.iter().enumerate() {
+        let truth = literal(ops);
+        for value in truth.iter() {
+            check = (check * 31 + value) % 1000000007;
+        }
+        let mut doubled: Vec[i64] = Vec.new();
+        let mut padded: Vec[i64] = Vec.new();
+        for op in ops.iter() {
+            doubled.push(op);
+            if op > 0 {
+                doubled.push(op);
+            }
+            padded.push(op);
+            padded.push(1000);
+        }
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, ops)).collect();
+        for arm in 0..6 {
+            let value = ref got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            // walk the calls beside the pops: what is out of the set, and
+            // the number just added back
+            let mut distinct = value.len() == truth.len();
+            let mut bounded = true;
+            let mut out: Set[i64] = Set.new();
+            let mut at = 0;
+            let mut just_added = -1;
+            for op in ops.iter() {
+                if op == 0 {
+                    if at < value.len() {
+                        let n = value[at];
+                        if n < 1 or out.contains(n) {
+                            distinct = false;
+                        }
+                        if just_added > 0 and n > just_added {
+                            bounded = false;
+                        }
+                        out.insert(n);
+                    }
+                    at += 1;
+                    just_added = -1;
+                } else {
+                    out.remove(op);
+                    just_added = op;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                distinct,
+                answer(arm, doubled) == value,
+                answer(arm, padded) == value,
+                bounded,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} sequences: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

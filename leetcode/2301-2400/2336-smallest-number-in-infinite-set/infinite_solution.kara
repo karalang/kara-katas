@@ -1,0 +1,95 @@
+// LeetCode #2336: Smallest Number in Infinite Set -- LeetCode's Rust
+// template as a Rust user fills it in, carried by `karac fix`: a
+// `BTreeSet<i32>` of the numbers added back below a cursor, its least
+// read through `iter().next()` with a `&x` pattern, and `&mut self`
+// methods.
+
+struct SmallestInfiniteSet {
+    cur: i32,
+    added: SortedSet[i32],
+}
+
+impl SmallestInfiniteSet {
+    fn new() -> Self {
+        SmallestInfiniteSet { cur: 1, added: SortedSet.new() }
+    }
+
+    fn pop_smallest(mut ref self) -> i32 {
+        if let Some(x) = self.added.iter().next().cloned() {
+            self.added.remove(x);
+            x
+        } else {
+            self.cur += 1;
+            self.cur - 1
+        }
+    }
+
+    fn add_back(mut ref self, num: i32) {
+        if num < self.cur {
+            self.added.insert(num);
+        }
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// runs `ops` on a fresh set, 0 for popSmallest and n for addBack(n), and
+// gives what each popSmallest returned
+fn run(ops: Vec[i64]) -> Vec[i64] {
+    let mut set = SmallestInfiniteSet.new();
+    let mut popped: Vec[i64] = Vec.new();
+    for op in ops.iter() {
+        if op == 0 {
+            popped.push(set.pop_smallest());
+        } else {
+            set.add_back(op as i32);
+        }
+    }
+    popped
+}
+
+fn main() {
+    // LeetCode's example; then pops alone, a number added back that is
+    // still in the set, and 1000 pops with every tenth popped number
+    // added back
+    println(f"{run([2, 0, 0, 0, 1, 0, 0, 0].to_vec())}");
+    println(f"{run([0, 0, 0, 0, 0].to_vec())}");
+    println(f"{run([5, 0, 3, 0, 0, 2, 0, 0].to_vec())}");
+    let mut long: Vec[i64] = Vec.new();
+    for i in 0..1000 {
+        long.push(0);
+        if i % 10 == 9 {
+            long.push(i / 2 + 1);
+        }
+    }
+    let popped = run(long);
+    let last = popped[popped.len() - 1];
+    let sum: i64 = popped.iter().sum();
+    println(f"1000 pops: last {last}, sum {sum}");
+    // 2000 random sequences of 1 to 40 calls, half of them pops, numbers
+    // added back from 1 to 30
+    let mut seed = 2336;
+    let mut check = 0;
+    let mut pops = 0;
+    for _ in 0..2000 {
+        let calls = next_random(mut seed) % 40 + 1;
+        let mut ops: Vec[i64] = Vec.new();
+        for _ in 0..calls {
+            if next_random(mut seed) % 2 == 0 {
+                ops.push(0);
+            } else {
+                ops.push(next_random(mut seed) % 30 + 1);
+            }
+        }
+        for value in run(ops).iter() {
+            check = (check * 31 + value) % 1000000007;
+            pops += 1;
+        }
+    }
+    println(f"2000 sequences: checksum {check}, {pops} pops");
+}
