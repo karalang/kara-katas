@@ -1,0 +1,253 @@
+// LeetCode #2327: Number of People Aware of a Secret -- the
+// differential. The six arms, against the statement read literally:
+// every person kept as the day they learned the secret, and each day
+// every person whose age is from `delay` to `forget - 1` days tells one
+// newcomer; at the end of day `n` the people younger than `forget` days
+// are counted. 300 random cases of 2 to 16 days; then 30 of 17 to 30
+// days; then 30 of 31 to 1000 days, each with `forget` from 2 to `n`
+// and `delay` from 1 to `forget - 1`. Every case is drawn before any
+// arm answers.
+//
+// P1  up to 16 days, the answer is the literal reading's
+// P2  the answer is below 10^9 + 7, and up to 30 days, where nothing has
+//     been reduced, from 1 to 2^(n - 1)
+// P3  up to 30 days, forget one day later, where that is not past `n`:
+//     no fewer people
+// P4  up to 30 days, delay one day shorter, where that is not below 1:
+//     no fewer people
+// P5  delay 1 and forget `n`: 2^(n - 1) modulo 10^9 + 7; and forget
+//     `delay + 1`: 2 when `delay` divides `n - 1`, and 1 otherwise
+// P6  each arm agrees with at least three of the other five
+
+const MOD: i64 = 1000000007;
+
+// ---- star (secret.kara) --------------------------------------------------
+
+fn star_people_aware_of_secret(n: i64, delay: i64, forget: i64) -> i64 {
+    let mut learned: Vec[i64] = Vec.filled(n + 1, 0);
+    learned[1] = 1;
+    let mut sharing = 0;
+    for day in 2..=n {
+        if day - delay >= 1 {
+            sharing = (sharing + learned[day - delay]) % MOD;
+        }
+        if day - forget >= 1 {
+            sharing = (sharing - learned[day - forget] + MOD) % MOD;
+        }
+        learned[day] = sharing;
+    }
+    let mut aware = 0;
+    for day in (n - forget + 1)..=n {
+        aware = (aware + learned[day]) % MOD;
+    }
+    aware
+}
+
+// ---- naive (secret_naive.kara) -------------------------------------------
+
+fn naive_people_aware_of_secret(n: i64, delay: i64, forget: i64) -> i64 {
+    let mut learned: Vec[i64] = Vec.filled(n + 1, 0);
+    learned[1] = 1;
+    for day in 2..=n {
+        let mut sharing = 0;
+        for earlier in (day - forget + 1).max(1)..=(day - delay) {
+            sharing = (sharing + learned[earlier]) % MOD;
+        }
+        learned[day] = sharing;
+    }
+    let mut aware = 0;
+    for day in (n - forget + 1)..=n {
+        aware = (aware + learned[day]) % MOD;
+    }
+    aware
+}
+
+// ---- prefix (secret_prefix.kara) -----------------------------------------
+
+fn prefix_people_aware_of_secret(n: i64, delay: i64, forget: i64) -> i64 {
+    let mut before: Vec[i64] = Vec.filled(n + 1, 0);
+    before[1] = 1;
+    for day in 2..=n {
+        let learned = (before[(day - delay).max(0)] - before[(day - forget).max(0)] + MOD) % MOD;
+        before[day] = (before[day - 1] + learned) % MOD;
+    }
+    (before[n] - before[n - forget] + MOD) % MOD
+}
+
+// ---- ages (secret_ages.kara) ---------------------------------------------
+
+fn ages_people_aware_of_secret(n: i64, delay: i64, forget: i64) -> i64 {
+    let mut ages: VecDeque[i64] = VecDeque.new();
+    ages.push_back(1);
+    for _ in 1..forget {
+        ages.push_back(0);
+    }
+    for _ in 2..=n {
+        ages.pop_back();
+        ages.push_front(0);
+        let mut newcomers = 0;
+        for (age, count) in ages.iter().enumerate() {
+            if age >= delay {
+                newcomers = (newcomers + count) % MOD;
+            }
+        }
+        ages[0] = newcomers;
+    }
+    ages.iter().fold(0, |sum, count| (sum + count) % MOD)
+}
+
+// ---- iter (secret_iter.kara) ---------------------------------------------
+
+fn iter_people_aware_of_secret(n: i64, delay: i64, forget: i64) -> i64 {
+    let learned: Vec[i64] = (2..=n).fold([1].to_vec(), |learned, day| {
+        let first = (day - forget + 1).max(1);
+        let last = day - delay;
+        let sharing = learned.iter().skip(first - 1).take((last - first + 1).max(0)).fold(0, |sum, x| (sum + x) % MOD);
+        let mut grown = learned;
+        grown.push(sharing);
+        grown
+    });
+    learned.iter().rev().take(forget).fold(0, |sum, x| (sum + x) % MOD)
+}
+
+// ---- solution (secret_solution.kara) -------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn people_aware_of_secret(n: i32, delay: i32, forget: i32) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let (n, delay, forget) = (n as i64, delay as i64, forget as i64);
+        let mut dp = Vec.filled(n + 1, 0);
+        dp[1] = 1;
+        for i in 2..=n {
+            let lo = if i > forget { i - forget + 1 } else { 1 };
+            if i > delay {
+                for j in lo..=i - delay {
+                    dp[i] = (dp[i] + dp[j]) % MOD;
+                }
+            }
+        }
+        let mut ans = 0;
+        for i in n - forget + 1..=n {
+            ans = (ans + dp[i]) % MOD;
+        }
+        ans as i32
+    }
+}
+
+fn solution_people_aware_of_secret(n: i64, delay: i64, forget: i64) -> i64 {
+    Solution.people_aware_of_secret(n as i32, delay as i32, forget as i32)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(n: i64, delay: i64, forget: i64) -> i64 {
+    let mut people: Vec[i64] = [1].to_vec();
+    for day in 2..=n {
+        let mut tellers = 0;
+        for learned in people.iter() {
+            let age = day - learned;
+            if age >= delay and age < forget {
+                tellers += 1;
+            }
+        }
+        for _ in 0..tellers {
+            people.push(day);
+        }
+    }
+    people.iter().filter(|learned| n - learned < forget).count()
+}
+
+fn answer(arm: i64, n: i64, delay: i64, forget: i64) -> i64 {
+    match arm {
+        0 => star_people_aware_of_secret(n, delay, forget),
+        1 => naive_people_aware_of_secret(n, delay, forget),
+        2 => prefix_people_aware_of_secret(n, delay, forget),
+        3 => ages_people_aware_of_secret(n, delay, forget),
+        4 => iter_people_aware_of_secret(n, delay, forget),
+        _ => solution_people_aware_of_secret(n, delay, forget),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn power_of_two(e: i64) -> i64 {
+    let mut p = 1;
+    for _ in 0..e {
+        p = p * 2 % MOD;
+    }
+    p
+}
+
+fn main() {
+    let names = ["star", "naive", "prefix", "ages", "iter", "solution"];
+    let mut seed = 2327;
+    let mut cases: Vec[(i64, i64, i64)] = Vec.new();
+    for c in 0..360 {
+        let n = if c < 300 {
+            next_random(mut seed) % 15 + 2
+        } else if c < 330 {
+            next_random(mut seed) % 14 + 17
+        } else {
+            next_random(mut seed) % 970 + 31
+        };
+        let forget = next_random(mut seed) % (n - 1) + 2;
+        let delay = next_random(mut seed) % (forget - 1) + 1;
+        cases.push((n, delay, forget));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (n, delay, forget) in cases.iter() {
+        let truth = if n <= 16 { literal(n, delay, forget) } else { -1 };
+        if n <= 16 {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let once = if (n - 1) % delay == 0 { 2 } else { 1 };
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, n, delay, forget)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let small = n <= 30;
+            let verdicts = [
+                n > 16 or value == truth,
+                value >= 0 and value < MOD and (not small or (value >= 1 and value <= power_of_two(n - 1))),
+                not small or forget == n or answer(arm, n, delay, forget + 1) >= value,
+                not small or delay == 1 or answer(arm, n, delay - 1, forget) >= value,
+                answer(arm, n, 1, n) == power_of_two(n - 1) and answer(arm, n, delay, delay + 1) == once,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"n {n}, delay {delay}, forget {forget}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
