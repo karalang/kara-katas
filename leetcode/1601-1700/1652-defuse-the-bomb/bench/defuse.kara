@@ -1,0 +1,53 @@
+// LeetCode #1652: Defuse the Bomb -- the bench: the ★ arm on 400 random
+// codes of 100000 numbers from 1 to 100, each with a k from -99999 to
+// 99999, all drawn first.
+
+fn decrypt(code: Vec[i32], k: i32) -> Vec[i32] {
+    let n = code.len();
+    let mut answer = Vec.filled(n, 0);
+    if k == 0 {
+        return answer;
+    }
+    let k = k as i64;
+    // the window for position 0: [start, end], indices taken modulo n
+    let mut (start, end) = if k > 0 { (1, k) } else { (n + k, n - 1) };
+    let mut sum: i32 = 0;
+    for j in start..=end {
+        sum += code[j % n];
+    }
+    for i in 0..n {
+        answer[i] = sum;
+        sum -= code[start % n];
+        start += 1;
+        end += 1;
+        sum += code[end % n];
+    }
+    answer
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1652;
+    let n = 100000;
+    let mut codes: Vec[(Vec[i32], i32)] = Vec.new();
+    for _ in 0..400 {
+        let code: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % 100 + 1) as i32).collect();
+        let k = (next_random(mut seed) % (2 * n - 1) - (n - 1)) as i32;
+        codes.push((code, k));
+    }
+    let mut check = 0;
+    let mut total = 0;
+    for (code, k) in codes.iter() {
+        for x in decrypt(code, k).iter() {
+            total += x;
+            check = (check * 31 + x + 1) % 1000000007;
+        }
+    }
+    println(f"400 codes of 100000 numbers: answers sum to {total}, checksum {check}");
+}

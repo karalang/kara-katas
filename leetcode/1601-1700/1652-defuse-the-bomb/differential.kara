@@ -1,0 +1,227 @@
+// LeetCode #1652: Defuse the Bomb -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random codes
+// of 1 to 8 numbers from 1 to 100, each with a k from -(n - 1) to n - 1.
+// Every code is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the code turned one place round turns the answer one place round
+// P3  the code reversed with k negated gives the answer reversed
+// P4  every number doubled doubles every answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- defuse.kara: the ★ arm: one window slid round the circle
+
+fn star_arm(code: Vec[i32], k: i32) -> Vec[i32] {
+    let n = code.len();
+    let mut answer = Vec.filled(n, 0);
+    if k == 0 {
+        return answer;
+    }
+    let k = k as i64;
+    // the window for position 0: [start, end], indices taken modulo n
+    let mut (start, end) = if k > 0 { (1, k) } else { (n + k, n - 1) };
+    let mut sum: i32 = 0;
+    for j in start..=end {
+        sum += code[j % n];
+    }
+    for i in 0..n {
+        answer[i] = sum;
+        sum -= code[start % n];
+        start += 1;
+        end += 1;
+        sum += code[end % n];
+    }
+    answer
+}
+
+// ---- defuse_brute.kara: each sum on its own
+
+fn brute_arm(code: Vec[i32], k: i32) -> Vec[i32] {
+    let n = code.len();
+    let k = k as i64;
+    (0..n)
+        .map(|i| {
+            let mut sum: i32 = 0;
+            for step in 1..=k.abs() {
+                let j = if k > 0 { i + step } else { i - step + n };
+                sum += code[j % n];
+            }
+            sum
+        })
+        .collect()
+}
+
+// ---- defuse_prefix.kara: prefix sums over the circle twice
+
+fn prefix_arm(code: Vec[i32], k: i32) -> Vec[i32] {
+    let n = code.len();
+    let k = k as i64;
+    let mut prefix = Vec.filled(2 * n + 1, 0i32);
+    for i in 0..2 * n {
+        prefix[i + 1] = prefix[i] + code[i % n];
+    }
+    let mut answer: Vec[i32] = Vec.new();
+    for i in 0..n {
+        let sum = if k > 0 {
+            prefix[i + k + 1] - prefix[i + 1]
+        } else if k < 0 {
+            prefix[i + n] - prefix[i + n + k]
+        } else {
+            0
+        };
+        answer.push(sum);
+    }
+    answer
+}
+
+// ---- defuse_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn decrypt(code: Vec[i32], k: i32) -> Vec[i32] {
+        let n = code.len();
+        let mut res = Vec.filled(n, 0);
+        if k == 0 {
+            return res;
+        }
+        let mut (l, r) = if k > 0 {
+            (1, k as i64)
+        } else {
+            (n - (-k), n - 1)
+        };
+        let mut sum: i32 = (l..=r).map(|i| code[i % n]).sum();
+        for i in 0..n {
+            res[i] = sum;
+            sum -= code[l % n];
+            l += 1;
+            r += 1;
+            sum += code[r % n];
+        }
+        res
+    }
+}
+
+fn solution_arm(code: Vec[i32], k: i32) -> Vec[i32] {
+    SolutionArm.decrypt(code, k)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, code: Vec[i32], k: i32) -> Vec[i32] {
+    match a {
+        0 => star_arm(code, k),
+        1 => brute_arm(code, k),
+        2 => prefix_arm(code, k),
+        _ => solution_arm(code, k),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["defuse", "brute", "prefix", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: position i is replaced by the sum of
+// the next k numbers if k > 0, of the previous -k numbers if k < 0, and by
+// 0 if k is 0, the code being circular
+
+fn literal(code: Vec[i32], k: i32) -> Vec[i32] {
+    let n = code.len();
+    let mut answer: Vec[i32] = Vec.new();
+    for i in 0..n {
+        let mut sum: i32 = 0;
+        if k > 0 {
+            for j in 1..=k as i64 {
+                sum += code[(i + j) % n];
+            }
+        } else if k < 0 {
+            for j in 1..=-k as i64 {
+                sum += code[(i + n - j) % n];
+            }
+        }
+        answer.push(sum);
+    }
+    answer
+}
+
+fn turned(v: Vec[i32]) -> Vec[i32] {
+    let n = v.len();
+    (0..n).map(|i| v[(i + 1) % n]).collect()
+}
+
+fn reversed(v: Vec[i32]) -> Vec[i32] {
+    v.iter().rev().collect()
+}
+
+fn main() {
+    let mut seed = 1652;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i32], i32)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 8 + 1;
+        let code: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % 100 + 1) as i32).collect();
+        let k = (next_random(mut seed) % (2 * n - 1) - (n - 1)) as i32;
+        cases.push((code, k));
+    }
+    for (p, (code, k)) in cases.iter().enumerate() {
+        let want = literal(code, k);
+        for x in want.iter() {
+            check = (check * 31 + x + 1) % 1000000007;
+        }
+        let doubled: Vec[i32] = code.iter().map(|x| x * 2).collect();
+        let mut answers: Vec[Vec[i32]] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, code, k);
+            answers.push(got.clone());
+            let twice: Vec[i32] = got.iter().map(|x| x * 2).collect();
+            let failed = [
+                got != want,
+                arm(a, turned(code), k) != turned(got),
+                arm(a, reversed(code), -k) != reversed(got),
+                arm(a, doubled, k) != twice,
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({code}, k = {k}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}
