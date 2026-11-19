@@ -1,0 +1,242 @@
+// LeetCode #1658: Minimum Operations to Reduce X to Zero -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random arrays of
+// 1 to 8 numbers from 1 to 5, each with an x from 1 to 40. Every problem
+// is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the array reversed gives the same answer
+// P3  every number and x doubled give the same answer
+// P4  x put at the front of the array takes one operation
+// P5  each arm agrees with at least two of the other three
+
+// ---- operations.kara: the ★ arm: the longest middle summing to the total less x
+
+fn star_arm(nums: Vec[i32], x: i32) -> i32 {
+    let total: i64 = nums.iter().sum();
+    let target = total - x;
+    if target < 0 {
+        return -1;
+    }
+    let n = nums.len();
+    let mut longest = -1;
+    let mut sum = 0;
+    let mut left = 0;
+    for right in 0..n {
+        sum += nums[right];
+        while sum > target {
+            sum -= nums[left];
+            left += 1;
+        }
+        if sum == target {
+            longest = max(longest, right - left + 1);
+        }
+    }
+    if longest < 0 { -1 } else { (n - longest) as i32 }
+}
+
+// ---- operations_map.kara: a map of suffix sums, each prefix looking up the rest
+
+fn map_arm(nums: Vec[i32], x: i32) -> i32 {
+    let n = nums.len();
+    let x = x as i64;
+    let mut suffix: Map[i64, i64] = Map.new();
+    suffix.insert(0, 0);
+    let mut sum = 0;
+    for len in 1..=n {
+        sum += nums[n - len];
+        if sum > x {
+            break;
+        }
+        suffix.insert(sum, len);
+    }
+    let mut best = n + 1;
+    let mut prefix = 0;
+    for len in 0..=n {
+        if len > 0 {
+            prefix += nums[len - 1];
+        }
+        if prefix > x {
+            break;
+        }
+        if let Some(rest) = suffix.get(x - prefix) {
+            if len + rest <= n {
+                best = min(best, len + rest);
+            }
+        }
+    }
+    if best > n { -1 } else { best as i32 }
+}
+
+// ---- operations_pointers.kara: two pointers over prefix and suffix
+
+fn pointers_arm(nums: Vec[i32], x: i32) -> i32 {
+    let n = nums.len();
+    let x = x as i64;
+    let mut sum = 0;
+    let mut left = 0;
+    while left < n and sum + nums[left] <= x {
+        sum += nums[left];
+        left += 1;
+    }
+    let mut best = if sum == x { left } else { n + 1 };
+    let mut right = n;
+    while right > 0 {
+        right -= 1;
+        sum += nums[right];
+        while sum > x and left > 0 {
+            left -= 1;
+            sum -= nums[left];
+        }
+        if sum > x or left > right {
+            break;
+        }
+        if sum == x {
+            best = min(best, left + n - right);
+        }
+    }
+    if best > n { -1 } else { best as i32 }
+}
+
+// ---- operations_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn min_operations(nums: Vec[i32], x: i32) -> i32 {
+        let target: i32 = nums.iter().sum() - x;
+        if target < 0 {
+            return -1;
+        }
+        let mut best: i32 = -1;
+        let mut sum = 0;
+        let mut l = 0;
+        for r in 0..nums.len() {
+            sum += nums[r];
+            while sum > target {
+                sum -= nums[l];
+                l += 1;
+            }
+            if sum == target {
+                best = best.max((r - l + 1) as i32);
+            }
+        }
+        if best == -1 { -1 } else { nums.len() as i32 - best }
+    }
+}
+
+fn solution_arm(nums: Vec[i32], x: i32) -> i32 {
+    SolutionArm.min_operations(nums, x)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(which: i64, nums: Vec[i32], x: i32) -> i32 {
+    match which {
+        0 => star_arm(nums, x),
+        1 => map_arm(nums, x),
+        2 => pointers_arm(nums, x),
+        _ => solution_arm(nums, x),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["operations", "map", "pointers", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every way of removing some numbers
+// from the left end and some from the right, together never more than
+// the array holds, and the fewest whose removed numbers sum to x
+
+fn literal(nums: Vec[i32], x: i32) -> i32 {
+    let n = nums.len();
+    let mut best = -1;
+    for left in 0..=n {
+        for right in 0..=n - left {
+            let mut removed = 0;
+            for i in 0..left {
+                removed += nums[i];
+            }
+            for i in n - right..n {
+                removed += nums[i];
+            }
+            if removed == x and (best < 0 or left + right < best) {
+                best = left + right;
+            }
+        }
+    }
+    best as i32
+}
+
+fn main() {
+    let mut seed = 1658;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i32], i32)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 8 + 1;
+        let nums: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % 5 + 1) as i32).collect();
+        let x = (next_random(mut seed) % 40 + 1) as i32;
+        cases.push((nums, x));
+    }
+    for (p, (nums, x)) in cases.iter().enumerate() {
+        let want = literal(nums, x);
+        check = (check * 31 + want + 2) % 1000000007;
+        let reversed: Vec[i32] = nums.iter().rev().collect();
+        let doubled: Vec[i32] = nums.iter().map(|v| v * 2).collect();
+        let mut fronted = [x];
+        fronted.extend(nums.iter());
+        let mut answers: Vec[i32] = Vec.new();
+        for k in 0..4 {
+            let got = arm(k, nums, x);
+            answers.push(got);
+            let failed = [
+                got != want,
+                arm(k, reversed, x) != got,
+                arm(k, doubled, x * 2) != got,
+                arm(k, fronted, x) != 1,
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({nums}, x = {x}), {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for k in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[k]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}
