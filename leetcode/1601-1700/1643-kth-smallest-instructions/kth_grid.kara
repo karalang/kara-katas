@@ -1,0 +1,84 @@
+// LeetCode #1643: Kth Smallest Instructions -- a table of paths.
+//
+// `paths[r][c]` is the number of paths from cell (r, c) to the
+// destination, filled from the destination back: one along the last row
+// and column, and the sum of the cell right and the cell below elsewhere.
+// Then walk from (0, 0): the paths that go right first are those from
+// the cell to the right. O(r c).
+
+fn kth_smallest_path(destination: Vec[i32], k: i32) -> String {
+    let rows = destination[0] as i64;
+    let columns = destination[1] as i64;
+    let mut paths = Vec.filled(rows + 1, Vec.filled(columns + 1, 1));
+    for r in (0..rows).rev() {
+        for c in (0..columns).rev() {
+            paths[r][c] = paths[r + 1][c] + paths[r][c + 1];
+        }
+    }
+    let mut k = k as i64;
+    let mut (r, c) = (0, 0);
+    let mut path = String.new();
+    while r < rows or c < columns {
+        if c < columns and (r == rows or k <= paths[r][c + 1]) {
+            path.push('H');
+            c += 1;
+        } else {
+            if c < columns {
+                k -= paths[r][c + 1];
+            }
+            path.push('V');
+            r += 1;
+        }
+    }
+    path
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the number of paths to `[row, column]`, for drawing k
+fn count_paths(row: i64, column: i64) -> i64 {
+    let mut count = 1;
+    for i in 1..=row {
+        count = count * (column + i) / i;
+    }
+    count
+}
+
+// `count` random destinations of 1 to `most` rows and columns, each with
+// a k drawn from all of its paths; the moves right before the first move
+// down summed, and a checksum over every letter
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let row = next_random(mut seed) % most + 1;
+        let column = next_random(mut seed) % most + 1;
+        let k = (next_random(mut seed) * 32768 + next_random(mut seed)) % count_paths(row, column) + 1;
+        let path = kth_smallest_path([row as i32, column as i32], k as i32);
+        total += path.find("V").unwrap();
+        for b in path.bytes() {
+            check = (check * 3 + if b == b'H' { 1 } else { 2 }) % 1000000007;
+        }
+    }
+    println(f"{count} destinations of up to {most} by {most}: first moves down sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then the last path of the smallest grid,
+    // the last of the largest, and the first of a single row down
+    println(kth_smallest_path([2, 3], 1));
+    println(kth_smallest_path([2, 3], 2));
+    println(kth_smallest_path([2, 3], 3));
+    println(kth_smallest_path([1, 1], 2));
+    println(kth_smallest_path([15, 15], 155117520));
+    println(kth_smallest_path([1, 15], 1));
+    let mut seed = 1643;
+    batch(3000, 3, mut seed);
+    batch(3000, 15, mut seed);
+    batch(100000, 15, mut seed);
+}
