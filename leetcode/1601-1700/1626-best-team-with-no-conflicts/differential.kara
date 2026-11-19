@@ -1,0 +1,246 @@
+// LeetCode #1626: Best Team With No Conflicts -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random teams of
+// 1 to 10 players: every other one with scores and ages in 1..=4, so ties
+// are common, the rest in 1..=50. Every random choice is drawn before any
+// arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the players listed backwards leave the answer
+// P3  one more player, older than all and scoring the top score, adds
+//     exactly that score
+// P4  every score doubled doubles the answer
+// P5  the answer is at least the top score and at most all scores summed
+// P6  each arm agrees with at least two of the other three
+
+// ---- team.kara: the ★ arm: sorted by age, a rising run of scores
+
+fn star_arm(scores: Vec[i32], ages: Vec[i32]) -> i32 {
+    let mut players: Vec[(i32, i32)] = ages.iter().zip(scores.iter()).collect();
+    players.sort();
+    let n = players.len();
+    let mut best: Vec[i64] = Vec.filled(n, 0);
+    for i in 0..n {
+        let score = players[i].1;
+        best[i] = score;
+        for j in 0..i {
+            if players[j].1 <= score {
+                best[i] = max(best[i], best[j] + score);
+            }
+        }
+    }
+    best.iter().max().unwrap() as i32
+}
+
+// ---- team_byscore.kara: sorted by score, a rising run of ages
+
+struct ByScorePlayer {
+    score: i64,
+    age: i64,
+}
+
+fn byscore_arm(scores: Vec[i32], ages: Vec[i32]) -> i32 {
+    let mut players: Vec[ByScorePlayer] = Vec.new();
+    for i in 0..scores.len() {
+        players.push(ByScorePlayer { score: scores[i], age: ages[i] });
+    }
+    players.sort_by_key(|p| (p.score, p.age));
+    let mut best: Vec[i64] = Vec.new();
+    for (i, p) in players.iter().enumerate() {
+        let mut most = 0;
+        for j in 0..i {
+            if players[j].age <= p.age {
+                most = max(most, best[j]);
+            }
+        }
+        best.push(most + p.score);
+    }
+    best.iter().max().unwrap() as i32
+}
+
+// ---- team_tree.kara: a Fenwick tree of maxima
+
+fn tree_arm(scores: Vec[i32], ages: Vec[i32]) -> i32 {
+    let n = scores.len();
+    let mut order: Vec[i64] = (0..n).collect();
+    order.sort_by_key(|i| (ages[i], scores[i]));
+    let mut distinct: Vec[i32] = scores.clone();
+    distinct.sort();
+    distinct.dedup();
+    let mut tree: Vec[i64] = Vec.filled(distinct.len() + 1, 0);
+    let mut answer = 0;
+    for i in order.iter() {
+        let rank = distinct.binary_search(scores[i]).unwrap() + 1;
+        // the best team among scores of rank 1..=rank
+        let mut most = 0;
+        let mut k = rank;
+        while k > 0 {
+            most = max(most, tree[k]);
+            k -= k & -k;
+        }
+        let here = most + scores[i];
+        answer = max(answer, here);
+        let mut k = rank;
+        while k < tree.len() {
+            tree[k] = max(tree[k], here);
+            k += k & -k;
+        }
+    }
+    answer as i32
+}
+
+// ---- team_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn best_team_score(scores: Vec[i32], ages: Vec[i32]) -> i32 {
+        let mut players: Vec[(i32, i32)] = ages.clone().into_iter().zip(scores.clone().into_iter()).collect();
+        players.sort();
+        let n = players.len();
+        let mut dp = Vec.filled(n, 0);
+        let mut ans: i32 = 0;
+        for i in 0..n {
+            dp[i] = players[i].1;
+            for j in 0..i {
+                if players[j].1 <= players[i].1 {
+                    dp[i] = dp[i].max(dp[j] + players[i].1);
+                }
+            }
+            ans = ans.max(dp[i]);
+        }
+        ans
+    }
+}
+
+fn solution_arm(scores: Vec[i32], ages: Vec[i32]) -> i32 {
+    SolutionArm.best_team_score(scores, ages)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(k: i64, scores: Vec[i32], ages: Vec[i32]) -> i64 {
+    let got = match k {
+        0 => star_arm(scores, ages),
+        1 => byscore_arm(scores, ages),
+        2 => tree_arm(scores, ages),
+        _ => solution_arm(scores, ages),
+    };
+    got
+}
+
+fn arm_name(k: i64) -> String {
+    ["team", "byscore", "tree", "solution"][k].to_string()
+}
+
+// ---- the statement read literally: every subset of the players, kept
+// when no younger player in it scores strictly more than an older one
+
+fn literal(scores: Vec[i32], ages: Vec[i32]) -> i64 {
+    let n = scores.len();
+    let mut best = 0;
+    for mask in 0..(1 << n) {
+        let mut ok = true;
+        let mut sum = 0;
+        for i in 0..n {
+            if mask >> i & 1 == 0 {
+                continue;
+            }
+            sum += scores[i];
+            for j in 0..n {
+                if mask >> j & 1 == 1 and ages[i] < ages[j] and scores[i] > scores[j] {
+                    ok = false;
+                }
+            }
+        }
+        if ok {
+            best = max(best, sum);
+        }
+    }
+    best
+}
+
+fn main() {
+    let mut seed = 1626;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i32], Vec[i32])] = [];
+    for p in 0..problems {
+        // every other case with few ages and scores, so ties are common
+        let range = if p % 2 == 0 { 4 } else { 50 };
+        let n = next_random(mut seed) % 10 + 1;
+        let mut scores: Vec[i32] = [];
+        let mut ages: Vec[i32] = [];
+        for _ in 0..n {
+            scores.push((next_random(mut seed) % range + 1) as i32);
+            ages.push((next_random(mut seed) % range + 1) as i32);
+        }
+        cases.push((scores, ages));
+    }
+    for p in 0..problems {
+        let (scores, ages) = cases[p].clone();
+        let reversed_scores: Vec[i32] = scores.iter().rev().cloned().collect();
+        let reversed_ages: Vec[i32] = ages.iter().rev().cloned().collect();
+        let top_score = scores.iter().max().unwrap();
+        let mut more_scores = scores.clone();
+        more_scores.push(top_score);
+        let mut more_ages = ages.clone();
+        more_ages.push(ages.iter().max().unwrap() + 1);
+        let doubled: Vec[i32] = scores.iter().map(|s| 2 * s).collect();
+        let total: i64 = scores.iter().map(|s| s as i64).sum();
+        let want = literal(scores, ages);
+        let mut answers: Vec[i64] = [];
+        for k in 0..4 {
+            let got = arm(k, scores, ages);
+            answers.push(got);
+            check = (check * 31 + got + 1) % 1000000007;
+            let failed = [
+                got != want,
+                arm(k, reversed_scores, reversed_ages) != got,
+                arm(k, more_scores, more_ages) != got + top_score,
+                arm(k, doubled, ages) != 2 * got,
+                got < top_score or got > total,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({scores}, {ages}), {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P6
+        for k in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[k]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}
