@@ -1,0 +1,60 @@
+// LeetCode #1631: Path With Minimum Effort -- the bench: the ★ arm on 200
+// random grids of 100 x 100 heights up to 10^6, all drawn first.
+
+fn minimum_effort_path(heights: Vec[Vec[i32]]) -> i32 {
+    let (rows, cols) = (heights.len(), heights[0].len());
+    let mut best: Vec[Vec[i32]] = Vec.filled(rows, Vec.filled(cols, i32.MAX));
+    let mut queue: PriorityQueue[(i32, i64, i64)] = PriorityQueue.new();
+    best[0][0] = 0;
+    queue.push((0, 0, 0));
+    while let Some((effort, r, c)) = queue.pop() {
+        if r == rows - 1 and c == cols - 1 {
+            return effort;
+        }
+        if effort > best[r][c] {
+            continue;
+        }
+        for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr < 0 or nr >= rows or nc < 0 or nc >= cols {
+                continue;
+            }
+            let step = max(effort, (heights[nr][nc] - heights[r][c]).abs());
+            if step < best[nr][nc] {
+                best[nr][nc] = step;
+                queue.push((step, nr, nc));
+            }
+        }
+    }
+    0
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1631;
+    let mut grids: Vec[Vec[Vec[i32]]] = Vec.new();
+    for _ in 0..200 {
+        let mut heights: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..100 {
+            let mut row: Vec[i32] = Vec.new();
+            for _ in 0..100 {
+                let high = next_random(mut seed);
+                row.push(((high * 32768 + next_random(mut seed)) % 1000000 + 1) as i32);
+            }
+            heights.push(row);
+        }
+        grids.push(heights);
+    }
+    let mut check = 0;
+    let mut total = 0;
+    for heights in grids.iter() {
+        let effort = minimum_effort_path(heights);
+        total += effort;
+        check = (check * 31 + effort + 1) % 1000000007;
+    }
+    println(f"200 grids of 100 x 100: efforts sum to {total}, checksum {check}");
+}

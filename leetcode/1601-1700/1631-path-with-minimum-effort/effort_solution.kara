@@ -1,0 +1,89 @@
+// LeetCode #1631: Path With Minimum Effort -- LeetCode's Rust template, as
+// written there, carried over by `karac fix`.
+//
+// Dijkstra's algorithm on a `BinaryHeap` of `Reverse((effort, row,
+// column))`, Rust's max-first heap turned round, with the four directions
+// in a constant array. O(rc log rc).
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_effort_path(heights: Vec[Vec[i32]]) -> i32 {
+        const DIRS: Array[(i32, i32), 4] = [(-1, 0), (1, 0), (0, -1), (0, 1)];
+        let m = heights.len();
+        let n = heights[0].len();
+        let mut dist = Vec.filled(m, Vec.filled(n, i32.MAX));
+        let mut heap = PriorityQueue.new();
+        dist[0][0] = 0;
+        heap.push((0, 0, 0));
+        while let Some((d, i, j)) = heap.pop() {
+            if i == m - 1 and j == n - 1 {
+                return d;
+            }
+            if d > dist[i][j] {
+                continue;
+            }
+            for (di, dj) in DIRS.iter() {
+                let ni = i as i32 + di;
+                let nj = j as i32 + dj;
+                if ni < 0 or nj < 0 or ni >= m as i32 or nj >= n as i32 {
+                    continue;
+                }
+                let (ni, nj) = (ni as i64, nj as i64);
+                let nd = d.max((heights[ni][nj] - heights[i][j]).abs());
+                if nd < dist[ni][nj] {
+                    dist[ni][nj] = nd;
+                    heap.push((nd, ni, nj));
+                }
+            }
+        }
+        0
+    }
+}
+
+fn minimum_effort_path(heights: Vec[Vec[i32]]) -> i32 {
+    Solution.minimum_effort_path(heights)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random grids of 1 to `most` rows and columns, heights 1 to
+// `top`; the efforts summed, and a checksum
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let rows = next_random(mut seed) % most + 1;
+        let cols = next_random(mut seed) % most + 1;
+        let mut heights: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..rows {
+            let mut row: Vec[i32] = Vec.new();
+            for _ in 0..cols {
+                row.push((next_random(mut seed) % top + 1) as i32);
+            }
+            heights.push(row);
+        }
+        let effort = minimum_effort_path(heights);
+        total += effort;
+        check = (check * 31 + effort + 1) % 1000000007;
+    }
+    println(f"{count} grids of up to {most} x {most}: efforts sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then one cell, and one row
+    println(minimum_effort_path([[1, 2, 2], [3, 8, 2], [5, 3, 5]]));
+    println(minimum_effort_path([[1, 2, 3], [3, 8, 4], [5, 3, 5]]));
+    println(minimum_effort_path([[1, 2, 1, 1, 1], [1, 2, 1, 2, 1], [1, 2, 1, 2, 1], [1, 2, 1, 2, 1], [1, 1, 1, 2, 1]]));
+    println(minimum_effort_path([[7]]));
+    println(minimum_effort_path([[1, 10, 4, 6]]));
+    let mut seed = 1631;
+    batch(2000, 4, 5, mut seed);
+    batch(200, 20, 1000, mut seed);
+    batch(5, 100, 30000, mut seed);
+}

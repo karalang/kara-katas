@@ -1,0 +1,328 @@
+// LeetCode #1631: Path With Minimum Effort -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random grids of
+// at most nine cells: every other one with heights 1 to 3, so ties are
+// common, the rest 1 to 50. Every grid is drawn before any arm answers.
+//
+// P1  the effort is the statement read literally
+// P2  the grid transposed leaves the effort
+// P3  the grid turned half round, corners swapped, leaves the effort
+// P4  every height doubled doubles the effort
+// P5  the effort is at most that of going along the top row and down the
+//     last column, and at least the smallest step out of the start
+// P6  each arm agrees with at least two of the other three
+
+// ---- effort.kara: the ★ arm: Dijkstra on the largest step
+
+fn star_arm(heights: Vec[Vec[i32]]) -> i32 {
+    let (rows, cols) = (heights.len(), heights[0].len());
+    let mut best: Vec[Vec[i32]] = Vec.filled(rows, Vec.filled(cols, i32.MAX));
+    let mut queue: PriorityQueue[(i32, i64, i64)] = PriorityQueue.new();
+    best[0][0] = 0;
+    queue.push((0, 0, 0));
+    while let Some((effort, r, c)) = queue.pop() {
+        if r == rows - 1 and c == cols - 1 {
+            return effort;
+        }
+        if effort > best[r][c] {
+            continue;
+        }
+        for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr < 0 or nr >= rows or nc < 0 or nc >= cols {
+                continue;
+            }
+            let step = max(effort, (heights[nr][nc] - heights[r][c]).abs());
+            if step < best[nr][nc] {
+                best[nr][nc] = step;
+                queue.push((step, nr, nc));
+            }
+        }
+    }
+    0
+}
+
+// ---- effort_search.kara: a binary search on the effort, each guess a flood
+
+fn search_reachable(heights: Vec[Vec[i32]], limit: i32) -> bool {
+    let (rows, cols) = (heights.len(), heights[0].len());
+    let mut seen: Vec[Vec[bool]] = Vec.filled(rows, Vec.filled(cols, false));
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    seen[0][0] = true;
+    queue.push_back((0, 0));
+    while let Some((r, c)) = queue.pop_front() {
+        let here = heights[r][c];
+        let mut next: Vec[(i64, i64)] = Vec.new();
+        if r > 0 {
+            next.push((r - 1, c));
+        }
+        if r + 1 < rows {
+            next.push((r + 1, c));
+        }
+        if c > 0 {
+            next.push((r, c - 1));
+        }
+        if c + 1 < cols {
+            next.push((r, c + 1));
+        }
+        for (nr, nc) in next {
+            if not seen[nr][nc] and (heights[nr][nc] - here).abs() <= limit {
+                seen[nr][nc] = true;
+                queue.push_back((nr, nc));
+            }
+        }
+    }
+    seen[rows - 1][cols - 1]
+}
+
+fn search_arm(heights: Vec[Vec[i32]]) -> i32 {
+    let mut low: i32 = 0;
+    let mut high = 0;
+    for row in heights.iter() {
+        for h in row.iter() {
+            high = max(high, h);
+        }
+    }
+    while low < high {
+        let middle = (low + high) / 2;
+        if search_reachable(heights, middle) {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    low
+}
+
+// ---- effort_kruskal.kara: the steps joined smallest first until the corners meet
+
+fn kruskal_root(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+fn kruskal_arm(heights: Vec[Vec[i32]]) -> i32 {
+    let (rows, cols) = (heights.len(), heights[0].len());
+    let cell = |r: i64, c: i64| r * cols + c;
+    let mut steps: Vec[(i32, i64, i64)] = Vec.new();
+    for r in 0..rows {
+        for c in 0..cols {
+            if r + 1 < rows {
+                steps.push(((heights[r][c] - heights[r + 1][c]).abs(), cell(r, c), cell(r + 1, c)));
+            }
+            if c + 1 < cols {
+                steps.push(((heights[r][c] - heights[r][c + 1]).abs(), cell(r, c), cell(r, c + 1)));
+            }
+        }
+    }
+    steps.sort();
+    let mut parent: Vec[i64] = (0..rows * cols).collect();
+    let (start, end) = (0, rows * cols - 1);
+    if start == end {
+        return 0;
+    }
+    for (size, a, b) in steps {
+        let (x, y) = (kruskal_root(mut parent, a), kruskal_root(mut parent, b));
+        parent[x] = y;
+        if kruskal_root(mut parent, start) == kruskal_root(mut parent, end) {
+            return size;
+        }
+    }
+    0
+}
+
+// ---- effort_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn minimum_effort_path(heights: Vec[Vec[i32]]) -> i32 {
+        const DIRS: Array[(i32, i32), 4] = [(-1, 0), (1, 0), (0, -1), (0, 1)];
+        let m = heights.len();
+        let n = heights[0].len();
+        let mut dist = Vec.filled(m, Vec.filled(n, i32.MAX));
+        let mut heap = PriorityQueue.new();
+        dist[0][0] = 0;
+        heap.push((0, 0, 0));
+        while let Some((d, i, j)) = heap.pop() {
+            if i == m - 1 and j == n - 1 {
+                return d;
+            }
+            if d > dist[i][j] {
+                continue;
+            }
+            for (di, dj) in DIRS.iter() {
+                let ni = i as i32 + di;
+                let nj = j as i32 + dj;
+                if ni < 0 or nj < 0 or ni >= m as i32 or nj >= n as i32 {
+                    continue;
+                }
+                let (ni, nj) = (ni as i64, nj as i64);
+                let nd = d.max((heights[ni][nj] - heights[i][j]).abs());
+                if nd < dist[ni][nj] {
+                    dist[ni][nj] = nd;
+                    heap.push((nd, ni, nj));
+                }
+            }
+        }
+        0
+    }
+}
+
+fn solution_arm(heights: Vec[Vec[i32]]) -> i32 {
+    SolutionArm.minimum_effort_path(heights)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(k: i64, heights: Vec[Vec[i32]]) -> i32 {
+    match k {
+        0 => star_arm(heights),
+        1 => search_arm(heights),
+        2 => kruskal_arm(heights),
+        _ => solution_arm(heights),
+    }
+}
+
+fn arm_name(k: i64) -> String {
+    ["effort", "search", "kruskal", "solution"][k].to_string()
+}
+
+// ---- the statement read literally: every route from the top-left cell to
+// the bottom-right that visits no cell twice, its effort the largest step
+// along it, and the least of those efforts
+
+fn walk(heights: Vec[Vec[i32]], seen: mut ref Vec[Vec[bool]], r: i64, c: i64, effort: i32, best: mut ref i32) {
+    let (rows, cols) = (heights.len(), heights[0].len());
+    if r == rows - 1 and c == cols - 1 {
+        *best = min(*best, effort);
+        return;
+    }
+    for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+        let (nr, nc) = (r + dr, c + dc);
+        if nr < 0 or nr >= rows or nc < 0 or nc >= cols or seen[nr][nc] {
+            continue;
+        }
+        seen[nr][nc] = true;
+        walk(heights, mut seen, nr, nc, max(effort, (heights[nr][nc] - heights[r][c]).abs()), mut best);
+        seen[nr][nc] = false;
+    }
+}
+
+fn literal(heights: Vec[Vec[i32]]) -> i32 {
+    let mut seen: Vec[Vec[bool]] = Vec.filled(heights.len(), Vec.filled(heights[0].len(), false));
+    seen[0][0] = true;
+    let mut best = i32.MAX;
+    walk(heights, mut seen, 0, 0, 0, mut best);
+    best
+}
+
+fn main() {
+    let mut seed = 1631;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[Vec[Vec[i32]]] = [];
+    for p in 0..problems {
+        // every other grid with heights 1 to 3, so ties are common; at most
+        // nine cells, so the routes can all be walked
+        let top = if p % 2 == 0 { 3 } else { 50 };
+        let rows = next_random(mut seed) % 3 + 1;
+        let cols = next_random(mut seed) % (9 / rows) + 1;
+        let mut heights: Vec[Vec[i32]] = [];
+        for _ in 0..rows {
+            let mut row: Vec[i32] = [];
+            for _ in 0..cols {
+                row.push((next_random(mut seed) % top + 1) as i32);
+            }
+            heights.push(row);
+        }
+        cases.push(heights);
+    }
+    for p in 0..problems {
+        let heights = cases[p].clone();
+        let (rows, cols) = (heights.len(), heights[0].len());
+        let mut transposed: Vec[Vec[i32]] = [];
+        for c in 0..cols {
+            transposed.push(heights.iter().map(|row| row[c]).collect());
+        }
+        let turned: Vec[Vec[i32]] = heights.iter().rev().map(|row| row.iter().rev().cloned().collect()).collect();
+        let doubled: Vec[Vec[i32]] = heights.iter().map(|row| row.iter().map(|h| 2 * h).collect()).collect();
+        // the effort of going right along the top row, then down the last
+        // column, and the smallest step out of the corner
+        let mut along = 0;
+        for c in 1..cols {
+            along = max(along, (heights[0][c] - heights[0][c - 1]).abs());
+        }
+        for r in 1..rows {
+            along = max(along, (heights[r][cols - 1] - heights[r - 1][cols - 1]).abs());
+        }
+        let mut first = i32.MAX;
+        if rows > 1 {
+            first = min(first, (heights[1][0] - heights[0][0]).abs());
+        }
+        if cols > 1 {
+            first = min(first, (heights[0][1] - heights[0][0]).abs());
+        }
+        if first == i32.MAX {
+            first = 0;
+        }
+        let want = literal(heights);
+        check = (check * 31 + want + 1) % 1000000007;
+        let mut answers: Vec[i32] = [];
+        for k in 0..4 {
+            let got = arm(k, heights);
+            answers.push(got);
+            let failed = [
+                got != want,
+                arm(k, transposed) != got,
+                arm(k, turned) != got,
+                arm(k, doubled) != 2 * got,
+                got > along or got < first,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({heights}), {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P6
+        for k in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[k]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

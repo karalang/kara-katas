@@ -1,0 +1,90 @@
+// LeetCode #1631: Path With Minimum Effort -- the steps joined smallest
+// first, as Kruskal's algorithm would, until the corners meet.
+//
+// Every step between neighbouring cells, sorted by its size, is joined in
+// a union-find in turn; the first step after which the top-left and
+// bottom-right cells share a root is the least effort, since every path
+// must use a step at least that large and the joined steps make one that
+// uses none larger. O(rc log rc).
+
+fn root(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+fn minimum_effort_path(heights: Vec[Vec[i32]]) -> i32 {
+    let (rows, cols) = (heights.len(), heights[0].len());
+    let cell = |r: i64, c: i64| r * cols + c;
+    let mut steps: Vec[(i32, i64, i64)] = Vec.new();
+    for r in 0..rows {
+        for c in 0..cols {
+            if r + 1 < rows {
+                steps.push(((heights[r][c] - heights[r + 1][c]).abs(), cell(r, c), cell(r + 1, c)));
+            }
+            if c + 1 < cols {
+                steps.push(((heights[r][c] - heights[r][c + 1]).abs(), cell(r, c), cell(r, c + 1)));
+            }
+        }
+    }
+    steps.sort();
+    let mut parent: Vec[i64] = (0..rows * cols).collect();
+    let (start, end) = (0, rows * cols - 1);
+    if start == end {
+        return 0;
+    }
+    for (size, a, b) in steps {
+        let (x, y) = (root(mut parent, a), root(mut parent, b));
+        parent[x] = y;
+        if root(mut parent, start) == root(mut parent, end) {
+            return size;
+        }
+    }
+    0
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random grids of 1 to `most` rows and columns, heights 1 to
+// `top`; the efforts summed, and a checksum
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let rows = next_random(mut seed) % most + 1;
+        let cols = next_random(mut seed) % most + 1;
+        let mut heights: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..rows {
+            let mut row: Vec[i32] = Vec.new();
+            for _ in 0..cols {
+                row.push((next_random(mut seed) % top + 1) as i32);
+            }
+            heights.push(row);
+        }
+        let effort = minimum_effort_path(heights);
+        total += effort;
+        check = (check * 31 + effort + 1) % 1000000007;
+    }
+    println(f"{count} grids of up to {most} x {most}: efforts sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then one cell, and one row
+    println(minimum_effort_path([[1, 2, 2], [3, 8, 2], [5, 3, 5]]));
+    println(minimum_effort_path([[1, 2, 3], [3, 8, 4], [5, 3, 5]]));
+    println(minimum_effort_path([[1, 2, 1, 1, 1], [1, 2, 1, 2, 1], [1, 2, 1, 2, 1], [1, 2, 1, 2, 1], [1, 1, 1, 2, 1]]));
+    println(minimum_effort_path([[7]]));
+    println(minimum_effort_path([[1, 10, 4, 6]]));
+    let mut seed = 1631;
+    batch(2000, 4, 5, mut seed);
+    batch(200, 20, 1000, mut seed);
+    batch(5, 100, 30000, mut seed);
+}
