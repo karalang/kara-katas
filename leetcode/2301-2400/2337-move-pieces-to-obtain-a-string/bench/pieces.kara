@@ -1,0 +1,85 @@
+// LeetCode #2337: Move Pieces to Obtain a String -- the bench, the ★ arm.
+// Two indices walk the two strings' bytes together, each skipping
+// blanks, the pieces matched in order and each `L` no later in the
+// target, each `R` no earlier. O(n).
+
+fn can_change(start: String, target: String) -> bool {
+    let a = start.bytes();
+    let b = target.bytes();
+    let n = a.len();
+    let mut i = 0;
+    let mut j = 0;
+    loop {
+        while i < n and a[i] == b'_' {
+            i += 1;
+        }
+        while j < n and b[j] == b'_' {
+            j += 1;
+        }
+        if i == n or j == n {
+            return i == n and j == n;
+        }
+        if a[i] != b[j] {
+            return false;
+        }
+        if a[i] == b'L' and i < j {
+            return false;
+        }
+        if a[i] == b'R' and i > j {
+            return false;
+        }
+        i += 1;
+        j += 1;
+    }
+}
+
+// the `index`th value of a scramble that never repeats below 2^31 - 1
+fn scrambled(index: i64) -> i64 {
+    index * 2654435761 % 2147483647
+}
+
+fn main() {
+    // 10 pairs of 10^5 places built once: the start from the scramble, an
+    // L in 4 and an R in 4; the target the start after 3 rounds of every
+    // L moved one left into a blank, first to last, and every R one
+    // right, last to first; in every other pair the target's first piece
+    // turned to the other letter. 10 passes; pass p folds each answer
+    // plus p into the checksum
+    let mut pairs: Vec[(String, String)] = Vec.new();
+    for q in 0..10 {
+        let mut cells: Vec[char] = Vec.new();
+        for i in 0..100000 {
+            let r = scrambled(q * 100000 + i) % 4;
+            cells.push(if r == 0 { 'L' } else if r == 1 { 'R' } else { '_' });
+        }
+        let start: String = cells.iter().collect();
+        for _ in 0..3 {
+            for i in 1..100000 {
+                if cells[i] == 'L' and cells[i - 1] == '_' {
+                    cells[i - 1] = 'L';
+                    cells[i] = '_';
+                }
+            }
+            for i in (0..99999).rev() {
+                if cells[i] == 'R' and cells[i + 1] == '_' {
+                    cells[i + 1] = 'R';
+                    cells[i] = '_';
+                }
+            }
+        }
+        if q % 2 == 1 {
+            let first = cells.iter().position(|c| c != '_').unwrap();
+            cells[first] = if cells[first] == 'L' { 'R' } else { 'L' };
+        }
+        let target: String = cells.iter().collect();
+        pairs.push((start, target));
+    }
+    let mut check = 0;
+    for p in 0..10 {
+        for (start, target) in pairs.iter() {
+            let can = can_change(start, target);
+            check = (check * 31 + if can { 2 } else { 1 } + p) % 1000000007;
+        }
+    }
+    println(f"10 passes over 10 pairs of 10^5 places: checksum {check}");
+}

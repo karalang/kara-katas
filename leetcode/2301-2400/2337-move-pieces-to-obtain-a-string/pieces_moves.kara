@@ -1,0 +1,120 @@
+// LeetCode #2337: Move Pieces to Obtain a String -- the moves made: each
+// piece is matched in order to the target's piece of the same rank, the
+// `L`s are walked left one blank at a time from the first, toward their
+// places, then the `R`s right from the last, and the result compared
+// with the target. O(n^2) at worst.
+
+fn can_change(start: String, target: String) -> bool {
+    let mut cells: Vec[char] = start.chars().collect();
+    let want: Vec[char] = target.chars().collect();
+    let n = cells.len();
+    let mut from: Vec[i64] = Vec.new();
+    let mut to: Vec[i64] = Vec.new();
+    for k in 0..n {
+        if cells[k] != '_' {
+            from.push(k);
+        }
+        if want[k] != '_' {
+            to.push(k);
+        }
+    }
+    if from.len() != to.len() {
+        return false;
+    }
+    for p in 0..from.len() {
+        let mut at = from[p];
+        if cells[at] == 'L' {
+            while at > to[p] and cells[at - 1] == '_' {
+                cells[at - 1] = 'L';
+                cells[at] = '_';
+                at -= 1;
+            }
+        }
+    }
+    for p in (0..from.len()).rev() {
+        let mut at = from[p];
+        if cells[at] == 'R' {
+            while at < to[p] and cells[at + 1] == '_' {
+                cells[at + 1] = 'R';
+                cells[at] = '_';
+                at += 1;
+            }
+        }
+    }
+    cells == want
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_line(seed: mut ref i64, n: i64) -> String {
+    let mut line = String.new();
+    for _ in 0..n {
+        let r = next_random(mut seed) % 4;
+        line.push(if r == 0 { 'L' } else if r == 1 { 'R' } else { '_' });
+    }
+    line
+}
+
+// `moves` random moves allowed by the rules, each an `L` one place left
+// into a blank or an `R` one place right into one
+fn moved(seed: mut ref i64, line: String, moves: i64) -> String {
+    let mut cells: Vec[char] = line.chars().collect();
+    let n = cells.len();
+    for _ in 0..moves {
+        let i = next_random(mut seed) % n;
+        if cells[i] == 'L' and i > 0 and cells[i - 1] == '_' {
+            cells[i - 1] = 'L';
+            cells[i] = '_';
+        } else if cells[i] == 'R' and i + 1 < n and cells[i + 1] == '_' {
+            cells[i + 1] = 'R';
+            cells[i] = '_';
+        }
+    }
+    cells.iter().collect()
+}
+
+fn main() {
+    // LeetCode's three examples; then only blanks, an L and an R that
+    // would have to pass each other, an L asked to move right, and 2000
+    // places moved 100000 times, then with one piece more
+    println(f"{can_change("_L__R__R_", "L______RR")}");
+    println(f"{can_change("R_L_", "__LR")}");
+    println(f"{can_change("_R", "R_")}");
+    println(f"{can_change("____", "____")}");
+    println(f"{can_change("R_L", "L_R")}");
+    println(f"{can_change("L__", "__L")}");
+    let mut seed = 2337;
+    let start = random_line(mut seed, 2000);
+    let target = moved(mut seed, start, 100000);
+    println(f"{can_change(start, target)}");
+    let mut changed: Vec[char] = target.chars().collect();
+    let blank = changed.iter().position(|c| c == '_').unwrap();
+    changed[blank] = 'L';
+    let more: String = changed.iter().collect();
+    println(f"{can_change(start, more)}");
+    // 2000 random cases of 1 to 10 places, the target half the time the
+    // start moved 0 to 20 times and otherwise drawn on its own
+    let mut check = 0;
+    let mut yes = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 10 + 1;
+        let start = random_line(mut seed, n);
+        let target = if next_random(mut seed) % 2 == 0 {
+            let moves = next_random(mut seed) % 21;
+            moved(mut seed, start, moves)
+        } else {
+            random_line(mut seed, n)
+        };
+        let can = can_change(start, target);
+        check = (check * 31 + if can { 2 } else { 1 }) % 1000000007;
+        if can {
+            yes += 1;
+        }
+    }
+    println(f"2000 cases: checksum {check}, {yes} reachable");
+}
