@@ -1,0 +1,270 @@
+// LeetCode #1625: Lexicographically Smallest String After Applying
+// Operations -- the differential.
+//
+// Four arms against the statement read literally, on 300 random cases of
+// 2 to 12 digits, `a` in 1..=9 and `b` in 1..n. Every random choice is
+// drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is no greater than `s`, which is reachable
+// P3  the answer's own answer is itself
+// P4  starting from `s` rotated by `b` gives the same answer
+// P5  starting from `s` with `a` added to its odd digits gives the same
+//     answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- smallest.kara: the ★ arm: every rotation and count of additions
+
+fn star_gcd(x: i64, y: i64) -> i64 {
+    if y == 0 { x } else { star_gcd(y, x % y) }
+}
+
+fn star_arm(s: String, a: i32, b: i32) -> String {
+    let digits: Vec[i64] = s.chars().map(|c| c as i64 - '0' as i64).collect();
+    let n = digits.len();
+    let step = star_gcd(b, n);
+    let even_counts = if b % 2 == 1 { 10 } else { 1 };
+    let mut best = s.clone();
+    for start in (0..n).step_by(step) {
+        for odd in 0..10 {
+            for even in 0..even_counts {
+                let mut t = String.new();
+                for i in 0..n {
+                    let count = if i % 2 == 1 { odd } else { even };
+                    let d = (digits[(i + start) % n] + count * a) % 10;
+                    t.push((b'0' + d as u8) as char);
+                }
+                if t < best {
+                    best = t;
+                }
+            }
+        }
+    }
+    best
+}
+
+// ---- smallest_bfs.kara: a breadth-first walk
+
+fn bfs_arm(s: String, a: i32, b: i32) -> String {
+    let n = s.len();
+    let mut seen: Set[String] = [s.clone()];
+    let mut queue: VecDeque[String] = VecDeque.new();
+    queue.push_back(s.clone());
+    let mut best = s.clone();
+    while let Some(t) = queue.pop_front() {
+        if t < best {
+            best = t.clone();
+        }
+        let added: String = t
+            .chars()
+            .enumerate()
+            .map(|(i, c)| if i % 2 == 1 { (b'0' + ((c as u32 as u8 - b'0') + a as u8) % 10) as char } else { c })
+            .collect();
+        let rotated = f"{t[n - b..]}{t[..n - b]}";
+        for next in [added, rotated] {
+            if seen.insert(next.clone()) {
+                queue.push_back(next.clone());
+            }
+        }
+    }
+    best
+}
+
+// ---- smallest_greedy.kara: one string per rotation
+
+fn greedy_gcd(x: i64, y: i64) -> i64 {
+    if y == 0 { x } else { greedy_gcd(y, x % y) }
+}
+
+// the count of `a` that makes `d + count * a` least, mod 10
+fn greedy_least_count(d: i64, a: i64) -> i64 {
+    (0..10).min_by_key(|count| (d + count * a) % 10).unwrap()
+}
+
+fn greedy_arm(s: String, a: i32, b: i32) -> String {
+    let digits: Vec[i64] = s.chars().map(|c| c as i64 - '0' as i64).collect();
+    let n = digits.len();
+    let mut best = s.clone();
+    let mut start = 0;
+    loop {
+        let rotated: Vec[i64] = (0..n).map(|i| digits[(i + start) % n]).collect();
+        let odd = greedy_least_count(rotated[1], a);
+        let even = if b % 2 == 1 { greedy_least_count(rotated[0], a) } else { 0 };
+        let candidate: String = rotated
+            .iter()
+            .enumerate()
+            .map(|(i, d)| {
+                let count = if i % 2 == 1 { odd } else { even };
+                (b'0' + ((d + count * a) % 10) as u8) as char
+            })
+            .collect();
+        best = min(best, candidate);
+        start = (start + greedy_gcd(b, n)) % n;
+        if start == 0 {
+            break;
+        }
+    }
+    best
+}
+
+// ---- smallest_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn find_lex_smallest_string(s: String, a: i32, b: i32) -> String {
+        let mut seen = Set.new();
+        let mut best = s.clone();
+        SolutionArm.dfs(s, a, b, mut seen, mut best);
+        best
+    }
+
+    fn dfs(s: String, a: i32, b: i64, seen: mut ref Set[String], best: mut ref String) {
+        if not seen.insert(s.clone()) {
+            return;
+        }
+        if s < *best {
+            *best = s.clone();
+        }
+        let mut chars: Vec[u8] = s.clone().bytes().to_vec();
+        for i in (1..chars.len()).step_by(2) {
+            chars[i] = b'0' + (chars[i] - b'0' + a as u8) % 10;
+        }
+        let added = String.from_utf8(chars).unwrap();
+        let n = s.len();
+        let rotated = f"{s[n - b..]}{s[..n - b]}";
+        SolutionArm.dfs(added, a, b, mut seen, mut best);
+        SolutionArm.dfs(rotated, a, b, mut seen, mut best);
+    }
+}
+
+fn solution_arm(s: String, a: i32, b: i32) -> String {
+    SolutionArm.find_lex_smallest_string(s, a, b)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(k: i64, s: String, a: i32, b: i32) -> String {
+    match k {
+        0 => star_arm(s, a, b),
+        1 => bfs_arm(s, a, b),
+        2 => greedy_arm(s, a, b),
+        _ => solution_arm(s, a, b),
+    }
+}
+
+fn arm_name(k: i64) -> String {
+    ["smallest", "bfs", "greedy", "solution"][k].to_string()
+}
+
+// ---- the statement read literally: the two operations applied to every
+// string reached so far, round after round, until a round adds nothing;
+// the first string of the ordered set
+
+fn add_odd(s: String, a: i32) -> String {
+    let mut out = String.new();
+    for (i, c) in s.chars().enumerate() {
+        let d = c as i64 - '0' as i64;
+        let next = if i % 2 == 1 { (d + a) % 10 } else { d };
+        out.push((b'0' + next as u8) as char);
+    }
+    out
+}
+
+fn rotate(s: String, b: i32) -> String {
+    let n = s.len();
+    f"{s[n - b..]}{s[..n - b]}"
+}
+
+fn literal(s: String, a: i32, b: i32) -> String {
+    let mut reached: SortedSet[String] = SortedSet.new();
+    reached.insert(s.clone());
+    loop {
+        let before = reached.len();
+        let now: Vec[String] = reached.iter().cloned().collect();
+        for t in now.iter() {
+            reached.insert(add_odd(t, a));
+            reached.insert(rotate(t, b));
+        }
+        if reached.len() == before {
+            break;
+        }
+    }
+    reached.min().unwrap().clone()
+}
+
+fn main() {
+    let mut seed = 1625;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    let problems = 300;
+    let mut cases: Vec[(String, i32, i32)] = [];
+    for _ in 0..problems {
+        let n = 2 * (next_random(mut seed) % 6 + 1);
+        let mut s = String.new();
+        for _ in 0..n {
+            s.push((b'0' + (next_random(mut seed) % 10) as u8) as char);
+        }
+        let a = (next_random(mut seed) % 9 + 1) as i32;
+        let b = (next_random(mut seed) % (n - 1) + 1) as i32;
+        cases.push((s, a, b));
+    }
+    for p in 0..problems {
+        let (s, a, b) = cases[p].clone();
+        let mut answers: Vec[String] = [];
+        let want = literal(s, a, b);
+        for k in 0..4 {
+            let got = arm(k, s, a, b);
+            for c in got.chars() {
+                check = (check * 31 + (c as i64 - '0' as i64) + 1) % 1000000007;
+            }
+            let failed = [
+                got != want,
+                got > s,
+                arm(k, got, a, b) != got,
+                arm(k, rotate(s, b), a, b) != got,
+                arm(k, add_odd(s, a), a, b) != got,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({s}, a {a}, b {b}), {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+            answers.push(got);
+        }
+        // P6
+        for k in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[k]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}
