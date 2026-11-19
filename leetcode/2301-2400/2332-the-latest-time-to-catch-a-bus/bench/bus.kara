@@ -1,0 +1,54 @@
+// LeetCode #2332: The Latest Time to Catch a Bus -- the bench, the ★ arm.
+// Both lists sorted, the buses fill in order from the earliest
+// passengers; the last bus's departure if it leaves with room, else its
+// last passenger's time, then a step back past every passenger standing
+// at the time tried. O((n + m) log(n + m)).
+
+fn latest_time_catch_the_bus(buses: own Vec[i64], passengers: own Vec[i64], capacity: i64) -> i64 {
+    let mut buses = buses;
+    let mut passengers = passengers;
+    buses.sort();
+    passengers.sort();
+    let mut next = 0;
+    let mut aboard = 0;
+    for bus in buses.iter() {
+        aboard = 0;
+        while aboard < capacity and next < passengers.len() and passengers[next] <= bus {
+            aboard += 1;
+            next += 1;
+        }
+    }
+    let mut latest = if aboard < capacity { buses[buses.len() - 1] } else { passengers[next - 1] };
+    let mut k = next - 1;
+    while k >= 0 and passengers[k] == latest {
+        latest -= 1;
+        k -= 1;
+    }
+    latest
+}
+
+// the `index`th time of a scramble that never repeats below 2^31 - 1
+fn scrambled(index: i64) -> i64 {
+    index * 2654435761 % 2147483647 + 2
+}
+
+fn main() {
+    // 10 cases of 50000 buses and 100000 passengers, every time distinct,
+    // built once; 5 passes, case `k` in pass `p` with capacity
+    // `1 + (k + p) % 5`, each call sorting its own copies
+    let mut cases: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    for k in 0..10 {
+        let base = k * 150000;
+        let buses: Vec[i64] = (0..50000).map(|i| scrambled(base + i)).collect();
+        let passengers: Vec[i64] = (50000..150000).map(|i| scrambled(base + i)).collect();
+        cases.push((buses, passengers));
+    }
+    let mut check = 0;
+    for p in 0..5 {
+        for k in 0..10 {
+            let (buses, passengers) = cases[k].clone();
+            check = (check * 31 + latest_time_catch_the_bus(buses, passengers, 1 + (k + p) % 5)) % 1000000007;
+        }
+    }
+    println(f"5 passes over 10 cases of 5*10^4 buses and 10^5 passengers: checksum {check}");
+}

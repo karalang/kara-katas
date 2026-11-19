@@ -1,0 +1,349 @@
+// LeetCode #2332: The Latest Time to Catch a Bus -- the differential. The
+// six arms, against the statement read literally: for every arrival
+// time from 1 to the last departure that no passenger holds, the stop
+// run minute by minute, everyone arriving joining the back of one
+// queue, oneself among them, and each bus at its minute taking up to
+// `capacity` from the front; the answer is the latest time that boards.
+// 300 random cases of 1 to 6 buses and 1 to 10 passengers at times up
+// to 30, capacity 1 to 3; then 30 crowded ones, 15 to 25 passengers and
+// 1 to 3 buses up to 40, capacity 1 or 2; then 30 of up to 200 buses
+// and 300 passengers up to 10^9, capacity 1 to 5. Every case is drawn
+// before any arm answers.
+//
+// P1  times up to 40, the answer is the literal reading's
+// P2  the answer is from 1 to the last departure, and no passenger's
+// P3  the buses and the passengers each in reverse order: the same
+//     answer
+// P4  every time 7 later: the answer 7 later
+// P5  capacity for every passenger and one more: the latest time up to
+//     the last departure that no passenger holds
+// P6  each arm agrees with at least three of the other five
+
+// ---- star (bus.kara) -----------------------------------------------------
+
+fn star_latest_time_catch_the_bus(buses: own Vec[i64], passengers: own Vec[i64], capacity: i64) -> i64 {
+    let mut buses = buses;
+    let mut passengers = passengers;
+    buses.sort();
+    passengers.sort();
+    let mut next = 0;
+    let mut aboard = 0;
+    for bus in buses.iter() {
+        aboard = 0;
+        while aboard < capacity and next < passengers.len() and passengers[next] <= bus {
+            aboard += 1;
+            next += 1;
+        }
+    }
+    let mut latest = if aboard < capacity { buses[buses.len() - 1] } else { passengers[next - 1] };
+    let mut k = next - 1;
+    while k >= 0 and passengers[k] == latest {
+        latest -= 1;
+        k -= 1;
+    }
+    latest
+}
+
+// ---- naive (bus_naive.kara) ----------------------------------------------
+
+fn naive_boards(buses: Vec[i64], passengers: Vec[i64], capacity: i64, me: i64) -> bool {
+    let mut queue: Vec[i64] = passengers.clone();
+    queue.push(me);
+    queue.sort();
+    let mut next = 0;
+    for bus in buses.iter() {
+        let mut aboard = 0;
+        while aboard < capacity and next < queue.len() and queue[next] <= bus {
+            if queue[next] == me {
+                return true;
+            }
+            aboard += 1;
+            next += 1;
+        }
+    }
+    false
+}
+
+fn naive_latest_time_catch_the_bus(buses: own Vec[i64], passengers: Vec[i64], capacity: i64) -> i64 {
+    let mut buses = buses;
+    buses.sort();
+    let mut candidates: Vec[i64] = buses.clone();
+    for p in passengers.iter() {
+        candidates.push(p - 1);
+    }
+    candidates.sort();
+    for t in candidates.iter().rev() {
+        if t >= 1 and not passengers.contains(t) and naive_boards(buses, passengers, capacity, t) {
+            return t;
+        }
+    }
+    -1
+}
+
+// ---- set (bus_set.kara) --------------------------------------------------
+
+fn set_latest_time_catch_the_bus(buses: own Vec[i64], passengers: own Vec[i64], capacity: i64) -> i64 {
+    let taken: Set[i64] = passengers.iter().collect();
+    let mut buses = buses;
+    let mut passengers = passengers;
+    buses.sort();
+    passengers.sort();
+    let mut next = 0;
+    let mut latest = 0;
+    for bus in buses.iter() {
+        let mut aboard = 0;
+        while aboard < capacity and next < passengers.len() and passengers[next] <= bus {
+            aboard += 1;
+            next += 1;
+        }
+        latest = if aboard < capacity { bus } else { passengers[next - 1] };
+    }
+    while taken.contains(latest) {
+        latest -= 1;
+    }
+    latest
+}
+
+// ---- search (bus_search.kara) --------------------------------------------
+
+fn search_seated(buses: Vec[i64], passengers: Vec[i64], capacity: i64, me: i64) -> bool {
+    // the passengers up to `ahead` come no later than `me` and stand in
+    // front of them
+    let mut ahead = 0;
+    while ahead < passengers.len() and passengers[ahead] <= me {
+        ahead += 1;
+    }
+    let mut next = 0;
+    for bus in buses.iter() {
+        if me <= bus {
+            if ahead - next < capacity {
+                return true;
+            }
+            next += capacity;
+        } else {
+            let mut aboard = 0;
+            while aboard < capacity and next < passengers.len() and passengers[next] <= bus {
+                aboard += 1;
+                next += 1;
+            }
+        }
+    }
+    false
+}
+
+fn search_latest_time_catch_the_bus(buses: own Vec[i64], passengers: own Vec[i64], capacity: i64) -> i64 {
+    let mut buses = buses;
+    let mut passengers = passengers;
+    buses.sort();
+    passengers.sort();
+    let mut (low, high) = (1, buses[buses.len() - 1]);
+    while low < high {
+        let mid = (low + high + 1) / 2;
+        if search_seated(buses, passengers, capacity, mid) {
+            low = mid;
+        } else {
+            high = mid - 1;
+        }
+    }
+    let mut latest = low;
+    while passengers.binary_search(latest).is_some() {
+        latest -= 1;
+    }
+    latest
+}
+
+// ---- iter (bus_iter.kara) ------------------------------------------------
+
+fn iter_latest_time_catch_the_bus(buses: own Vec[i64], passengers: own Vec[i64], capacity: i64) -> i64 {
+    let mut buses = buses;
+    let mut passengers = passengers;
+    buses.sort();
+    passengers.sort();
+    let (boarded, last) = buses.iter().fold((0, 0), |(boarded, _), bus| {
+        let aboard = passengers.iter().skip(boarded).take_while(|p| p <= bus).take(capacity).count();
+        (boarded + aboard, aboard)
+    });
+    let start = if last < capacity { buses[buses.len() - 1] } else { passengers[boarded - 1] };
+    let taken: Set[i64] = passengers.iter().collect();
+    (1..=start).rev().find(|t| not taken.contains(t)).unwrap()
+}
+
+// ---- solution (bus_solution.kara) ----------------------------------------
+
+impl Solution {
+    pub fn latest_time_catch_the_bus(buses: own Vec[i32], passengers: own Vec[i32], capacity: i32) -> i32 {
+        let mut buses = buses;
+        let mut passengers = passengers;
+        buses.sort();
+        passengers.sort();
+        let mut j = 0;
+        let mut cnt = 0;
+        for b in ref buses {
+            cnt = 0;
+            while cnt < capacity and j < passengers.len() and passengers[j] <= b {
+                cnt += 1;
+                j += 1;
+            }
+        }
+        let mut ans = if cnt < capacity { *buses.last().unwrap() } else { passengers[j - 1] };
+        let mut k = j as i32 - 1;
+        while k >= 0 and passengers[k as usize] == ans {
+            ans -= 1;
+            k -= 1;
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_latest_time_catch_the_bus(buses: Vec[i64], passengers: Vec[i64], capacity: i64) -> i64 {
+    let buses: Vec[i32] = buses.iter().map(|t| t as i32).collect();
+    let passengers: Vec[i32] = passengers.iter().map(|t| t as i32).collect();
+    Solution.latest_time_catch_the_bus(buses, passengers, capacity as i32)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+fn boards_literally(buses: Vec[i64], passengers: Vec[i64], capacity: i64, me: i64) -> bool {
+    let last = buses.iter().max().unwrap();
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    for minute in 1..=last {
+        for p in passengers.iter() {
+            if p == minute {
+                queue.push_back(p);
+            }
+        }
+        if me == minute {
+            queue.push_back(-1);
+        }
+        if buses.contains(minute) {
+            for _ in 0..capacity {
+                if let Some(rider) = queue.pop_front() {
+                    if rider == -1 {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+fn literal(buses: Vec[i64], passengers: Vec[i64], capacity: i64) -> i64 {
+    let last = buses.iter().max().unwrap();
+    let mut best = -1;
+    for me in 1..=last {
+        if not passengers.contains(me) and boards_literally(buses, passengers, capacity, me) {
+            best = me;
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, buses: Vec[i64], passengers: Vec[i64], capacity: i64) -> i64 {
+    match arm {
+        0 => star_latest_time_catch_the_bus(buses.clone(), passengers.clone(), capacity),
+        1 => naive_latest_time_catch_the_bus(buses.clone(), passengers, capacity),
+        2 => set_latest_time_catch_the_bus(buses.clone(), passengers.clone(), capacity),
+        3 => search_latest_time_catch_the_bus(buses.clone(), passengers.clone(), capacity),
+        4 => iter_latest_time_catch_the_bus(buses.clone(), passengers.clone(), capacity),
+        _ => solution_latest_time_catch_the_bus(buses, passengers, capacity),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` distinct times from 2 to `top`, in the order drawn
+fn distinct_times(seed: mut ref i64, count: i64, top: i64) -> Vec[i64] {
+    let mut taken: Set[i64] = Set.new();
+    let mut times: Vec[i64] = Vec.new();
+    while times.len() < count {
+        let t = next_random(mut seed) % (top - 1) + 2;
+        if not taken.contains(t) {
+            taken.insert(t);
+            times.push(t);
+        }
+    }
+    times
+}
+
+fn main() {
+    let names = ["star", "naive", "set", "search", "iter", "solution"];
+    let mut seed = 2332;
+    let mut cases: Vec[(Vec[i64], Vec[i64], i64)] = Vec.new();
+    for c in 0..360 {
+        let (n, m, top, capacity) = if c < 300 {
+            (next_random(mut seed) % 6 + 1, next_random(mut seed) % 10 + 1, 30, next_random(mut seed) % 3 + 1)
+        } else if c < 330 {
+            (next_random(mut seed) % 3 + 1, next_random(mut seed) % 11 + 15, 40, next_random(mut seed) % 2 + 1)
+        } else {
+            (next_random(mut seed) % 200 + 1, next_random(mut seed) % 300 + 1, 1000000000, next_random(mut seed) % 5 + 1)
+        };
+        let buses = distinct_times(mut seed, n, top);
+        let passengers = distinct_times(mut seed, m, top);
+        cases.push((buses, passengers, capacity));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (buses, passengers, capacity)) in cases.iter().enumerate() {
+        let last = buses.iter().max().unwrap();
+        let small = last <= 40 and passengers.iter().all(|p| p <= 40);
+        let truth = if small { literal(buses, passengers, capacity) } else { -1 };
+        if small {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let mut free = last;
+        while passengers.contains(free) {
+            free -= 1;
+        }
+        let reversed_buses: Vec[i64] = buses.iter().rev().collect();
+        let reversed_passengers: Vec[i64] = passengers.iter().rev().collect();
+        let later_buses: Vec[i64] = buses.iter().map(|t| t + 7).collect();
+        let later_passengers: Vec[i64] = passengers.iter().map(|t| t + 7).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, buses, passengers, capacity)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                value >= 1 and value <= last and not passengers.contains(value),
+                answer(arm, reversed_buses, reversed_passengers, capacity) == value,
+                answer(arm, later_buses, later_passengers, capacity) == value + 7,
+                answer(arm, buses, passengers, passengers.len() + 1) == free,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

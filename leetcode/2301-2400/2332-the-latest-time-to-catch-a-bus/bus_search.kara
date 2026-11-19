@@ -1,0 +1,104 @@
+// LeetCode #2332: The Latest Time to Catch a Bus -- a binary search on the
+// time: arriving earlier never costs a seat, so the times that would
+// board, standing behind anyone who comes at the same moment, run from 1
+// up to some largest one. That largest is found by halving between 1 and
+// the last departure, each time tried by running the boarding, and then
+// stepped down past the passengers' times. O((n + m) log T).
+
+fn seated(buses: Vec[i64], passengers: Vec[i64], capacity: i64, me: i64) -> bool {
+    // the passengers up to `ahead` come no later than `me` and stand in
+    // front of them
+    let mut ahead = 0;
+    while ahead < passengers.len() and passengers[ahead] <= me {
+        ahead += 1;
+    }
+    let mut next = 0;
+    for bus in buses.iter() {
+        if me <= bus {
+            if ahead - next < capacity {
+                return true;
+            }
+            next += capacity;
+        } else {
+            let mut aboard = 0;
+            while aboard < capacity and next < passengers.len() and passengers[next] <= bus {
+                aboard += 1;
+                next += 1;
+            }
+        }
+    }
+    false
+}
+
+fn latest_time_catch_the_bus(buses: own Vec[i64], passengers: own Vec[i64], capacity: i64) -> i64 {
+    let mut buses = buses;
+    let mut passengers = passengers;
+    buses.sort();
+    passengers.sort();
+    let mut (low, high) = (1, buses[buses.len() - 1]);
+    while low < high {
+        let mid = (low + high + 1) / 2;
+        if seated(buses, passengers, capacity, mid) {
+            low = mid;
+        } else {
+            high = mid - 1;
+        }
+    }
+    let mut latest = low;
+    while passengers.binary_search(latest).is_some() {
+        latest -= 1;
+    }
+    latest
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` distinct times from 2 to `top`, in the order drawn
+fn distinct_times(seed: mut ref i64, count: i64, top: i64) -> Vec[i64] {
+    let mut taken: Set[i64] = Set.new();
+    let mut times: Vec[i64] = Vec.new();
+    while times.len() < count {
+        let t = next_random(mut seed) % (top - 1) + 2;
+        if not taken.contains(t) {
+            taken.insert(t);
+            times.push(t);
+        }
+    }
+    times
+}
+
+fn main() {
+    // LeetCode's two examples; then one bus and a passenger at its
+    // departure, more passengers before the first bus than it holds,
+    // passengers at every time up to a bus, and a big case of 1000
+    // buses and 2000 passengers up to 10^9
+    println(f"{latest_time_catch_the_bus([10, 20].to_vec(), [2, 17, 18, 19].to_vec(), 2)}");
+    println(f"{latest_time_catch_the_bus([20, 30, 10].to_vec(), [19, 13, 26, 4, 25, 11, 21].to_vec(), 2)}");
+    println(f"{latest_time_catch_the_bus([5].to_vec(), [5].to_vec(), 1)}");
+    println(f"{latest_time_catch_the_bus([10, 20].to_vec(), [2, 3, 4, 5, 6].to_vec(), 2)}");
+    println(f"{latest_time_catch_the_bus([9].to_vec(), (2..=9).collect(), 10)}");
+    let mut seed = 2332;
+    let buses = distinct_times(mut seed, 1000, 1000000000);
+    let passengers = distinct_times(mut seed, 2000, 1000000000);
+    println(f"{latest_time_catch_the_bus(buses, passengers, 3)}");
+    // 2000 random cases: 1 to 8 buses and 1 to 12 passengers at times up
+    // to 40, capacity 1 to 3
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 8 + 1;
+        let m = next_random(mut seed) % 12 + 1;
+        let capacity = next_random(mut seed) % 3 + 1;
+        let buses = distinct_times(mut seed, n, 40);
+        let passengers = distinct_times(mut seed, m, 40);
+        let latest = latest_time_catch_the_bus(buses, passengers, capacity);
+        check = (check * 31 + latest) % 1000000007;
+        total += latest;
+    }
+    println(f"2000 cases: checksum {check}, total {total}");
+}
