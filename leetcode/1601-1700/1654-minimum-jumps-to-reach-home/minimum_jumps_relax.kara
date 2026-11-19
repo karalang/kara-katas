@@ -1,0 +1,99 @@
+// LeetCode #1654: Minimum Jumps to Reach Home -- shortest paths by
+// relaxation.
+//
+// The states as a graph whose every edge weighs one jump, and Bellman-Ford
+// relaxation over it until nothing improves: slower than a search, but
+// it reads distances off without any queue. O(limit^2) at worst.
+
+fn minimum_jumps(forbidden: Vec[i32], a: i32, b: i32, x: i32) -> i32 {
+    let a = a as i64;
+    let b = b as i64;
+    let mut limit = x as i64;
+    for f in forbidden.iter() {
+        limit = max(limit, f as i64);
+    }
+    limit += a + b;
+    let mut blocked = Vec.filled(limit + 1, false);
+    for f in forbidden.iter() {
+        blocked[f] = true;
+    }
+    let unreached = i32.MAX;
+    // dist[2 * p + 1]: p reached with a backward jump last
+    let mut dist = Vec.filled(2 * (limit + 1), unreached);
+    dist[0] = 0;
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for p in 0..=limit {
+            for back in 0..2 {
+                let d = dist[2 * p + back];
+                if d == unreached {
+                    continue;
+                }
+                let forward = p + a;
+                if forward <= limit and not blocked[forward] and dist[2 * forward] > d + 1 {
+                    dist[2 * forward] = d + 1;
+                    changed = true;
+                }
+                let backward = p - b;
+                if back == 0 and backward >= 0 and not blocked[backward] and dist[2 * backward + 1] > d + 1 {
+                    dist[2 * backward + 1] = d + 1;
+                    changed = true;
+                }
+            }
+        }
+    }
+    let best = min(dist[2 * x as i64], dist[2 * x as i64 + 1]);
+    if best == unreached { -1 } else { best }
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random problems with a, b and x from 1 to `most` (x from 0) and
+// up to `most` / 2 forbidden positions from 1 to `most`; every answer summed,
+// how many are -1, and a checksum
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    let mut unreachable = 0;
+    for _ in 0..count {
+        let a = (next_random(mut seed) % most + 1) as i32;
+        let b = (next_random(mut seed) % most + 1) as i32;
+        let x = (next_random(mut seed) % (most + 1)) as i32;
+        let m = next_random(mut seed) % (most / 2 + 1);
+        let mut forbidden: Vec[i32] = Vec.new();
+        for _ in 0..m {
+            let f = (next_random(mut seed) % most + 1) as i32;
+            if f != x and not forbidden.contains(f) {
+                forbidden.push(f);
+            }
+        }
+        let answer = minimum_jumps(forbidden, a, b, x);
+        if answer < 0 {
+            unreachable += 1;
+        }
+        total += answer;
+        check = (check * 31 + answer + 2) % 1000000007;
+    }
+    println(f"{count} problems up to {most}: jumps sum to {total}, {unreachable} unreachable, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then home itself, one jump, and a home
+    // reached only by jumping past it and back
+    println(minimum_jumps([14, 4, 18, 1, 15], 3, 15, 9));
+    println(minimum_jumps([8, 3, 16, 6, 12, 20], 15, 13, 11));
+    println(minimum_jumps([1, 6, 2, 14, 5, 17, 4], 16, 9, 7));
+    println(minimum_jumps([5], 3, 2, 0));
+    println(minimum_jumps([], 4, 1, 4));
+    println(minimum_jumps([], 5, 3, 2));
+    let mut seed = 1654;
+    batch(3000, 12, mut seed);
+    batch(300, 200, mut seed);
+    batch(20, 2000, mut seed);
+}

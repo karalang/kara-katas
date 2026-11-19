@@ -1,0 +1,299 @@
+// LeetCode #1654: Minimum Jumps to Reach Home -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random problems
+// with a, b and x up to 12 and up to 6 forbidden positions. Every problem
+// is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the forbidden positions in reverse order give the same answer
+// P3  one more forbidden position never makes home nearer
+// P4  a, b, x and every forbidden position doubled give the same answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- minimum_jumps.kara: the ★ arm: a breadth-first search over (position, backward)
+
+fn star_arm(forbidden: Vec[i32], a: i32, b: i32, x: i32) -> i32 {
+    let a = a as i64;
+    let b = b as i64;
+    let x = x as i64;
+    let furthest = forbidden.iter().max().unwrap_or(0) as i64;
+    let limit = max(x, furthest) + a + b;
+    let mut blocked = Vec.filled(limit + 1, false);
+    for f in forbidden.iter() {
+        blocked[f] = true;
+    }
+    // seen[p][1]: p reached with a backward jump last
+    let mut seen = Vec.filled(limit + 1, [false, false]);
+    let mut queue = VecDeque.new();
+    queue.push_back((0, false, 0));
+    seen[0][0] = true;
+    while let Some((p, back, jumps)) = queue.pop_front() {
+        if p == x {
+            return jumps;
+        }
+        let forward = p + a;
+        if forward <= limit and not blocked[forward] and not seen[forward][0] {
+            seen[forward][0] = true;
+            queue.push_back((forward, false, jumps + 1));
+        }
+        let backward = p - b;
+        if not back and backward >= 0 and not blocked[backward] and not seen[backward][1] {
+            seen[backward][1] = true;
+            queue.push_back((backward, true, jumps + 1));
+        }
+    }
+    -1
+}
+
+// ---- minimum_jumps_levels.kara: breadth-first by levels
+
+fn levels_arm(forbidden: Vec[i32], a: i32, b: i32, x: i32) -> i32 {
+    let limit = max(x, *forbidden.iter().max().unwrap_or(0)) + a + b;
+    let blocked: Set[i32] = forbidden.iter().collect();
+    let mut seen: Set[(i32, bool)] = Set.new();
+    seen.insert((0, false));
+    let mut frontier = [(0i32, false)];
+    let mut jumps = 0;
+    while not frontier.is_empty() {
+        let mut next = Vec.new();
+        for (p, back) in frontier {
+            if p == x {
+                return jumps;
+            }
+            let mut moves = [(p + a, false)];
+            if not back {
+                moves.push((p - b, true));
+            }
+            for (q, dir) in moves {
+                if q >= 0 and q <= limit and not blocked.contains(q) and seen.insert((q, dir)) {
+                    next.push((q, dir));
+                }
+            }
+        }
+        frontier = next;
+        jumps += 1;
+    }
+    -1
+}
+
+// ---- minimum_jumps_relax.kara: shortest paths by relaxation
+
+fn relax_arm(forbidden: Vec[i32], a: i32, b: i32, x: i32) -> i32 {
+    let a = a as i64;
+    let b = b as i64;
+    let mut limit = x as i64;
+    for f in forbidden.iter() {
+        limit = max(limit, f as i64);
+    }
+    limit += a + b;
+    let mut blocked = Vec.filled(limit + 1, false);
+    for f in forbidden.iter() {
+        blocked[f] = true;
+    }
+    let unreached = i32.MAX;
+    // dist[2 * p + 1]: p reached with a backward jump last
+    let mut dist = Vec.filled(2 * (limit + 1), unreached);
+    dist[0] = 0;
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for p in 0..=limit {
+            for back in 0..2 {
+                let d = dist[2 * p + back];
+                if d == unreached {
+                    continue;
+                }
+                let forward = p + a;
+                if forward <= limit and not blocked[forward] and dist[2 * forward] > d + 1 {
+                    dist[2 * forward] = d + 1;
+                    changed = true;
+                }
+                let backward = p - b;
+                if back == 0 and backward >= 0 and not blocked[backward] and dist[2 * backward + 1] > d + 1 {
+                    dist[2 * backward + 1] = d + 1;
+                    changed = true;
+                }
+            }
+        }
+    }
+    let best = min(dist[2 * x as i64], dist[2 * x as i64 + 1]);
+    if best == unreached { -1 } else { best }
+}
+
+// ---- minimum_jumps_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn minimum_jumps(forbidden: Vec[i32], a: i32, b: i32, x: i32) -> i32 {
+        let forbidden: Set[i32] = forbidden.clone().into_iter().collect();
+        let mut visited: Set[(i32, bool)] = Set.new();
+        let mut queue = VecDeque.new();
+        queue.push_back((0i32, false, 0));
+        visited.insert((0, false));
+        while let Some((pos, back, steps)) = queue.pop_front() {
+            if pos == x {
+                return steps;
+            }
+            let next = pos + a;
+            if next <= 6000 and not forbidden.contains(next) and visited.insert((next, false)) {
+                queue.push_back((next, false, steps + 1));
+            }
+            let prev = pos - b;
+            if not back and prev >= 0 and not forbidden.contains(prev) and visited.insert((prev, true)) {
+                queue.push_back((prev, true, steps + 1));
+            }
+        }
+        -1
+    }
+}
+
+fn solution_arm(forbidden: Vec[i32], a: i32, b: i32, x: i32) -> i32 {
+    SolutionArm.minimum_jumps(forbidden, a, b, x)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(which: i64, forbidden: Vec[i32], a: i32, b: i32, x: i32) -> i32 {
+    match which {
+        0 => star_arm(forbidden, a, b, x),
+        1 => levels_arm(forbidden, a, b, x),
+        2 => relax_arm(forbidden, a, b, x),
+        _ => solution_arm(forbidden, a, b, x),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["minimum_jumps", "levels", "relax", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every sequence of jumps that never
+// lands on a forbidden position or below 0 and never jumps backward twice
+// in a row, searched breadth first over positions up to ten times past
+// every number in the problem, which no shortest path needs
+
+fn literal(forbidden: Vec[i32], a: i32, b: i32, x: i32) -> i32 {
+    let mut cap = a + b + x;
+    for f in forbidden.iter() {
+        cap += f;
+    }
+    cap *= 10;
+    let mut dist: Map[(i32, bool), i32] = Map.new();
+    dist[(0, false)] = 0;
+    let mut level = [(0i32, false)];
+    let mut jumps: i32 = 0;
+    while not level.is_empty() {
+        for (p, _) in level.iter() {
+            if p == x {
+                return jumps;
+            }
+        }
+        let mut next = Vec.new();
+        for (p, back) in level.iter() {
+            let mut moves = [(p + a, false)];
+            if not back {
+                moves.push((p - b, true));
+            }
+            for (q, backward) in moves {
+                if q >= 0 and q <= cap and not forbidden.contains(q) and not dist.contains_key((q, backward)) {
+                    dist[(q, backward)] = jumps + 1;
+                    next.push((q, backward));
+                }
+            }
+        }
+        level = next;
+        jumps += 1;
+    }
+    -1
+}
+
+// whether `more` is no nearer than `got`, -1 being furthest
+fn no_nearer(more: i32, got: i32) -> bool {
+    more == -1 or (got != -1 and more >= got)
+}
+
+fn main() {
+    let mut seed = 1654;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i32], i32, i32, i32, i32)] = Vec.new();
+    for _ in 0..problems {
+        let a = (next_random(mut seed) % 12 + 1) as i32;
+        let b = (next_random(mut seed) % 12 + 1) as i32;
+        let x = (next_random(mut seed) % 13) as i32;
+        let m = next_random(mut seed) % 7;
+        let mut forbidden: Vec[i32] = Vec.new();
+        for _ in 0..m {
+            let f = (next_random(mut seed) % 12 + 1) as i32;
+            if f != x and not forbidden.contains(f) {
+                forbidden.push(f);
+            }
+        }
+        let mut extra = (next_random(mut seed) % 12 + 1) as i32;
+        if extra == x {
+            extra = 13;
+        }
+        cases.push((forbidden, a, b, x, extra));
+    }
+    for (p, (forbidden, a, b, x, extra)) in cases.iter().enumerate() {
+        let want = literal(forbidden, a, b, x);
+        check = (check * 31 + want + 2) % 1000000007;
+        let reversed: Vec[i32] = forbidden.iter().rev().collect();
+        let mut more = forbidden.clone();
+        if not more.contains(extra) {
+            more.push(extra);
+        }
+        let doubled: Vec[i32] = forbidden.iter().map(|f| f * 2).collect();
+        let mut answers: Vec[i32] = Vec.new();
+        for k in 0..4 {
+            let got = arm(k, forbidden, a, b, x);
+            answers.push(got);
+            let failed = [
+                got != want,
+                arm(k, reversed, a, b, x) != got,
+                not no_nearer(arm(k, more, a, b, x), got),
+                arm(k, doubled, a * 2, b * 2, x * 2) != got,
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({forbidden}, a = {a}, b = {b}, x = {x}), {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for k in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[k]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

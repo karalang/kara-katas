@@ -1,0 +1,86 @@
+// LeetCode #1654: Minimum Jumps to Reach Home -- LeetCode's Rust template,
+// as written there, carried over by `karac fix`.
+//
+// A breadth-first search with a `VecDeque` of (position, backward, steps)
+// and a `HashSet` of visited states, positions capped at 6000. O(6000).
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_jumps(forbidden: Vec[i32], a: i32, b: i32, x: i32) -> i32 {
+        let forbidden: Set[i32] = forbidden.clone().into_iter().collect();
+        let mut visited: Set[(i32, bool)] = Set.new();
+        let mut queue = VecDeque.new();
+        queue.push_back((0i32, false, 0));
+        visited.insert((0, false));
+        while let Some((pos, back, steps)) = queue.pop_front() {
+            if pos == x {
+                return steps;
+            }
+            let next = pos + a;
+            if next <= 6000 and not forbidden.contains(next) and visited.insert((next, false)) {
+                queue.push_back((next, false, steps + 1));
+            }
+            let prev = pos - b;
+            if not back and prev >= 0 and not forbidden.contains(prev) and visited.insert((prev, true)) {
+                queue.push_back((prev, true, steps + 1));
+            }
+        }
+        -1
+    }
+}
+
+fn minimum_jumps(forbidden: Vec[i32], a: i32, b: i32, x: i32) -> i32 {
+    Solution.minimum_jumps(forbidden, a, b, x)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random problems with a, b and x from 1 to `most` (x from 0) and
+// up to `most` / 2 forbidden positions from 1 to `most`; every answer summed,
+// how many are -1, and a checksum
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    let mut unreachable = 0;
+    for _ in 0..count {
+        let a = (next_random(mut seed) % most + 1) as i32;
+        let b = (next_random(mut seed) % most + 1) as i32;
+        let x = (next_random(mut seed) % (most + 1)) as i32;
+        let m = next_random(mut seed) % (most / 2 + 1);
+        let mut forbidden: Vec[i32] = Vec.new();
+        for _ in 0..m {
+            let f = (next_random(mut seed) % most + 1) as i32;
+            if f != x and not forbidden.contains(f) {
+                forbidden.push(f);
+            }
+        }
+        let answer = minimum_jumps(forbidden, a, b, x);
+        if answer < 0 {
+            unreachable += 1;
+        }
+        total += answer;
+        check = (check * 31 + answer + 2) % 1000000007;
+    }
+    println(f"{count} problems up to {most}: jumps sum to {total}, {unreachable} unreachable, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then home itself, one jump, and a home
+    // reached only by jumping past it and back
+    println(minimum_jumps([14, 4, 18, 1, 15], 3, 15, 9));
+    println(minimum_jumps([8, 3, 16, 6, 12, 20], 15, 13, 11));
+    println(minimum_jumps([1, 6, 2, 14, 5, 17, 4], 16, 9, 7));
+    println(minimum_jumps([5], 3, 2, 0));
+    println(minimum_jumps([], 4, 1, 4));
+    println(minimum_jumps([], 5, 3, 2));
+    let mut seed = 1654;
+    batch(3000, 12, mut seed);
+    batch(300, 200, mut seed);
+    batch(20, 2000, mut seed);
+}
