@@ -1,0 +1,40 @@
+// LeetCode #2405: Optimal Partition of String -- the bench, the ★ arm:
+// greedy with a bitmask, a letter already in the current part starting
+// the next one.
+
+fn partition_string(s: String) -> i64 {
+    let mut parts = 1;
+    let mut seen = 0;
+    for b in s.bytes().iter() {
+        let bit = 1 << (b - b'a');
+        if seen & bit != 0 {
+            parts += 1;
+            seen = 0;
+        }
+        seen |= bit;
+    }
+    parts
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 26 strings of 10^5 letters, string i from the first i + 1 letters;
+    // each pass answers them all and folds every answer, plus the pass
+    let mut seed = 2405;
+    let mut strings: Vec[String] = Vec.new();
+    for i in 0..26 {
+        let bytes: Vec[u8] = (0..100000).map(|_| b'a' + (next_random(mut seed) % (i + 1)) as u8).collect();
+        strings.push(String.from_utf8(bytes).unwrap());
+    }
+    let mut check = 0;
+    for p in 0..50 {
+        for s in strings.iter() {
+            check = (check * 31 + partition_string(s) + p) % 1000000007;
+        }
+    }
+    println(f"50 passes over 26 strings of 10^5 letters: checksum {check}");
+}

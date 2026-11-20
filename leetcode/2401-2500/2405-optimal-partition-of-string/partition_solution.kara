@@ -1,0 +1,62 @@
+// LeetCode #2405: Optimal Partition of String -- LeetCode's Rust
+// template, as Rust writes it, carried by karac fix: a `[false; 26]` of
+// the current part's letters over `s.chars()`, each slot `as usize`,
+// reset to a fresh array at a repeat.
+
+struct Solution {}
+
+impl Solution {
+    pub fn partition_string(s: String) -> i32 {
+        let mut ans = 1;
+        let mut seen = [false; 26];
+        for c in s.chars() {
+            let i = (c as u32 as u8 - b'a') as usize;
+            if seen[i] {
+                ans += 1;
+                seen = [false; 26];
+            }
+            seen[i] = true;
+        }
+        ans
+    }
+}
+
+fn partition_string(s: String) -> i64 {
+    Solution.partition_string(s)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letters(seed: mut ref i64, n: i64, kinds: i64) -> String {
+    let bytes: Vec[u8] = (0..n).map(|_| b'a' + (next_random(mut seed) % kinds) as u8).collect();
+    String.from_utf8(bytes).unwrap()
+}
+
+fn main() {
+    // LeetCode's two examples; one letter; the alphabet once and twice
+    println(f"{partition_string("abacaba")}");
+    println(f"{partition_string("ssssss")}");
+    println(f"{partition_string("a")}");
+    println(f"{partition_string("abcdefghijklmnopqrstuvwxyz")} {partition_string("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz")}");
+    // 10^5 letters of all 26, and 10^5 of 3
+    let mut seed = 2405;
+    println(f"{partition_string(letters(mut seed, 100000, 26))}");
+    println(f"{partition_string(letters(mut seed, 100000, 3))}");
+    // 3000 random strings of 1 to 30 letters from the first 1 to 26; a
+    // checksum of the answers and their total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let kinds = 1 + next_random(mut seed) % 26;
+        let a = partition_string(letters(mut seed, n, kinds));
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}, total {total}");
+}
