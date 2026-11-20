@@ -1,0 +1,279 @@
+// LeetCode #2389: Longest Subsequence With Limited Sum -- the
+// differential. The six arms, against the statement read literally: for
+// each query, every one of the 2^n subsequences summed, and the longest
+// within the limit kept. No sorting. 300 random arrays of 1 to 12 values
+// up to 1 to 20, which the literal reading answers; then 30 of up to 500
+// values up to 10^6; then 30 of up to 500 values from 1 to 3, where the
+// values tie. Each has 1 to 20 queries up to its sum and a little more,
+// and every case is drawn before any arm answers.
+//
+// P1  up to 12 values, the answers are the literal reading's
+// P2  each answer a, the a smallest values fit the limit, and one more
+//     does not
+// P3  the values reversed: the same answers
+// P4  the queries reversed: the answers reversed
+// P5  every value and every limit doubled: the same answers
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn longest_literally(nums: Vec[i64], queries: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    queries.iter().map(|q| {
+        let mut longest = 0;
+        for set in 0..1 << n {
+            let mut sum = 0;
+            let mut size = 0;
+            for i in 0..n {
+                if (set >> i) & 1 == 1 {
+                    sum += nums[i];
+                    size += 1;
+                }
+            }
+            if sum <= q and size > longest {
+                longest = size;
+            }
+        }
+        longest
+    }).collect()
+}
+
+// ---- star (limited.kara) -------------------------------------------------
+
+fn star_answer_queries(nums: Vec[i64], queries: Vec[i64]) -> Vec[i64] {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut prefix: Vec[i64] = Vec.new();
+    let mut running = 0;
+    for v in sorted.iter() {
+        running += v;
+        prefix.push(running);
+    }
+    let mut answer: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let mut low = 0;
+        let mut high = prefix.len();
+        while low < high {
+            let mid = (low + high) / 2;
+            if prefix[mid] <= q {
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
+        }
+        answer.push(low);
+    }
+    answer
+}
+
+// ---- greedy (limited_greedy.kara) ----------------------------------------
+
+fn greedy_answer_queries(nums: Vec[i64], queries: Vec[i64]) -> Vec[i64] {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut answer: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let mut room = q;
+        let mut taken = 0;
+        for v in sorted.iter() {
+            if v > room {
+                break;
+            }
+            room -= v;
+            taken += 1;
+        }
+        answer.push(taken);
+    }
+    answer
+}
+
+// ---- offline (limited_offline.kara) --------------------------------------
+
+fn offline_answer_queries(nums: Vec[i64], queries: Vec[i64]) -> Vec[i64] {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut order: Vec[i64] = (0..queries.len()).collect();
+    order.sort_by_key(|i| queries[i]);
+    let mut answer: Vec[i64] = Vec.filled(queries.len(), 0);
+    let mut taken = 0;
+    let mut used = 0;
+    for i in order.iter() {
+        while taken < sorted.len() and used + sorted[taken] <= queries[i] {
+            used += sorted[taken];
+            taken += 1;
+        }
+        answer[i] = taken;
+    }
+    answer
+}
+
+// ---- drop (limited_drop.kara) --------------------------------------------
+
+fn drop_answer_queries(nums: Vec[i64], queries: Vec[i64]) -> Vec[i64] {
+    let total: i64 = nums.iter().sum();
+    let mut answer: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let mut heap: PriorityQueue[i64] = PriorityQueue.max_first_from(nums.clone());
+        let mut sum = total;
+        while sum > q {
+            sum -= heap.pop().unwrap();
+        }
+        answer.push(heap.len());
+    }
+    answer
+}
+
+// ---- iter (limited_iter.kara) --------------------------------------------
+
+fn iter_answer_queries(nums: Vec[i64], queries: Vec[i64]) -> Vec[i64] {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let prefix: Vec[i64] = sorted.iter().scan(0, |running, v| {
+        let running = running + v;
+        Some((running, running))
+    }).collect();
+    queries.iter().map(|q| prefix.iter().take_while(|p| p <= q).count()).collect()
+}
+
+// ---- solution (limited_solution.kara) ------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn answer_queries(nums: own Vec[i32], queries: Vec[i32]) -> Vec[i32] {
+        let mut nums = nums;
+        nums.sort();
+        for i in 1..nums.len() {
+            nums[i] += nums[i - 1];
+        }
+        queries.iter().map(|q| nums.partition_point(|p| p <= q) as i32).collect()
+    }
+}
+
+fn solution_answer_queries(nums: Vec[i64], queries: Vec[i64]) -> Vec[i64] {
+    let nums: Vec[i32] = nums.iter().map(|v| v as i32).collect();
+    let queries: Vec[i32] = queries.iter().map(|v| v as i32).collect();
+    Solution.answer_queries(nums, queries).iter().map(|v| v as i64).collect()
+}
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64], queries: Vec[i64]) -> Vec[i64] {
+    match arm {
+        0 => star_answer_queries(nums, queries),
+        1 => greedy_answer_queries(nums, queries),
+        2 => offline_answer_queries(nums, queries),
+        3 => drop_answer_queries(nums, queries),
+        4 => iter_answer_queries(nums, queries),
+        _ => solution_answer_queries(nums, queries),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "greedy", "offline", "drop", "iter", "solution"];
+    let mut seed = 2389;
+    let mut cases: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    for c in 0..360 {
+        let (n, top) = if c < 300 {
+            (1 + next_random(mut seed) % 12, 1 + next_random(mut seed) % 20)
+        } else if c < 330 {
+            (1 + next_random(mut seed) % 500, 1000000)
+        } else {
+            (1 + next_random(mut seed) % 500, 3)
+        };
+        let nums: Vec[i64] = (0..n).map(|_| 1 + wide(mut seed) % top).collect();
+        let sum: i64 = nums.iter().sum();
+        let m = 1 + next_random(mut seed) % 20;
+        let queries: Vec[i64] = (0..m).map(|_| wide(mut seed) % (sum + 5)).collect();
+        cases.push((nums, queries));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (nums, queries) = cases[c].clone();
+        let small = nums.len() <= 12;
+        let truth = if small { longest_literally(nums, queries) } else { Vec.new() };
+        if small {
+            for v in truth.iter() {
+                check = (check * 31 + v) % 1000000007;
+            }
+        }
+        let mut sorted = nums.clone();
+        sorted.sort();
+        let mut reversed = nums.clone();
+        reversed.reverse();
+        let mut backwards = queries.clone();
+        backwards.reverse();
+        let doubled: Vec[i64] = nums.iter().map(|v| 2 * v).collect();
+        let limits: Vec[i64] = queries.iter().map(|q| 2 * q).collect();
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, nums, queries)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut witnessed = value.len() == queries.len();
+            if witnessed {
+                for j in 0..queries.len() {
+                    let a = value[j];
+                    if a < 0 or a > sorted.len() {
+                        witnessed = false;
+                    } else {
+                        let mut fit = 0;
+                        for i in 0..a {
+                            fit += sorted[i];
+                        }
+                        if fit > queries[j] or (a < sorted.len() and fit + sorted[a] <= queries[j]) {
+                            witnessed = false;
+                        }
+                    }
+                }
+            }
+            let mut flipped = answer(arm, nums, backwards);
+            flipped.reverse();
+            let verdicts = [
+                not small or value == truth,
+                witnessed,
+                answer(arm, reversed, queries) == value,
+                flipped == value,
+                answer(arm, doubled, limits) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

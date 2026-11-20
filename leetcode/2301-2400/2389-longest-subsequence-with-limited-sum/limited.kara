@@ -1,0 +1,81 @@
+// LeetCode #2389: Longest Subsequence With Limited Sum -- the ★ arm. The
+// smallest values make the longest subsequence for any limit, so the
+// values are sorted and summed into prefix sums; each query's answer is
+// how many prefix sums are within it, found by binary search. O((n + m)
+// log n).
+
+fn answer_queries(nums: Vec[i64], queries: Vec[i64]) -> Vec[i64] {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut prefix: Vec[i64] = Vec.new();
+    let mut running = 0;
+    for v in sorted.iter() {
+        running += v;
+        prefix.push(running);
+    }
+    let mut answer: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let mut low = 0;
+        let mut high = prefix.len();
+        while low < high {
+            let mid = (low + high) / 2;
+            if prefix[mid] <= q {
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
+        }
+        answer.push(low);
+    }
+    answer
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+fn fold(check: i64, values: Vec[i64]) -> i64 {
+    let mut c = check;
+    for v in values.iter() {
+        c = (c * 31 + v) % 1000000007;
+    }
+    c
+}
+
+fn main() {
+    // LeetCode's two examples; a query of 0 and one of everything; equal
+    // values, each limit around a multiple; then 1000 values up to 10^6
+    // with 1000 queries up to 10^9, as a checksum; then 3000 random arrays
+    // of 1 to 30 values up to 1 to 100, with 1 to 10 queries up to the sum
+    // and a little more, with a checksum and the total length
+    println(f"{answer_queries([4, 5, 2, 1], [3, 10, 21])}");
+    println(f"{answer_queries([2, 3, 4, 5], [1])}");
+    println(f"{answer_queries([7, 1, 3], [0, 11, 100])}");
+    println(f"{answer_queries([5, 5, 5, 5], [4, 5, 9, 10, 15, 19, 20, 21])}");
+    let mut seed = 2389;
+    let nums: Vec[i64] = (0..1000).map(|_| 1 + wide(mut seed) % 1000000).collect();
+    let queries: Vec[i64] = (0..1000).map(|_| 1 + wide(mut seed) % 1000000000).collect();
+    println(f"1000 queries: checksum {fold(0, answer_queries(nums, queries))}");
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let top = 1 + next_random(mut seed) % 100;
+        let nums: Vec[i64] = (0..n).map(|_| 1 + next_random(mut seed) % top).collect();
+        let sum: i64 = nums.iter().sum();
+        let m = 1 + next_random(mut seed) % 10;
+        let queries: Vec[i64] = (0..m).map(|_| next_random(mut seed) % (sum + 5)).collect();
+        let answer = answer_queries(nums, queries);
+        check = fold(check, answer);
+        total += answer.iter().sum();
+    }
+    println(f"3000 arrays: checksum {check}, lengths summing to {total}");
+}
