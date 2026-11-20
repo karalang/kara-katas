@@ -1,0 +1,86 @@
+// LeetCode #2397: Maximum Rows Covered by Columns -- combinations in
+// order. The chosen columns are kept as k increasing indexes, starting at
+// 0, 1, ..., k - 1; each next combination raises the rightmost index that
+// can still rise and resets those after it. Each row is covered when its
+// count of 1s in chosen columns is its count of 1s. O(C(n, k) * m * k).
+
+fn maximum_rows(matrix: Vec[Vec[i64]], num_select: i64) -> i64 {
+    let n = matrix[0].len();
+    let k = num_select;
+    let ones: Vec[i64] = matrix.iter().map(|row| row.iter().sum()).collect();
+    let mut pick: Vec[i64] = (0..k).collect();
+    let mut best = 0;
+    loop {
+        let mut covered = 0;
+        for r in 0..matrix.len() {
+            let mut inside = 0;
+            for c in pick.iter() {
+                inside += matrix[r][c];
+            }
+            if inside == ones[r] {
+                covered += 1;
+            }
+        }
+        best = best.max(covered);
+        let mut i = k - 1;
+        while i >= 0 and pick[i] == n - k + i {
+            i -= 1;
+        }
+        if i < 0 {
+            break;
+        }
+        pick[i] += 1;
+        for j in i + 1..k {
+            pick[j] = pick[j - 1] + 1;
+        }
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// m rows of n cells, each 1 with chance one in `odds`.
+fn grid(seed: mut ref i64, m: i64, n: i64, odds: i64) -> Vec[Vec[i64]] {
+    (0..m).map(|_| (0..n).map(|_| if next_random(mut seed) % odds == 0 {
+        1
+    } else {
+        0
+    }).collect()).collect()
+}
+
+fn main() {
+    // LeetCode's two examples; all zeros; every column chosen; one row
+    // of all ones; then 12 by 12 grids, sparse and dense, for every
+    // choice of 1 to 12 columns, as a checksum; then 2000 random grids of
+    // 1 to 8 rows and 1 to 8 columns, with a checksum and the total
+    println(f"{maximum_rows([[0, 0, 0], [1, 0, 1], [0, 1, 1], [0, 0, 1]], 2)}");
+    println(f"{maximum_rows([[1], [0]], 1)}");
+    println(f"{maximum_rows([[0, 0], [0, 0]], 1)} {maximum_rows([[1, 1], [0, 1]], 2)} {maximum_rows([[1, 1, 1], [1, 0, 0]], 2)}");
+    let mut seed = 2397;
+    let sparse = grid(mut seed, 12, 12, 5);
+    let dense = grid(mut seed, 12, 12, 2);
+    let mut check = 0;
+    for k in 1..13 {
+        check = (check * 31 + maximum_rows(sparse, k)) % 1000000007;
+        check = (check * 31 + maximum_rows(dense, k)) % 1000000007;
+    }
+    println(f"12 by 12, every choice: checksum {check}");
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..2000 {
+        let m = 1 + next_random(mut seed) % 8;
+        let n = 1 + next_random(mut seed) % 8;
+        let odds = 1 + next_random(mut seed) % 4;
+        let matrix = grid(mut seed, m, n, odds);
+        let k = 1 + next_random(mut seed) % n;
+        let rows = maximum_rows(matrix, k);
+        check = (check * 31 + rows) % 1000000007;
+        total += rows;
+    }
+    println(f"2000 grids: checksum {check}, {total} rows covered");
+}

@@ -1,0 +1,311 @@
+// LeetCode #2397: Maximum Rows Covered by Columns -- the differential.
+// The six arms, against the statement read literally: every sequence of
+// numSelect column indexes, the ones strictly increasing kept as the
+// sets of distinct columns, and a row covered when each of its 1s is in
+// a column of the set. No masks. 300 random grids of 1 to 8 rows and 1 to
+// 6 columns, which the literal reading answers; then 30 of up to 12 rows
+// and 12 columns, dense; then 30 of up to 12 rows and 12 columns, sparse.
+// Every case is drawn before any arm answers.
+//
+// P1  up to 6 columns, the answer is the literal reading's
+// P2  at least the rows of all 0s and at most every row, and every row
+//     when every column is chosen
+// P3  the rows in reverse order: the same answer
+// P4  the columns in reverse order: the same answer
+// P5  one more column chosen, while there is one: the answer or more
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn cover_literally(matrix: Vec[Vec[i64]], num_select: i64) -> i64 {
+    let n = matrix[0].len();
+    let mut ways = 1;
+    for _ in 0..num_select {
+        ways *= n;
+    }
+    let mut best = 0;
+    for w in 0..ways {
+        let mut set: Vec[i64] = Vec.new();
+        let mut rest = w;
+        for _ in 0..num_select {
+            set.push(rest % n);
+            rest /= n;
+        }
+        let mut increasing = true;
+        for i in 1..set.len() {
+            if set[i] <= set[i - 1] {
+                increasing = false;
+            }
+        }
+        if not increasing {
+            continue;
+        }
+        let mut covered = 0;
+        for row in matrix.iter() {
+            let mut all_in = true;
+            for c in 0..n {
+                if row[c] == 1 and not set.contains(c) {
+                    all_in = false;
+                }
+            }
+            if all_in {
+                covered += 1;
+            }
+        }
+        best = best.max(covered);
+    }
+    best
+}
+
+// ---- star (rows.kara) ----------------------------------------------------
+
+fn star_maximum_rows(matrix: Vec[Vec[i64]], num_select: i64) -> i64 {
+    let n = matrix[0].len();
+    let masks: Vec[i64] = matrix.iter().map(|row| {
+        let mut mask = 0;
+        for c in 0..n {
+            if row[c] == 1 {
+                mask |= 1 << c;
+            }
+        }
+        mask
+    }).collect();
+    let mut best = 0;
+    for chosen in 0..1 << n {
+        if chosen.count_ones() != num_select {
+            continue;
+        }
+        let mut covered = 0;
+        for mask in masks.iter() {
+            if mask & chosen == mask {
+                covered += 1;
+            }
+        }
+        best = best.max(covered);
+    }
+    best
+}
+
+// ---- gosper (rows_gosper.kara) -------------------------------------------
+
+fn gosper_maximum_rows(matrix: Vec[Vec[i64]], num_select: i64) -> i64 {
+    let n = matrix[0].len();
+    let mut masks: Vec[i64] = Vec.new();
+    for row in matrix.iter() {
+        let mut mask = 0;
+        for c in 0..n {
+            mask |= row[c] << c;
+        }
+        masks.push(mask);
+    }
+    let mut best = 0;
+    let mut chosen = (1 << num_select) - 1;
+    while chosen < 1 << n {
+        let covered = masks.iter().filter(|mask| mask & ~chosen == 0).count();
+        best = best.max(covered);
+        let low = chosen & -chosen;
+        let ripple = chosen + low;
+        chosen = ripple | ((ripple ^ chosen) >> 2) / low;
+    }
+    best
+}
+
+// ---- track (rows_search.kara) --------------------------------------------
+
+fn track_search(matrix: Vec[Vec[i64]], col: i64, left: i64, chosen: mut ref Vec[bool]) -> i64 {
+    let n = matrix[0].len();
+    if left == 0 {
+        let mut covered = 0;
+        for row in matrix.iter() {
+            let mut fits = true;
+            for c in 0..n {
+                if row[c] == 1 and not chosen[c] {
+                    fits = false;
+                }
+            }
+            if fits {
+                covered += 1;
+            }
+        }
+        return covered;
+    }
+    if n - col < left {
+        return 0;
+    }
+    chosen[col] = true;
+    let with = track_search(matrix, col + 1, left - 1, mut chosen);
+    chosen[col] = false;
+    let without = track_search(matrix, col + 1, left, mut chosen);
+    with.max(without)
+}
+
+fn track_maximum_rows(matrix: Vec[Vec[i64]], num_select: i64) -> i64 {
+    let mut chosen: Vec[bool] = Vec.filled(matrix[0].len(), false);
+    track_search(matrix, 0, num_select, mut chosen)
+}
+
+// ---- combos (rows_combos.kara) -------------------------------------------
+
+fn combos_maximum_rows(matrix: Vec[Vec[i64]], num_select: i64) -> i64 {
+    let n = matrix[0].len();
+    let k = num_select;
+    let ones: Vec[i64] = matrix.iter().map(|row| row.iter().sum()).collect();
+    let mut pick: Vec[i64] = (0..k).collect();
+    let mut best = 0;
+    loop {
+        let mut covered = 0;
+        for r in 0..matrix.len() {
+            let mut inside = 0;
+            for c in pick.iter() {
+                inside += matrix[r][c];
+            }
+            if inside == ones[r] {
+                covered += 1;
+            }
+        }
+        best = best.max(covered);
+        let mut i = k - 1;
+        while i >= 0 and pick[i] == n - k + i {
+            i -= 1;
+        }
+        if i < 0 {
+            break;
+        }
+        pick[i] += 1;
+        for j in i + 1..k {
+            pick[j] = pick[j - 1] + 1;
+        }
+    }
+    best
+}
+
+// ---- iter (rows_iter.kara) -----------------------------------------------
+
+fn iter_maximum_rows(matrix: Vec[Vec[i64]], num_select: i64) -> i64 {
+    let n = matrix[0].len();
+    let masks: Vec[i64] = matrix.iter().map(|row| row.iter().enumerate().fold(0, |mask, (c, v)| mask | v << c)).collect();
+    (0..1 << n).filter(|chosen| chosen.count_ones() == num_select).map(|chosen| masks.iter().filter(|mask| mask & chosen == mask).count()).max().unwrap_or(0)
+}
+
+// ---- solution (rows_solution.kara) ---------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn maximum_rows(matrix: Vec[Vec[i32]], num_select: i32) -> i32 {
+        let n = matrix[0].len();
+        let rows: Vec[u32] = matrix.iter().map(|r| r.iter().enumerate().fold(0u32, |m, (j, v)| m | v as u32 << j)).collect();
+        let mut ans: i32 = 0;
+        for mask in 0u32..1 << n {
+            if mask.count_ones() as i32 != num_select {
+                continue;
+            }
+            let cnt = rows.iter().filter(|r| r & mask == r).count() as i32;
+            ans = ans.max(cnt);
+        }
+        ans
+    }
+}
+
+fn solution_maximum_rows(matrix: Vec[Vec[i64]], num_select: i64) -> i64 {
+    let matrix: Vec[Vec[i32]] = matrix.iter().map(|r| r.iter().map(|v| v as i32).collect()).collect();
+    Solution.maximum_rows(matrix, num_select as i32)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, matrix: Vec[Vec[i64]], k: i64) -> i64 {
+    match arm {
+        0 => star_maximum_rows(matrix, k),
+        1 => gosper_maximum_rows(matrix, k),
+        2 => track_maximum_rows(matrix, k),
+        3 => combos_maximum_rows(matrix, k),
+        4 => iter_maximum_rows(matrix, k),
+        _ => solution_maximum_rows(matrix, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "gosper", "track", "combos", "iter", "solution"];
+    let mut seed = 2397;
+    let mut cases: Vec[(Vec[Vec[i64]], i64)] = Vec.new();
+    for c in 0..360 {
+        let (m, n, odds) = if c < 300 {
+            (1 + next_random(mut seed) % 8, 1 + next_random(mut seed) % 6, 1 + next_random(mut seed) % 4)
+        } else if c < 330 {
+            (1 + next_random(mut seed) % 12, 1 + next_random(mut seed) % 12, 2)
+        } else {
+            (1 + next_random(mut seed) % 12, 1 + next_random(mut seed) % 12, 6)
+        };
+        let matrix: Vec[Vec[i64]] = (0..m).map(|_| (0..n).map(|_| if next_random(mut seed) % odds == 0 {
+            1
+        } else {
+            0
+        }).collect()).collect();
+        let k = 1 + next_random(mut seed) % n;
+        cases.push((matrix, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (matrix, k) = cases[c].clone();
+        let m = matrix.len();
+        let n = matrix[0].len();
+        let small = n <= 6;
+        let truth = if small {
+            cover_literally(matrix, k)
+        } else {
+            0
+        };
+        if small {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let zeros = matrix.iter().filter(|row| row.iter().all(|v| v == 0)).count();
+        let mut upside = matrix.clone();
+        upside.reverse();
+        let mirrored: Vec[Vec[i64]] = matrix.iter().map(|row| {
+            let mut r = row.clone();
+            r.reverse();
+            r
+        }).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, matrix, k)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [not small or value == truth, value >= zeros and value <= m and (k < n or value == m), answer(arm, upside, k) == value, answer(arm, mirrored, k) == value, k == n or answer(arm, matrix, k + 1) >= value, same >= 3];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
