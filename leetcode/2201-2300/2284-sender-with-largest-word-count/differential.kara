@@ -1,0 +1,347 @@
+// LeetCode #2284: Sender With Largest Word Count -- the differential.
+// The six arms, against the statement read literally: each sender's
+// words counted as the runs of letters in its messages, and the answer
+// the one sender that no other outranks, by more words or by as many
+// and a larger name. No map and no sort. 300 random cases of 1 to 40
+// messages from 2 to 8 names; then 30 cases where every sender has the
+// same total; then 30 with one sender. Every case is drawn before any
+// arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the answer is one of the senders
+// P3  the messages in reverse order: the same answer
+// P4  one word more on one of the answer's messages: the same answer
+// P5  a new sender `zzz` with as many words as the answer: `zzz`
+// P6  each arm agrees with at least three of the other five
+
+// ---- words.kara: the ★ arm, a `Map` of totals and the largest
+fn star_largest_word_count(messages: Vec[String], senders: Vec[String]) -> String {
+    let mut totals: Map[String, i64] = Map.new();
+    for (message, sender) in messages.iter().zip(senders.iter()) {
+        let words = message.split(" ").count();
+        *totals.entry(sender.clone()).or_insert(0) += words;
+    }
+    let mut best = String.new();
+    let mut most = 0;
+    for (sender, total) in totals.iter() {
+        if total > most or (total == most and sender > best) {
+            best = sender.clone();
+            most = total;
+        }
+    }
+    best
+}
+
+// ---- words_naive.kara: every message walked again for each new sender
+fn naive_words_in(message: String) -> i64 {
+    let mut words = 1;
+    for c in message.chars() {
+        if c == ' ' {
+            words += 1;
+        }
+    }
+    words
+}
+
+fn naive_largest_word_count(messages: Vec[String], senders: Vec[String]) -> String {
+    let mut best = String.new();
+    let mut most = 0;
+    for i in 0..senders.len() {
+        let mut seen = false;
+        for j in 0..i {
+            if senders[j] == senders[i] {
+                seen = true;
+            }
+        }
+        if seen {
+            continue;
+        }
+        let mut total = 0;
+        for j in i..senders.len() {
+            if senders[j] == senders[i] {
+                total += naive_words_in(messages[j]);
+            }
+        }
+        if total > most or (total == most and senders[i] > best) {
+            best = senders[i].clone();
+            most = total;
+        }
+    }
+    best
+}
+
+// ---- words_sorted.kara: the pairs sorted by sender and totalled by run
+fn sorted_largest_word_count(messages: Vec[String], senders: Vec[String]) -> String {
+    let mut pairs: Vec[(String, i64)] = Vec.new();
+    for i in 0..senders.len() {
+        pairs.push((senders[i].clone(), messages[i].split(" ").count()));
+    }
+    pairs.sort_by(|a, b| a.0.cmp(b.0));
+    let mut best = String.new();
+    let mut most = 0;
+    let mut i = 0;
+    while i < pairs.len() {
+        let mut total = 0;
+        let mut j = i;
+        while j < pairs.len() and pairs[j].0 == pairs[i].0 {
+            total += pairs[j].1;
+            j += 1;
+        }
+        if total >= most {
+            best = pairs[i].0.clone();
+            most = total;
+        }
+        i = j;
+    }
+    best
+}
+
+// ---- words_struct.kara: `struct Tally` and `beats`
+struct StructTally {
+    name: String,
+    words: i64,
+}
+
+impl StructTally {
+    fn beats(self, other: StructTally) -> bool {
+        self.words > other.words or (self.words == other.words and self.name > other.name)
+    }
+}
+
+fn struct_largest_word_count(messages: Vec[String], senders: Vec[String]) -> String {
+    let mut tallies: Vec[StructTally] = Vec.new();
+    for i in 0..senders.len() {
+        let words = messages[i].split(" ").count();
+        match tallies.iter().position(|t| t.name == senders[i]) {
+            Some(at) => tallies[at].words += words,
+            None => tallies.push(StructTally { name: senders[i].clone(), words: words }),
+        }
+    }
+    let mut lead = 0;
+    for i in 1..tallies.len() {
+        if tallies[i].beats(tallies[lead]) {
+            lead = i;
+        }
+    }
+    tallies[lead].name.clone()
+}
+
+// ---- words_iter.kara: `fold` into a `Map`, then `max_by_key`
+fn iter_largest_word_count(messages: Vec[String], senders: Vec[String]) -> String {
+    let totals = messages.iter().zip(senders.iter()).fold(Map.new(), |acc, (message, sender)| {
+        let mut acc = acc;
+        *acc.entry(sender.clone()).or_insert(0) += message.split(" ").count();
+        acc
+    });
+    totals.into_iter().max_by_key(|(name, total)| (total, name.clone())).unwrap().0
+}
+
+// ---- words_solution.kara: LeetCode's Rust template
+impl Solution {
+    pub fn largest_word_count(messages: Vec[String], senders: Vec[String]) -> String {
+        let mut cnt: Map[String, i32] = Map.new();
+        for (m, s) in messages.iter().zip(senders.iter()) {
+            *cnt.entry(s.clone()).or_insert(0) += m.split_whitespace().count() as i32;
+        }
+        let mut ans = String.new();
+        let mut mx = 0;
+        for (s, c) in cnt.into_iter() {
+            if c > mx or (c == mx and s > ans) {
+                mx = c;
+                ans = s;
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_largest_word_count(messages: Vec[String], senders: Vec[String]) -> String {
+    Solution.largest_word_count(messages, senders)
+}
+
+
+// ---- the statement read literally
+
+fn words_of(message: Str) -> i64 {
+    let mut runs = 0;
+    let mut inside = false;
+    for c in message.chars() {
+        if c == ' ' {
+            inside = false;
+        } else {
+            if not inside {
+                runs += 1;
+            }
+            inside = true;
+        }
+    }
+    runs
+}
+
+fn total_of(messages: Vec[String], senders: Vec[String], name: Str) -> i64 {
+    let mut total = 0;
+    for i in 0..senders.len() {
+        if senders[i] == name {
+            total += words_of(messages[i]);
+        }
+    }
+    total
+}
+
+fn literal(messages: Vec[String], senders: Vec[String]) -> String {
+    for s in senders.iter() {
+        let mine = total_of(messages, senders, s);
+        let mut outranked = false;
+        for t in senders.iter() {
+            let theirs = total_of(messages, senders, t);
+            if theirs > mine or (theirs == mine and t > s) {
+                outranked = true;
+            }
+        }
+        if not outranked {
+            return s.clone();
+        }
+    }
+    String.new()
+}
+
+fn answer(arm: i64, messages: Vec[String], senders: Vec[String]) -> String {
+    let m = messages.clone();
+    let s = senders.clone();
+    match arm {
+        0 => star_largest_word_count(m, s),
+        1 => naive_largest_word_count(m, s),
+        2 => sorted_largest_word_count(m, s),
+        3 => struct_largest_word_count(m, s),
+        4 => iter_largest_word_count(m, s),
+        _ => solution_largest_word_count(m, s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn message_of(words: i64, seed: mut ref i64) -> String {
+    let mut message = String.new();
+    for j in 0..words {
+        if j > 0 {
+            message.push(' ');
+        }
+        let len = next_random(mut seed) % 3 + 1;
+        for _ in 0..len {
+            message.push((b'a' + (next_random(mut seed) % 26) as u8) as char);
+        }
+    }
+    message
+}
+
+fn main() {
+    let names = ["star", "naive", "sorted", "struct", "iter", "solution"];
+    let pool = ["Al", "al", "Alice", "alice", "B", "b", "Bo", "Zed", "zed", "ZED"];
+    let mut seed = 2284;
+    let mut cases: Vec[(Vec[String], Vec[String])] = Vec.new();
+    for c in 0..360 {
+        let mut messages: Vec[String] = Vec.new();
+        let mut senders: Vec[String] = Vec.new();
+        if c < 300 or c >= 330 {
+            let n = next_random(mut seed) % 40 + 1;
+            let k = if c < 300 { next_random(mut seed) % 7 + 2 } else { 1 };
+            let first = if c < 300 { 0 } else { next_random(mut seed) % 10 };
+            for _ in 0..n {
+                senders.push(pool[(first + next_random(mut seed) % k) % 10].to_string());
+                let w = next_random(mut seed) % 6 + 1;
+                messages.push(message_of(w, mut seed));
+            }
+        } else {
+            // every sender of the first k the same total, in 1 to 3 messages
+            let k = next_random(mut seed) % 7 + 2;
+            let total = next_random(mut seed) % 8 + 3;
+            for name in 0..k {
+                let parts = next_random(mut seed) % 3 + 1;
+                let mut left = total;
+                for p in 0..parts {
+                    let w = if p == parts - 1 { left } else { 1 + next_random(mut seed) % (left - (parts - 1 - p)) };
+                    left -= w;
+                    senders.push(pool[name].to_string());
+                    messages.push(message_of(w, mut seed));
+                }
+            }
+            for i in (1..senders.len()).rev() {
+                let j = next_random(mut seed) % (i + 1);
+                senders.swap(i, j);
+                messages.swap(i, j);
+            }
+        }
+        cases.push((messages, senders));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (messages, senders) in cases.iter() {
+        let truth = literal(messages, senders);
+        for c in truth.chars() {
+            check = (check * 31 + c as i64) % 1000000007;
+        }
+        check = (check * 31 + total_of(messages, senders, truth)) % 1000000007;
+        let mut reversed_m = messages.clone();
+        let mut reversed_s = senders.clone();
+        reversed_m.reverse();
+        reversed_s.reverse();
+        let got: Vec[String] = (0..6).map(|arm| answer(arm, messages, senders)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut longer = messages.clone();
+            let mut found = false;
+            for i in (0..senders.len()).rev() {
+                if not found and senders[i] == value {
+                    longer[i].push_str(" x");
+                    found = true;
+                }
+            }
+            let mut more_m = messages.clone();
+            let mut more_s = senders.clone();
+            more_m.push(message_of(total_of(messages, senders, value), mut seed));
+            more_s.push("zzz");
+            let verdicts = [
+                value == truth,
+                senders.contains(value),
+                answer(arm, reversed_m, reversed_s) == value,
+                not found or answer(arm, longer, senders) == value,
+                not found or answer(arm, more_m, more_s) == "zzz",
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{senders} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

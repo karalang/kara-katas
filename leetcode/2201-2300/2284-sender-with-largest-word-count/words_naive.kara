@@ -1,0 +1,106 @@
+// LeetCode #2284: Sender With Largest Word Count -- the naive arm. For
+// each sender met for the first time, walk every message again adding
+// up that sender's words, counted space by space. O(n^2 * length).
+
+fn words_in(message: String) -> i64 {
+    let mut words = 1;
+    for c in message.chars() {
+        if c == ' ' {
+            words += 1;
+        }
+    }
+    words
+}
+
+fn largest_word_count(messages: Vec[String], senders: Vec[String]) -> String {
+    let mut best = String.new();
+    let mut most = 0;
+    for i in 0..senders.len() {
+        let mut seen = false;
+        for j in 0..i {
+            if senders[j] == senders[i] {
+                seen = true;
+            }
+        }
+        if seen {
+            continue;
+        }
+        let mut total = 0;
+        for j in i..senders.len() {
+            if senders[j] == senders[i] {
+                total += words_in(messages[j]);
+            }
+        }
+        if total > most or (total == most and senders[i] > best) {
+            best = senders[i].clone();
+            most = total;
+        }
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples, then a tie broken by case, a tie broken by
+    // a prefix, and one sender
+    let cases = [
+        (
+            ["Hello userTwooo", "Hi userThree", "Wonderful day Alice", "Nice day userThree"],
+            ["Alice", "userTwo", "userThree", "Alice"],
+        ),
+        (["How is leetcode for everyone", "Leetcode is useful for practice"], ["Bob", "Charlie"]),
+        (["a b", "c d"], ["bob", "Bob"]),
+        (["x y z", "x y", "q"], ["Alice", "Al", "Al"]),
+        (["one"], ["Z"]),
+    ];
+    for (messages, senders) in cases.iter() {
+        let m: Vec[String] = messages.iter().map(|s| s.to_string()).collect();
+        let s: Vec[String] = senders.iter().map(|s| s.to_string()).collect();
+        println(f"{senders} -> {largest_word_count(m, s)}");
+    }
+    // 3000 cases of 1 to 40 messages, each from one of the first 2 to 8
+    // names of the pool, of 1 to 6 words of 1 to 3 letters
+    let pool = ["Al", "al", "Alice", "alice", "B", "b", "Bo", "Zed", "zed", "ZED"];
+    let mut seed = 2284;
+    let mut check = 0;
+    let mut first = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 40 + 1;
+        let k = next_random(mut seed) % 7 + 2;
+        let mut messages: Vec[String] = Vec.new();
+        let mut senders: Vec[String] = Vec.new();
+        for _ in 0..n {
+            senders.push(pool[next_random(mut seed) % k].to_string());
+            let w = next_random(mut seed) % 6 + 1;
+            let mut message = String.new();
+            for j in 0..w {
+                if j > 0 {
+                    message.push(' ');
+                }
+                let len = next_random(mut seed) % 3 + 1;
+                for _ in 0..len {
+                    message.push((b'a' + (next_random(mut seed) % 26) as u8) as char);
+                }
+            }
+            messages.push(message);
+        }
+        let answer = largest_word_count(messages, senders);
+        let mut at = 0;
+        for (i, name) in pool.iter().enumerate() {
+            if name == answer {
+                at = i + 1;
+            }
+        }
+        check = (check * 31 + at) % 1000000007;
+        if at == 1 {
+            first += 1;
+        }
+    }
+    println(f"3000 cases: checksum {check}, {first} won by Al");
+}
