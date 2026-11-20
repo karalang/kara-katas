@@ -1,0 +1,85 @@
+// LeetCode #2370: Longest Ideal Subsequence -- a segment tree. The best
+// length ending in each letter kept in the leaves of a tree of 32, each
+// inner node the larger of its two children, so the largest best over
+// the letters within k of c is one range query. O(n log 26).
+
+fn range_max(tree: Vec[i64], lo: i64, hi: i64) -> i64 {
+    // the leaves from lo to hi inclusive, walked up from both ends
+    let mut l = lo + 32;
+    let mut r = hi + 33;
+    let mut most = 0;
+    while l < r {
+        if l % 2 == 1 {
+            most = most.max(tree[l]);
+            l += 1;
+        }
+        if r % 2 == 1 {
+            r -= 1;
+            most = most.max(tree[r]);
+        }
+        l /= 2;
+        r /= 2;
+    }
+    most
+}
+
+fn set_leaf(tree: mut ref Vec[i64], at: i64, value: i64) {
+    let mut i = at + 32;
+    tree[i] = value;
+    while i > 1 {
+        i /= 2;
+        tree[i] = tree[2 * i].max(tree[2 * i + 1]);
+    }
+}
+
+fn longest_ideal_string(s: String, k: i64) -> i64 {
+    let mut tree: Vec[i64] = Vec.filled(64, 0);
+    for b in s.bytes().iter() {
+        let c = (b - b'a') as i64;
+        let most = range_max(tree, (c - k).max(0), (c + k).min(25));
+        set_leaf(mut tree, c, most + 1);
+    }
+    tree[1]
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letters(codes: Vec[i64]) -> String {
+    let bytes: Vec[u8] = codes.iter().map(|c| (c + 97) as u8).collect();
+    String.from_utf8(bytes).unwrap()
+}
+
+fn main() {
+    // LeetCode's two examples; one letter; 10^5 letters running through
+    // the alphabet again and again, with k of 0, 1 and 25; 10^5 letters
+    // a and z in turn, with k of 24 and 25; then 2000 random strings of 1
+    // to 40 letters from the first 1 to 26 of the alphabet, with k of 0
+    // to 25
+    println(f"{longest_ideal_string("acfgbd", 2)}");
+    println(f"{longest_ideal_string("abcd", 3)}");
+    println(f"{longest_ideal_string("z", 0)}");
+    let cycle = letters((0..100000).map(|i| i % 26).collect());
+    println(f"{longest_ideal_string(cycle, 0)} {longest_ideal_string(cycle, 1)} {longest_ideal_string(cycle, 25)}");
+    let ends = letters((0..100000).map(|i| (i % 2) * 25).collect());
+    println(f"{longest_ideal_string(ends, 24)} {longest_ideal_string(ends, 25)}");
+    let mut seed = 2370;
+    let mut check = 0;
+    let mut whole = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 40;
+        let top = 1 + next_random(mut seed) % 26;
+        let k = next_random(mut seed) % 26;
+        let s = letters((0..n).map(|_| next_random(mut seed) % top).collect());
+        let t = longest_ideal_string(s, k);
+        check = (check * 31 + t) % 1000000007;
+        if t == n {
+            whole += 1;
+        }
+    }
+    println(f"2000 strings: checksum {check}, {whole} ideal whole");
+}

@@ -1,0 +1,43 @@
+// LeetCode #2370: Longest Ideal Subsequence -- the bench, the ★ arm in
+// Rust: best[c] is the longest ideal subsequence so far ending in letter
+// c, and a new letter extends the best one within k letters of it.
+
+fn longest_ideal_string(s: &str, k: i64) -> i64 {
+    let mut best = vec![0i64; 26];
+    for &b in s.as_bytes() {
+        let c = (b - b'a') as i64;
+        let lo = (c - k).max(0);
+        let hi = (c + k).min(25);
+        let mut most = 0;
+        for d in lo..hi + 1 {
+            most = most.max(best[d as usize]);
+        }
+        best[c as usize] = most + 1;
+    }
+    *best.iter().max().unwrap()
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // string a: 10^5 random letters from the whole alphabet, answered with
+    // k of a and of 2 a + 5
+    let mut seed = 2370i64;
+    let mut strings: Vec<String> = Vec::new();
+    for _ in 0..10 {
+        let bytes: Vec<u8> = (0..100000).map(|_| (97 + next_random(&mut seed) % 26) as u8).collect();
+        strings.push(String::from_utf8(bytes).unwrap());
+    }
+    let mut check = 0i64;
+    for p in 0..10i64 {
+        for a in 0..10i64 {
+            for k in [a, 2 * a + 5] {
+                check = (check * 31 + longest_ideal_string(&strings[a as usize], k) + p) % 1000000007;
+            }
+        }
+    }
+    println!("10 passes over 10 strings of 10^5 letters: checksum {}", check);
+}

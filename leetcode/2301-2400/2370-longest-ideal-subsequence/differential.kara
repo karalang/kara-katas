@@ -1,0 +1,280 @@
+// LeetCode #2370: Longest Ideal Subsequence -- the differential. The six
+// arms, against the statement read literally: every subsequence, one
+// mask of the places at a time, kept when each two letters next to each
+// other in it are at most k apart in the alphabet, and the longest kept.
+// No table of letters. 300 random strings of 1 to 14 letters from the
+// first 1 to 26 of the alphabet with k of 0 to 25; then 30 of up to 2000
+// letters; then 30 of up to 300 letters, half of them a or z, with k of
+// 20 to 25. Every case is drawn before any arm answers.
+//
+// P1  up to 14 letters, the answer is the literal reading's
+// P2  from 1 to n, and n when k is 25
+// P3  every letter written as its mirror, a as z and z as a: the same answer
+// P4  the string reversed: the same answer
+// P5  every letter written twice in its place: twice the answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn ideal_literally(s: String, k: i64) -> i64 {
+    let bytes = s.bytes();
+    let n = bytes.len();
+    let mut longest = 0;
+    for mask in 1..1 << n {
+        let mut count = 0;
+        let mut previous = -1;
+        let mut ideal = true;
+        for i in 0..n {
+            if (mask >> i) & 1 == 1 {
+                let c = bytes[i] as i64;
+                if previous >= 0 and (c - previous).abs() > k {
+                    ideal = false;
+                }
+                previous = c;
+                count += 1;
+            }
+        }
+        if ideal and count > longest {
+            longest = count;
+        }
+    }
+    longest
+}
+
+// ---- star (ideal.kara) ---------------------------------------------------
+
+fn star_longest_ideal_string(s: String, k: i64) -> i64 {
+    let mut best: Vec[i64] = Vec.filled(26, 0);
+    for b in s.bytes().iter() {
+        let c = (b - b'a') as i64;
+        let lo = (c - k).max(0);
+        let hi = (c + k).min(25);
+        let mut most = 0;
+        for d in lo..hi + 1 {
+            most = most.max(best[d]);
+        }
+        best[c] = most + 1;
+    }
+    best.iter().max().unwrap()
+}
+
+// ---- tree (ideal_tree.kara) ----------------------------------------------
+
+fn tree_range_max(tree: Vec[i64], lo: i64, hi: i64) -> i64 {
+    // the leaves from lo to hi inclusive, walked up from both ends
+    let mut l = lo + 32;
+    let mut r = hi + 33;
+    let mut most = 0;
+    while l < r {
+        if l % 2 == 1 {
+            most = most.max(tree[l]);
+            l += 1;
+        }
+        if r % 2 == 1 {
+            r -= 1;
+            most = most.max(tree[r]);
+        }
+        l /= 2;
+        r /= 2;
+    }
+    most
+}
+
+fn tree_set_leaf(tree: mut ref Vec[i64], at: i64, value: i64) {
+    let mut i = at + 32;
+    tree[i] = value;
+    while i > 1 {
+        i /= 2;
+        tree[i] = tree[2 * i].max(tree[2 * i + 1]);
+    }
+}
+
+fn tree_longest_ideal_string(s: String, k: i64) -> i64 {
+    let mut tree: Vec[i64] = Vec.filled(64, 0);
+    for b in s.bytes().iter() {
+        let c = (b - b'a') as i64;
+        let most = tree_range_max(tree, (c - k).max(0), (c + k).min(25));
+        tree_set_leaf(mut tree, c, most + 1);
+    }
+    tree[1]
+}
+
+// ---- last (ideal_last.kara) ----------------------------------------------
+
+fn last_longest_ideal_string(s: String, k: i64) -> i64 {
+    let bytes = s.bytes();
+    let n = bytes.len();
+    let mut dp: Vec[i64] = Vec.filled(n, 0);
+    let mut last: Vec[i64] = Vec.filled(26, -1);
+    let mut answer = 0;
+    for i in 0..n {
+        let c = (bytes[i] - b'a') as i64;
+        let mut most = 0;
+        for d in (c - k).max(0)..(c + k).min(25) + 1 {
+            if last[d] >= 0 {
+                most = most.max(dp[last[d]]);
+            }
+        }
+        dp[i] = most + 1;
+        last[c] = i;
+        answer = answer.max(dp[i]);
+    }
+    answer
+}
+
+// ---- suffix (ideal_suffix.kara) ------------------------------------------
+
+fn suffix_longest_ideal_string(s: String, k: i64) -> i64 {
+    let bytes = s.bytes();
+    let mut from: Vec[i64] = Vec.filled(27, 0);
+    for i in (0..bytes.len()).rev() {
+        let c = (bytes[i] - b'a') as i64;
+        let start = from[c] + 1;
+        for p in (c - k).max(0)..(c + k).min(25) + 1 {
+            from[p] = from[p].max(start);
+        }
+        from[26] = from[26].max(start);
+    }
+    from[26]
+}
+
+// ---- iter (ideal_iter.kara) ----------------------------------------------
+
+fn iter_longest_ideal_string(s: String, k: i64) -> i64 {
+    let best = s.bytes().iter().fold(Vec.filled(26, 0), |best: own Vec[i64], b| {
+        let mut best = best;
+        let c = (b - b'a') as i64;
+        let most = ((c - k).max(0)..(c + k).min(25) + 1).map(|d| best[d]).max().unwrap();
+        best[c] = most + 1;
+        best
+    });
+    best.iter().max().unwrap()
+}
+
+// ---- solution (ideal_solution.kara) --------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn longest_ideal_string(s: String, k: i32) -> i32 {
+        let k = k as usize;
+        let mut dp = [0i32; 26];
+        for b in s.bytes() {
+            let c = (b - b'a') as usize;
+            let lo = c.saturating_sub(k);
+            let hi = (c + k).min(25);
+            let best = *dp[lo..=hi].iter().max().unwrap();
+            dp[c] = best + 1;
+        }
+        *dp.iter().max().unwrap()
+    }
+}
+
+fn solution_longest_ideal_string(s: String, k: i64) -> i64 {
+    Solution.longest_ideal_string(s, k as i32)
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn answer(arm: i64, s: String, k: i64) -> i64 {
+    match arm {
+        0 => star_longest_ideal_string(s, k),
+        1 => tree_longest_ideal_string(s, k),
+        2 => last_longest_ideal_string(s, k),
+        3 => suffix_longest_ideal_string(s, k),
+        4 => iter_longest_ideal_string(s, k),
+        _ => solution_longest_ideal_string(s, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letters(codes: Vec[i64]) -> String {
+    let bytes: Vec[u8] = codes.iter().map(|c| (c + 97) as u8).collect();
+    String.from_utf8(bytes).unwrap()
+}
+
+fn main() {
+    let names = ["star", "tree", "last", "suffix", "iter", "solution"];
+    let mut seed = 2370;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..360 {
+        let (codes, k) = if c < 330 {
+            let n = if c < 300 { 1 + next_random(mut seed) % 14 } else { 1 + next_random(mut seed) % 2000 };
+            let top = 1 + next_random(mut seed) % 26;
+            let k = next_random(mut seed) % 26;
+            let codes: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top).collect();
+            (codes, k)
+        } else {
+            let n = 1 + next_random(mut seed) % 300;
+            let k = 20 + next_random(mut seed) % 6;
+            let codes: Vec[i64] = (0..n).map(|_| {
+                let r = next_random(mut seed) % 4;
+                if r == 0 { 0 } else if r == 1 { 25 } else { next_random(mut seed) % 26 }
+            }).collect();
+            (codes, k)
+        };
+        cases.push((codes, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (codes, k) = cases[c].clone();
+        let n = codes.len();
+        let s = letters(codes);
+        let small = n <= 14;
+        let truth = if small { ideal_literally(s, k) } else { -1 };
+        if small {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let mirrored = letters(codes.iter().map(|x| 25 - x).collect());
+        let mut back = codes.clone();
+        back.reverse();
+        let reversed = letters(back);
+        let doubled = letters(codes.iter().flat_map(|x| [x, x].to_vec().into_iter()).collect());
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, s, k)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                value >= 1 and value <= n and (k < 25 or value == n),
+                answer(arm, mirrored, k) == value,
+                answer(arm, reversed, k) == value,
+                answer(arm, doubled, k) == 2 * value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
