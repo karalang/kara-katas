@@ -1,0 +1,221 @@
+// LeetCode #2351: First Letter to Appear Twice -- the differential. The six
+// arms, against the statement read literally: for each place in turn, every
+// earlier place checked for the same letter; the first place with a match
+// gives the answer. 300 random strings of 2 to 30 letters from the first 2
+// to 26 of the alphabet, then 30 of up to 2000 letters, then 26 that are
+// the alphabet from one letter on, wrapped, and then a letter of it again.
+// A string with no letter twice gets a copy of one of its letters. Every
+// case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the answer is in the string at least twice
+// P3  every letter moved 7 on in the alphabet, wrapping: the answer moved
+//     7 on too
+// P4  the string with its own letters appended: the same answer
+// P5  the string cut just after the answer's second place: the same answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn twice_literally(s: String) -> char {
+    let letters: Vec[char] = s.chars().collect();
+    for j in 0..letters.len() {
+        for i in 0..j {
+            if letters[i] == letters[j] {
+                return letters[j];
+            }
+        }
+    }
+    ' '
+}
+
+// ---- star (twice.kara) ---------------------------------------------------
+
+fn star_repeated_character(s: String) -> char {
+    let mut seen: Vec[bool] = Vec.filled(26, false);
+    for c in s.chars() {
+        let i = c as i64 - 'a' as i64;
+        if seen[i] {
+            return c;
+        }
+        seen[i] = true;
+    }
+    ' '
+}
+
+// ---- mask (twice_mask.kara) ----------------------------------------------
+
+fn mask_repeated_character(s: String) -> char {
+    let mut mask = 0;
+    for c in s.chars() {
+        let bit = 1 << (c as i64 - 'a' as i64);
+        if mask & bit != 0 {
+            return c;
+        }
+        mask |= bit;
+    }
+    ' '
+}
+
+// ---- set (twice_set.kara) ------------------------------------------------
+
+fn set_repeated_character(s: String) -> char {
+    let mut seen: Set[char] = Set.new();
+    for c in s.chars() {
+        if not seen.insert(c) {
+            return c;
+        }
+    }
+    ' '
+}
+
+// ---- naive (twice_naive.kara) --------------------------------------------
+
+fn naive_repeated_character(s: String) -> char {
+    let letters: Vec[char] = s.chars().collect();
+    for j in 0..letters.len() {
+        for i in 0..j {
+            if letters[i] == letters[j] {
+                return letters[j];
+            }
+        }
+    }
+    ' '
+}
+
+// ---- iter (twice_iter.kara) ----------------------------------------------
+
+fn iter_repeated_character(s: String) -> char {
+    let letters: Vec[char] = s.chars().collect();
+    letters.iter()
+        .enumerate()
+        .find(|(j, c)| letters[..j].contains(c))
+        .map(|(_, c)| c)
+        .unwrap_or(' ')
+}
+
+// ---- solution (twice_solution.kara) --------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn repeated_character(s: String) -> char {
+        let mut seen = Set.new();
+        for c in s.chars() {
+            if not seen.insert(c) {
+                return c;
+            }
+        }
+        unreachable()
+    }
+}
+
+fn solution_repeated_character(s: String) -> char {
+    Solution.repeated_character(s)
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn answer(arm: i64, s: String) -> char {
+    match arm {
+        0 => star_repeated_character(s),
+        1 => mask_repeated_character(s),
+        2 => set_repeated_character(s),
+        3 => naive_repeated_character(s),
+        4 => iter_repeated_character(s),
+        _ => solution_repeated_character(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "mask", "set", "naive", "iter", "solution"];
+    let mut seed = 2351;
+    let mut cases: Vec[String] = Vec.new();
+    for c in 0..356 {
+        let mut s = String.new();
+        if c < 330 {
+            let most = if c < 300 { 29 } else { 1999 };
+            let n = 2 + next_random(mut seed) % most;
+            let alphabet = 2 + next_random(mut seed) % 25;
+            for _ in 0..n {
+                s.push((97 + next_random(mut seed) % alphabet) as u8 as char);
+            }
+            let distinct: Set[char] = s.chars().collect();
+            if distinct.len() == s.len() {
+                let c = s.chars().nth(next_random(mut seed) % s.len()).unwrap();
+                s.push(c);
+            }
+        } else {
+            let start = c - 330;
+            for k in 0..26 {
+                s.push((97 + (start + k) % 26) as u8 as char);
+            }
+            s.push((97 + next_random(mut seed) % 26) as u8 as char);
+        }
+        cases.push(s);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let s = cases[c].clone();
+        let truth = twice_literally(s);
+        check = (check * 31 + truth as i64) % 1000000007;
+        let moved: String = s.chars().map(|x| (97 + (x as i64 - 97 + 7) % 26) as u8 as char).collect();
+        let doubled = f"{s}{s}";
+        let got: Vec[char] = (0..6).map(|arm| answer(arm, s)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let places: Vec[i64] = s.chars().enumerate().filter(|(_, x)| x == value).map(|(i, _)| i).collect();
+            let twice = places.len() >= 2;
+            let cut_same = if twice {
+                let cut: String = s.chars().take(places[1] + 1).collect();
+                answer(arm, cut) == value
+            } else {
+                false
+            };
+            let moved_value = (97 + (value as i64 - 97 + 7) % 26) as u8 as char;
+            let verdicts = [
+                value == truth,
+                twice,
+                answer(arm, moved) == moved_value,
+                answer(arm, doubled) == value,
+                cut_same,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
