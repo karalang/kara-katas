@@ -1,0 +1,67 @@
+// LeetCode #1742: Maximum Number of Balls in a Box -- a Rust solution as
+// LeetCode's Rust users write it, carried to Kāra by `karac fix`.
+//
+// A count per digit sum in a `[0; 46]` array, each ball's digits summed
+// in a `for mut i` loop, and the largest count. O(n log n).
+
+struct Solution {}
+
+impl Solution {
+    pub fn count_balls(low_limit: i32, high_limit: i32) -> i32 {
+        let mut cnt = [0; 46];
+        for i in low_limit..=high_limit {
+            let mut i = i;
+            let mut s = 0;
+            while i > 0 {
+                s += i % 10;
+                i /= 10;
+            }
+            cnt[s as usize] += 1;
+        }
+        *cnt.iter().max().unwrap()
+    }
+}
+
+fn count_balls(low_limit: i32, high_limit: i32) -> i32 {
+    Solution.count_balls(low_limit, high_limit)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// `count` random ranges inside 1 to `most`
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let a = wide(mut seed) % most + 1;
+        let b = wide(mut seed) % most + 1;
+        let (low, high) = (min(a, b) as i32, max(a, b) as i32);
+        let answer = count_balls(low, high);
+        sum += answer;
+        check = (check * 31 + answer + low) % 1000000007;
+    }
+    println(f"{count} ranges inside 1 to {most}: largest boxes sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then one ball, the whole range, and the
+    // range that ends where the digit sums peak
+    println(count_balls(1, 10));
+    println(count_balls(5, 15));
+    println(count_balls(19, 28));
+    println(count_balls(1, 1));
+    println(count_balls(1, 100000));
+    println(count_balls(99999, 100000));
+    let mut seed = 1742;
+    batch(3000, 100, mut seed);
+    batch(1000, 100000, mut seed);
+}

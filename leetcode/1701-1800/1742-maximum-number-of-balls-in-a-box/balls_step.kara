@@ -1,0 +1,75 @@
+// LeetCode #1742: Maximum Number of Balls in a Box -- the digit sum
+// carried from one ball to the next.
+//
+// Going from a number to the next adds 1 to its last digit, unless that
+// digit is 9: each trailing 9 turns to 0, taking 9 off the sum, and the
+// digit before them goes up by 1. So only the first ball's digits are
+// summed in full; every later sum follows from the last with the
+// trailing 9s of the number before it. O(n) amortized.
+
+fn count_balls(low_limit: i32, high_limit: i32) -> i32 {
+    let mut boxes = [0i32; 46];
+    let mut sum = 0;
+    let mut rest = low_limit;
+    while rest > 0 {
+        sum += rest % 10;
+        rest /= 10;
+    }
+    let mut best: i32 = 0;
+    let mut ball = low_limit;
+    loop {
+        boxes[sum] += 1;
+        best = max(best, boxes[sum]);
+        if ball == high_limit {
+            break;
+        }
+        let mut nines = ball;
+        while nines % 10 == 9 {
+            sum -= 9;
+            nines /= 10;
+        }
+        sum += 1;
+        ball += 1;
+    }
+    best
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// `count` random ranges inside 1 to `most`
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let a = wide(mut seed) % most + 1;
+        let b = wide(mut seed) % most + 1;
+        let (low, high) = (min(a, b) as i32, max(a, b) as i32);
+        let answer = count_balls(low, high);
+        sum += answer;
+        check = (check * 31 + answer + low) % 1000000007;
+    }
+    println(f"{count} ranges inside 1 to {most}: largest boxes sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then one ball, the whole range, and the
+    // range that ends where the digit sums peak
+    println(count_balls(1, 10));
+    println(count_balls(5, 15));
+    println(count_balls(19, 28));
+    println(count_balls(1, 1));
+    println(count_balls(1, 100000));
+    println(count_balls(99999, 100000));
+    let mut seed = 1742;
+    batch(3000, 100, mut seed);
+    batch(1000, 100000, mut seed);
+}

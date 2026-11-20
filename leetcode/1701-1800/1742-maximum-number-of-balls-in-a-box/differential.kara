@@ -1,0 +1,200 @@
+// LeetCode #1742: Maximum Number of Balls in a Box -- the
+// differential.
+//
+// Four arms against the statement read literally, on 1000 random ranges
+// of 1 to 120 balls starting from 1 to 1000, each with a random split.
+//
+// P1  the answer is the statement read literally
+// P2  one ball more leaves the answer or adds one to it
+// P3  the answer is at least 1, at most the balls, and 45 boxes of it hold them all
+// P4  the answer is at least either part's and at most the two together
+// P5  each arm agrees with at least two of the other three
+
+// ---- balls.kara: the ★ arm: a count for every digit sum
+
+fn star_arm(low_limit: i32, high_limit: i32) -> i32 {
+    let mut boxes = [0i32; 46];
+    for ball in low_limit..high_limit + 1 {
+        let mut rest = ball;
+        let mut sum = 0;
+        while rest > 0 {
+            sum += rest % 10;
+            rest /= 10;
+        }
+        boxes[sum] += 1;
+    }
+    *boxes.iter().max().unwrap()
+}
+
+// ---- balls_map.kara: a Map of boxes
+
+fn map_arm(low_limit: i32, high_limit: i32) -> i32 {
+    let mut boxes: Map[i32, i32] = Map.new();
+    for ball in low_limit..high_limit + 1 {
+        let number: i32 = f"{ball}".chars().map(|c| c.to_digit(10).unwrap() as i32).sum();
+        *boxes.entry(number).or_insert(0) += 1;
+    }
+    boxes.values().max().unwrap()
+}
+
+// ---- balls_step.kara: the digit sum carried from ball to ball
+
+fn step_arm(low_limit: i32, high_limit: i32) -> i32 {
+    let mut boxes = [0i32; 46];
+    let mut sum = 0;
+    let mut rest = low_limit;
+    while rest > 0 {
+        sum += rest % 10;
+        rest /= 10;
+    }
+    let mut best: i32 = 0;
+    let mut ball = low_limit;
+    loop {
+        boxes[sum] += 1;
+        best = max(best, boxes[sum]);
+        if ball == high_limit {
+            break;
+        }
+        let mut nines = ball;
+        while nines % 10 == 9 {
+            sum -= 9;
+            nines /= 10;
+        }
+        sum += 1;
+        ball += 1;
+    }
+    best
+}
+
+// ---- balls_solution.kara: LeetCode's Rust template, through karac fix
+
+struct Solution {}
+
+impl Solution {
+    pub fn count_balls(low_limit: i32, high_limit: i32) -> i32 {
+        let mut cnt = [0; 46];
+        for i in low_limit..=high_limit {
+            let mut i = i;
+            let mut s = 0;
+            while i > 0 {
+                s += i % 10;
+                i /= 10;
+            }
+            cnt[s as usize] += 1;
+        }
+        *cnt.iter().max().unwrap()
+    }
+}
+
+fn solution_arm(low_limit: i32, high_limit: i32) -> i32 {
+    Solution.count_balls(low_limit, high_limit)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: for every box from 1 to 45, the balls in
+// the range whose digits, read from the number's text, add up to it,
+// counted one box at a time; the most any box holds
+fn literal(low: i64, high: i64) -> i64 {
+    let mut best = 0;
+    for number in 1..46 {
+        let mut held = 0;
+        for ball in low..high + 1 {
+            let mut digits = 0;
+            for c in f"{ball}".chars() {
+                digits += c.to_digit(10).unwrap();
+            }
+            if digits == number {
+                held += 1;
+            }
+        }
+        best = max(best, held);
+    }
+    best
+}
+
+fn arm(a: i64, low: i64, high: i64) -> i64 {
+    let (low, high) = (low as i32, high as i32);
+    let answer = match a {
+        0 => star_arm(low, high),
+        1 => map_arm(low, high),
+        2 => step_arm(low, high),
+        _ => solution_arm(low, high),
+    };
+    answer
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "map", "step", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1742;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 1000;
+    let mut cases: Vec[(i64, i64, i64)] = Vec.new();
+    for _ in 0..problems {
+        let low = next_random(mut seed) % 1000 + 1;
+        let high = low + next_random(mut seed) % 120;
+        let split = low + next_random(mut seed) % (high - low + 1);
+        cases.push((low, high, split));
+    }
+    for (p, (low, high, split)) in cases.iter().enumerate() {
+        let want = literal(low, high);
+        check = (check * 31 + want + low) % 1000000007;
+        let balls = high - low + 1;
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, low, high);
+            let longer = arm(a, low, high + 1);
+            let parts = if split == high {
+                got == arm(a, low, high)
+            } else {
+                let (left, right) = (arm(a, low, split), arm(a, split + 1, high));
+                got <= left + right and got >= max(left, right)
+            };
+            let failed = [got != want, longer != got and longer != got + 1, got < 1 or got > balls or got * 45 < balls, not parts];
+            answers.push(got);
+            for t in 0..4 {
+                checks += 1;
+                if failed[t] {
+                    failures += 1;
+                    by_property[t + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({low} to {high}, split {split}), {arm_name(a)}: P{t + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for t in 1..6 {
+            if by_property[t] > 0 {
+                counts.push(f"P{t}: {by_property[t]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

@@ -1,0 +1,98 @@
+// LeetCode #1743: Restore the Array From Adjacent Pairs -- the ★ arm: the
+// pairs as a graph, walked from an end.
+//
+// The values are distinct, so the pairs make a path: each value's
+// neighbours go in a `Map[i32, Vec[i32]]`, and the two ends are the
+// values with one neighbour. From an end, each next value is the
+// neighbour of the last that is not the one before it. O(n).
+
+fn restore_array(adjacent_pairs: Vec[Vec[i32]]) -> Vec[i32] {
+    let mut next: Map[i32, Vec[i32]] = Map.new();
+    for pair in adjacent_pairs.iter() {
+        next.entry(pair[0]).or_insert(Vec.new()).push(pair[1]);
+        next.entry(pair[1]).or_insert(Vec.new()).push(pair[0]);
+    }
+    let start = next.iter().find(|(_, near)| near.len() == 1).unwrap().0;
+    let mut order: Vec[i32] = [start, next[start][0]];
+    while order.len() < adjacent_pairs.len() + 1 {
+        let (before, last) = (order[order.len() - 2], order[order.len() - 1]);
+        let near = ref next[last];
+        order.push(if near[0] == before { near[1] } else { near[0] });
+    }
+    order
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// either order is an answer: the one whose first value is the smaller
+fn canonical(order: own Vec[i32]) -> Vec[i32] {
+    let mut order = order;
+    if order[0] > order[order.len() - 1] {
+        order.reverse();
+    }
+    order
+}
+
+// `n` distinct values from -10^5 to 10^5 in a random order, and its
+// adjacent pairs shuffled, each pair in a random order
+fn random_pairs(n: i64, seed: mut ref i64) -> Vec[Vec[i32]] {
+    let mut taken: Set[i64] = Set.new();
+    let mut values: Vec[i32] = Vec.new();
+    while values.len() < n {
+        let v = wide(mut seed) % 200001 - 100000;
+        if taken.insert(v) {
+            values.push(v as i32);
+        }
+    }
+    let mut pairs: Vec[Vec[i32]] = Vec.new();
+    for i in 1..n {
+        if next_random(mut seed) % 2 == 0 {
+            pairs.push([values[i - 1], values[i]]);
+        } else {
+            pairs.push([values[i], values[i - 1]]);
+        }
+    }
+    for i in (1..pairs.len()).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        pairs.swap(i, j);
+    }
+    pairs
+}
+
+// `count` random arrays of 2 to `most` values
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % (most - 1) + 2;
+        let pairs = random_pairs(n, mut seed);
+        let order = canonical(restore_array(pairs));
+        for v in order.iter() {
+            check = (check * 31 + v + 100000) % 1000000007;
+        }
+        sum += order[0];
+    }
+    println(f"{count} arrays of up to {most} values: first values sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then three values in a row, both pairs
+    // reversed
+    println(canonical(restore_array([[2, 1], [3, 4], [3, 2]])));
+    println(canonical(restore_array([[4, -2], [1, 4], [-3, 1]])));
+    println(canonical(restore_array([[100000, -100000]])));
+    println(canonical(restore_array([[3, 2], [2, 1]])));
+    let mut seed = 1743;
+    batch(3000, 8, mut seed);
+    batch(300, 1000, mut seed);
+    batch(10, 100000, mut seed);
+}

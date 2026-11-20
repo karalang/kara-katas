@@ -1,0 +1,275 @@
+// LeetCode #1743: Restore the Array From Adjacent Pairs -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random arrays
+// of 2 to 6 distinct values from -50 to 50. Either order of an answer is
+// right, so every answer is compared with its smaller end first.
+//
+// P1  the answer is the statement read literally
+// P2  the answer holds n values whose adjacent pairs are exactly the given ones
+// P3  the pairs listed backwards, each one reversed, give the same answer
+// P4  every value plus 7 gives the answer plus 7
+// P5  each arm agrees with at least two of the other three
+
+// ---- restore.kara: the ★ arm: the pairs as a graph, walked from an end
+
+fn star_arm(adjacent_pairs: Vec[Vec[i32]]) -> Vec[i32] {
+    let mut next: Map[i32, Vec[i32]] = Map.new();
+    for pair in adjacent_pairs.iter() {
+        next.entry(pair[0]).or_insert(Vec.new()).push(pair[1]);
+        next.entry(pair[1]).or_insert(Vec.new()).push(pair[0]);
+    }
+    let start = next.iter().find(|(_, near)| near.len() == 1).unwrap().0;
+    let mut order: Vec[i32] = [start, next[start][0]];
+    while order.len() < adjacent_pairs.len() + 1 {
+        let (before, last) = (order[order.len() - 2], order[order.len() - 1]);
+        let near = ref next[last];
+        order.push(if near[0] == before { near[1] } else { near[0] });
+    }
+    order
+}
+
+// ---- restore_xor.kara: neighbours folded into a count and an XOR
+
+fn xor_arm(adjacent_pairs: Vec[Vec[i32]]) -> Vec[i32] {
+    let mut near: Map[i32, (i32, i32)] = Map.new();
+    for pair in adjacent_pairs.iter() {
+        for (a, b) in [(pair[0], pair[1]), (pair[1], pair[0])] {
+            let (count, xor) = near.get(a).unwrap_or((0, 0));
+            near.insert(a, (count + 1, xor ^ b));
+        }
+    }
+    let mut start = 0;
+    for (value, (count, _)) in near.iter() {
+        if count == 1 {
+            start = value;
+            break;
+        }
+    }
+    let n = adjacent_pairs.len() + 1;
+    let mut order: Vec[i32] = Vec.with_capacity(n);
+    order.push(start);
+    order.push(near[start].1);
+    for i in 2..n {
+        order.push(near[order[i - 1]].1 ^ order[i - 2]);
+    }
+    order
+}
+
+// ---- restore_sorted.kara: sorted edges, no hashing
+
+fn sorted_arm(adjacent_pairs: Vec[Vec[i32]]) -> Vec[i32] {
+    let mut edges: Vec[(i32, i32)] = Vec.new();
+    for pair in adjacent_pairs.iter() {
+        edges.push((pair[0], pair[1]));
+        edges.push((pair[1], pair[0]));
+    }
+    edges.sort();
+    let mut start = edges[0].0;
+    let mut i = 0;
+    while i < edges.len() {
+        if i + 1 == edges.len() or edges[i + 1].0 != edges[i].0 {
+            start = edges[i].0;
+            break;
+        }
+        i += 2;
+    }
+    let mut order: Vec[i32] = [start];
+    let mut before = i32.MIN;
+    let mut last = start;
+    while order.len() < adjacent_pairs.len() + 1 {
+        let at = edges.partition_point(|e| e.0 < last);
+        let step = if edges[at].1 != before { edges[at].1 } else { edges[at + 1].1 };
+        before = last;
+        last = step;
+        order.push(step);
+    }
+    order
+}
+
+// ---- restore_solution.kara: LeetCode's Rust template, through karac fix
+
+struct Solution {}
+
+impl Solution {
+    pub fn restore_array(adjacent_pairs: Vec[Vec[i32]]) -> Vec[i32] {
+        let mut g: Map[i32, Vec[i32]] = Map.new();
+        for p in ref adjacent_pairs {
+            g.entry(p[0]).or_insert(Vec.new()).push(p[1]);
+            g.entry(p[1]).or_insert(Vec.new()).push(p[0]);
+        }
+        let n = adjacent_pairs.len() + 1;
+        let mut ans = Vec.filled(n, 0);
+        for (k, v) in ref g {
+            if v.len() == 1 {
+                ans[0] = k;
+                ans[1] = v[0];
+                break;
+            }
+        }
+        for i in 2..n {
+            let v = ref g[ans[i - 1]];
+            ans[i] = if v[0] == ans[i - 2] { v[1] } else { v[0] };
+        }
+        ans
+    }
+}
+
+fn solution_arm(adjacent_pairs: Vec[Vec[i32]]) -> Vec[i32] {
+    Solution.restore_array(adjacent_pairs)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn canonical(order: own Vec[i32]) -> Vec[i32] {
+    let mut order = order;
+    if order[0] > order[order.len() - 1] {
+        order.reverse();
+    }
+    order
+}
+
+// the pairs as a sorted list of sorted pairs, to compare as a set
+fn pair_set(pairs: Slice[Vec[i32]]) -> Vec[(i32, i32)] {
+    let mut set: Vec[(i32, i32)] = pairs.iter().map(|p| (min(p[0], p[1]), max(p[0], p[1]))).collect();
+    set.sort();
+    set
+}
+
+fn adjacent(order: Slice[i32]) -> Vec[Vec[i32]] {
+    (1..order.len()).map(|i| [order[i - 1], order[i]]).collect()
+}
+
+// the statement read literally: every order of the values, tried in
+// turn, until one has exactly the given adjacent pairs
+fn literal(pairs: Slice[Vec[i32]]) -> Vec[i32] {
+    let mut values: Vec[i32] = Vec.new();
+    for p in pairs.iter() {
+        for v in p.iter() {
+            if not values.contains(v) {
+                values.push(v);
+            }
+        }
+    }
+    let want = pair_set(pairs);
+    let mut found: Vec[i32] = Vec.new();
+    permute(mut values, 0, want, mut found);
+    canonical(found)
+}
+
+fn permute(values: mut ref Vec[i32], at: i64, want: Slice[(i32, i32)], found: mut ref Vec[i32]) {
+    if found.len() > 0 {
+        return;
+    }
+    if at == values.len() {
+        if pair_set(adjacent(values)) == want {
+            *found = values.clone();
+        }
+        return;
+    }
+    for i in at..values.len() {
+        values.swap(at, i);
+        permute(mut values, at + 1, want, mut found);
+        values.swap(at, i);
+    }
+}
+
+fn arm(a: i64, pairs: Slice[Vec[i32]]) -> Vec[i32] {
+    let pairs = pairs.to_vec();
+    let order = match a {
+        0 => star_arm(pairs),
+        1 => xor_arm(pairs),
+        2 => sorted_arm(pairs),
+        _ => solution_arm(pairs),
+    };
+    canonical(order)
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "xor", "sorted", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1743;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[Vec[Vec[i32]]] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 5 + 2;
+        let mut values: Vec[i32] = Vec.new();
+        while values.len() < n {
+            let v = (next_random(mut seed) % 101 - 50) as i32;
+            if not values.contains(v) {
+                values.push(v);
+            }
+        }
+        let mut pairs: Vec[Vec[i32]] = Vec.new();
+        for i in 1..n {
+            if next_random(mut seed) % 2 == 0 {
+                pairs.push([values[i - 1], values[i]]);
+            } else {
+                pairs.push([values[i], values[i - 1]]);
+            }
+        }
+        for i in (1..pairs.len()).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            pairs.swap(i, j);
+        }
+        cases.push(pairs);
+    }
+    for (p, pairs) in cases.iter().enumerate() {
+        let want = literal(pairs);
+        for v in want.iter() {
+            check = (check * 31 + v + 100) % 1000000007;
+        }
+        let flipped: Vec[Vec[i32]] = pairs.iter().rev().map(|q| [q[1], q[0]]).collect();
+        let shifted: Vec[Vec[i32]] = pairs.iter().map(|q| [q[0] + 7, q[1] + 7]).collect();
+        let mut answers: Vec[Vec[i32]] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, pairs);
+            let moved: Vec[i32] = got.iter().map(|v| v + 7).collect();
+            let failed = [got != want, got.len() != pairs.len() + 1 or pair_set(adjacent(got)) != pair_set(pairs), arm(a, flipped) != got, arm(a, shifted) != moved];
+            answers.push(got);
+            for t in 0..4 {
+                checks += 1;
+                if failed[t] {
+                    failures += 1;
+                    by_property[t + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({pairs}), {arm_name(a)}: P{t + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for t in 1..6 {
+            if by_property[t] > 0 {
+                counts.push(f"P{t}: {by_property[t]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}
