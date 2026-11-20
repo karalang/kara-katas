@@ -1,0 +1,68 @@
+// LeetCode #1752: Check if Array Is Sorted and Rotated -- the ★ arm:
+// count the drops.
+//
+// A sorted array rotated by any amount, none included, falls at most
+// once walking around it in a circle, last value back to first included;
+// any other array falls at least twice. The neighbours come from
+// `windows(2)`, and the wrap is compared on its own. O(n).
+
+fn check_rotated(nums: Vec[i32]) -> bool {
+    let drops = nums.windows(2).into_iter().filter(|w| w[0] > w[1]).count();
+    let wrap = if nums[nums.len() - 1] > nums[0] { 1 } else { 0 };
+    drops + wrap <= 1
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// 1 to `most` values from 1 to `top`: on odd draws plain random, on even
+// ones sorted and rotated, and then one value changed on every other of
+// those, so that about half of all arrays answer true
+fn draw(most: i64, top: i64, seed: mut ref i64) -> Vec[i32] {
+    let n = next_random(mut seed) % most + 1;
+    let mut nums: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % top + 1) as i32).collect();
+    if next_random(mut seed) % 2 == 1 {
+        return nums;
+    }
+    nums.sort();
+    nums.rotate_left(next_random(mut seed) % n);
+    if next_random(mut seed) % 2 == 1 {
+        nums[next_random(mut seed) % n] = (next_random(mut seed) % top + 1) as i32;
+    }
+    nums
+}
+
+// `count` random arrays of up to `most` values from 1 to `top`
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut yes = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let nums = draw(most, top, mut seed);
+        let n = nums.len();
+        let answer = check_rotated(nums);
+        if answer {
+            yes += 1;
+        }
+        check = (check * 31 + if answer { 2 } else { 1 } + n) % 1000000007;
+    }
+    println(f"{count} arrays of up to {most} values from 1 to {top}: {yes} sorted and rotated, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then one value, all equal, a rotation
+    // with equal values across the cut, and two drops
+    println(check_rotated([3, 4, 5, 1, 2]));
+    println(check_rotated([2, 1, 3, 4]));
+    println(check_rotated([1, 2, 3]));
+    println(check_rotated([7]));
+    println(check_rotated([5, 5, 5, 5]));
+    println(check_rotated([2, 2, 3, 1, 2]));
+    println(check_rotated([1, 3, 2, 4, 1]));
+    let mut seed = 1752;
+    batch(3000, 6, 3, mut seed);
+    batch(3000, 100, 100, mut seed);
+}

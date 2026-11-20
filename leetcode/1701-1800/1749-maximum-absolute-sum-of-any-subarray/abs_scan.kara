@@ -1,0 +1,48 @@
+// LeetCode #1749: Maximum Absolute Sum of Any Subarray -- prefix sums as
+// an iterator.
+//
+// The prefix sums come out of `scan`, and a `fold` keeps their highest
+// and lowest, both starting from the empty prefix's 0. O(n).
+
+fn max_absolute_sum(nums: Vec[i32]) -> i32 {
+    let (highest, lowest) = nums
+        .iter()
+        .scan(0, |sum, x| Some((sum + x, sum + x)))
+        .fold((0i32, 0i32), |(high, low), p| (max(high, p), min(low, p)));
+    highest - lowest
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random arrays of 1 to `most` values from -`top` to `top`
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let nums: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % (2 * top + 1) - top) as i32).collect();
+        let answer = max_absolute_sum(nums);
+        sum += answer;
+        check = (check * 31 + answer) % 1000000007;
+    }
+    println(f"{count} arrays of up to {most} values within {top}: answers add to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then one value, all of one sign, and the
+    // longest run of the largest values
+    println(max_absolute_sum([1, -3, 2, 3, -4]));
+    println(max_absolute_sum([2, -5, 1, -4, 3, -2]));
+    println(max_absolute_sum([-7]));
+    println(max_absolute_sum([-3, -9, -2]));
+    println(max_absolute_sum(Vec.filled(100000, -10000i32)));
+    let mut seed = 1749;
+    batch(3000, 8, 5, mut seed);
+    batch(300, 1000, 10000, mut seed);
+    batch(10, 100000, 10000, mut seed);
+}

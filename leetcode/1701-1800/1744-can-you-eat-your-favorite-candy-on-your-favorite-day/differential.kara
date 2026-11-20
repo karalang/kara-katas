@@ -1,0 +1,227 @@
+// LeetCode #1744: Can You Eat Your Favorite Candy on Your Favorite Day?
+// -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random
+// problems of 1 to 6 types of 1 to 5 candies, each with 6 queries.
+//
+// P1  the answers are the statement read literally
+// P2  a cap one larger never turns a yes into a no
+// P3  one more type at the end leaves every answer as it was
+// P4  on day 0 a cap of every candy reaches every type
+// P5  each arm agrees with at least two of the other three
+
+// ---- eat.kara: the ★ arm: prefix sums, then two comparisons
+
+fn star_arm(candies_count: Vec[i32], queries: Vec[Vec[i32]]) -> Vec[bool] {
+    let mut before: Vec[i64] = [0];
+    for c in candies_count.iter() {
+        before.push(before[before.len() - 1] + c);
+    }
+    let mut answers: Vec[bool] = Vec.new();
+    for q in queries.iter() {
+        let (t, day, cap) = (q[0], q[1] as i64, q[2] as i64);
+        answers.push(day + 1 <= before[t + 1] and (day + 1) * cap > before[t]);
+    }
+    answers
+}
+
+// ---- eat_scan.kara: two ranges that overlap
+
+fn scan_arm(candies_count: Vec[i32], queries: Vec[Vec[i32]]) -> Vec[bool] {
+    let totals: Vec[i64] = candies_count.iter().scan(0, |sum, c| { sum += c; Some((sum, sum)) }).collect();
+    queries.iter().map(|q| {
+        let t = q[0];
+        let (first, last) = (if t == 0 { 1 } else { totals[t - 1] + 1 }, totals[t]);
+        let (low, high) = (q[1] as i64 + 1, (q[1] as i64 + 1) * q[2]);
+        low <= last and first <= high
+    }).collect()
+}
+
+// ---- eat_search.kara: the types of the slowest and fastest last candy
+
+fn search_type_of(totals: Slice[i64], candy: i64) -> i64 {
+    totals.partition_point(|total| total < candy)
+}
+
+fn search_arm(candies_count: Vec[i32], queries: Vec[Vec[i32]]) -> Vec[bool] {
+    let mut totals: Vec[i64] = Vec.with_capacity(candies_count.len());
+    let mut sum = 0;
+    for c in candies_count.iter() {
+        sum += c;
+        totals.push(sum);
+    }
+    let mut answers: Vec[bool] = Vec.new();
+    for q in queries.iter() {
+        let day = q[1] as i64;
+        let slowest = search_type_of(totals, day + 1);
+        let fastest = search_type_of(totals, (day + 1) * q[2]);
+        answers.push(slowest <= q[0] and q[0] <= fastest);
+    }
+    answers
+}
+
+// ---- eat_solution.kara: LeetCode's Rust template, through karac fix
+
+struct Solution {}
+
+impl Solution {
+    pub fn can_eat(candies_count: Vec[i32], queries: Vec[Vec[i32]]) -> Vec[bool] {
+        let mut pre = Vec.filled(candies_count.len() + 1, 0);
+        for i in 0..candies_count.len() {
+            pre[i + 1] = pre[i] + candies_count[i];
+        }
+        queries
+            .iter()
+            .map(|q| {
+                let (t, d, c) = (q[0] as usize, q[1] as i64, q[2] as i64);
+                d < pre[t + 1] and (d + 1) * c > pre[t]
+            })
+            .collect()
+    }
+}
+
+fn solution_arm(candies_count: Vec[i32], queries: Vec[Vec[i32]]) -> Vec[bool] {
+    Solution.can_eat(candies_count, queries)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: day by day, every count of candies that
+// can have been eaten so far, from one to `cap` candies a day and never
+// more than there are; then, on the favourite day, every count eaten
+// that day, and whether any candy so eaten is of the favourite type,
+// found by walking the types in order
+fn literal(candies: Slice[i32], query: Slice[i32]) -> bool {
+    let (t, day, cap) = (query[0] as i64, query[1] as i64, query[2] as i64);
+    let total: i64 = candies.iter().map(|c| c as i64).sum();
+    let mut eaten: Vec[bool] = Vec.filled(total + 1, false);
+    eaten[0] = true;
+    for _ in 0..day {
+        let mut next: Vec[bool] = Vec.filled(total + 1, false);
+        for count in 0..total + 1 {
+            if eaten[count] {
+                for k in 1..cap + 1 {
+                    if count + k <= total {
+                        next[count + k] = true;
+                    }
+                }
+            }
+        }
+        eaten = next;
+    }
+    for count in 0..total + 1 {
+        if eaten[count] {
+            for k in 1..cap + 1 {
+                let candy = count + k;
+                if candy > total {
+                    break;
+                }
+                // the type of the candy-th candy
+                let mut kind = 0;
+                let mut seen = candies[0] as i64;
+                while seen < candy {
+                    kind += 1;
+                    seen += candies[kind];
+                }
+                if kind == t {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn arm(a: i64, candies: Slice[i32], queries: Slice[Vec[i32]]) -> Vec[bool] {
+    let (candies, queries) = (candies.to_vec(), queries.to_vec());
+    match a {
+        0 => star_arm(candies, queries),
+        1 => scan_arm(candies, queries),
+        2 => search_arm(candies, queries),
+        _ => solution_arm(candies, queries),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "scan", "search", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1744;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i32], Vec[Vec[i32]], i32)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 6 + 1;
+        let candies: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % 5 + 1) as i32).collect();
+        let total: i64 = candies.iter().map(|c| c as i64).sum();
+        let mut queries: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..6 {
+            let t = next_random(mut seed) % n;
+            let day = next_random(mut seed) % (total + 3);
+            let cap = next_random(mut seed) % 8 + 1;
+            queries.push([t as i32, day as i32, cap as i32]);
+        }
+        let extra = (next_random(mut seed) % 5 + 1) as i32;
+        cases.push((candies, queries, extra));
+    }
+    for (p, (candies, queries, extra)) in cases.iter().enumerate() {
+        let want: Vec[bool] = queries.iter().map(|q| literal(candies, q)).collect();
+        for w in want.iter() {
+            check = (check * 2 + if w { 1 } else { 0 }) % 1000000007;
+        }
+        let total: i32 = candies.iter().sum();
+        let wider: Vec[Vec[i32]] = queries.iter().map(|q| [q[0], q[1], q[2] + 1]).collect();
+        let mut longer = candies.to_vec();
+        longer.push(extra);
+        let first_day: Vec[Vec[i32]] = (0..candies.len()).map(|t| [t as i32, 0, total]).collect();
+        let mut answers: Vec[Vec[bool]] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, candies, queries);
+            let wide_got = arm(a, candies, wider);
+            let grows = (0..got.len()).all(|i| not got[i] or wide_got[i]);
+            let failed = [got != want, not grows, arm(a, longer, queries) != got, arm(a, candies, first_day).iter().any(|y| not y)];
+            answers.push(got);
+            for t in 0..4 {
+                checks += 1;
+                if failed[t] {
+                    failures += 1;
+                    by_property[t + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({candies}, {queries}), {arm_name(a)}: P{t + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for t in 1..6 {
+            if by_property[t] > 0 {
+                counts.push(f"P{t}: {by_property[t]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

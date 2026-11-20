@@ -1,0 +1,225 @@
+// LeetCode #1745: Palindrome Partitioning IV -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random
+// strings of 3 to 11 letters from the first 1 to 3 of the alphabet.
+//
+// P1  the answer is the statement read literally
+// P2  the string reversed gives the same answer
+// P3  the letters renamed one for one give the same answer
+// P4  the first letter three times can always be split
+// P5  each arm agrees with at least two of the other three
+
+// ---- palin.kara: the ★ arm: a table, then every pair of cuts
+
+fn star_arm(s: String) -> bool {
+    let b: Vec[u8] = s.bytes().iter().collect();
+    let n = b.len();
+    let mut is: Vec[Vec[bool]] = Vec.filled(n, Vec.filled(n, false));
+    for i in (0..n).rev() {
+        for j in i..n {
+            is[i][j] = b[i] == b[j] and (j - i < 2 or is[i + 1][j - 1]);
+        }
+    }
+    for i in 1..n - 1 {
+        if is[0][i - 1] {
+            for j in i..n - 1 {
+                if is[i][j] and is[j + 1][n - 1] {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+// ---- palin_expand.kara: palindromes grown from their centres
+
+fn expand_arm(s: String) -> bool {
+    let b: Vec[u8] = s.bytes().iter().collect();
+    let n = b.len();
+    let mut is = Vec.filled(n, Vec.filled(n, false));
+    for centre in 0..2 * n - 1 {
+        let mut left = centre / 2;
+        let mut right = left + centre % 2;
+        while right < n and b[left] == b[right] {
+            is[left][right] = true;
+            if left == 0 {
+                break;
+            }
+            left -= 1;
+            right += 1;
+        }
+    }
+    (0..n - 2).any(|first| is[0][first] and (first + 1..n - 1).any(|last| is[first + 1][last] and is[last + 1][n - 1]))
+}
+
+// ---- palin_memo.kara: palindromes asked for as needed, with a memo
+
+fn memo_palindrome_at(b: Slice[u8], i: i64, j: i64, memo: mut ref Vec[Vec[Option[bool]]]) -> bool {
+    if i >= j {
+        return true;
+    }
+    if let Some(known) = memo[i][j] {
+        return known;
+    }
+    let answer = b[i] == b[j] and memo_palindrome_at(b, i + 1, j - 1, mut memo);
+    memo[i][j] = Some(answer);
+    answer
+}
+
+fn memo_arm(s: String) -> bool {
+    let b: Vec[u8] = s.bytes().iter().collect();
+    let n = b.len();
+    let mut memo: Vec[Vec[Option[bool]]] = Vec.filled(n, Vec.filled(n, None));
+    for i in 1..n - 1 {
+        if not memo_palindrome_at(b, 0, i - 1, mut memo) {
+            continue;
+        }
+        for j in i..n - 1 {
+            if memo_palindrome_at(b, i, j, mut memo) and memo_palindrome_at(b, j + 1, n - 1, mut memo) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+// ---- palin_solution.kara: LeetCode's Rust template, through karac fix
+
+struct Solution {}
+
+impl Solution {
+    pub fn check_partitioning(s: String) -> bool {
+        let s = s.bytes();
+        let n = s.len();
+        let mut dp = Vec.filled(n, Vec.filled(n, false));
+        for i in (0..n).rev() {
+            for j in i..n {
+                dp[i][j] = s[i] == s[j] and (j - i < 2 or dp[i + 1][j - 1]);
+            }
+        }
+        for i in 1..n - 1 {
+            if not dp[0][i - 1] {
+                continue;
+            }
+            for j in i..n - 1 {
+                if dp[i][j] and dp[j + 1][n - 1] {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+}
+
+fn solution_arm(s: String) -> bool {
+    Solution.check_partitioning(s)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every way to cut the string into three
+// non-empty pieces, each piece compared with itself reversed
+fn literal(s: Str) -> bool {
+    let letters: Vec[char] = s.chars().collect();
+    let n = letters.len();
+    let reads_back = |from: i64, to: i64| {
+        let piece: Vec[char] = letters[from..to].to_vec();
+        let mut back = piece.clone();
+        back.reverse();
+        piece == back
+    };
+    for a in 1..n {
+        for b in a + 1..n {
+            if reads_back(0, a) and reads_back(a, b) and reads_back(b, n) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn arm(a: i64, s: Str) -> bool {
+    let s = s.to_string();
+    match a {
+        0 => star_arm(s),
+        1 => expand_arm(s),
+        2 => memo_arm(s),
+        _ => solution_arm(s),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "expand", "memo", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1745;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[String] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 9 + 3;
+        let letters = next_random(mut seed) % 3 + 1;
+        let s: String = (0..n).map(|_| char.from_digit((10 + next_random(mut seed) % letters) as u32, 36).unwrap()).collect();
+        cases.push(s);
+    }
+    for (p, s) in cases.iter().enumerate() {
+        let want = literal(s);
+        check = (check * 2 + if want { 1 } else { 0 }) % 1000000007;
+        let reversed: String = s.chars().rev().collect();
+        let renamed: String = s.chars().map(|c| match c {
+            'a' => 'x',
+            'b' => 'a',
+            _ => 'b',
+        }).collect();
+        let first = s.chars().next().unwrap();
+        let tripled = f"{first}{first}{first}";
+        let mut answers: Vec[bool] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, s);
+            let failed = [got != want, arm(a, reversed) != got, arm(a, renamed) != got, not arm(a, tripled)];
+            answers.push(got);
+            for t in 0..4 {
+                checks += 1;
+                if failed[t] {
+                    failures += 1;
+                    by_property[t + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({s}), {arm_name(a)}: P{t + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for t in 1..6 {
+            if by_property[t] > 0 {
+                counts.push(f"P{t}: {by_property[t]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

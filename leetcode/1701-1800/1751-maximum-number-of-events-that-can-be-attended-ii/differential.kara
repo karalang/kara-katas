@@ -1,0 +1,232 @@
+// LeetCode #1751: Maximum Number of Events That Can Be Attended II --
+// the differential.
+//
+// Four arms against the statement read literally, on 3000 random problems
+// of 1 to 8 events starting on days 1 to 10, each 1 to 4 days long and
+// worth 1 to 9, with k from 1 to 4.
+//
+// P1  the answer is the statement read literally
+// P2  the events listed in reverse give the same answer
+// P3  one more event allowed never lowers the answer, nor raises it by
+//     more than the largest value
+// P4  every value doubled doubles the answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- events.kara: the ★ arm: sorted by end, one layer of k at a time
+
+fn star_arm(events: Vec[Vec[i32]], k: i32) -> i32 {
+    let mut events = events.clone();
+    events.sort_by_key(|e| e[1]);
+    let n = events.len();
+    let ends: Vec[i32] = events.iter().map(|e| e[1]).collect();
+    let before: Vec[i64] = events.iter().map(|e| ends.partition_point(|end| end < e[0])).collect();
+    let mut previous: Vec[i32] = Vec.filled(n + 1, 0);
+    for _ in 0..k {
+        let mut current: Vec[i32] = Vec.filled(n + 1, 0);
+        for i in 0..n {
+            current[i + 1] = max(current[i], previous[before[i]] + events[i][2]);
+        }
+        previous = current;
+    }
+    previous[n]
+}
+
+// ---- events_memo.kara: memoized choices
+
+fn memo_best(i: i64, j: i64, events: Slice[Vec[i32]], next: Slice[i64], memo: mut ref Vec[Vec[Option[i32]]]) -> i32 {
+    if i == events.len() or j == 0 {
+        return 0;
+    }
+    if let Some(known) = memo[i][j] {
+        return known;
+    }
+    let skip = memo_best(i + 1, j, events, next, mut memo);
+    let take = events[i][2] + memo_best(next[i], j - 1, events, next, mut memo);
+    let answer = max(skip, take);
+    memo[i][j] = Some(answer);
+    answer
+}
+
+fn memo_arm(events: Vec[Vec[i32]], k: i32) -> i32 {
+    let mut events = events.clone();
+    events.sort();
+    let n = events.len();
+    let next: Vec[i64] = events.iter().map(|e| events.partition_point(|f| f[0] <= e[1])).collect();
+    let mut memo: Vec[Vec[Option[i32]]] = Vec.filled(n, Vec.filled(k as i64 + 1, None));
+    memo_best(0, k, events, next, mut memo)
+}
+
+// ---- events_heap.kara: a sweep with a heap of finished events
+
+fn heap_arm(events: Vec[Vec[i32]], k: i32) -> i32 {
+    let mut events = events.clone();
+    events.sort();
+    let n = events.len();
+    let k = k as i64;
+    let mut totals: Vec[Vec[i32]] = Vec.filled(n, Vec.filled(k + 1, 0));
+    let mut finished: Vec[i32] = Vec.filled(k + 1, 0);
+    let mut ending: PriorityQueue[(i32, i64)] = PriorityQueue.new();
+    let mut answer = 0;
+    for i in 0..n {
+        while let Some((end, e)) = ending.peek() {
+            if end >= events[i][0] {
+                break;
+            }
+            for j in 0..k + 1 {
+                finished[j] = max(finished[j], totals[e][j]);
+            }
+            ending.pop();
+        }
+        for j in 1..k + 1 {
+            totals[i][j] = finished[j - 1] + events[i][2];
+            answer = max(answer, totals[i][j]);
+        }
+        ending.push((events[i][1], i));
+    }
+    answer
+}
+
+// ---- events_solution.kara: LeetCode's Rust template, through karac fix
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_value(events: own Vec[Vec[i32]], k: i32) -> i32 {
+        let mut events = events;
+        events.sort_by_key(|e| e[0]);
+        let n = events.len();
+        let k = k as i64;
+        let mut dp = Vec.filled(n + 1, Vec.filled(k + 1, 0i32));
+        for i in (0..n).rev() {
+            let nxt = events.partition_point(|e| e[0] <= events[i][1]);
+            for j in 1..=k {
+                dp[i][j] = dp[i + 1][j].max(dp[nxt][j - 1] + events[i][2]);
+            }
+        }
+        dp[0][k]
+    }
+}
+
+fn solution_arm(events: own Vec[Vec[i32]], k: i32) -> i32 {
+    Solution.max_value(events, k)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every set of events, as a bit mask,
+// with at most k of them and no two sharing a day, summed; the largest
+fn literal(events: Slice[Vec[i32]], k: i64) -> i64 {
+    let n = events.len();
+    let mut best = 0;
+    for mask in 0..1 << n {
+        let chosen: Vec[i64] = (0..n).filter(|i| mask >> i & 1 == 1).collect();
+        if chosen.len() > k {
+            continue;
+        }
+        let mut apart = true;
+        for a in chosen.iter() {
+            for b in chosen.iter() {
+                if a != b and events[a][0] <= events[b][1] and events[b][0] <= events[a][1] {
+                    apart = false;
+                }
+            }
+        }
+        if apart {
+            best = max(best, chosen.iter().map(|i| events[i][2] as i64).sum());
+        }
+    }
+    best
+}
+
+fn arm(a: i64, events: Slice[Vec[i32]], k: i64) -> i64 {
+    let events = events.to_vec();
+    let k = k as i32;
+    let answer = match a {
+        0 => star_arm(events, k),
+        1 => memo_arm(events, k),
+        2 => heap_arm(events, k),
+        _ => solution_arm(events, k),
+    };
+    answer
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "memo", "heap", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1751;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[Vec[i32]], i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 8 + 1;
+        let mut events: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..n {
+            let start = next_random(mut seed) % 10 + 1;
+            let end = start + next_random(mut seed) % 4;
+            let value = next_random(mut seed) % 9 + 1;
+            events.push([start as i32, end as i32, value as i32]);
+        }
+        let k = next_random(mut seed) % 4 + 1;
+        cases.push((events, k));
+    }
+    for (p, (events, k)) in cases.iter().enumerate() {
+        let want = literal(events, k);
+        check = (check * 31 + want + k) % 1000000007;
+        let reversed: Vec[Vec[i32]] = events.iter().rev().cloned().collect();
+        let doubled: Vec[Vec[i32]] = events.iter().map(|e| [e[0], e[1], 2 * e[2]]).collect();
+        let largest = events.iter().map(|e| e[2] as i64).max().unwrap();
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, events, k);
+            let failed = [
+                got != want,
+                arm(a, reversed, k) != got,
+                arm(a, events, k + 1) < got or arm(a, events, k + 1) > got + largest,
+                arm(a, doubled, k) != 2 * got,
+            ];
+            answers.push(got);
+            for t in 0..4 {
+                checks += 1;
+                if failed[t] {
+                    failures += 1;
+                    by_property[t + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({events}, k {k}), {arm_name(a)}: P{t + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for t in 1..6 {
+            if by_property[t] > 0 {
+                counts.push(f"P{t}: {by_property[t]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

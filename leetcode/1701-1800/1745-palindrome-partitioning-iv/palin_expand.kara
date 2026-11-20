@@ -1,0 +1,83 @@
+// LeetCode #1745: Palindrome Partitioning IV -- palindromes grown from
+// their centres.
+//
+// Every palindrome grows out from a centre, a letter or the gap between
+// two, one matching pair of letters at a time. Growing each of the 2n -
+// 1 centres until its ends differ marks every palindrome in the table.
+// The pieces are then tried from the first: each first piece that is a
+// palindrome, then each middle that is one, and the last checked. O(n^2).
+
+fn check_partitioning(s: String) -> bool {
+    let b: Vec[u8] = s.bytes().iter().collect();
+    let n = b.len();
+    let mut is = Vec.filled(n, Vec.filled(n, false));
+    for centre in 0..2 * n - 1 {
+        let mut left = centre / 2;
+        let mut right = left + centre % 2;
+        while right < n and b[left] == b[right] {
+            is[left][right] = true;
+            if left == 0 {
+                break;
+            }
+            left -= 1;
+            right += 1;
+        }
+    }
+    (0..n - 2).any(|first| is[0][first] and (first + 1..n - 1).any(|last| is[first + 1][last] and is[last + 1][n - 1]))
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letter(seed: mut ref i64, letters: i64) -> char {
+    char.from_digit((10 + next_random(mut seed) % letters) as u32, 36).unwrap()
+}
+
+// a random palindrome of `n` letters from the first `letters`
+fn palindrome(n: i64, letters: i64, seed: mut ref i64) -> String {
+    let half: Vec[char] = (0..(n + 1) / 2).map(|_| letter(mut seed, letters)).collect();
+    let mut text: String = half.iter().collect();
+    let back: String = half[..n / 2].iter().rev().collect();
+    text.push_str(back);
+    text
+}
+
+// `count` strings of 3 to `most` letters: half of them three random
+// palindromes put together, half random letters
+fn batch(count: i64, most: i64, letters: i64, seed: mut ref i64) {
+    let mut yes = 0;
+    let mut check = 0;
+    for k in 0..count {
+        let n = next_random(mut seed) % (most - 2) + 3;
+        let s = if k % 2 == 0 {
+            let a = next_random(mut seed) % (n - 2) + 1;
+            let b = next_random(mut seed) % (n - a - 1) + 1;
+            f"{palindrome(a, letters, mut seed)}{palindrome(b, letters, mut seed)}{palindrome(n - a - b, letters, mut seed)}"
+        } else {
+            (0..n).map(|_| letter(mut seed, letters)).collect()
+        };
+        let bit = if check_partitioning(s) { 1 } else { 0 };
+        yes += bit;
+        check = (check * 2 + bit + n) % 1000000007;
+    }
+    println(f"{count} strings of up to {most} letters from {letters}: {yes} split, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then three letters, a palindrome of three
+    // split from its middle, and a string whose last letter spoils it
+    println(check_partitioning("abcbdd"));
+    println(check_partitioning("bcbddxy"));
+    println(check_partitioning("abc"));
+    println(check_partitioning("aaaa"));
+    println(check_partitioning("abcbaz"));
+    println(check_partitioning("juchzcedhfesefhdecz"));
+    let mut seed = 1745;
+    batch(3000, 10, 2, mut seed);
+    batch(1000, 40, 3, mut seed);
+    batch(20, 2000, 26, mut seed);
+}

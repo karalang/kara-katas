@@ -1,0 +1,57 @@
+// LeetCode #1751: Maximum Number of Events That Can Be Attended II -- the
+// bench (events.kara in Rust): sorted by end, one layer of k at a time.
+
+fn max_value(events: &[Vec<i32>], k: i32) -> i32 {
+    let mut events = events.to_vec();
+    events.sort_by_key(|e| e[1]);
+    let n = events.len();
+    let ends: Vec<i32> = events.iter().map(|e| e[1]).collect();
+    let before: Vec<usize> = events.iter().map(|e| ends.partition_point(|&end| end < e[0])).collect();
+    let mut previous: Vec<i32> = vec![0; n + 1];
+    for _ in 0..k {
+        let mut current: Vec<i32> = vec![0; n + 1];
+        for i in 0..n {
+            current[i + 1] = current[i].max(previous[before[i]] + events[i][2]);
+        }
+        previous = current;
+    }
+    previous[n]
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: &mut i64) -> i64 {
+    next_random(seed) * 32768 + next_random(seed)
+}
+
+fn main() {
+    let count = 10;
+    let rounds: i64 = 5;
+    let n = 100000;
+    let k = 10;
+    let mut seed: i64 = 1751;
+    let mut problems: Vec<Vec<Vec<i32>>> = Vec::new();
+    for _ in 0..count {
+        let mut events: Vec<Vec<i32>> = Vec::new();
+        for _ in 0..n {
+            let start = wide(&mut seed) % 1000000000 + 1;
+            let end = (start + wide(&mut seed) % 100000000).min(1000000000);
+            let value = wide(&mut seed) % 1000000 + 1;
+            events.push(vec![start as i32, end as i32, value as i32]);
+        }
+        problems.push(events);
+    }
+    let mut sum: i64 = 0;
+    let mut check: i64 = 0;
+    for r in 0..rounds {
+        for events in problems.iter() {
+            let answer = max_value(events, k) as i64;
+            sum += answer;
+            check = (check * 31 + answer + r) % 1000000007;
+        }
+    }
+    println!("{} problems of {} events, k = {}, {} rounds: values add to {}, checksum {}", count, n, k, rounds, sum, check);
+}

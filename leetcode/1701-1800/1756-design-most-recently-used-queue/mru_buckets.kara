@@ -1,0 +1,88 @@
+// LeetCode #1756: Design Most Recently Used Queue -- square-root buckets.
+//
+// The values are kept in buckets of about the square root of n, in
+// order. A fetch walks the buckets' lengths to the one holding the k-th
+// value, removes it there and pushes it on the last bucket; after n
+// fetches the buckets are cut afresh, so none grows past twice its size.
+// O(sqrt n) per fetch, amortized.
+
+struct MruQueue {
+    buckets: Vec[Vec[i32]],
+    size: i64,
+    since_rebuild: i64,
+}
+
+impl MruQueue {
+    fn new(n: i32) -> MruQueue {
+        let mut queue = MruQueue { buckets: [(1..n + 1).collect()], size: 1, since_rebuild: 0 };
+        queue.rebuild();
+        queue
+    }
+
+    fn rebuild(mut ref self) {
+        let all: Vec[i32] = self.buckets.iter().flat_map(|v| v.iter()).collect();
+        let mut size = 1;
+        while size * size < all.len() {
+            size += 1;
+        }
+        self.size = size;
+        self.buckets = all.chunks(size).iter().map(|c| c.to_vec()).collect();
+        self.since_rebuild = 0;
+    }
+
+    fn fetch(mut ref self, k: i32) -> i32 {
+        let mut k = k as i64 - 1;
+        let mut b = 0;
+        while k >= self.buckets[b].len() {
+            k -= self.buckets[b].len();
+            b += 1;
+        }
+        let value = self.buckets[b].remove(k);
+        let last = self.buckets.len() - 1;
+        self.buckets[last].push(value);
+        self.since_rebuild += 1;
+        if self.since_rebuild >= self.size {
+            self.rebuild();
+        }
+        value
+    }
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random queues of 1 to `most` values, each fetched from
+// `calls` times at random places
+fn batch(count: i64, most: i64, calls: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let mut queue = MruQueue.new(n as i32);
+        for _ in 0..calls {
+            let k = (next_random(mut seed) % n + 1) as i32;
+            let got = queue.fetch(k);
+            sum += got;
+            check = (check * 31 + got) % 1000000007;
+        }
+    }
+    println(f"{count} queues of up to {most} values, {calls} fetches each: fetched values add to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's example, then one value fetched again and again, and the
+    // last place every time
+    let mut queue = MruQueue.new(8);
+    println([queue.fetch(3), queue.fetch(5), queue.fetch(2), queue.fetch(8)]);
+    let mut one = MruQueue.new(1);
+    println([one.fetch(1), one.fetch(1)]);
+    let mut last = MruQueue.new(4);
+    println([last.fetch(4), last.fetch(4), last.fetch(1), last.fetch(1)]);
+    let mut seed = 1756;
+    batch(3000, 6, 6, mut seed);
+    batch(100, 2000, 2000, mut seed);
+}

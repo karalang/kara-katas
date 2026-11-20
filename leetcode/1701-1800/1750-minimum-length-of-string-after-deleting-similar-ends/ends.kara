@@ -1,0 +1,89 @@
+// LeetCode #1750: Minimum Length of String After Deleting Similar Ends --
+// the ★ arm: two pointers.
+//
+// While the two ends hold the same letter, every copy of it at the front
+// and at the back comes off; the front's sweep may run through a middle
+// made of that letter alone, so the back's stops where the front got to.
+// O(n).
+
+fn minimum_length(s: String) -> i32 {
+    let b = s.bytes();
+    let mut left = 0;
+    let mut right = b.len() - 1;
+    while left < right and b[left] == b[right] {
+        let c = b[left];
+        while left <= right and b[left] == c {
+            left += 1;
+        }
+        while right >= left and b[right] == c {
+            right -= 1;
+        }
+    }
+    (right - left + 1) as i32
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random string of about `size` letters from the first `letters`: on
+// odd draws plain random, on even ones a random middle wrapped in layers
+// of one letter on both sides, so that whole layers come off
+fn draw(size: i64, letters: i64, seed: mut ref i64) -> String {
+    let alphabet = "abc";
+    let mut s = String.new();
+    if next_random(mut seed) % 2 == 1 {
+        let n = next_random(mut seed) % size + 1;
+        for _ in 0..n {
+            let k = next_random(mut seed) % letters;
+            s.push_str(alphabet[k..k + 1]);
+        }
+        return s;
+    }
+    let middle = next_random(mut seed) % 3;
+    for _ in 0..middle {
+        let k = next_random(mut seed) % letters;
+        s.push_str(alphabet[k..k + 1]);
+    }
+    while s.len() < size {
+        let k = next_random(mut seed) % letters;
+        let letter = alphabet[k..k + 1];
+        let before = next_random(mut seed) % 3 + 1;
+        let after = next_random(mut seed) % 3 + 1;
+        s = letter.repeat(before) + s + letter.repeat(after);
+    }
+    s
+}
+
+// `count` random strings of up to about `size` letters from the first `letters`
+fn batch(count: i64, size: i64, letters: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let s = draw(size, letters, mut seed);
+        let n = s.len();
+        let answer = minimum_length(s);
+        sum += answer;
+        check = (check * 31 + answer + n) % 1000000007;
+    }
+    println(f"{count} strings of up to {size} letters from {letters}: lengths add to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then one letter, two equal letters, an
+    // odd palindrome that leaves its middle, and a long run of one letter
+    println(minimum_length("ca"));
+    println(minimum_length("cabaabac"));
+    println(minimum_length("aabccabba"));
+    println(minimum_length("a"));
+    println(minimum_length("aa"));
+    println(minimum_length("abcba"));
+    println(minimum_length("b".repeat(100000)));
+    let mut seed = 1750;
+    batch(3000, 10, 2, mut seed);
+    batch(1000, 100, 3, mut seed);
+    batch(20, 100000, 3, mut seed);
+}

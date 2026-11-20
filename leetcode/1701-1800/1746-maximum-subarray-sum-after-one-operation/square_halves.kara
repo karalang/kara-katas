@@ -1,0 +1,79 @@
+// LeetCode #1746: Maximum Subarray Sum After One Operation -- halves
+// combined.
+//
+// Each range of the array is summed up as a `Part`: its total, its best
+// prefix, suffix and subarray, and the same four with exactly one value
+// squared. Two halves combine field by field, a squared value lying in
+// one half or the other, and a single value is its own part. The whole
+// array's best squared subarray is the answer. O(n log n) in the
+// recursion's depth, O(n) in work.
+
+struct Part {
+    total: i64,
+    prefix: i64,
+    suffix: i64,
+    best: i64,
+    total_sq: i64,
+    prefix_sq: i64,
+    suffix_sq: i64,
+    best_sq: i64,
+}
+
+fn part(nums: Slice[i32], from: i64, to: i64) -> Part {
+    if to - from == 1 {
+        let x = nums[from] as i64;
+        return Part { total: x, prefix: x, suffix: x, best: x, total_sq: x * x, prefix_sq: x * x, suffix_sq: x * x, best_sq: x * x };
+    }
+    let middle = (from + to) / 2;
+    let a = part(nums, from, middle);
+    let b = part(nums, middle, to);
+    Part {
+        total: a.total + b.total,
+        prefix: max(a.prefix, a.total + b.prefix),
+        suffix: max(b.suffix, b.total + a.suffix),
+        best: max(max(a.best, b.best), a.suffix + b.prefix),
+        total_sq: max(a.total_sq + b.total, a.total + b.total_sq),
+        prefix_sq: max(a.prefix_sq, max(a.total_sq + b.prefix, a.total + b.prefix_sq)),
+        suffix_sq: max(b.suffix_sq, max(b.total_sq + a.suffix, b.total + a.suffix_sq)),
+        best_sq: max(max(a.best_sq, b.best_sq), max(a.suffix_sq + b.prefix, a.suffix + b.prefix_sq)),
+    }
+}
+
+fn max_sum_after_operation(nums: Vec[i32]) -> i32 {
+    part(nums, 0, nums.len()).best_sq as i32
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random arrays of 1 to `most` values from -`top` to `top`
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let nums: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % (2 * top + 1) - top) as i32).collect();
+        let answer = max_sum_after_operation(nums);
+        sum += answer;
+        check = (check * 31 + answer) % 1000000007;
+    }
+    println(f"{count} arrays of up to {most} values within {top}: sums add to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then one value, all negative, and the
+    // largest square
+    println(max_sum_after_operation([2, -1, -4, -3]));
+    println(max_sum_after_operation([1, -1, 1, 1, -1, -1, 1]));
+    println(max_sum_after_operation([-7]));
+    println(max_sum_after_operation([-3, -9, -2]));
+    println(max_sum_after_operation([10000, -10000, 10000]));
+    let mut seed = 1746;
+    batch(3000, 8, 5, mut seed);
+    batch(300, 1000, 10000, mut seed);
+    batch(10, 100000, 10000, mut seed);
+}

@@ -1,0 +1,167 @@
+// LeetCode #1749: Maximum Absolute Sum of Any Subarray -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random arrays
+// of 1 to 8 values from -6 to 6, each with a random value to append.
+//
+// P1  the answer is the statement read literally
+// P2  the array reversed gives the same answer
+// P3  the array negated gives the same answer
+// P4  one more value at the end never lowers the answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- abs.kara: the ★ arm: Kadane's scan both ways
+
+fn star_arm(nums: Vec[i32]) -> i32 {
+    let mut high: i32 = 0;
+    let mut low: i32 = 0;
+    let mut best: i32 = 0;
+    for x in nums.iter() {
+        high = max(high, 0) + x;
+        low = min(low, 0) + x;
+        best = max(best, max(high, -low));
+    }
+    best
+}
+
+// ---- abs_prefix.kara: prefix sums
+
+fn prefix_arm(nums: Vec[i32]) -> i32 {
+    let mut prefix: i32 = 0;
+    let mut highest: i32 = 0;
+    let mut lowest = 0;
+    for x in nums.iter() {
+        prefix += x;
+        highest = max(highest, prefix);
+        lowest = min(lowest, prefix);
+    }
+    highest - lowest
+}
+
+// ---- abs_scan.kara: prefix sums as an iterator
+
+fn scan_arm(nums: Vec[i32]) -> i32 {
+    let (highest, lowest) = nums
+        .iter()
+        .scan(0, |sum, x| Some((sum + x, sum + x)))
+        .fold((0i32, 0i32), |(high, low), p| (max(high, p), min(low, p)));
+    highest - lowest
+}
+
+// ---- abs_solution.kara: LeetCode's Rust template, through karac fix
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_absolute_sum(nums: Vec[i32]) -> i32 {
+        let mut (mx, mn, s) = (0i32, 0i32, 0i32);
+        for x in nums {
+            s += x;
+            mx = mx.max(s);
+            mn = mn.min(s);
+        }
+        mx - mn
+    }
+}
+
+fn solution_arm(nums: Vec[i32]) -> i32 {
+    Solution.max_absolute_sum(nums)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every non-empty subarray summed, and the
+// largest absolute value of those sums
+fn literal(nums: Slice[i32]) -> i64 {
+    let n = nums.len();
+    let mut best = 0;
+    for from in 0..n {
+        for to in from + 1..n + 1 {
+            let sum: i64 = nums[from..to].iter().map(|x| x as i64).sum();
+            best = max(best, sum.abs());
+        }
+    }
+    best
+}
+
+fn arm(a: i64, nums: Slice[i32]) -> i64 {
+    let nums = nums.to_vec();
+    let answer = match a {
+        0 => star_arm(nums),
+        1 => prefix_arm(nums),
+        2 => scan_arm(nums),
+        _ => solution_arm(nums),
+    };
+    answer
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "prefix", "scan", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1749;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i32], i32)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 8 + 1;
+        let nums: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % 13 - 6) as i32).collect();
+        let extra = (next_random(mut seed) % 13 - 6) as i32;
+        cases.push((nums, extra));
+    }
+    for (p, (nums, extra)) in cases.iter().enumerate() {
+        let want = literal(nums);
+        check = (check * 31 + want + 1000) % 1000000007;
+        let reversed: Vec[i32] = nums.iter().rev().collect();
+        let mut longer = nums.to_vec();
+        longer.push(extra);
+        let negated: Vec[i32] = nums.iter().map(|x| -x).collect();
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, nums);
+            let failed = [got != want, arm(a, reversed) != got, arm(a, negated) != got, arm(a, longer) < got];
+            answers.push(got);
+            for t in 0..4 {
+                checks += 1;
+                if failed[t] {
+                    failures += 1;
+                    by_property[t + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({nums}, then {extra}), {arm_name(a)}: P{t + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for t in 1..6 {
+            if by_property[t] > 0 {
+                counts.push(f"P{t}: {by_property[t]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

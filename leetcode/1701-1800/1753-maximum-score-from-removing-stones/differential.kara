@@ -1,0 +1,191 @@
+// LeetCode #1753: Maximum Score From Removing Stones -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random sets of
+// three piles of 1 to 9 stones, each with a random pile to add a stone to.
+//
+// P1  the answer is the statement read literally
+// P2  the piles in another order give the same answer
+// P3  one more stone in a pile raises the answer by 0 or 1
+// P4  the answer is at least the smallest pile and at most half the stones
+// P5  each arm agrees with at least two of the other three
+
+// ---- stones.kara: the ★ arm: a closed form
+
+fn star_arm(a: i32, b: i32, c: i32) -> i32 {
+    let total = a + b + c;
+    let largest = max(a, max(b, c));
+    min(total / 2, total - largest)
+}
+
+// ---- stones_greedy.kara: the greedy game played out
+
+fn greedy_arm(a: i32, b: i32, c: i32) -> i32 {
+    let mut piles = [a, b, c];
+    piles.sort();
+    let mut score = 0;
+    while piles[1] > 0 {
+        piles[1] -= 1;
+        piles[2] -= 1;
+        score += 1;
+        piles.sort();
+    }
+    score
+}
+
+// ---- stones_heap.kara: a largest-first queue
+
+fn heap_arm(a: i32, b: i32, c: i32) -> i32 {
+    let mut piles: PriorityQueue[i32] = PriorityQueue.max_first();
+    for pile in [a, b, c] {
+        piles.push(pile);
+    }
+    let mut score = 0;
+    while piles.len() >= 2 {
+        let first = piles.pop().unwrap() - 1;
+        let second = piles.pop().unwrap() - 1;
+        score += 1;
+        if first > 0 {
+            piles.push(first);
+        }
+        if second > 0 {
+            piles.push(second);
+        }
+    }
+    score
+}
+
+// ---- stones_solution.kara: LeetCode's Rust template, through karac fix
+
+struct Solution {}
+
+impl Solution {
+    pub fn maximum_score(a: i32, b: i32, c: i32) -> i32 {
+        let mut v = [a, b, c];
+        v.sort();
+        if v[0] + v[1] <= v[2] {
+            v[0] + v[1]
+        } else {
+            (a + b + c) / 2
+        }
+    }
+}
+
+fn solution_arm(a: i32, b: i32, c: i32) -> i32 {
+    Solution.maximum_score(a, b, c)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: from piles a, b and c, every move that
+// takes a stone from two different non-empty piles is tried, and the
+// most points any sequence of moves scores, each position worked out once
+fn literal(a: i64, b: i64, c: i64, memo: mut ref Map[(i64, i64, i64), i64]) -> i64 {
+    if let Some(known) = memo.get((a, b, c)) {
+        return known;
+    }
+    let mut best = 0;
+    if a > 0 and b > 0 {
+        best = max(best, 1 + literal(a - 1, b - 1, c, mut memo));
+    }
+    if a > 0 and c > 0 {
+        best = max(best, 1 + literal(a - 1, b, c - 1, mut memo));
+    }
+    if b > 0 and c > 0 {
+        best = max(best, 1 + literal(a, b - 1, c - 1, mut memo));
+    }
+    memo.insert((a, b, c), best);
+    best
+}
+
+fn arm(a: i64, piles: (i64, i64, i64)) -> i64 {
+    let (x, y, z) = (piles.0 as i32, piles.1 as i32, piles.2 as i32);
+    let answer = match a {
+        0 => star_arm(x, y, z),
+        1 => greedy_arm(x, y, z),
+        2 => heap_arm(x, y, z),
+        _ => solution_arm(x, y, z),
+    };
+    answer
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "greedy", "heap", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1753;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[((i64, i64, i64), i64)] = Vec.new();
+    for _ in 0..problems {
+        let x = next_random(mut seed) % 9 + 1;
+        let y = next_random(mut seed) % 9 + 1;
+        let z = next_random(mut seed) % 9 + 1;
+        let extra = next_random(mut seed) % 3;
+        cases.push(((x, y, z), extra));
+    }
+    let mut memo: Map[(i64, i64, i64), i64] = Map.new();
+    for (p, ((x, y, z), extra)) in cases.iter().enumerate() {
+        let want = literal(x, y, z, mut memo);
+        check = (check * 31 + want + x) % 1000000007;
+        let turned = (z, x, y);
+        let more = match extra {
+            0 => (x + 1, y, z),
+            1 => (x, y + 1, z),
+            _ => (x, y, z + 1),
+        };
+        let smallest = min(x, min(y, z));
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, (x, y, z));
+            let failed = [
+                got != want,
+                arm(a, turned) != got,
+                arm(a, more) != got and arm(a, more) != got + 1,
+                got < smallest or got > (x + y + z) / 2,
+            ];
+            answers.push(got);
+            for t in 0..4 {
+                checks += 1;
+                if failed[t] {
+                    failures += 1;
+                    by_property[t + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({x}, {y}, {z}), {arm_name(a)}: P{t + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for t in 1..6 {
+            if by_property[t] > 0 {
+                counts.push(f"P{t}: {by_property[t]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

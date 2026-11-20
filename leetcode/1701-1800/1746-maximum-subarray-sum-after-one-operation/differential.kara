@@ -1,0 +1,189 @@
+// LeetCode #1746: Maximum Subarray Sum After One Operation -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random arrays
+// of 1 to 8 values from -6 to 6, each with a random value to append.
+//
+// P1  the answer is the statement read literally
+// P2  the array reversed gives the same answer
+// P3  one more value at the end never lowers the answer
+// P4  a 0 put in front gives the same answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- square.kara: the ★ arm: Kadane's scan with two states
+
+fn star_arm(nums: Vec[i32]) -> i32 {
+    let mut plain: i32 = 0;
+    let mut squared: i32 = 0;
+    let mut best = i32.MIN;
+    for x in nums.iter() {
+        squared = max(squared + x, max(plain, 0) + x * x);
+        plain = max(plain, 0) + x;
+        best = max(best, squared);
+    }
+    best
+}
+
+// ---- square_sides.kara: the best run on either side of the squared value
+
+fn sides_arm(nums: Vec[i32]) -> i32 {
+    let n = nums.len();
+    let mut left: Vec[i32] = Vec.filled(n, 0i32);
+    let mut right: Vec[i32] = Vec.filled(n, 0i32);
+    for i in 1..n {
+        left[i] = max(left[i - 1] + nums[i - 1], 0);
+    }
+    for i in (0..n - 1).rev() {
+        right[i] = max(right[i + 1] + nums[i + 1], 0);
+    }
+    (0..n).map(|i| left[i] + nums[i] * nums[i] + right[i]).max().unwrap()
+}
+
+// ---- square_halves.kara: halves combined
+
+struct Part {
+    total: i64,
+    prefix: i64,
+    suffix: i64,
+    best: i64,
+    total_sq: i64,
+    prefix_sq: i64,
+    suffix_sq: i64,
+    best_sq: i64,
+}
+
+fn halves_part(nums: Slice[i32], from: i64, to: i64) -> Part {
+    if to - from == 1 {
+        let x = nums[from] as i64;
+        return Part { total: x, prefix: x, suffix: x, best: x, total_sq: x * x, prefix_sq: x * x, suffix_sq: x * x, best_sq: x * x };
+    }
+    let middle = (from + to) / 2;
+    let a = halves_part(nums, from, middle);
+    let b = halves_part(nums, middle, to);
+    Part {
+        total: a.total + b.total,
+        prefix: max(a.prefix, a.total + b.prefix),
+        suffix: max(b.suffix, b.total + a.suffix),
+        best: max(max(a.best, b.best), a.suffix + b.prefix),
+        total_sq: max(a.total_sq + b.total, a.total + b.total_sq),
+        prefix_sq: max(a.prefix_sq, max(a.total_sq + b.prefix, a.total + b.prefix_sq)),
+        suffix_sq: max(b.suffix_sq, max(b.total_sq + a.suffix, b.total + a.suffix_sq)),
+        best_sq: max(max(a.best_sq, b.best_sq), max(a.suffix_sq + b.prefix, a.suffix + b.prefix_sq)),
+    }
+}
+
+fn halves_arm(nums: Vec[i32]) -> i32 {
+    halves_part(nums, 0, nums.len()).best_sq as i32
+}
+
+// ---- square_fold.kara: the two states as a fold
+
+fn fold_arm(nums: Vec[i32]) -> i32 {
+    let (_, _, best) = nums.iter().fold((0, 0, i32.MIN), |(plain, squared, best), x| {
+        let squared = max(squared + x, max(plain, 0) + x * x);
+        (max(plain, 0) + x, squared, max(best, squared))
+    });
+    best
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every value squared in turn, exactly
+// one, and then every non-empty subarray of the result summed
+fn literal(nums: Slice[i32]) -> i64 {
+    let n = nums.len();
+    let mut best = i64.MIN;
+    for k in 0..n {
+        let mut changed: Vec[i64] = nums.iter().map(|x| x as i64).collect();
+        changed[k] = changed[k] * changed[k];
+        for from in 0..n {
+            for to in from + 1..n + 1 {
+                best = max(best, changed[from..to].iter().sum());
+            }
+        }
+    }
+    best
+}
+
+fn arm(a: i64, nums: Slice[i32]) -> i64 {
+    let nums = nums.to_vec();
+    let answer = match a {
+        0 => star_arm(nums),
+        1 => sides_arm(nums),
+        2 => halves_arm(nums),
+        _ => fold_arm(nums),
+    };
+    answer
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "sides", "halves", "fold"][a]
+}
+
+fn main() {
+    let mut seed = 1746;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i32], i32)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 8 + 1;
+        let nums: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % 13 - 6) as i32).collect();
+        let extra = (next_random(mut seed) % 13 - 6) as i32;
+        cases.push((nums, extra));
+    }
+    for (p, (nums, extra)) in cases.iter().enumerate() {
+        let want = literal(nums);
+        check = (check * 31 + want + 1000) % 1000000007;
+        let reversed: Vec[i32] = nums.iter().rev().collect();
+        let mut longer = nums.to_vec();
+        longer.push(extra);
+        let mut zeroed: Vec[i32] = [0];
+        zeroed.extend(nums.iter());
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, nums);
+            let failed = [got != want, arm(a, reversed) != got, arm(a, longer) < got, arm(a, zeroed) != got];
+            answers.push(got);
+            for t in 0..4 {
+                checks += 1;
+                if failed[t] {
+                    failures += 1;
+                    by_property[t + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({nums}, then {extra}), {arm_name(a)}: P{t + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for t in 1..6 {
+            if by_property[t] > 0 {
+                counts.push(f"P{t}: {by_property[t]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

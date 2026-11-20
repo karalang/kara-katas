@@ -1,0 +1,187 @@
+// LeetCode #1748: Sum of Unique Elements -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random arrays
+// of 1 to 10 values, half from 1 to 6 and half from 95 to 100, each with
+// a random value of the same range to append.
+//
+// P1  the answer is the statement read literally
+// P2  the array reversed gives the same answer
+// P3  the array written twice over sums to 0
+// P4  one more value adds it if it was absent, takes it away if it was
+//     there once, and changes nothing otherwise
+// P5  each arm agrees with at least two of the other three
+
+// ---- unique.kara: the ★ arm: one pass with a state per value
+
+fn star_arm(nums: Vec[i32]) -> i32 {
+    let mut seen = [0; 101];
+    let mut sum: i32 = 0;
+    for x in nums.iter() {
+        let i = x as i64;
+        if seen[i] == 0 {
+            sum += x;
+        } else if seen[i] == 1 {
+            sum -= x;
+        }
+        seen[i] = min(seen[i] + 1, 2);
+    }
+    sum
+}
+
+// ---- unique_map.kara: a Map of counts
+
+fn map_arm(nums: Vec[i32]) -> i32 {
+    let mut counts: Map[i32, i32] = Map.new();
+    for x in nums.iter() {
+        *counts.entry(x).or_insert(0) += 1;
+    }
+    counts.iter().filter(|(_, c)| c == 1).map(|(x, _)| x).sum()
+}
+
+// ---- unique_sort.kara: sorted runs
+
+fn sort_arm(nums: Vec[i32]) -> i32 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let n = sorted.len();
+    let mut sum: i32 = 0;
+    for i in 0..n {
+        let alone_left = i == 0 or sorted[i - 1] != sorted[i];
+        let alone_right = i == n - 1 or sorted[i + 1] != sorted[i];
+        if alone_left and alone_right {
+            sum += sorted[i];
+        }
+    }
+    sum
+}
+
+// ---- unique_solution.kara: LeetCode's Rust template, through karac fix
+
+struct Solution {}
+
+impl Solution {
+    pub fn sum_of_unique(nums: Vec[i32]) -> i32 {
+        let mut cnt = [0; 101];
+        for x in ref nums {
+            cnt[x as usize] += 1;
+        }
+        nums.iter().filter(|x| cnt[x as usize] == 1).sum()
+    }
+}
+
+fn solution_arm(nums: Vec[i32]) -> i32 {
+    Solution.sum_of_unique(nums)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every value counted by scanning the whole
+// array for it, and the values that appear exactly once added up
+fn literal(nums: Slice[i32]) -> i64 {
+    let mut sum = 0;
+    for x in nums.iter() {
+        let mut times = 0;
+        for y in nums.iter() {
+            if y == x {
+                times += 1;
+            }
+        }
+        if times == 1 {
+            sum += x as i64;
+        }
+    }
+    sum
+}
+
+fn arm(a: i64, nums: Slice[i32]) -> i64 {
+    let nums = nums.to_vec();
+    let answer = match a {
+        0 => star_arm(nums),
+        1 => map_arm(nums),
+        2 => sort_arm(nums),
+        _ => solution_arm(nums),
+    };
+    answer
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "map", "sort", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1748;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i32], i32)] = Vec.new();
+    for p in 0..problems {
+        let low = if p % 2 == 0 { 1 } else { 95 };
+        let n = next_random(mut seed) % 10 + 1;
+        let nums: Vec[i32] = (0..n).map(|_| (low + next_random(mut seed) % 6) as i32).collect();
+        let extra = (low + next_random(mut seed) % 6) as i32;
+        cases.push((nums, extra));
+    }
+    for (p, (nums, extra)) in cases.iter().enumerate() {
+        let want = literal(nums);
+        check = (check * 31 + want + nums.len()) % 1000000007;
+        let reversed: Vec[i32] = nums.iter().rev().collect();
+        let mut twice = nums.to_vec();
+        twice.extend(nums.iter());
+        let mut longer = nums.to_vec();
+        longer.push(extra);
+        let times = nums.iter().filter(|y| y == extra).count();
+        let change = if times == 0 {
+            extra as i64
+        } else if times == 1 {
+            -(extra as i64)
+        } else {
+            0
+        };
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, nums);
+            let failed = [got != want, arm(a, reversed) != got, arm(a, twice) != 0, arm(a, longer) != got + change];
+            answers.push(got);
+            for t in 0..4 {
+                checks += 1;
+                if failed[t] {
+                    failures += 1;
+                    by_property[t + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({nums}, then {extra}), {arm_name(a)}: P{t + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for t in 1..6 {
+            if by_property[t] > 0 {
+                counts.push(f"P{t}: {by_property[t]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

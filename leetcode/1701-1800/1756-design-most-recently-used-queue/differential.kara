@@ -1,0 +1,313 @@
+// LeetCode #1756: Design Most Recently Used Queue -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random queues
+// of 1 to 8 values, each given 1 to 10 fetches at random places.
+//
+// P1  every fetch returns what the statement read literally returns
+// P2  a fetch of the last place right after any fetch returns its value again
+// P3  after the fetches, fetching the first place n times gives back each
+//     of 1 to n exactly once
+// P4  n more fetches of the first place give the same values in the same
+//     order
+// P5  each arm agrees with at least two of the other three
+
+// ---- mru.kara: the ★ arm: a Vec
+
+struct StarQueue {
+    values: Vec[i32],
+}
+
+impl StarQueue {
+    fn new(n: i32) -> StarQueue {
+        StarQueue { values: (1..n + 1).collect() }
+    }
+
+    fn fetch(mut ref self, k: i32) -> i32 {
+        let value = self.values.remove(k as i64 - 1);
+        self.values.push(value);
+        value
+    }
+}
+
+// ---- mru_buckets.kara: square-root buckets
+
+struct BucketsQueue {
+    buckets: Vec[Vec[i32]],
+    size: i64,
+    since_rebuild: i64,
+}
+
+impl BucketsQueue {
+    fn new(n: i32) -> BucketsQueue {
+        let mut queue = BucketsQueue { buckets: [(1..n + 1).collect()], size: 1, since_rebuild: 0 };
+        queue.rebuild();
+        queue
+    }
+
+    fn rebuild(mut ref self) {
+        let all: Vec[i32] = self.buckets.iter().flat_map(|v| v.iter()).collect();
+        let mut size = 1;
+        while size * size < all.len() {
+            size += 1;
+        }
+        self.size = size;
+        self.buckets = all.chunks(size).iter().map(|c| c.to_vec()).collect();
+        self.since_rebuild = 0;
+    }
+
+    fn fetch(mut ref self, k: i32) -> i32 {
+        let mut k = k as i64 - 1;
+        let mut b = 0;
+        while k >= self.buckets[b].len() {
+            k -= self.buckets[b].len();
+            b += 1;
+        }
+        let value = self.buckets[b].remove(k);
+        let last = self.buckets.len() - 1;
+        self.buckets[last].push(value);
+        self.since_rebuild += 1;
+        if self.since_rebuild >= self.size {
+            self.rebuild();
+        }
+        value
+    }
+}
+
+// ---- mru_fenwick.kara: a Fenwick tree of slots
+
+struct FenwickQueue {
+    tree: Vec[i32],
+    slots: Vec[i32],
+    used: i64,
+}
+
+impl FenwickQueue {
+    fn new(n: i32) -> FenwickQueue {
+        let capacity = n as i64 + 2001;
+        let mut queue = FenwickQueue { tree: Vec.filled(capacity + 1, 0i32), slots: Vec.filled(capacity + 1, 0i32), used: 0 };
+        for v in 1..n + 1 {
+            queue.used += 1;
+            queue.slots[queue.used] = v;
+            queue.add(queue.used, 1);
+        }
+        queue
+    }
+
+    fn add(mut ref self, at: i64, delta: i32) {
+        let mut i = at;
+        while i < self.tree.len() {
+            self.tree[i] += delta;
+            i += i & -i;
+        }
+    }
+
+    fn fetch(mut ref self, k: i32) -> i32 {
+        let mut at = 0;
+        let mut left = k;
+        let mut step = 1;
+        while step * 2 < self.tree.len() {
+            step *= 2;
+        }
+        while step > 0 {
+            if at + step < self.tree.len() and self.tree[at + step] < left {
+                at += step;
+                left -= self.tree[at];
+            }
+            step /= 2;
+        }
+        let slot = at + 1;
+        let value = self.slots[slot];
+        self.add(slot, -1);
+        self.used += 1;
+        self.slots[self.used] = value;
+        self.add(self.used, 1);
+        value
+    }
+}
+
+// ---- mru_deque.kara: a VecDeque
+
+struct DequeQueue {
+    values: VecDeque[i32],
+}
+
+impl DequeQueue {
+    fn new(n: i32) -> DequeQueue {
+        DequeQueue { values: (1..n + 1).collect() }
+    }
+
+    fn fetch(mut ref self, k: i32) -> i32 {
+        let value = self.values.remove(k as i64 - 1);
+        self.values.push_back(value);
+        value
+    }
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: the queue starts as 1 to n, and each
+// fetch builds the next queue as every value but the k-th, in order,
+// then the k-th
+fn literal(n: i64, fetches: Slice[i64]) -> Vec[i64] {
+    let mut queue: Vec[i64] = (1..n + 1).collect();
+    let mut out = Vec.new();
+    for k in fetches.iter() {
+        let value = queue[k - 1];
+        let mut next: Vec[i64] = Vec.new();
+        for (i, v) in queue.iter().enumerate() {
+            if i != k - 1 {
+                next.push(v);
+            }
+        }
+        next.push(value);
+        queue = next;
+        out.push(value);
+    }
+    out
+}
+
+// one arm's run: the fetches' values; then, on a second queue, whether
+// every fetch of the last place right after a fetch gave its value back;
+// then n fetches of the first place after the fetches, and n more
+fn arm(a: i64, n: i64, fetches: Slice[i64]) -> (Vec[i64], bool, Vec[i64], Vec[i64]) {
+    let n32 = n as i32;
+    let mut values: Vec[i64] = Vec.new();
+    let mut again = true;
+    let mut firsts: Vec[i64] = Vec.new();
+    let mut seconds: Vec[i64] = Vec.new();
+    match a {
+        0 => {
+            let mut q = StarQueue.new(n32);
+            let mut r = StarQueue.new(n32);
+            for k in fetches.iter() {
+                values.push(q.fetch(k as i32));
+                let got = r.fetch(k as i32);
+                again = again and r.fetch(n32) == got;
+            }
+            for _ in 0..n {
+                firsts.push(q.fetch(1));
+            }
+            for _ in 0..n {
+                seconds.push(q.fetch(1));
+            }
+        }
+        1 => {
+            let mut q = BucketsQueue.new(n32);
+            let mut r = BucketsQueue.new(n32);
+            for k in fetches.iter() {
+                values.push(q.fetch(k as i32));
+                let got = r.fetch(k as i32);
+                again = again and r.fetch(n32) == got;
+            }
+            for _ in 0..n {
+                firsts.push(q.fetch(1));
+            }
+            for _ in 0..n {
+                seconds.push(q.fetch(1));
+            }
+        }
+        2 => {
+            let mut q = FenwickQueue.new(n32);
+            let mut r = FenwickQueue.new(n32);
+            for k in fetches.iter() {
+                values.push(q.fetch(k as i32));
+                let got = r.fetch(k as i32);
+                again = again and r.fetch(n32) == got;
+            }
+            for _ in 0..n {
+                firsts.push(q.fetch(1));
+            }
+            for _ in 0..n {
+                seconds.push(q.fetch(1));
+            }
+        }
+        _ => {
+            let mut q = DequeQueue.new(n32);
+            let mut r = DequeQueue.new(n32);
+            for k in fetches.iter() {
+                values.push(q.fetch(k as i32));
+                let got = r.fetch(k as i32);
+                again = again and r.fetch(n32) == got;
+            }
+            for _ in 0..n {
+                firsts.push(q.fetch(1));
+            }
+            for _ in 0..n {
+                seconds.push(q.fetch(1));
+            }
+        }
+    }
+    (values, again, firsts, seconds)
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "buckets", "fenwick", "deque"][a]
+}
+
+fn main() {
+    let mut seed = 1756;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(i64, Vec[i64])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 8 + 1;
+        let calls = next_random(mut seed) % 10 + 1;
+        let fetches: Vec[i64] = (0..calls).map(|_| next_random(mut seed) % n + 1).collect();
+        cases.push((n, fetches));
+    }
+    for (p, (n, fetches)) in cases.iter().enumerate() {
+        let want = literal(n, fetches);
+        for v in want.iter() {
+            check = (check * 31 + v) % 1000000007;
+        }
+        let everyone: Vec[i64] = (1..n + 1).collect();
+        let mut answers: Vec[Vec[i64]] = Vec.new();
+        for a in 0..4 {
+            let (values, again, firsts, seconds) = arm(a, n, fetches);
+            let mut sorted = firsts.clone();
+            sorted.sort();
+            let failed = [values != want, not again, sorted != everyone, seconds != firsts];
+            answers.push(values);
+            for t in 0..4 {
+                checks += 1;
+                if failed[t] {
+                    failures += 1;
+                    by_property[t + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({n} values, fetches {fetches}), {arm_name(a)}: P{t + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for t in 1..6 {
+            if by_property[t] > 0 {
+                counts.push(f"P{t}: {by_property[t]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

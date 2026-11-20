@@ -1,0 +1,221 @@
+// LeetCode #1754: Largest Merge Of Two Strings -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random pairs
+// of words of 1 to 5 letters from the first 1 to 3.
+//
+// P1  the answer is the statement read literally
+// P2  the words given in the other order give the same answer
+// P3  the answer holds exactly the two words' letters
+// P4  the answer is at least either word followed by the other
+// P5  each arm agrees with at least two of the other three
+
+// ---- merge.kara: the ★ arm: the larger rest goes first
+
+fn star_arm(word1: String, word2: String) -> String {
+    let mut merge = String.new();
+    let mut i = 0;
+    let mut j = 0;
+    while i < word1.len() or j < word2.len() {
+        if word1[i..] > word2[j..] {
+            merge.push_str(word1[i..i + 1]);
+            i += 1;
+        } else {
+            merge.push_str(word2[j..j + 1]);
+            j += 1;
+        }
+    }
+    merge
+}
+
+// ---- merge_chars.kara: the comparison written out
+
+fn first_is_larger(a: Slice[char], i: i64, b: Slice[char], j: i64) -> bool {
+    let mut k = 0;
+    while i + k < a.len() and j + k < b.len() {
+        if a[i + k] != b[j + k] {
+            return a[i + k] > b[j + k];
+        }
+        k += 1;
+    }
+    j + k == b.len() and i + k < a.len()
+}
+
+fn chars_arm(word1: String, word2: String) -> String {
+    let a: Vec[char] = word1.chars().collect();
+    let b: Vec[char] = word2.chars().collect();
+    let mut merge: Vec[char] = Vec.new();
+    let mut i = 0;
+    let mut j = 0;
+    while i < a.len() or j < b.len() {
+        if first_is_larger(a, i, b, j) {
+            merge.push(a[i]);
+            i += 1;
+        } else {
+            merge.push(b[j]);
+            j += 1;
+        }
+    }
+    merge.iter().collect()
+}
+
+// ---- merge_deque.kara: two queues
+
+fn deque_arm(word1: String, word2: String) -> String {
+    let mut a: VecDeque[u8] = word1.bytes().iter().collect();
+    let mut b: VecDeque[u8] = word2.bytes().iter().collect();
+    let mut merge: Vec[u8] = Vec.new();
+    while not a.is_empty() or not b.is_empty() {
+        if a > b {
+            merge.push(a.pop_front().unwrap());
+        } else {
+            merge.push(b.pop_front().unwrap());
+        }
+    }
+    String.from_utf8(merge).unwrap()
+}
+
+// ---- merge_solution.kara: LeetCode's Rust template, through karac fix
+
+struct Solution {}
+
+impl Solution {
+    pub fn largest_merge(word1: String, word2: String) -> String {
+        let (w1, w2) = (word1.bytes(), word2.bytes());
+        let mut (i, j) = (0, 0);
+        let mut res = String.with_capacity(w1.len() + w2.len());
+        while i < w1.len() or j < w2.len() {
+            if w1[i..] > w2[j..] {
+                res.push(w1[i] as char);
+                i += 1;
+            } else {
+                res.push(w2[j] as char);
+                j += 1;
+            }
+        }
+        res
+    }
+}
+
+fn solution_arm(word1: String, word2: String) -> String {
+    Solution.largest_merge(word1, word2)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// 1 to `most` random letters from the first `letters`
+fn word(most: i64, letters: i64, seed: mut ref i64) -> String {
+    let alphabet = "abc";
+    let n = next_random(mut seed) % most + 1;
+    let mut s = String.new();
+    for _ in 0..n {
+        let k = next_random(mut seed) % letters;
+        s.push_str(alphabet[k..k + 1]);
+    }
+    s
+}
+
+// the statement read literally: every merge, each step taking the first
+// letter of one word or the other, built out in full, and the largest
+fn literal(word1: Str, word2: Str) -> String {
+    if word1.is_empty() {
+        return word2.to_string();
+    }
+    if word2.is_empty() {
+        return word1.to_string();
+    }
+    let one = word1[0..1].to_string() + literal(word1[1..], word2);
+    let two = word2[0..1].to_string() + literal(word1, word2[1..]);
+    max(one, two)
+}
+
+fn arm(a: i64, word1: Str, word2: Str) -> String {
+    let (word1, word2) = (word1.to_string(), word2.to_string());
+    let answer = match a {
+        0 => star_arm(word1, word2),
+        1 => chars_arm(word1, word2),
+        2 => deque_arm(word1, word2),
+        _ => solution_arm(word1, word2),
+    };
+    answer
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "chars", "deque", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1754;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(String, String)] = Vec.new();
+    for _ in 0..problems {
+        let letters = next_random(mut seed) % 3 + 1;
+        let word1 = word(5, letters, mut seed);
+        let word2 = word(5, letters, mut seed);
+        cases.push((word1, word2));
+    }
+    for (p, (word1, word2)) in cases.iter().enumerate() {
+        let want = literal(word1, word2);
+        for b in want.bytes().iter() {
+            check = (check * 31 + b) % 1000000007;
+        }
+        let mut letters: Vec[char] = (word1 + word2).chars().collect();
+        letters.sort();
+        let joined = max(word1 + word2, word2 + word1);
+        let mut answers: Vec[String] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, word1, word2);
+            let failed = [
+                got != want,
+                arm(a, word2, word1) != got,
+                {
+                    let mut mine: Vec[char] = got.chars().collect();
+                    mine.sort();
+                    mine != letters
+                },
+                got < joined,
+            ];
+            answers.push(got.clone());
+            for t in 0..4 {
+                checks += 1;
+                if failed[t] {
+                    failures += 1;
+                    by_property[t + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({word1}, {word2}), {arm_name(a)}: P{t + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for t in 1..6 {
+            if by_property[t] > 0 {
+                counts.push(f"P{t}: {by_property[t]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

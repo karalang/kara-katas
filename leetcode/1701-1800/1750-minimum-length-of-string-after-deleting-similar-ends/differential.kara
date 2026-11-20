@@ -1,0 +1,226 @@
+// LeetCode #1750: Minimum Length of String After Deleting Similar Ends
+// -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random strings
+// of up to 10 letters from the first 1 to 3, half of them a short middle
+// wrapped in layers of one letter on both sides.
+//
+// P1  the answer is the statement read literally
+// P2  the string reversed gives the same answer
+// P3  the letters renamed one for one give the same answer
+// P4  the string between two z's gives the same answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- ends.kara: the ★ arm: two pointers
+
+fn star_arm(s: String) -> i32 {
+    let b = s.bytes();
+    let mut left = 0;
+    let mut right = b.len() - 1;
+    while left < right and b[left] == b[right] {
+        let c = b[left];
+        while left <= right and b[left] == c {
+            left += 1;
+        }
+        while right >= left and b[right] == c {
+            right -= 1;
+        }
+    }
+    (right - left + 1) as i32
+}
+
+// ---- ends_runs.kara: runs from both ends
+
+fn runs_arm(s: String) -> i32 {
+    let mut runs: Vec[(char, i64)] = Vec.new();
+    for c in s.chars() {
+        if runs.len() > 0 and runs[runs.len() - 1].0 == c {
+            runs[runs.len() - 1].1 += 1;
+        } else {
+            runs.push((c, 1));
+        }
+    }
+    let mut i = 0;
+    let mut j = runs.len() - 1;
+    while i < j and runs[i].0 == runs[j].0 {
+        i += 1;
+        j -= 1;
+    }
+    if i == j {
+        return if runs[i].1 >= 2 { 0 } else { 1 };
+    }
+    runs[i..j + 1].iter().map(|(_, n)| n).sum() as i32
+}
+
+// ---- ends_trim.kara: stripped slices
+
+fn trim_arm(s: String) -> i32 {
+    let mut rest: Str = s.as_str();
+    while rest.len() >= 2 and rest[0..1] == rest[rest.len() - 1..rest.len()] {
+        let c = rest[0..1];
+        while let Some(shorter) = rest.strip_prefix(c) {
+            rest = shorter;
+        }
+        while let Some(shorter) = rest.strip_suffix(c) {
+            rest = shorter;
+        }
+    }
+    rest.len() as i32
+}
+
+// ---- ends_solution.kara: LeetCode's Rust template, through karac fix
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_length(s: String) -> i32 {
+        let s = s.bytes();
+        let mut (i, j) = (0, s.len() - 1);
+        while i < j and s[i] == s[j] {
+            let c = s[i];
+            while i <= j and s[i] == c {
+                i += 1;
+            }
+            while j > i and s[j] == c {
+                j -= 1;
+            }
+        }
+        (j as i32 - i as i32 + 1)
+    }
+}
+
+fn solution_arm(s: String) -> i32 {
+    Solution.minimum_length(s)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random string of about `size` letters from the first `letters`: on
+// odd draws plain random, on even ones a random middle wrapped in layers
+// of one letter on both sides, so that whole layers come off
+fn draw(size: i64, letters: i64, seed: mut ref i64) -> String {
+    let alphabet = "abc";
+    let mut s = String.new();
+    if next_random(mut seed) % 2 == 1 {
+        let n = next_random(mut seed) % size + 1;
+        for _ in 0..n {
+            let k = next_random(mut seed) % letters;
+            s.push_str(alphabet[k..k + 1]);
+        }
+        return s;
+    }
+    let middle = next_random(mut seed) % 3;
+    for _ in 0..middle {
+        let k = next_random(mut seed) % letters;
+        s.push_str(alphabet[k..k + 1]);
+    }
+    while s.len() < size {
+        let k = next_random(mut seed) % letters;
+        let letter = alphabet[k..k + 1];
+        let before = next_random(mut seed) % 3 + 1;
+        let after = next_random(mut seed) % 3 + 1;
+        s = letter.repeat(before) + s + letter.repeat(after);
+    }
+    s
+}
+
+// the statement read literally: from the string between `from` and `to`,
+// every operation the statement allows, a non-empty prefix and a
+// non-empty suffix of one letter that do not meet, is tried, and the
+// shortest length any sequence of them reaches
+fn literal(b: Slice[u8], from: i64, to: i64) -> i64 {
+    let mut best = to - from;
+    for p in 1..to - from {
+        for q in 1..to - from - p + 1 {
+            let c = b[from];
+            let ok = (from..from + p).all(|i| b[i] == c) and (to - q..to).all(|i| b[i] == c);
+            if ok {
+                best = min(best, literal(b, from + p, to - q));
+            }
+        }
+    }
+    best
+}
+
+fn arm(a: i64, s: Str) -> i64 {
+    let s = s.to_string();
+    let answer = match a {
+        0 => star_arm(s),
+        1 => runs_arm(s),
+        2 => trim_arm(s),
+        _ => solution_arm(s),
+    };
+    answer
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "runs", "trim", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1750;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[String] = Vec.new();
+    for _ in 0..problems {
+        let letters = next_random(mut seed) % 3 + 1;
+        cases.push(draw(10, letters, mut seed));
+    }
+    for (p, s) in cases.iter().enumerate() {
+        let want = literal(s.bytes(), 0, s.len());
+        check = (check * 31 + want + s.len()) % 1000000007;
+        let reversed: String = s.chars().rev().collect();
+        let renamed: String = s.chars().map(|c| match c {
+            'a' => 'b',
+            'b' => 'c',
+            _ => 'a',
+        }).collect();
+        let wrapped = "z" + s + "z";
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, s);
+            let failed = [got != want, arm(a, reversed) != got, arm(a, renamed) != got, arm(a, wrapped) != got];
+            answers.push(got);
+            for t in 0..4 {
+                checks += 1;
+                if failed[t] {
+                    failures += 1;
+                    by_property[t + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({s}), {arm_name(a)}: P{t + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for t in 1..6 {
+            if by_property[t] > 0 {
+                counts.push(f"P{t}: {by_property[t]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}
