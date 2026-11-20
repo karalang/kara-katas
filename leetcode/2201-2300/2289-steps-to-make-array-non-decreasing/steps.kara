@@ -1,0 +1,67 @@
+// LeetCode #2289: Steps to Make Array Non-decreasing -- the ★ arm. A
+// stack of the elements still standing to the left, each with the step
+// at which it is removed. An element is removed one step after the last
+// of the smaller-or-equal elements between it and the nearest larger one
+// to its left; with no larger one to its left it is never removed. O(n).
+
+fn total_steps(nums: Vec[i64]) -> i64 {
+    let mut stack: Vec[(i64, i64)] = Vec.new();
+    let mut most = 0;
+    for x in nums.iter() {
+        let mut step = 0;
+        while stack.len() > 0 and stack[stack.len() - 1].0 <= x {
+            step = step.max(stack[stack.len() - 1].1);
+            stack.pop();
+        }
+        step = if stack.is_empty() { 0 } else { step + 1 };
+        most = most.max(step);
+        stack.push((x, step));
+    }
+    most
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; then one element, all equal, strictly
+    // decreasing, a large first element before an increasing run, and a
+    // saw of falling runs
+    let mut cases: Vec[Vec[i64]] = [
+        [5, 3, 4, 4, 7, 3, 6, 11, 8, 5, 11],
+        [4, 5, 7, 7, 13],
+        [1],
+        [7, 7, 7, 7],
+        [9, 8, 7, 6, 5, 4, 3, 2, 1],
+        [10, 1, 2, 3, 4, 5, 6, 1, 2, 3],
+        [5, 4, 3, 6, 5, 4, 7, 6, 5, 8, 1],
+    ];
+    let mut long: Vec[i64] = [1000000000];
+    for i in 1..2000 {
+        long.push(i);
+    }
+    cases.push(long);
+    for nums in cases.iter() {
+        println(f"{nums.len()} elements: {total_steps(nums)}");
+    }
+    // 3000 random arrays of 1 to 60 elements from 1 to 1, 2, .. 50
+    let mut seed = 2289;
+    let mut check = 0;
+    let mut sum = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 60 + 1;
+        let top = next_random(mut seed) % 50 + 1;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            nums.push(next_random(mut seed) % top + 1);
+        }
+        let steps = total_steps(nums);
+        check = (check * 31 + steps) % 1000000007;
+        sum += steps;
+    }
+    println(f"3000 arrays: checksum {check}, {sum} steps");
+}

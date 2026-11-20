@@ -1,0 +1,112 @@
+// LeetCode #2289: Steps to Make Array Non-decreasing -- the linked-list
+// arm. `struct Line` links the elements still standing both ways; a step
+// removes the elements it was told to check that are smaller than the one
+// before them, unlinks them, and checks next the element that now follows
+// each removed run. Every element is removed once and checked a bounded
+// number of times. O(n).
+
+struct Line {
+    values: Vec[i64],
+    prev: Vec[i64],
+    next: Vec[i64],
+    gone: Vec[bool],
+}
+
+impl Line {
+    fn of(nums: Vec[i64]) -> Line {
+        let n = nums.len();
+        let mut prev: Vec[i64] = Vec.new();
+        let mut next: Vec[i64] = Vec.new();
+        for i in 0..n {
+            prev.push(i - 1);
+            next.push(if i + 1 < n { i + 1 } else { -1 });
+        }
+        Line { values: nums.clone(), prev: prev, next: next, gone: Vec.filled(n, false) }
+    }
+
+    // whether `i` is standing and smaller than the element before it
+    fn falls(self, i: i64) -> bool {
+        not self.gone[i] and self.prev[i] >= 0 and self.values[self.prev[i]] > self.values[i]
+    }
+
+    fn unlink(mut ref self, i: i64) {
+        self.gone[i] = true;
+        let p = self.prev[i];
+        let q = self.next[i];
+        if p >= 0 {
+            self.next[p] = q;
+        }
+        if q >= 0 {
+            self.prev[q] = p;
+        }
+    }
+}
+
+fn total_steps(nums: Vec[i64]) -> i64 {
+    let mut line = Line.of(nums);
+    let mut check: Vec[i64] = (1..nums.len()).collect();
+    let mut steps = 0;
+    loop {
+        let falling: Vec[i64] = check.iter().filter(|i| line.falls(i)).collect();
+        if falling.is_empty() {
+            return steps;
+        }
+        steps += 1;
+        check = Vec.new();
+        for i in falling.iter() {
+            line.unlink(i);
+        }
+        for i in falling.iter() {
+            let q = line.next[i];
+            if q >= 0 and not line.gone[q] and (check.is_empty() or check[check.len() - 1] != q) {
+                check.push(q);
+            }
+        }
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; then one element, all equal, strictly
+    // decreasing, a large first element before an increasing run, and a
+    // saw of falling runs
+    let mut cases: Vec[Vec[i64]] = [
+        [5, 3, 4, 4, 7, 3, 6, 11, 8, 5, 11],
+        [4, 5, 7, 7, 13],
+        [1],
+        [7, 7, 7, 7],
+        [9, 8, 7, 6, 5, 4, 3, 2, 1],
+        [10, 1, 2, 3, 4, 5, 6, 1, 2, 3],
+        [5, 4, 3, 6, 5, 4, 7, 6, 5, 8, 1],
+    ];
+    let mut long: Vec[i64] = [1000000000];
+    for i in 1..2000 {
+        long.push(i);
+    }
+    cases.push(long);
+    for nums in cases.iter() {
+        println(f"{nums.len()} elements: {total_steps(nums)}");
+    }
+    // 3000 random arrays of 1 to 60 elements from 1 to 1, 2, .. 50
+    let mut seed = 2289;
+    let mut check = 0;
+    let mut sum = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 60 + 1;
+        let top = next_random(mut seed) % 50 + 1;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            nums.push(next_random(mut seed) % top + 1);
+        }
+        let steps = total_steps(nums);
+        check = (check * 31 + steps) % 1000000007;
+        sum += steps;
+    }
+    println(f"3000 arrays: checksum {check}, {sum} steps");
+}

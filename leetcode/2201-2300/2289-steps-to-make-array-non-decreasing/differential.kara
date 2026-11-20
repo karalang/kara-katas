@@ -1,0 +1,319 @@
+// LeetCode #2289: Steps to Make Array Non-decreasing -- the
+// differential. The six arms, against the statement read literally: mark
+// which elements still stand; a step looks, for each one standing, back
+// to the nearest one still standing before it, and removes, all at once,
+// every element that one is larger than; the steps are counted until a
+// step removes nothing. 300 random arrays of 1 to 60 elements; then 30
+// of falling runs one after another; then 30 of a large element before a
+// rising run with a few small elements among it. Every case is drawn
+// before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  0 <= answer < n, and the answer is 0 just when the array does not
+//     decrease anywhere
+// P3  an element no smaller than all appended: the same answer
+// P4  an element larger than all put in front: at least one step,
+//     and no fewer
+// P5  the last element dropped: no more steps
+// P6  each arm agrees with at least three of the other five
+
+// ---- steps.kara: the ★ arm, a stack from the left
+fn star_total_steps(nums: Vec[i64]) -> i64 {
+    let mut stack: Vec[(i64, i64)] = Vec.new();
+    let mut most = 0;
+    for x in nums.iter() {
+        let mut step = 0;
+        while stack.len() > 0 and stack[stack.len() - 1].0 <= x {
+            step = step.max(stack[stack.len() - 1].1);
+            stack.pop();
+        }
+        step = if stack.is_empty() { 0 } else { step + 1 };
+        most = most.max(step);
+        stack.push((x, step));
+    }
+    most
+}
+
+// ---- steps_naive.kara: the steps done one by one
+fn naive_total_steps(nums: Vec[i64]) -> i64 {
+    let mut now = nums.clone();
+    let mut steps = 0;
+    loop {
+        let mut next: Vec[i64] = Vec.new();
+        for i in 0..now.len() {
+            if i == 0 or now[i - 1] <= now[i] {
+                next.push(now[i]);
+            }
+        }
+        if next.len() == now.len() {
+            return steps;
+        }
+        now = next;
+        steps += 1;
+    }
+}
+
+// ---- steps_list.kara: `struct Line`, linked both ways
+struct ListLine {
+    values: Vec[i64],
+    prev: Vec[i64],
+    next: Vec[i64],
+    gone: Vec[bool],
+}
+
+impl ListLine {
+    fn of(nums: Vec[i64]) -> ListLine {
+        let n = nums.len();
+        let mut prev: Vec[i64] = Vec.new();
+        let mut next: Vec[i64] = Vec.new();
+        for i in 0..n {
+            prev.push(i - 1);
+            next.push(if i + 1 < n { i + 1 } else { -1 });
+        }
+        ListLine { values: nums.clone(), prev: prev, next: next, gone: Vec.filled(n, false) }
+    }
+
+    // whether `i` is standing and smaller than the element before it
+    fn falls(self, i: i64) -> bool {
+        not self.gone[i] and self.prev[i] >= 0 and self.values[self.prev[i]] > self.values[i]
+    }
+
+    fn unlink(mut ref self, i: i64) {
+        self.gone[i] = true;
+        let p = self.prev[i];
+        let q = self.next[i];
+        if p >= 0 {
+            self.next[p] = q;
+        }
+        if q >= 0 {
+            self.prev[q] = p;
+        }
+    }
+}
+
+fn list_total_steps(nums: Vec[i64]) -> i64 {
+    let mut line = ListLine.of(nums);
+    let mut check: Vec[i64] = (1..nums.len()).collect();
+    let mut steps = 0;
+    loop {
+        let falling: Vec[i64] = check.iter().filter(|i| line.falls(i)).collect();
+        if falling.is_empty() {
+            return steps;
+        }
+        steps += 1;
+        check = Vec.new();
+        for i in falling.iter() {
+            line.unlink(i);
+        }
+        for i in falling.iter() {
+            let q = line.next[i];
+            if q >= 0 and not line.gone[q] and (check.is_empty() or check[check.len() - 1] != q) {
+                check.push(q);
+            }
+        }
+    }
+}
+
+// ---- steps_scan.kara: the nearest larger element, looked for leftwards
+fn scan_total_steps(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut step: Vec[i64] = Vec.filled(n, 0);
+    let mut most = 0;
+    for i in 1..n {
+        let mut j = i - 1;
+        let mut latest = 0;
+        while j >= 0 and nums[j] <= nums[i] {
+            latest = latest.max(step[j]);
+            j -= 1;
+        }
+        if j >= 0 {
+            step[i] = latest + 1;
+            most = most.max(step[i]);
+        }
+    }
+    most
+}
+
+// ---- steps_iter.kara: `fold` from the right
+fn iter_total_steps(nums: Vec[i64]) -> i64 {
+    let (_, most) = nums.iter().rev().fold((Vec.new(), 0), |(stack, most): own (Vec[(i64, i64)], i64), x| {
+        let mut stack = stack;
+        let mut most = most;
+        let mut need = 0;
+        while stack.len() > 0 and stack[stack.len() - 1].0 < x {
+            need = (need + 1).max(stack[stack.len() - 1].1);
+            stack.pop();
+        }
+        most = most.max(need);
+        stack.push((x, need));
+        (stack, most)
+    });
+    most
+}
+
+// ---- steps_solution.kara: LeetCode's Rust template
+struct Solution {}
+
+impl Solution {
+    pub fn total_steps(nums: Vec[i32]) -> i32 {
+        let mut st: Vec[(i32, i32)] = Vec.new();
+        let mut ans: i32 = 0;
+        for x in nums.iter() {
+            let mut t: i32 = 0;
+            while let Some((v, s)) = st.last().cloned() {
+                if v > x {
+                    break;
+                }
+                t = t.max(s);
+                st.pop();
+            }
+            t = if st.is_empty() { 0 } else { t + 1 };
+            ans = ans.max(t);
+            st.push((x, t));
+        }
+        ans
+    }
+}
+
+fn solution_total_steps(nums: Vec[i64]) -> i64 {
+    Solution.total_steps(nums.iter().map(|x| x as i32).collect())
+}
+
+// ---- the statement read literally
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut standing: Vec[bool] = Vec.filled(n, true);
+    let mut steps = 0;
+    loop {
+        let mut removed: Vec[i64] = Vec.new();
+        for i in 0..n {
+            if not standing[i] {
+                continue;
+            }
+            // the nearest element before `i` still standing
+            let mut j = i - 1;
+            while j >= 0 and not standing[j] {
+                j -= 1;
+            }
+            if j >= 0 and nums[j] > nums[i] {
+                removed.push(i);
+            }
+        }
+        if removed.is_empty() {
+            return steps;
+        }
+        for i in removed.iter() {
+            standing[i] = false;
+        }
+        steps += 1;
+    }
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_total_steps(nums),
+        1 => naive_total_steps(nums),
+        2 => list_total_steps(nums),
+        3 => scan_total_steps(nums),
+        4 => iter_total_steps(nums),
+        _ => solution_total_steps(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "naive", "list", "scan", "iter", "solution"];
+    let mut seed = 2289;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..360 {
+        let mut nums: Vec[i64] = Vec.new();
+        if c < 300 {
+            let n = next_random(mut seed) % 60 + 1;
+            let top = next_random(mut seed) % 50 + 1;
+            for _ in 0..n {
+                nums.push(next_random(mut seed) % top + 1);
+            }
+        } else if c < 330 {
+            // 1 to 8 falling runs of 1 to 10, each starting anywhere
+            for _ in 0..next_random(mut seed) % 8 + 1 {
+                let mut x = next_random(mut seed) % 100 + 20;
+                for _ in 0..next_random(mut seed) % 10 + 1 {
+                    nums.push(x);
+                    x -= next_random(mut seed) % 3;
+                }
+            }
+        } else {
+            // a large element, then a rising run of 1 to 80 with a few
+            // small elements among it
+            nums.push(1000);
+            for i in 0..next_random(mut seed) % 80 + 1 {
+                nums.push(if next_random(mut seed) % 10 == 0 { next_random(mut seed) % 5 + 1 } else { i + 10 });
+            }
+        }
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for nums in cases.iter() {
+        let truth = literal(nums);
+        check = (check * 31 + truth) % 1000000007;
+        let n = nums.len();
+        let mut rising = true;
+        for i in 1..n {
+            if nums[i - 1] > nums[i] {
+                rising = false;
+            }
+        }
+        let mut larger = nums.clone();
+        larger.push(nums.iter().max().unwrap());
+        let mut fronted: Vec[i64] = [nums.iter().max().unwrap() + 1];
+        fronted.extend(nums.iter());
+        let shorter: Vec[i64] = nums.iter().take(n - 1).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                value >= 0 and value < n and (value == 0) == rising,
+                answer(arm, larger) == value,
+                answer(arm, fronted) >= value.max(1),
+                n == 1 or answer(arm, shorter) <= value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
