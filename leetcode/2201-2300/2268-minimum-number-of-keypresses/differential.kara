@@ -1,0 +1,290 @@
+// LeetCode #2268: Minimum Number of Keypresses -- the differential. The
+// six arms, against the statement read literally: every keypad, as the
+// place on its button that each of the 26 letters takes, the letters in
+// alphabetical order, with nine first places, nine second and eight
+// third; the least cost found by a search over the letters and the
+// places still free, memoised. No sort and no ranking by count. 300
+// random strings of 1 to 40 letters from the first 3, 10, 12, 20 or 26;
+// then 30 of exactly ten letters, the tenth once; then 30 of all 26
+// letters. Every case is drawn before any arm answers.
+//
+// P1  the cost is the literal reading's
+// P2  the letters relabelled, the alphabet turned by seven: the same cost
+// P3  the string reversed: the same cost
+// P4  the string twice over: twice the cost
+// P5  at least the length and at most three times it, and exactly the
+//     length when at most nine letters are used
+// P6  each arm agrees with at least three of the other five
+
+// ---- keys.kara: the ★ arm, the counts sorted, priced by place
+fn star_minimum_keypresses(s: String) -> i64 {
+    let mut count = Vec.filled(26, 0);
+    for b in s.bytes() {
+        count[b - b'a'] += 1;
+    }
+    count.sort_by(|a, b| b.cmp(a));
+    let mut total = 0;
+    for (i, c) in count.iter().enumerate() {
+        total += c * (i / 9 + 1);
+    }
+    total
+}
+
+// ---- keys_heap.kara: the counts off a max-first heap
+fn heap_minimum_keypresses(s: String) -> i64 {
+    let mut count = Vec.filled(26, 0);
+    for b in s.bytes() {
+        count[b - b'a'] += 1;
+    }
+    let mut heap = PriorityQueue.max_first();
+    for c in count {
+        if c > 0 {
+            heap.push(c);
+        }
+    }
+    let mut total = 0;
+    let mut placed = 0;
+    while let Some(c) = heap.pop() {
+        total += c * (placed / 9 + 1);
+        placed += 1;
+    }
+    total
+}
+
+// ---- keys_rank.kara: each letter's place by rank, no sort
+fn rank_minimum_keypresses(s: String) -> i64 {
+    let mut count = [0; 26];
+    for b in s.bytes() {
+        count[b - b'a'] += 1;
+    }
+    let mut total = 0;
+    for x in 0..26 {
+        let mut place = 0;
+        for y in 0..26 {
+            if count[y] > count[x] or (count[y] == count[x] and y < x) {
+                place += 1;
+            }
+        }
+        total += count[x] * (place / 9 + 1);
+    }
+    total
+}
+
+// ---- keys_struct.kara: `struct Keypad` assigning the next letter
+struct StructKeypad {
+    letters: Array[i64, 9],
+}
+
+impl StructKeypad {
+    fn new() -> StructKeypad {
+        StructKeypad { letters: [0; 9] }
+    }
+
+    fn assign(mut ref self) -> i64 {
+        let mut best = 0;
+        for k in 1..9 {
+            if self.letters[k] < self.letters[best] {
+                best = k;
+            }
+        }
+        self.letters[best] += 1;
+        self.letters[best]
+    }
+}
+
+fn struct_minimum_keypresses(s: String) -> i64 {
+    let mut count = Vec.filled(26, 0);
+    for b in s.bytes() {
+        count[b - b'a'] += 1;
+    }
+    count.sort();
+    count.reverse();
+    let mut pad = StructKeypad.new();
+    let mut total = 0;
+    for c in count {
+        total += c * pad.assign();
+    }
+    total
+}
+
+// ---- keys_iter.kara: the counts by `fold`, priced by `map`
+fn iter_minimum_keypresses(s: String) -> i64 {
+    let mut count: Vec[i64] = s.bytes().iter().fold(Vec.filled(26, 0), |acc, b| {
+        let mut acc = acc;
+        acc[b - b'a'] += 1;
+        acc
+    });
+    count.sort_by(|a, b| b.cmp(a));
+    count.iter().enumerate().map(|(i, c)| c * (i / 9 + 1)).sum()
+}
+
+// ---- keys_solution.kara: LeetCode's Rust template
+impl Solution {
+    pub fn minimum_keypresses(s: String) -> i32 {
+        let mut cnt = Vec.filled(26, 0i32);
+        for c in s.bytes() {
+            cnt[(c - b'a') as usize] += 1;
+        }
+        cnt.sort_by(|a, b| b.cmp(a));
+        let mut ans: i32 = 0;
+        for (i, c) in cnt.iter().enumerate() {
+            ans += c * (i as i32 / 9 + 1);
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_minimum_keypresses(s: String) -> i64 {
+    Solution.minimum_keypresses(s)
+}
+
+
+// ---- the statement read literally
+
+// the least cost of placing the letters from `at` on, with `first` and
+// `second` places taken; `memo` holds -1 for a state not yet searched
+fn place(count: Array[i64, 26], at: i64, first: i64, second: i64, memo: mut ref Vec[i64]) -> i64 {
+    if at == 26 {
+        return 0;
+    }
+    let key = (at * 10 + first) * 10 + second;
+    if memo[key] >= 0 {
+        return memo[key];
+    }
+    let third = at - first - second;
+    let mut best = i64.MAX;
+    if first < 9 {
+        best = best.min(count[at] + place(count, at + 1, first + 1, second, mut memo));
+    }
+    if second < 9 {
+        best = best.min(2 * count[at] + place(count, at + 1, first, second + 1, mut memo));
+    }
+    if third < 8 {
+        best = best.min(3 * count[at] + place(count, at + 1, first, second, mut memo));
+    }
+    memo[key] = best;
+    best
+}
+
+fn literal(s: String) -> i64 {
+    let mut count = [0; 26];
+    for c in s.chars() {
+        count[c as i64 - 'a' as i64] += 1;
+    }
+    let mut memo = Vec.filled(27 * 100, -1);
+    place(count, 0, 0, 0, mut memo)
+}
+
+fn relabel(s: String) -> String {
+    s.chars().map(|c| (((c as i64 - 'a' as i64 + 7) % 26) as u8 + b'a') as char).collect()
+}
+
+fn distinct(s: String) -> i64 {
+    let mut seen = [false; 26];
+    for c in s.chars() {
+        seen[c as i64 - 'a' as i64] = true;
+    }
+    seen.iter().filter(|b| *b).count()
+}
+
+fn answer(arm: i64, s: String) -> i64 {
+    match arm {
+        0 => star_minimum_keypresses(s),
+        1 => heap_minimum_keypresses(s),
+        2 => rank_minimum_keypresses(s),
+        3 => struct_minimum_keypresses(s),
+        4 => iter_minimum_keypresses(s),
+        _ => solution_minimum_keypresses(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "heap", "rank", "struct", "iter", "solution"];
+    let mut seed = 2268;
+    let mut cases: Vec[String] = Vec.new();
+    for c in 0..360 {
+        let mut s = String.new();
+        if c < 300 {
+            let len = next_random(mut seed) % 40 + 1;
+            let k = [3, 10, 12, 20, 26][c % 5];
+            for _ in 0..len {
+                s.push((b'a' + (next_random(mut seed) % k) as u8) as char);
+            }
+        } else if c < 330 {
+            // ten letters, the first nine 2 to 5 times each and the tenth once
+            for l in 0..9 {
+                let times = next_random(mut seed) % 4 + 2;
+                for _ in 0..times {
+                    s.push((b'a' + (l * 2) as u8) as char);
+                }
+            }
+            s.push('t');
+        } else {
+            for l in 0..26 {
+                let times = next_random(mut seed) % 3 + 1;
+                for _ in 0..times {
+                    s.push((b'a' + l as u8) as char);
+                }
+            }
+        }
+        cases.push(s);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for s in cases.iter() {
+        let truth = literal(s);
+        check = (check * 31 + truth) % 1000000007;
+        let n = s.len();
+        let reversed: String = s.chars().rev().collect();
+        let twice = f"{s}{s}";
+        let few = distinct(s) <= 9;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, s)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, relabel(s)) == value,
+                answer(arm, reversed) == value,
+                answer(arm, twice) == 2 * value,
+                value >= n and value <= 3 * n and (not few or value == n),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{s} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

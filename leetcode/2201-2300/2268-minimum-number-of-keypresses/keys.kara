@@ -1,0 +1,70 @@
+// LeetCode #2268: Minimum Number of Keypresses -- the ★ arm. Each letter
+// costs its count times the presses of its place on its button, and the
+// nine buttons give nine first places, nine second and eight third. So
+// the counts sorted from the largest take the places in order: the i-th
+// costs `i / 9 + 1` presses. O(n + 26 log 26).
+
+fn minimum_keypresses(s: String) -> i64 {
+    let mut count = Vec.filled(26, 0);
+    for b in s.bytes() {
+        count[b - b'a'] += 1;
+    }
+    count.sort_by(|a, b| b.cmp(a));
+    let mut total = 0;
+    for (i, c) in count.iter().enumerate() {
+        total += c * (i / 9 + 1);
+    }
+    total
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `len` letters from the first `k` of the alphabet
+fn letters(seed: mut ref i64, len: i64, k: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..len {
+        s.push((b'a' + (next_random(mut seed) % k) as u8) as char);
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: one letter, the alphabet
+    // once, one letter ten times, ten letters with the tenth the rarest,
+    // and ten letters equally often
+    let examples = ["apple", "abcdefghijkl", "a", "abcdefghijklmnopqrstuvwxyz", "zzzzzzzzzz", "aaabbbcccdddeeefffggghhhiiij", "abcdefghijabcdefghij"];
+    for s in examples {
+        println(f"{s} -> {minimum_keypresses(s.to_string())}");
+    }
+    // 2000 strings of 1 to 60 letters from the first 3, 10, 12 or 26
+    let mut seed = 2268;
+    let mut check = 0;
+    for t in 0..2000 {
+        let len = next_random(mut seed) % 60 + 1;
+        let s = letters(mut seed, len, [3, 10, 12, 26][t % 4]);
+        check = (check * 31 + minimum_keypresses(s)) % 1000000007;
+    }
+    println(f"2000 strings: checksum {check}");
+    // the constraints' longest, 10^5 letters: random from all 26, all `a`,
+    // and the letters weighted, `z` 26 times as often as `a`
+    let random = letters(mut seed, 100000, 26);
+    let same = "a".repeat(100000);
+    let mut weighted = String.new();
+    for _ in 0..100000 {
+        let r = next_random(mut seed) % 351;
+        let mut k = 0;
+        let mut upto = 1;
+        while upto <= r {
+            k += 1;
+            upto += k + 1;
+        }
+        weighted.push((b'a' + k as u8) as char);
+    }
+    let answers = [minimum_keypresses(random), minimum_keypresses(same), minimum_keypresses(weighted)];
+    println(f"10^5 letters: {answers}");
+}
