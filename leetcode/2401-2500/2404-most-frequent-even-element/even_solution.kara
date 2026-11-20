@@ -1,0 +1,75 @@
+// LeetCode #2404: Most Frequent Even Element -- LeetCode's Rust template,
+// as Rust writes it, carried by karac fix: a `HashMap` of counts by
+// `entry(..).or_insert(0)`, then the entries read for the most frequent
+// and the smallest among equal counts.
+
+struct Solution {}
+
+impl Solution {
+    pub fn most_frequent_even(nums: Vec[i32]) -> i32 {
+        let mut cnt: Map[i32, i32] = Map.new();
+        for x in nums.iter() {
+            if x % 2 == 0 {
+                *cnt.entry(x).or_insert(0) += 1;
+            }
+        }
+        let mut ans = -1;
+        let mut mx = 0;
+        for (k, v) in cnt.iter() {
+            if v > mx or (v == mx and k < ans) {
+                ans = k;
+                mx = v;
+            }
+        }
+        ans
+    }
+}
+
+fn most_frequent_even(nums: Vec[i64]) -> i64 {
+    Solution.most_frequent_even(nums.iter().map(|x| x as i32).collect())
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples; 0 alone; one odd value; a tie of three
+    // evens; then 2000 values up to 10^5, and 2000 values with only 1 to
+    // 10 drawn for the evens
+    println(f"{most_frequent_even([0, 1, 2, 2, 4, 4, 1].to_vec())}");
+    println(f"{most_frequent_even([4, 4, 4, 9, 2, 4].to_vec())}");
+    println(f"{most_frequent_even([29, 47, 21, 41, 13, 37, 25, 7].to_vec())}");
+    println(f"{most_frequent_even([0].to_vec())} {most_frequent_even([99999].to_vec())}");
+    println(f"{most_frequent_even([8, 6, 6, 8, 100000, 100000, 3, 3, 3].to_vec())}");
+    let mut seed = 2404;
+    let wide: Vec[i64] = (0..2000).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % 100001).collect();
+    println(f"{most_frequent_even(wide)}");
+    let narrow: Vec[i64] = (0..2000).map(|_| {
+        let x = next_random(mut seed);
+        if x % 2 == 0 {
+            2 * (1 + x / 2 % 10)
+        } else {
+            x
+        }
+    }).collect();
+    println(f"{most_frequent_even(narrow)}");
+    // 3000 random arrays of 1 to 30 values below 1 to 40; a checksum of
+    // the answers and how many are -1
+    let mut check = 0;
+    let mut none = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let top = 1 + next_random(mut seed) % 40;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top).collect();
+        let a = most_frequent_even(nums);
+        if a < 0 {
+            none += 1;
+        }
+        check = (check * 31 + a + 1) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}, {none} with no even");
+}

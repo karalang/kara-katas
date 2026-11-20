@@ -1,0 +1,279 @@
+// LeetCode #2404: Most Frequent Even Element -- the differential. The
+// six arms against the statement read literally: for every even value in
+// the array, every place counted where that value stands, and the value
+// with the most kept, the smaller of equal counts. No table of counts.
+// 360 cases: 300 random arrays of 1 to 12 values below 1 to 30, which
+// the literal reading answers; 30 of up to 2000 values up to 10^5; and 30
+// of up to 2000 values whose evens are drawn from 2 to 20. Every case is
+// drawn before any arm answers.
+//
+// P1  up to 12 values: the answer is the literal reading's
+// P2  the answer is -1 exactly when no value is even, and otherwise the
+//     smallest even value with the largest count, by a table of counts
+// P3  the values reversed: the same answer
+// P4  every odd value removed: the same answer
+// P5  the answer, when there is one, appended again: the same answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn even_literally(nums: Vec[i64]) -> i64 {
+    let mut best = -1;
+    let mut most = 0;
+    for i in 0..nums.len() {
+        if nums[i] % 2 != 0 {
+            continue;
+        }
+        let mut here = 0;
+        for j in 0..nums.len() {
+            if nums[j] == nums[i] {
+                here += 1;
+            }
+        }
+        if here > most or here == most and nums[i] < best {
+            best = nums[i];
+            most = here;
+        }
+    }
+    best
+}
+
+// ---- star (even.kara) ----------------------------------------------------
+
+fn star_most_frequent_even(nums: Vec[i64]) -> i64 {
+    let mut count: Map[i64, i64] = Map.new();
+    for x in nums.iter() {
+        if x % 2 == 0 {
+            count[x] = count.get(x).unwrap_or(0) + 1;
+        }
+    }
+    let mut best = -1;
+    let mut most = 0;
+    for (x, c) in count.iter() {
+        if c > most or c == most and x < best {
+            best = x;
+            most = c;
+        }
+    }
+    best
+}
+
+// ---- array (even_array.kara) ---------------------------------------------
+
+fn array_most_frequent_even(nums: Vec[i64]) -> i64 {
+    let mut count: Vec[i64] = Vec.filled(100001, 0);
+    for x in nums.iter() {
+        if x % 2 == 0 {
+            count[x] += 1;
+        }
+    }
+    let mut best = -1;
+    let mut v = 0;
+    while v <= 100000 {
+        if count[v] > 0 and (best < 0 or count[v] > count[best]) {
+            best = v;
+        }
+        v += 2;
+    }
+    best
+}
+
+// ---- sort (even_sort.kara) -----------------------------------------------
+
+fn sort_most_frequent_even(nums: Vec[i64]) -> i64 {
+    let mut evens: Vec[i64] = Vec.new();
+    for x in nums.iter() {
+        if x % 2 == 0 {
+            evens.push(x);
+        }
+    }
+    evens.sort();
+    let mut best = -1;
+    let mut longest = 0;
+    let mut i = 0;
+    while i < evens.len() {
+        let mut j = i;
+        while j < evens.len() and evens[j] == evens[i] {
+            j += 1;
+        }
+        if j - i > longest {
+            longest = j - i;
+            best = evens[i];
+        }
+        i = j;
+    }
+    best
+}
+
+// ---- sorted (even_sorted.kara) -------------------------------------------
+
+fn sorted_most_frequent_even(nums: Vec[i64]) -> i64 {
+    let mut count: SortedMap[i64, i64] = SortedMap.new();
+    for x in nums.iter() {
+        if x % 2 == 0 {
+            let c = count.get(x).unwrap_or(0);
+            count.insert(x, c + 1);
+        }
+    }
+    let mut best = -1;
+    let mut most = 0;
+    for (x, c) in count.iter() {
+        if c > most {
+            best = x;
+            most = c;
+        }
+    }
+    best
+}
+
+// ---- iter (even_iter.kara) -----------------------------------------------
+
+fn iter_most_frequent_even(nums: Vec[i64]) -> i64 {
+    let count = nums.iter().filter(|x| x % 2 == 0).fold(Map.new(), |m, x| {
+        let mut m = m;
+        m[x] = m.get(x).unwrap_or(0) + 1;
+        m
+    });
+    count.iter().max_by_key(|(x, c)| (c, -x)).map(|(x, _)| x).unwrap_or(-1)
+}
+
+// ---- solution (even_solution.kara) ---------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn most_frequent_even(nums: Vec[i32]) -> i32 {
+        let mut cnt: Map[i32, i32] = Map.new();
+        for x in nums.iter() {
+            if x % 2 == 0 {
+                *cnt.entry(x).or_insert(0) += 1;
+            }
+        }
+        let mut ans = -1;
+        let mut mx = 0;
+        for (k, v) in cnt.iter() {
+            if v > mx or v == mx and k < ans {
+                ans = k;
+                mx = v;
+            }
+        }
+        ans
+    }
+}
+
+fn solution_most_frequent_even(nums: Vec[i64]) -> i64 {
+    Solution.most_frequent_even(nums.iter().map(|x| x as i32).collect())
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_most_frequent_even(nums),
+        1 => array_most_frequent_even(nums),
+        2 => sort_most_frequent_even(nums),
+        3 => sorted_most_frequent_even(nums),
+        4 => iter_most_frequent_even(nums),
+        _ => solution_most_frequent_even(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "array", "sort", "sorted", "iter", "solution"];
+    let mut seed = 2404;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let mut nums: Vec[i64] = Vec.new();
+        if t < 300 {
+            let top = 1 + next_random(mut seed) % 30;
+            for _ in 0..1 + next_random(mut seed) % 12 {
+                nums.push(next_random(mut seed) % top);
+            }
+        } else if t < 330 {
+            for _ in 0..1 + next_random(mut seed) % 2000 {
+                nums.push((next_random(mut seed) * 32768 + next_random(mut seed)) % 100001);
+            }
+        } else {
+            for _ in 0..1 + next_random(mut seed) % 2000 {
+                let x = next_random(mut seed);
+                nums.push(if x % 2 == 0 {
+                    2 + 2 * (x / 2 % 10)
+                } else {
+                    x % 100000
+                });
+            }
+        }
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let nums = cases[c].clone();
+        let truth = if nums.len() <= 12 {
+            even_literally(nums)
+        } else {
+            -2
+        };
+        if truth > -2 {
+            check = (check * 31 + truth + 1) % 1000000007;
+        }
+        let mut table: Vec[i64] = Vec.filled(100001, 0);
+        for x in nums.iter() {
+            table[x] += 1;
+        }
+        let mut tabled = -1;
+        let mut v = 0;
+        while v <= 100000 {
+            if table[v] > 0 and (tabled < 0 or table[v] > table[tabled]) {
+                tabled = v;
+            }
+            v += 2;
+        }
+        let mut reversed = nums.clone();
+        reversed.reverse();
+        let evens: Vec[i64] = nums.iter().filter(|x| x % 2 == 0).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut again = nums.clone();
+            if value >= 0 {
+                again.push(value);
+            }
+            let verdicts = [truth == -2 or value == truth, value == tabled, answer(arm, reversed) == value, evens.len() == 0 or answer(arm, evens) == value, value < 0 or answer(arm, again) == value, same >= 3];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
