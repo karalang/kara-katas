@@ -1,0 +1,329 @@
+// LeetCode #2396: Strictly Palindromic Number -- the differential. The
+// six arms, each its test of one base and its answer, against the
+// statement read literally: the number written out in base b, its
+// highest digit first, and that list compared with its reversal. 360
+// numbers in random bases from 2 to 31: a third drawn below 2000, a third
+// built as palindromes, and a third built so with one digit then changed;
+// and with each, an n from 4 to 363 for the whole question. Every case is
+// drawn before any arm answers.
+//
+// P1  the one base's verdict is the literal reading's
+// P2  the number written twice over, its digits then its digits again:
+//     a palindrome exactly when it is (where that fits in 32 bits)
+// P3  the number with a 0 written after it: never a palindrome (where
+//     that fits in 32 bits)
+// P4  the n from 4 to 363: strictly palindromic exactly when the literal
+//     reading finds every base from 2 to n - 2 a palindrome
+// P5  a number not ending in 0, its digits reversed: a palindrome exactly
+//     when it is
+// P6  each arm agrees with at least three of the other five on the base
+
+// ---- the statement read literally ------------------------------------------
+
+fn written_out(n: i64, b: i64) -> Vec[i64] {
+    let mut power = 1;
+    while power * b <= n {
+        power *= b;
+    }
+    let mut digits: Vec[i64] = Vec.new();
+    while power > 0 {
+        digits.push(n / power % b);
+        power /= b;
+    }
+    digits
+}
+
+fn palindrome_literally(n: i64, b: i64) -> bool {
+    let digits = written_out(n, b);
+    let mut backwards: Vec[i64] = Vec.new();
+    for i in 0..digits.len() {
+        backwards.push(digits[digits.len() - 1 - i]);
+    }
+    digits == backwards
+}
+
+fn strictly_literally(n: i64) -> bool {
+    let mut every = true;
+    for b in 2..n - 1 {
+        if not palindrome_literally(n, b) {
+            every = false;
+        }
+    }
+    every
+}
+
+// ---- star (palindromic.kara) ---------------------------------------------
+
+fn star_palindrome_in_base(n: i64, b: i64) -> bool {
+    let mut digits: Vec[i64] = Vec.new();
+    let mut m = n;
+    while m > 0 {
+        digits.push(m % b);
+        m /= b;
+    }
+    let mut i = 0;
+    let mut j = digits.len() - 1;
+    while i < j {
+        if digits[i] != digits[j] {
+            return false;
+        }
+        i += 1;
+        j -= 1;
+    }
+    true
+}
+
+fn star_is_strictly_palindromic(n: i64) -> bool {
+    for b in 2..n - 1 {
+        if not star_palindrome_in_base(n, b) {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- reverse (palindromic_reverse.kara) ----------------------------------
+
+fn reverse_palindrome_in_base(n: i64, b: i64) -> bool {
+    let mut reversed = 0;
+    let mut m = n;
+    while m > 0 {
+        reversed = reversed * b + m % b;
+        m /= b;
+    }
+    reversed == n
+}
+
+fn reverse_is_strictly_palindromic(n: i64) -> bool {
+    let mut b = 2;
+    while b <= n - 2 {
+        if not reverse_palindrome_in_base(n, b) {
+            return false;
+        }
+        b += 1;
+    }
+    true
+}
+
+// ---- peel (palindromic_peel.kara) ----------------------------------------
+
+fn peel_peel(m: i64, b: i64, length: i64, top: i64) -> bool {
+    if length <= 1 {
+        return true;
+    }
+    if m / top != m % b {
+        return false;
+    }
+    peel_peel(m % top / b, b, length - 2, top / (b * b))
+}
+
+fn peel_palindrome_in_base(n: i64, b: i64) -> bool {
+    let mut length = 1;
+    let mut top = 1;
+    while top <= n / b {
+        top *= b;
+        length += 1;
+    }
+    peel_peel(n, b, length, top)
+}
+
+fn peel_is_strictly_palindromic(n: i64) -> bool {
+    for b in 2..n - 1 {
+        if not peel_palindrome_in_base(n, b) {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- proof (palindromic_proof.kara) --------------------------------------
+
+fn proof_palindrome_in_base(n: i64, b: i64) -> bool {
+    let mut digits: VecDeque[i64] = VecDeque.new();
+    let mut m = n;
+    while m > 0 {
+        digits.push_front(m % b);
+        m /= b;
+    }
+    while digits.len() > 1 {
+        if digits.pop_front() != digits.pop_back() {
+            return false;
+        }
+    }
+    true
+}
+
+fn proof_is_strictly_palindromic(n: i64) -> bool {
+    proof_palindrome_in_base(n, n - 2)
+}
+
+// ---- iter (palindromic_iter.kara) ----------------------------------------
+
+fn iter_palindrome_in_base(n: i64, b: i64) -> bool {
+    let mut powers: Vec[i64] = [1];
+    while powers[powers.len() - 1] <= n / b {
+        powers.push(powers[powers.len() - 1] * b);
+    }
+    let digits: Vec[i64] = powers.iter().rev().map(|p| n / p % b).collect();
+    let k = digits.len();
+    (0..k / 2).all(|i| digits[i] == digits[k - 1 - i])
+}
+
+fn iter_is_strictly_palindromic(n: i64) -> bool {
+    (2..n - 1).all(|b| iter_palindrome_in_base(n, b))
+}
+
+// ---- solution (palindromic_solution.kara) --------------------------------
+
+struct Solution {}
+
+impl Solution {
+    fn is_palindrome(n: i32, b: i32) -> bool {
+        let mut digits = Vec.new();
+        let mut m = n;
+        while m > 0 {
+            digits.push(m % b);
+            m /= b;
+        }
+        digits.iter().eq(digits.iter().rev())
+    }
+
+    pub fn is_strictly_palindromic(n: i32) -> bool {
+        (2..=n - 2).all(|b| Solution.is_palindrome(n, b))
+    }
+}
+
+fn solution_palindrome_in_base(n: i64, b: i64) -> bool {
+    Solution.is_palindrome(n as i32, b as i32)
+}
+
+fn solution_is_strictly_palindromic(n: i64) -> bool {
+    Solution.is_strictly_palindromic(n as i32)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn in_base(arm: i64, n: i64, b: i64) -> bool {
+    match arm {
+        0 => star_palindrome_in_base(n, b),
+        1 => reverse_palindrome_in_base(n, b),
+        2 => peel_palindrome_in_base(n, b),
+        3 => proof_palindrome_in_base(n, b),
+        4 => iter_palindrome_in_base(n, b),
+        _ => solution_palindrome_in_base(n, b),
+    }
+}
+
+fn strictly(arm: i64, n: i64) -> bool {
+    match arm {
+        0 => star_is_strictly_palindromic(n),
+        1 => reverse_is_strictly_palindromic(n),
+        2 => peel_is_strictly_palindromic(n),
+        3 => proof_is_strictly_palindromic(n),
+        4 => iter_is_strictly_palindromic(n),
+        _ => solution_is_strictly_palindromic(n),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "reverse", "peel", "proof", "iter", "solution"];
+    let limit = 2147483647;
+    let mut seed = 2396;
+    let mut cases: Vec[(i64, i64, i64)] = Vec.new();
+    for t in 0..360 {
+        let b = 2 + next_random(mut seed) % 30;
+        let mut n = 1 + next_random(mut seed) % 2000;
+        if t % 3 > 0 {
+            let mut digits: Vec[i64] = Vec.new();
+            let half = 1 + next_random(mut seed) % 3;
+            for _ in 0..half {
+                digits.push(next_random(mut seed) % b);
+            }
+            if digits[0] == 0 {
+                digits[0] = 1;
+            }
+            let mut i = half - 1 - next_random(mut seed) % 2;
+            while i >= 0 {
+                digits.push(digits[i]);
+                i -= 1;
+            }
+            if t % 3 == 2 {
+                let at = 1 + next_random(mut seed) % (digits.len() - 1).max(1);
+                if at < digits.len() {
+                    digits[at] = (digits[at] + 1) % b;
+                }
+            }
+            n = 0;
+            for d in digits.iter() {
+                n = n * b + d;
+            }
+        }
+        cases.push((n, b, 4 + t));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (n, b, whole) = cases[c];
+        let truth = palindrome_literally(n, b);
+        let whole_truth = strictly_literally(whole);
+        check = (check * 31 + if truth {
+            2
+        } else {
+            1
+        } + if whole_truth {
+            2
+        } else {
+            0
+        }) % 1000000007;
+        let mut top = 1;
+        while top * b <= n {
+            top *= b;
+        }
+        let twice = n * top * b + n;
+        let mut reversed = 0;
+        let mut m = n;
+        while m > 0 {
+            reversed = reversed * b + m % b;
+            m /= b;
+        }
+        let got: Vec[bool] = (0..6).map(|arm| in_base(arm, n, b)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [value == truth, twice > limit or in_base(arm, twice, b) == value, n * b > limit or not in_base(arm, n * b, b), strictly(arm, whole) == whole_truth, n % b == 0 or in_base(arm, reversed, b) == value, same >= 3];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

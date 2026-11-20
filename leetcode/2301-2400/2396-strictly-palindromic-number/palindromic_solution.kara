@@ -1,0 +1,103 @@
+// LeetCode #2396: Strictly Palindromic Number -- LeetCode's Rust
+// template, every base tried, each base's digits compared with their
+// reversal by `eq`; carried by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn is_strictly_palindromic(n: i32) -> bool {
+        (2..=n - 2).all(|b| Solution.is_palindrome(n, b))
+    }
+
+    fn is_palindrome(n: i32, b: i32) -> bool {
+        let mut digits = Vec.new();
+        let mut m = n;
+        while m > 0 {
+            digits.push(m % b);
+            m /= b;
+        }
+        digits.iter().eq(digits.iter().rev())
+    }
+}
+
+fn palindrome_in_base(n: i64, b: i64) -> bool {
+    Solution.is_palindrome(n as i32, b as i32)
+}
+
+fn is_strictly_palindromic(n: i64) -> bool {
+    Solution.is_strictly_palindromic(n as i32)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"n = 9: {is_strictly_palindromic(9)}");
+    println(f"n = 4: {is_strictly_palindromic(4)}");
+    // every n from 4 to 60, and some large ones: how many of the bases
+    // 2 to n - 2 read it as a palindrome
+    let mut shown: Vec[i64] = (4..61).collect();
+    shown.push(1000);
+    shown.push(65535);
+    shown.push(99999);
+    shown.push(100000);
+    for n in shown.iter() {
+        let mut count = 0;
+        for b in 2..n - 1 {
+            if palindrome_in_base(n, b) {
+                count += 1;
+            }
+        }
+        println(f"{n}: {count} of {n - 3} bases, strictly {is_strictly_palindromic(n)}");
+    }
+    // 3000 numbers in random bases: a third drawn below 2000, a third
+    // built as palindromes, and a third built so and then one digit
+    // changed; a checksum of the verdicts and how many are palindromes
+    let mut seed = 2396;
+    let mut check = 0;
+    let mut yes = 0;
+    for t in 0..3000 {
+        let b = 2 + next_random(mut seed) % 30;
+        let mut n = 1 + next_random(mut seed) % 2000;
+        if t % 3 > 0 {
+            let mut digits: Vec[i64] = Vec.new();
+            let half = 1 + next_random(mut seed) % 3;
+            for _ in 0..half {
+                digits.push(next_random(mut seed) % b);
+            }
+            if digits[0] == 0 {
+                digits[0] = 1;
+            }
+            let mut i = half - 1 - next_random(mut seed) % 2;
+            while i >= 0 {
+                digits.push(digits[i]);
+                i -= 1;
+            }
+            if t % 3 == 2 {
+                let at = 1 + next_random(mut seed) % (digits.len() - 1).max(1);
+                if at < digits.len() {
+                    digits[at] = (digits[at] + 1) % b;
+                }
+            }
+            n = 0;
+            for d in digits.iter() {
+                n = n * b + d;
+            }
+        }
+        let p = palindrome_in_base(n, b);
+        if p {
+            yes += 1;
+        }
+        check = (check * 31 + if p {
+            2
+        } else {
+            1
+        }) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}, {yes} palindromes");
+}
