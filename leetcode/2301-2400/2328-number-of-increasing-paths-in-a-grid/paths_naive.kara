@@ -1,0 +1,62 @@
+// LeetCode #2328: Number of Increasing Paths in a Grid -- every path
+// walked: a depth-first walk from each cell counts one path for every
+// cell it reaches, moving only to a larger neighbour, with nothing
+// remembered between walks. O(the number of paths).
+
+const MOD: i64 = 1000000007;
+
+fn walk(grid: Vec[Vec[i64]], r: i64, c: i64) -> i64 {
+    let mut paths = 1;
+    for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+        let (nr, nc) = (r + dr, c + dc);
+        if nr >= 0 and nr < grid.len() and nc >= 0 and nc < grid[0].len() and grid[nr][nc] > grid[r][c] {
+            paths = (paths + walk(grid, nr, nc)) % MOD;
+        }
+    }
+    paths
+}
+
+fn count_paths(grid: Vec[Vec[i64]]) -> i64 {
+    let mut total = 0;
+    for r in 0..grid.len() {
+        for c in 0..grid[0].len() {
+            total = (total + walk(grid, r, c)) % MOD;
+        }
+    }
+    total
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_grid(seed: mut ref i64, m: i64, n: i64, top: i64) -> Vec[Vec[i64]] {
+    (0..m).map(|_| (0..n).map(|_| next_random(mut seed) % top + 1).collect()).collect()
+}
+
+fn main() {
+    // LeetCode's two examples; then one cell, a 3 by 3 of equal values,
+    // a row of 1 to 10, and 300 by 300 with values from 1 to 100
+    println(f"{count_paths([[1, 1].to_vec(), [3, 4].to_vec()].to_vec())}");
+    println(f"{count_paths([[1].to_vec(), [2].to_vec()].to_vec())}");
+    println(f"{count_paths([[5].to_vec()].to_vec())}");
+    println(f"{count_paths(Vec.filled(3, Vec.filled(3, 7)))}");
+    let row: Vec[i64] = (1..=10).collect();
+    println(f"{count_paths([row].to_vec())}");
+    let mut seed = 2328;
+    println(f"300 by 300: {count_paths(random_grid(mut seed, 300, 300, 100))}");
+    // 1000 random grids of 1 to 6 by 1 to 6 with values from 1 to 5
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..1000 {
+        let m = next_random(mut seed) % 6 + 1;
+        let n = next_random(mut seed) % 6 + 1;
+        let paths = count_paths(random_grid(mut seed, m, n, 5));
+        check = (check * 31 + paths) % 1000000007;
+        total = (total + paths) % 1000000007;
+    }
+    println(f"1000 grids: checksum {check}, total {total}");
+}

@@ -1,0 +1,325 @@
+// LeetCode #2328: Number of Increasing Paths in a Grid -- the
+// differential. The six arms, against the statement read literally:
+// every path kept as its list of cells, the single cells first and then
+// each path of one length grown by every neighbour of its last cell
+// that holds more, all of them put in a `Set` of lists, and the answer
+// how many different lists it holds. 300 random grids of 1 to 5 by 1 to
+// 5 with values from 1 to 6; then 30 of 1 to 6 by 1 to 6 with values
+// from 1 to 3; then 30 of up to 30 by 30 with values from 1 to 1000.
+// Every case is drawn before any arm answers.
+//
+// P1  up to 25 cells, the answer is the literal reading's
+// P2  the answer is at least m n, and is m n exactly when no two
+//     neighbouring cells differ
+// P3  the grid turned a quarter clockwise: the same answer
+// P4  every value `v` replaced by `1001 - v`: the same answer, each
+//     path walked backwards
+// P5  every value doubled: the same answer
+// P6  each arm agrees with at least three of the other five
+
+const MOD: i64 = 1000000007;
+
+// ---- star (paths.kara) ---------------------------------------------------
+
+fn star_count_paths(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut cells: Vec[(i64, i64, i64)] = Vec.new();
+    for r in 0..m {
+        for c in 0..n {
+            cells.push((grid[r][c], r, c));
+        }
+    }
+    cells.sort();
+    cells.reverse();
+    let moves = [(0, 1), (1, 0), (0, -1), (-1, 0)];
+    let mut from: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, 1));
+    let mut total = 0;
+    for (value, r, c) in cells.iter() {
+        for (dr, dc) in moves.iter() {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr >= 0 and nr < m and nc >= 0 and nc < n and grid[nr][nc] > value {
+                from[r][c] = (from[r][c] + from[nr][nc]) % MOD;
+            }
+        }
+        total = (total + from[r][c]) % MOD;
+    }
+    total
+}
+
+// ---- memo (paths_memo.kara) ----------------------------------------------
+
+fn memo_from(grid: Vec[Vec[i64]], r: i64, c: i64, memo: mut ref Vec[Vec[i64]]) -> i64 {
+    if memo[r][c] > 0 {
+        return memo[r][c];
+    }
+    let mut paths = 1;
+    for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+        let (nr, nc) = (r + dr, c + dc);
+        if nr >= 0 and nr < grid.len() and nc >= 0 and nc < grid[0].len() and grid[nr][nc] > grid[r][c] {
+            paths = (paths + memo_from(grid, nr, nc, mut memo)) % MOD;
+        }
+    }
+    memo[r][c] = paths;
+    paths
+}
+
+fn memo_count_paths(grid: Vec[Vec[i64]]) -> i64 {
+    let mut memo: Vec[Vec[i64]] = Vec.filled(grid.len(), Vec.filled(grid[0].len(), 0));
+    let mut total = 0;
+    for r in 0..grid.len() {
+        for c in 0..grid[0].len() {
+            total = (total + memo_from(grid, r, c, mut memo)) % MOD;
+        }
+    }
+    total
+}
+
+// ---- topo (paths_topo.kara) ----------------------------------------------
+
+fn topo_count_paths(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let moves = [(0, 1), (1, 0), (0, -1), (-1, 0)];
+    let mut waiting: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, 0));
+    let mut ending: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, 1));
+    let mut ready: VecDeque[(i64, i64)] = VecDeque.new();
+    for r in 0..m {
+        for c in 0..n {
+            for (dr, dc) in moves {
+                let (nr, nc) = (r + dr, c + dc);
+                if nr >= 0 and nr < m and nc >= 0 and nc < n and grid[nr][nc] < grid[r][c] {
+                    waiting[r][c] += 1;
+                }
+            }
+            if waiting[r][c] == 0 {
+                ready.push_back((r, c));
+            }
+        }
+    }
+    let mut total = 0;
+    while let Some((r, c)) = ready.pop_front() {
+        total = (total + ending[r][c]) % MOD;
+        for (dr, dc) in moves {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr >= 0 and nr < m and nc >= 0 and nc < n and grid[nr][nc] > grid[r][c] {
+                ending[nr][nc] = (ending[nr][nc] + ending[r][c]) % MOD;
+                waiting[nr][nc] -= 1;
+                if waiting[nr][nc] == 0 {
+                    ready.push_back((nr, nc));
+                }
+            }
+        }
+    }
+    total
+}
+
+// ---- naive (paths_naive.kara) --------------------------------------------
+
+fn naive_walk(grid: Vec[Vec[i64]], r: i64, c: i64) -> i64 {
+    let mut paths = 1;
+    for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+        let (nr, nc) = (r + dr, c + dc);
+        if nr >= 0 and nr < grid.len() and nc >= 0 and nc < grid[0].len() and grid[nr][nc] > grid[r][c] {
+            paths = (paths + naive_walk(grid, nr, nc)) % MOD;
+        }
+    }
+    paths
+}
+
+fn naive_count_paths(grid: Vec[Vec[i64]]) -> i64 {
+    let mut total = 0;
+    for r in 0..grid.len() {
+        for c in 0..grid[0].len() {
+            total = (total + naive_walk(grid, r, c)) % MOD;
+        }
+    }
+    total
+}
+
+// ---- iter (paths_iter.kara) ----------------------------------------------
+
+fn iter_count_paths(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let value = |i: i64| grid[i / n][i % n];
+    let mut order: Vec[i64] = (0..m * n).collect();
+    order.sort_by_key(|i| -value(i));
+    let counts = order.iter().fold(Vec.filled(m * n, 0), |counts, i| {
+        let (r, c) = (i / n, i % n);
+        let larger = [(r, c + 1), (r + 1, c), (r, c - 1), (r - 1, c)]
+            .iter()
+            .filter(|(nr, nc)| nr >= 0 and nr < m and nc >= 0 and nc < n and value(nr * n + nc) > value(i))
+            .map(|(nr, nc)| counts[nr * n + nc])
+            .fold(0, |sum, x| (sum + x) % MOD);
+        let mut counts = counts;
+        counts[i] = (1 + larger) % MOD;
+        counts
+    });
+    counts.iter().fold(0, |sum, x| (sum + x) % MOD)
+}
+
+// ---- solution (paths_solution.kara) --------------------------------------
+
+fn solution_dfs(grid: Vec[Vec[i32]], memo: mut ref Vec[Vec[i64]], i: i64, j: i64) -> i64 {
+    if memo[i][j] != 0 {
+        return memo[i][j];
+    }
+    let mut res = 1;
+    let dirs = [(0, 1), (1, 0), (0, -1), (-1, 0)];
+    for (di, dj) in dirs.iter() {
+        let (ni, nj) = (i as i32 + di, j as i32 + dj);
+        if ni >= 0 and nj >= 0 and (ni) < grid.len() and (nj) < grid[0].len()
+            and grid[ni][nj] > grid[i][j]
+        {
+            res = (res + solution_dfs(grid, mut memo, ni, nj)) % 1_000_000_007;
+        }
+    }
+    memo[i][j] = res;
+    res
+}
+
+impl Solution {
+    pub fn count_paths(grid: Vec[Vec[i32]]) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let (m, n) = (grid.len(), grid[0].len());
+        let mut memo = Vec.filled(m, Vec.filled(n, 0));
+        let mut ans = 0;
+        for i in 0..m {
+            for j in 0..n {
+                ans = (ans + solution_dfs(grid, mut memo, i, j)) % MOD;
+            }
+        }
+        ans as i32
+    }
+}
+
+struct Solution {}
+
+fn solution_count_paths(grid: Vec[Vec[i64]]) -> i64 {
+    let g: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|v| v as i32).collect()).collect();
+    Solution.count_paths(g)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut seen: Set[Vec[(i64, i64)]] = Set.new();
+    let mut level: Vec[Vec[(i64, i64)]] = Vec.new();
+    for r in 0..m {
+        for c in 0..n {
+            level.push([(r, c)].to_vec());
+        }
+    }
+    while level.len() > 0 {
+        let mut next: Vec[Vec[(i64, i64)]] = Vec.new();
+        for path in level.iter() {
+            seen.insert(path.clone());
+            let (r, c) = path[path.len() - 1];
+            for (nr, nc) in [(r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)] {
+                if nr >= 0 and nr < m and nc >= 0 and nc < n and grid[nr][nc] > grid[r][c] {
+                    let mut longer = path.clone();
+                    longer.push((nr, nc));
+                    next.push(longer);
+                }
+            }
+        }
+        level = next;
+    }
+    seen.len()
+}
+
+fn answer(arm: i64, grid: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_count_paths(grid),
+        1 => memo_count_paths(grid),
+        2 => topo_count_paths(grid),
+        3 => naive_count_paths(grid),
+        4 => iter_count_paths(grid),
+        _ => solution_count_paths(grid),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_grid(seed: mut ref i64, rows: i64, top: i64) -> Vec[Vec[i64]] {
+    let m = next_random(mut seed) % rows + 1;
+    let n = next_random(mut seed) % rows + 1;
+    (0..m).map(|_| (0..n).map(|_| next_random(mut seed) % top + 1).collect()).collect()
+}
+
+fn main() {
+    let names = ["star", "memo", "topo", "naive", "iter", "solution"];
+    let mut seed = 2328;
+    let mut cases: Vec[Vec[Vec[i64]]] = Vec.new();
+    for c in 0..360 {
+        if c < 300 {
+            cases.push(random_grid(mut seed, 5, 6));
+        } else if c < 330 {
+            cases.push(random_grid(mut seed, 6, 3));
+        } else {
+            cases.push(random_grid(mut seed, 30, 1000));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for grid in cases.iter() {
+        let m = grid.len();
+        let n = grid[0].len();
+        let small = m * n <= 25;
+        let truth = if small { literal(grid) } else { -1 };
+        if small {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let flat = (0..m).all(|r| (0..n).all(|c| (c + 1 >= n or grid[r][c] == grid[r][c + 1]) and (r + 1 >= m or grid[r][c] == grid[r + 1][c])));
+        let turned: Vec[Vec[i64]] = (0..n).map(|c| (0..m).map(|r| grid[m - 1 - r][c]).collect()).collect();
+        let flipped: Vec[Vec[i64]] = grid.iter().map(|row| row.iter().map(|v| 1001 - v).collect()).collect();
+        let doubled: Vec[Vec[i64]] = grid.iter().map(|row| row.iter().map(|v| 2 * v).collect()).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, grid)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                value >= m * n and (value == m * n) == flat,
+                answer(arm, turned) == value,
+                answer(arm, flipped) == value,
+                answer(arm, doubled) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{m} by {n}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
