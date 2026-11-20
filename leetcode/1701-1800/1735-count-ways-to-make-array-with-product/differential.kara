@@ -1,0 +1,376 @@
+// LeetCode #1735: Count Ways to Make Array With Product -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random lists of
+// 1 to 4 queries, each n from 1 to 6 and k from 1 to 36.
+//
+// P1  the answer is the statement read literally
+// P2  the queries reversed give the answers reversed
+// P3  k split into its smallest prime's power and the rest, coprime, gives
+//     two answers whose product is the answer
+// P4  the answer for n + 1 places is the sum, over the divisors d of k, of
+//     the answers for n places and product d
+// P5  each arm agrees with at least two of the other three
+
+// ---- ways.kara: the ★ arm: factorials and their inverses
+
+const STAR_MOD: i64 = 1000000007;
+
+fn star_power(base: i64, exp: i64) -> i64 {
+    let mut result = 1;
+    let mut b = base % STAR_MOD;
+    let mut e = exp;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % STAR_MOD;
+        }
+        b = b * b % STAR_MOD;
+        e /= 2;
+    }
+    result
+}
+
+fn star_arm(queries: Vec[Vec[i32]]) -> Vec[i32] {
+    let top = queries.iter().map(|q| q[0] as i64).max().unwrap() + 14;
+    let mut fact: Vec[i64] = Vec.filled(top + 1, 1);
+    for i in 1..top + 1 {
+        fact[i] = fact[i - 1] * i % STAR_MOD;
+    }
+    let mut inverse: Vec[i64] = Vec.filled(top + 1, 1);
+    inverse[top] = star_power(fact[top], STAR_MOD - 2);
+    for i in (1..top + 1).rev() {
+        inverse[i - 1] = inverse[i] * i % STAR_MOD;
+    }
+    let choose = |m: i64, r: i64| fact[m] * inverse[r] % STAR_MOD * inverse[m - r] % STAR_MOD;
+    let mut answers: Vec[i32] = Vec.new();
+    for q in queries.iter() {
+        let n = q[0] as i64;
+        let mut k = q[1] as i64;
+        let mut ways = 1;
+        let mut p = 2;
+        while p * p <= k {
+            let mut e = 0;
+            while k % p == 0 {
+                k /= p;
+                e += 1;
+            }
+            ways = ways * choose(n + e - 1, e) % STAR_MOD;
+            p += 1;
+        }
+        if k > 1 {
+            ways = ways * n % STAR_MOD;
+        }
+        answers.push(ways as i32);
+    }
+    answers
+}
+
+// ---- ways_pascal.kara: Pascal's triangle for each prime's share
+
+const PASCAL_MOD: i64 = 1000000007;
+
+fn pascal_arm(queries: Vec[Vec[i32]]) -> Vec[i32] {
+    let top = queries.iter().map(|q| q[0] as i64).max().unwrap() + 13;
+    let mut pascal: Vec[Vec[i64]] = Vec.filled(top + 1, Vec.filled(14, 0));
+    for m in 0..top + 1 {
+        pascal[m][0] = 1;
+        for e in 1..min(m, 13) + 1 {
+            pascal[m][e] = (pascal[m - 1][e - 1] + pascal[m - 1][e]) % PASCAL_MOD;
+        }
+    }
+    let mut answers: Vec[i32] = Vec.new();
+    for q in queries.iter() {
+        let n = q[0] as i64;
+        let mut k = q[1] as i64;
+        let mut ways = 1;
+        let mut p = 2;
+        while p * p <= k {
+            let mut e = 0;
+            while k % p == 0 {
+                k /= p;
+                e += 1;
+            }
+            ways = ways * pascal[n + e - 1][e] % PASCAL_MOD;
+            p += 1;
+        }
+        if k > 1 {
+            ways = ways * n % PASCAL_MOD;
+        }
+        answers.push(ways as i32);
+    }
+    answers
+}
+
+// ---- ways_sieve.kara: a smallest-prime-factor sieve and a running product
+
+const SIEVE_MOD: i64 = 1000000007;
+
+fn sieve_power(base: i64, exp: i64) -> i64 {
+    let mut result = 1;
+    let mut b = base % SIEVE_MOD;
+    let mut e = exp;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % SIEVE_MOD;
+        }
+        b = b * b % SIEVE_MOD;
+        e /= 2;
+    }
+    result
+}
+
+fn sieve_arm(queries: Vec[Vec[i32]]) -> Vec[i32] {
+    let most = queries.iter().map(|q| q[1] as i64).max().unwrap();
+    let mut smallest: Vec[i64] = (0..most + 1).collect();
+    let mut p = 2;
+    while p * p <= most {
+        if smallest[p] == p {
+            let mut m = p * p;
+            while m <= most {
+                if smallest[m] == m {
+                    smallest[m] = p;
+                }
+                m += p;
+            }
+        }
+        p += 1;
+    }
+    let mut answers: Vec[i32] = Vec.new();
+    for q in queries.iter() {
+        let n = q[0] as i64;
+        let mut k = q[1] as i64;
+        let mut ways = 1;
+        while k > 1 {
+            let p = smallest[k];
+            let mut e = 0;
+            while k % p == 0 {
+                k /= p;
+                e += 1;
+            }
+            for j in 1..e + 1 {
+                ways = ways * ((n - 1 + j) % SIEVE_MOD) % SIEVE_MOD * sieve_power(j, SIEVE_MOD - 2) % SIEVE_MOD;
+            }
+        }
+        answers.push(ways as i32);
+    }
+    answers
+}
+
+// ---- ways_solution.kara: LeetCode's Rust template, through karac fix
+
+const SOLUTION_MOD: i64 = 1_000_000_007;
+
+struct Solution {}
+
+impl Solution {
+    pub fn ways_to_fill_array(queries: Vec[Vec[i32]]) -> Vec[i32] {
+        let max_n = 10_014;
+        let mut fact = Vec.filled(max_n + 1, 1);
+        let mut inv = Vec.filled(max_n + 1, 1);
+        for i in 1..=max_n {
+            fact[i] = fact[i - 1] * i % SOLUTION_MOD;
+        }
+        inv[max_n] = Solution.pow(fact[max_n], SOLUTION_MOD - 2);
+        for i in (1..=max_n).rev() {
+            inv[i - 1] = inv[i] * i % SOLUTION_MOD;
+        }
+        let comb = |n: usize, k: usize| { fact[n] * inv[k] % SOLUTION_MOD * inv[n - k] % SOLUTION_MOD };
+        queries
+            .iter()
+            .map(|q| {
+                let n = q[0] as usize;
+                let mut k = q[1];
+                let mut res = 1;
+                let mut p: i32 = 2;
+                while p * p <= k {
+                    let mut cnt = 0;
+                    while k % p == 0 {
+                        k /= p;
+                        cnt += 1;
+                    }
+                    res = res * comb(n + cnt - 1, cnt) % SOLUTION_MOD;
+                    p += 1;
+                }
+                if k > 1 {
+                    res = res * n as i64 % SOLUTION_MOD;
+                }
+                res as i32
+            })
+            .collect()
+    }
+
+    fn pow(b: i64, e: i64) -> i64 {
+        let mut b = b;
+        let mut e = e;
+        let mut r = 1;
+        b %= SOLUTION_MOD;
+        while e > 0 {
+            if e & 1 == 1 {
+                r = r * b % SOLUTION_MOD;
+            }
+            b = b * b % SOLUTION_MOD;
+            e >>= 1;
+        }
+        r
+    }
+}
+
+fn solution_arm(queries: Vec[Vec[i32]]) -> Vec[i32] {
+    Solution.ways_to_fill_array(queries)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: the arrays of n positive integers whose
+// product is k, counted by choosing each place's value among the divisors
+// of what is left and the rest of the places from there
+fn arrays(n: i64, k: i64) -> i64 {
+    if n == 0 {
+        return if k == 1 { 1 } else { 0 };
+    }
+    let mut count = 0;
+    for d in 1..k + 1 {
+        if k % d == 0 {
+            count += arrays(n - 1, k / d);
+        }
+    }
+    count
+}
+
+fn literal(queries: Slice[Vec[i32]]) -> Vec[i32] {
+    queries.iter().map(|q| (arrays(q[0], q[1]) % 1000000007) as i32).collect()
+}
+
+fn arm(a: i64, queries: Vec[Vec[i32]]) -> Vec[i32] {
+    match a {
+        0 => star_arm(queries),
+        1 => pascal_arm(queries),
+        2 => sieve_arm(queries),
+        _ => solution_arm(queries),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "pascal", "sieve", "solution"][a]
+}
+
+// k split into the power of its smallest prime and the rest
+fn split(k: i32) -> (i32, i32) {
+    let mut p: i32 = 2;
+    while p <= k and k % p != 0 {
+        p += 1;
+    }
+    let mut power: i32 = 1;
+    let mut rest = k;
+    while rest % p == 0 and rest > 1 {
+        rest /= p;
+        power *= p;
+    }
+    (power, rest)
+}
+
+fn main() {
+    let mut seed = 1735;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[Vec[Vec[i32]]] = Vec.new();
+    for _ in 0..problems {
+        let q = next_random(mut seed) % 4 + 1;
+        let mut queries: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..q {
+            let n = (next_random(mut seed) % 6 + 1) as i32;
+            let k = (next_random(mut seed) % 36 + 1) as i32;
+            queries.push([n, k]);
+        }
+        cases.push(queries);
+    }
+    for (p, queries) in cases.iter().enumerate() {
+        let want = literal(queries);
+        for v in want.iter() {
+            check = (check * 31 + v) % 1000000007;
+        }
+        check = (check * 31 + queries.len()) % 1000000007;
+        let reversed: Vec[Vec[i32]] = queries.iter().rev().cloned().collect();
+        let mut answers: Vec[Vec[i32]] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, queries);
+            let back: Vec[i32] = got.iter().rev().cloned().collect();
+            // every query P3 and P4 ask about, answered in one call
+            let mut asked: Vec[Vec[i32]] = Vec.new();
+            for q in queries.iter() {
+                let (power, rest) = split(q[1]);
+                asked.push([q[0], power]);
+                asked.push([q[0], rest]);
+                asked.push([q[0] + 1, q[1]]);
+                for d in 1..q[1] + 1 {
+                    if q[1] % d == 0 {
+                        asked.push([q[0], d]);
+                    }
+                }
+            }
+            let told = arm(a, asked);
+            let mut at = 0;
+            let mut splits = true;
+            let mut sums = true;
+            for (i, q) in queries.iter().enumerate() {
+                if told[at] as i64 * told[at + 1] as i64 % 1000000007 != got[i] {
+                    splits = false;
+                }
+                let next = told[at + 2];
+                at += 3;
+                let mut below = 0;
+                for d in 1..q[1] + 1 {
+                    if q[1] % d == 0 {
+                        below += told[at];
+                        at += 1;
+                    }
+                }
+                if below % 1000000007 != next {
+                    sums = false;
+                }
+            }
+            let failed = [got != want, arm(a, reversed) != back, not splits, not sums];
+            answers.push(got);
+            for t in 0..4 {
+                checks += 1;
+                if failed[t] {
+                    failures += 1;
+                    by_property[t + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({queries}), {arm_name(a)}: P{t + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for t in 1..6 {
+            if by_property[t] > 0 {
+                counts.push(f"P{t}: {by_property[t]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

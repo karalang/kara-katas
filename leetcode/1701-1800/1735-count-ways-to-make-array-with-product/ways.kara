@@ -1,0 +1,103 @@
+// LeetCode #1735: Count Ways to Make Array With Product -- the ★ arm: each
+// prime's exponent shared out among the n places, counted by factorials.
+//
+// An array of n positive integers multiplies to k exactly when, for each
+// prime p of k, the exponents of p in its n places sum to p's exponent e
+// in k, and the primes are shared out independently. Sharing e among n
+// places is choosing where the n - 1 dividers fall among e + n - 1 slots,
+// C(n + e - 1, e) ways, so the answer is the product of those. k is
+// factored by trial division, and C(m, e) is read off factorials and
+// their inverses up to the largest m, the inverses by Fermat's little
+// theorem. O(N + q sqrt(k)) for q queries and N = n + 13.
+
+const MOD: i64 = 1000000007;
+
+fn power(base: i64, exp: i64) -> i64 {
+    let mut result = 1;
+    let mut b = base % MOD;
+    let mut e = exp;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % MOD;
+        }
+        b = b * b % MOD;
+        e /= 2;
+    }
+    result
+}
+
+fn ways_to_fill_array(queries: Vec[Vec[i32]]) -> Vec[i32] {
+    let top = queries.iter().map(|q| q[0] as i64).max().unwrap() + 14;
+    let mut fact: Vec[i64] = Vec.filled(top + 1, 1);
+    for i in 1..top + 1 {
+        fact[i] = fact[i - 1] * i % MOD;
+    }
+    let mut inverse: Vec[i64] = Vec.filled(top + 1, 1);
+    inverse[top] = power(fact[top], MOD - 2);
+    for i in (1..top + 1).rev() {
+        inverse[i - 1] = inverse[i] * i % MOD;
+    }
+    let choose = |m: i64, r: i64| fact[m] * inverse[r] % MOD * inverse[m - r] % MOD;
+    let mut answers: Vec[i32] = Vec.new();
+    for q in queries.iter() {
+        let n = q[0] as i64;
+        let mut k = q[1] as i64;
+        let mut ways = 1;
+        let mut p = 2;
+        while p * p <= k {
+            let mut e = 0;
+            while k % p == 0 {
+                k /= p;
+                e += 1;
+            }
+            ways = ways * choose(n + e - 1, e) % MOD;
+            p += 1;
+        }
+        if k > 1 {
+            ways = ways * n % MOD;
+        }
+        answers.push(ways as i32);
+    }
+    answers
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random lists of 1 to `most` queries, each n and k from 1 to
+// `top`
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let q = next_random(mut seed) % most + 1;
+        let mut queries: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..q {
+            let n = (next_random(mut seed) % top + 1) as i32;
+            let k = (next_random(mut seed) % top + 1) as i32;
+            queries.push([n, k]);
+        }
+        for w in ways_to_fill_array(queries).iter() {
+            sum += w;
+            check = (check * 31 + w) % 1000000007;
+        }
+        check = (check * 31 + q) % 1000000007;
+    }
+    println(f"{count} lists of up to {most} queries up to {top}: ways sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then the largest n and k, a prime k, and
+    // the k with the most prime factors
+    println(ways_to_fill_array([[2, 6], [5, 1], [73, 660]]));
+    println(ways_to_fill_array([[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]));
+    println(ways_to_fill_array([[10000, 10000], [10000, 9973], [10000, 8192], [1, 8192]]));
+    let mut seed = 1735;
+    batch(3000, 5, 36, mut seed);
+    batch(300, 100, 10000, mut seed);
+    batch(3, 10000, 10000, mut seed);
+}

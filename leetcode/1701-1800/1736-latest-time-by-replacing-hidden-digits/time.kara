@@ -1,0 +1,72 @@
+// LeetCode #1736: Latest Time by Replacing Hidden Digits -- the ★ arm:
+// each hidden digit the largest its neighbours allow, left to right.
+//
+// The hour's first digit is 2 unless the second is shown above 3, when it
+// is 1; the hour's second digit is 3 after a 2 and 9 otherwise; the
+// minute's digits are 5 and 9. Each `?` is replaced in place. O(1).
+
+fn maximum_time(time: Str) -> String {
+    let mut t: Vec[char] = time.chars().collect();
+    if t[0] == '?' {
+        t[0] = if t[1] == '?' or t[1] <= '3' { '2' } else { '1' };
+    }
+    if t[1] == '?' {
+        t[1] = if t[0] == '2' { '3' } else { '9' };
+    }
+    if t[3] == '?' {
+        t[3] = '5';
+    }
+    if t[4] == '?' {
+        t[4] = '9';
+    }
+    t.iter().collect()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random valid times, each digit hidden with a chance of 1 in
+// `hide`
+fn batch(count: i64, hide: i64, seed: mut ref i64) {
+    let mut minutes = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let t = next_random(mut seed) % 1440;
+        let shown = f"{t / 60 / 10}{t / 60 % 10}:{t % 60 / 10}{t % 60 % 10}";
+        let mut hidden = String.new();
+        for c in shown.chars() {
+            if c != ':' and next_random(mut seed) % hide == 0 {
+                hidden.push('?');
+            } else {
+                hidden.push(c);
+            }
+        }
+        let answer = maximum_time(hidden);
+        let parts: Vec[i64] = answer.split(":").map(|p| i64.parse(p).unwrap()).collect();
+        minutes += parts[0] * 60 + parts[1];
+        for c in answer.chars() {
+            check = (check * 31 + c as i64) % 1000000007;
+        }
+    }
+    println(f"{count} times with 1 digit in {hide} hidden: latest times sum to {minutes} minutes, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then every digit hidden, none, and the
+    // hour's second digit hidden after a 2
+    println(maximum_time("2?:?0"));
+    println(maximum_time("0?:3?"));
+    println(maximum_time("1?:22"));
+    println(maximum_time("??:??"));
+    println(maximum_time("13:07"));
+    println(maximum_time("2?:5?"));
+    println(maximum_time("?4:??"));
+    let mut seed = 1736;
+    batch(3000, 2, mut seed);
+    batch(3000, 4, mut seed);
+    batch(3000, 1, mut seed);
+}

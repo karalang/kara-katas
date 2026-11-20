@@ -1,0 +1,216 @@
+// LeetCode #1734: Decode XORed Permutation -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random
+// permutations of an odd n from 3 to 9, shuffled by Fisher-Yates.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is a permutation of 1 to n and encodes to the codes
+// P3  the codes reversed give the answer reversed
+// P4  the answer with its first two values swapped, encoded, decodes to
+//     itself
+// P5  each arm agrees with at least two of the other three
+
+// ---- decode.kara: the ★ arm: each value the one before XORed with the code
+
+fn star_arm(encoded: Vec[i32]) -> Vec[i32] {
+    let n = encoded.len() + 1;
+    let mut all: i32 = 0;
+    for v in 1..n + 1 {
+        all ^= v as i32;
+    }
+    let mut rest: i32 = 0;
+    let mut i = 1;
+    while i < n - 1 {
+        rest ^= encoded[i];
+        i += 2;
+    }
+    let mut perm: Vec[i32] = Vec.with_capacity(n);
+    perm.push(all ^ rest);
+    for code in encoded.iter() {
+        perm.push(perm[perm.len() - 1] ^ code);
+    }
+    perm
+}
+
+// ---- decode_fold.kara: two folds for the first value, a scan for the rest
+
+fn fold_arm(encoded: Vec[i32]) -> Vec[i32] {
+    let n = encoded.len() as i32 + 1;
+    let all = (1..n + 1).fold(0i32, |x, v| x ^ v);
+    let rest = encoded.iter().skip(1).step_by(2).fold(0i32, |x, code| x ^ code);
+    let first = all ^ rest;
+    once(first).chain(encoded.iter().scan(first, |last, code| Some((last ^ code, last ^ code)))).collect()
+}
+
+// ---- decode_prefix.kara: the running XOR of the codes, then the first value
+
+fn prefix_arm(encoded: Vec[i32]) -> Vec[i32] {
+    let n = encoded.len() + 1;
+    let mut perm: Vec[i32] = Vec.filled(n, 0);
+    for i in 0..n - 1 {
+        perm[i + 1] = perm[i] ^ encoded[i];
+    }
+    let mut first: i32 = 0;
+    for i in 0..n {
+        first ^= perm[i] ^ (i as i32 + 1);
+    }
+    for v in perm.iter_mut() {
+        *v ^= first;
+    }
+    perm
+}
+
+// ---- decode_solution.kara: LeetCode's Rust template, through karac fix
+
+struct Solution {}
+
+impl Solution {
+    pub fn decode(encoded: Vec[i32]) -> Vec[i32] {
+        let n = encoded.len() + 1;
+        let mut total: i32 = 0;
+        for i in 1..=n as i32 {
+            total ^= i;
+        }
+        let mut odd: i32 = 0;
+        for i in (1..n - 1).step_by(2) {
+            odd ^= encoded[i];
+        }
+        let mut perm = Vec.filled(n, 0i32);
+        perm[0] = total ^ odd;
+        for i in 0..n - 1 {
+            perm[i + 1] = perm[i] ^ encoded[i];
+        }
+        perm
+    }
+}
+
+fn solution_arm(encoded: Vec[i32]) -> Vec[i32] {
+    Solution.decode(encoded)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: the permutation of 1 to n whose
+// neighbours XOR to the codes, found by trying each first value from 1 to
+// n, following the codes from it, and keeping the one whose values are 1
+// to n each once
+fn literal(encoded: Slice[i32]) -> Vec[i32] {
+    let n = encoded.len() + 1;
+    for first in 1..n + 1 {
+        let mut perm: Vec[i32] = [first as i32];
+        for i in 0..n - 1 {
+            perm.push(perm[i] ^ encoded[i]);
+        }
+        let mut seen = Vec.filled(n + 1, false);
+        let mut fine = true;
+        for v in perm.iter() {
+            if v < 1 or v as i64 > n or seen[v] {
+                fine = false;
+            } else {
+                seen[v] = true;
+            }
+        }
+        if fine {
+            return perm;
+        }
+    }
+    Vec.new()
+}
+
+fn encode(perm: Slice[i32]) -> Vec[i32] {
+    (0..perm.len() - 1).map(|i| perm[i] ^ perm[i + 1]).collect()
+}
+
+fn is_permutation(perm: Slice[i32]) -> bool {
+    let mut sorted = perm.to_vec();
+    sorted.sort();
+    (0..sorted.len()).all(|i| sorted[i] == i + 1)
+}
+
+fn arm(a: i64, encoded: Slice[i32]) -> Vec[i32] {
+    let encoded = encoded.to_vec();
+    match a {
+        0 => star_arm(encoded),
+        1 => fold_arm(encoded),
+        2 => prefix_arm(encoded),
+        _ => solution_arm(encoded),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "fold", "prefix", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1734;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..problems {
+        let n = 2 * (next_random(mut seed) % 4) + 3;
+        let mut perm: Vec[i32] = (1..n + 1).map(|v| v as i32).collect();
+        for i in (1..n).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            perm.swap(i, j);
+        }
+        cases.push(encode(perm));
+    }
+    for (p, encoded) in cases.iter().enumerate() {
+        let want = literal(encoded);
+        for v in want.iter() {
+            check = (check * 31 + v) % 1000000007;
+        }
+        check = (check * 31 + encoded.len()) % 1000000007;
+        let reversed: Vec[i32] = encoded.iter().rev().cloned().collect();
+        let mut answers: Vec[Vec[i32]] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, encoded);
+            let encodes = got.len() == encoded.len() + 1 and is_permutation(got) and encode(got) == encoded.to_vec();
+            let back: Vec[i32] = got.iter().rev().cloned().collect();
+            let mut swapped = got.clone();
+            swapped.swap(0, 1);
+            let failed = [got != want, not encodes, arm(a, reversed) != back, arm(a, encode(swapped)) != swapped];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({encoded}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

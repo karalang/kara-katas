@@ -1,0 +1,67 @@
+// LeetCode #1737: Change Minimum Characters to Satisfy One of Three
+// Conditions -- every target tried against the strings themselves.
+//
+// Each of the 25 boundaries, for each of the two orders, is tried by
+// walking both strings and counting the letters on the wrong side of it;
+// each of the 26 letters is tried for the third condition by counting the
+// letters that differ from it. The smallest count is the answer.
+// O(26 (m + n)).
+
+fn wrong_side(low: Str, high: Str, boundary: char) -> i64 {
+    low.chars().filter(|c| c >= boundary).count() + high.chars().filter(|c| c < boundary).count()
+}
+
+fn min_characters(a: Str, b: Str) -> i64 {
+    let mut best = a.len() + b.len();
+    for letter in 'a'..='z' {
+        let differ = a.chars().filter(|c| c != letter).count() + b.chars().filter(|c| c != letter).count();
+        best = min(best, differ);
+        if letter > 'a' {
+            best = min(best, wrong_side(a, b, letter));
+            best = min(best, wrong_side(b, a, letter));
+        }
+    }
+    best
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random string of 1 to `most` letters from the first `letters`
+fn word(most: i64, letters: i64, seed: mut ref i64) -> String {
+    let n = next_random(mut seed) % most + 1;
+    (0..n).map(|_| char.try_from(97 + (next_random(mut seed) % letters) as u32).ok().unwrap()).collect()
+}
+
+// `count` random pairs of strings
+fn batch(count: i64, most: i64, letters: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let a = word(most, letters, mut seed);
+        let b = word(most, letters, mut seed);
+        let answer = min_characters(a, b);
+        sum += answer;
+        check = (check * 31 + answer + a.len()) % 1000000007;
+    }
+    println(f"{count} pairs of up to {most} letters from {letters}: changes sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then one letter each, the same letter, and
+    // `z` against `a`
+    println(min_characters("aba", "caa"));
+    println(min_characters("dabadd", "cda"));
+    println(min_characters("a", "b"));
+    println(min_characters("aaa", "aa"));
+    println(min_characters("zz", "a"));
+    println(min_characters("az", "az"));
+    let mut seed = 1737;
+    batch(3000, 6, 4, mut seed);
+    batch(1000, 100, 26, mut seed);
+    batch(10, 100000, 26, mut seed);
+}

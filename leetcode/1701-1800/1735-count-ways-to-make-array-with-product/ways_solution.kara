@@ -1,0 +1,108 @@
+// LeetCode #1735: Count Ways to Make Array With Product -- a Rust solution
+// as LeetCode's Rust users write it, carried to Kāra by `karac fix`.
+//
+// Factorials and their inverses up to 10^4 + 14, k factored by trial
+// division, and C(n + e - 1, e) for each prime's exponent e multiplied
+// together. O(N + q sqrt(k)).
+
+const MOD: i64 = 1_000_000_007;
+
+struct Solution {}
+
+impl Solution {
+    pub fn ways_to_fill_array(queries: Vec[Vec[i32]]) -> Vec[i32] {
+        let max_n = 10_014;
+        let mut fact = Vec.filled(max_n + 1, 1);
+        let mut inv = Vec.filled(max_n + 1, 1);
+        for i in 1..=max_n {
+            fact[i] = fact[i - 1] * i % MOD;
+        }
+        inv[max_n] = Solution.pow(fact[max_n], MOD - 2);
+        for i in (1..=max_n).rev() {
+            inv[i - 1] = inv[i] * i % MOD;
+        }
+        let comb = |n: usize, k: usize| { fact[n] * inv[k] % MOD * inv[n - k] % MOD };
+        queries
+            .iter()
+            .map(|q| {
+                let n = q[0] as usize;
+                let mut k = q[1];
+                let mut res = 1;
+                let mut p: i32 = 2;
+                while p * p <= k {
+                    let mut cnt = 0;
+                    while k % p == 0 {
+                        k /= p;
+                        cnt += 1;
+                    }
+                    res = res * comb(n + cnt - 1, cnt) % MOD;
+                    p += 1;
+                }
+                if k > 1 {
+                    res = res * n as i64 % MOD;
+                }
+                res as i32
+            })
+            .collect()
+    }
+
+    fn pow(b: i64, e: i64) -> i64 {
+        let mut b = b;
+        let mut e = e;
+        let mut r = 1;
+        b %= MOD;
+        while e > 0 {
+            if e & 1 == 1 {
+                r = r * b % MOD;
+            }
+            b = b * b % MOD;
+            e >>= 1;
+        }
+        r
+    }
+}
+
+fn ways_to_fill_array(queries: Vec[Vec[i32]]) -> Vec[i32] {
+    Solution.ways_to_fill_array(queries)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random lists of 1 to `most` queries, each n and k from 1 to
+// `top`
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let q = next_random(mut seed) % most + 1;
+        let mut queries: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..q {
+            let n = (next_random(mut seed) % top + 1) as i32;
+            let k = (next_random(mut seed) % top + 1) as i32;
+            queries.push([n, k]);
+        }
+        for w in ways_to_fill_array(queries).iter() {
+            sum += w;
+            check = (check * 31 + w) % 1000000007;
+        }
+        check = (check * 31 + q) % 1000000007;
+    }
+    println(f"{count} lists of up to {most} queries up to {top}: ways sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then the largest n and k, a prime k, and
+    // the k with the most prime factors
+    println(ways_to_fill_array([[2, 6], [5, 1], [73, 660]]));
+    println(ways_to_fill_array([[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]));
+    println(ways_to_fill_array([[10000, 10000], [10000, 9973], [10000, 8192], [1, 8192]]));
+    let mut seed = 1735;
+    batch(3000, 5, 36, mut seed);
+    batch(300, 100, 10000, mut seed);
+    batch(3, 10000, 10000, mut seed);
+}

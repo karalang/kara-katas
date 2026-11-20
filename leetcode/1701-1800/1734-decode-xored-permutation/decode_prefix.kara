@@ -1,0 +1,74 @@
+// LeetCode #1734: Decode XORed Permutation -- the running XOR of the codes,
+// each place's value less the first.
+//
+// XOR is associative, so `perm[i]` is `perm[0]` XORed with every code
+// before it: the running XOR of the codes, written one place to the right
+// in a filled array, holds `perm[0] ^ perm[i]` at each place. XORed over
+// all n places, `perm[0]` appears n times, an odd count, and the values 1
+// to n once each, so the XOR of the array and of 1 to n together is
+// `perm[0]`; every place XORed with it is the permutation. O(n).
+
+fn decode(encoded: Vec[i32]) -> Vec[i32] {
+    let n = encoded.len() + 1;
+    let mut perm: Vec[i32] = Vec.filled(n, 0);
+    for i in 0..n - 1 {
+        perm[i + 1] = perm[i] ^ encoded[i];
+    }
+    let mut first: i32 = 0;
+    for i in 0..n {
+        first ^= perm[i] ^ (i as i32 + 1);
+    }
+    for v in perm.iter_mut() {
+        *v ^= first;
+    }
+    perm
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// `count` random permutations of an odd n from 3 to `most`, shuffled by
+// Fisher-Yates and encoded
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = 2 * (wide(mut seed) % ((most - 1) / 2)) + 3;
+        let mut perm: Vec[i32] = (1..n + 1).map(|v| v as i32).collect();
+        for i in (1..n).rev() {
+            let j = wide(mut seed) % (i + 1);
+            perm.swap(i, j);
+        }
+        let encoded: Vec[i32] = (0..n - 1).map(|i| perm[i] ^ perm[i + 1]).collect();
+        let decoded = decode(encoded);
+        if decoded != perm {
+            println("wrong");
+        }
+        for v in decoded.iter() {
+            sum += v;
+            check = (check * 31 + v) % 1000000007;
+        }
+        check = (check * 31 + n) % 1000000007;
+    }
+    println(f"{count} permutations of up to {most}: values sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then the smallest n, and 1 to 9 in order
+    println(decode([3, 1]));
+    println(decode([6, 5, 4, 6]));
+    println(decode([1, 3]));
+    println(decode([3, 1, 7, 1, 3, 1, 15, 1]));
+    let mut seed = 1734;
+    batch(3000, 9, mut seed);
+    batch(300, 1001, mut seed);
+    batch(10, 99999, mut seed);
+}

@@ -1,0 +1,253 @@
+// LeetCode #1737: Change Minimum Characters to Satisfy One of Three
+// Conditions -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random pairs of
+// strings of 1 to 4 letters, each from a, b, c, x, y and z.
+//
+// P1  the answer is the statement read literally
+// P2  the strings swapped give the same answer
+// P3  every letter mirrored, a for z and z for a, gives the same answer
+// P4  each string reversed gives the same answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- minimum.kara: the ★ arm: letter counts, every boundary tried
+
+fn star_arm(a: Str, b: Str) -> i64 {
+    let mut count_a = [0; 26];
+    let mut count_b = [0; 26];
+    for c in a.chars() {
+        count_a[c as i64 - 'a' as i64] += 1;
+    }
+    for c in b.chars() {
+        count_b[c as i64 - 'a' as i64] += 1;
+    }
+    let (m, n) = (a.len(), b.len());
+    let mut best = m + n;
+    for c in 0..26 {
+        best = min(best, m + n - count_a[c] - count_b[c]);
+    }
+    // below[c]: the letters of each string below letter c
+    let mut below_a = 0;
+    let mut below_b = 0;
+    for c in 1..26 {
+        below_a += count_a[c - 1];
+        below_b += count_b[c - 1];
+        best = min(best, m - below_a + below_b);
+        best = min(best, n - below_b + below_a);
+    }
+    best
+}
+
+// ---- minimum_scan.kara: every target tried against the strings
+
+fn scan_wrong_side(low: Str, high: Str, boundary: char) -> i64 {
+    low.chars().filter(|c| c >= boundary).count() + high.chars().filter(|c| c < boundary).count()
+}
+
+fn scan_arm(a: Str, b: Str) -> i64 {
+    let mut best = a.len() + b.len();
+    for letter in 'a'..='z' {
+        let differ = a.chars().filter(|c| c != letter).count() + b.chars().filter(|c| c != letter).count();
+        best = min(best, differ);
+        if letter > 'a' {
+            best = min(best, scan_wrong_side(a, b, letter));
+            best = min(best, scan_wrong_side(b, a, letter));
+        }
+    }
+    best
+}
+
+// ---- minimum_sorted.kara: both strings sorted, boundaries by binary search
+
+fn sorted_arm(a: Str, b: Str) -> i64 {
+    let mut sa: Vec[char] = a.chars().collect();
+    let mut sb: Vec[char] = b.chars().collect();
+    sa.sort();
+    sb.sort();
+    let (m, n) = (sa.len(), sb.len());
+    let mut best = m + n;
+    for letter in 'b'..='z' {
+        let below_a = sa.partition_point(|c| c < letter);
+        let below_b = sb.partition_point(|c| c < letter);
+        best = min(best, m - below_a + below_b);
+        best = min(best, n - below_b + below_a);
+    }
+    for letter in 'a'..='z' {
+        let in_a = sa.partition_point(|c| c <= letter) - sa.partition_point(|c| c < letter);
+        let in_b = sb.partition_point(|c| c <= letter) - sb.partition_point(|c| c < letter);
+        best = min(best, m + n - in_a - in_b);
+    }
+    best
+}
+
+// ---- minimum_solution.kara: LeetCode's Rust template, through karac fix
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_characters(a: String, b: String) -> i32 {
+        let mut ca = [0i32; 26];
+        let mut cb = [0i32; 26];
+        for c in a.bytes() {
+            ca[(c - b'a') as usize] += 1;
+        }
+        for c in b.bytes() {
+            cb[(c - b'a') as usize] += 1;
+        }
+        let (m, n) = (a.len() as i32, b.len() as i32);
+        let mut ans = m + n;
+        for i in 0..26 {
+            ans = ans.min(m + n - ca[i] - cb[i]);
+        }
+        let mut (pa, pb) = (0i32, 0i32);
+        for i in 0..25 {
+            pa += ca[i];
+            pb += cb[i];
+            ans = ans.min(m - pa + pb).min(n - pb + pa);
+        }
+        ans
+    }
+}
+
+fn solution_arm(a: Str, b: Str) -> i64 {
+    Solution.min_characters(a.to_string(), b.to_string())
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// whether the letters kept, `low` of one string and `high` of the other,
+// can be completed so that every letter of the first is below every letter
+// of the second, the changed ones of the first `a` and of the second `z`
+fn below_all(low: Slice[char], high: Slice[char], changed_low: i64, changed_high: i64) -> bool {
+    let lowest_high = high.iter().min();
+    let highest_low = low.iter().max();
+    if let (Some(l), Some(h)) = (highest_low, lowest_high) {
+        if l >= h {
+            return false;
+        }
+    }
+    if changed_low > 0 and lowest_high.is_some_and(|h| h == 'a') {
+        return false;
+    }
+    if changed_high > 0 and highest_low.is_some_and(|l| l == 'z') {
+        return false;
+    }
+    true
+}
+
+// the statement read literally: every choice of which letters to keep,
+// the rest changed, kept when what is kept can be completed to one of the
+// three conditions, and the fewest changes of them
+fn literal(a: Str, b: Str) -> i64 {
+    let s: Vec[char] = a.chars().chain(b.chars()).collect();
+    let m = a.len();
+    let total = s.len();
+    let mut best = total;
+    for keep in 0..(1 << total) {
+        let mut kept_a: Vec[char] = Vec.new();
+        let mut kept_b: Vec[char] = Vec.new();
+        for i in 0..total {
+            if keep >> i & 1 == 1 {
+                if i < m {
+                    kept_a.push(s[i]);
+                } else {
+                    kept_b.push(s[i]);
+                }
+            }
+        }
+        let changed_a = m - kept_a.len();
+        let changed_b = total - m - kept_b.len();
+        let kept: Vec[char] = kept_a.iter().chain(kept_b.iter()).collect();
+        let one_letter = kept.iter().all(|c| c == kept[0]);
+        if below_all(kept_a, kept_b, changed_a, changed_b) or below_all(kept_b, kept_a, changed_b, changed_a) or one_letter {
+            best = min(best, changed_a + changed_b);
+        }
+    }
+    best
+}
+
+fn arm(a: i64, x: Str, y: Str) -> i64 {
+    match a {
+        0 => star_arm(x, y),
+        1 => scan_arm(x, y),
+        2 => sorted_arm(x, y),
+        _ => solution_arm(x, y),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "scan", "sorted", "solution"][a]
+}
+
+fn mirrored(s: Str) -> String {
+    s.chars().map(|c| char.try_from(('a' as u32) + ('z' as u32) - (c as u32)).ok().unwrap()).collect()
+}
+
+fn reversed(s: Str) -> String {
+    s.chars().rev().collect()
+}
+
+fn main() {
+    let mut seed = 1737;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let letters: Vec[char] = ['a', 'b', 'c', 'x', 'y', 'z'];
+    let mut cases: Vec[(String, String)] = Vec.new();
+    for _ in 0..problems {
+        let m = next_random(mut seed) % 4 + 1;
+        let x: String = (0..m).map(|_| letters[next_random(mut seed) % 6]).collect();
+        let n = next_random(mut seed) % 4 + 1;
+        let y: String = (0..n).map(|_| letters[next_random(mut seed) % 6]).collect();
+        cases.push((x, y));
+    }
+    for (p, (x, y)) in cases.iter().enumerate() {
+        let want = literal(x, y);
+        check = (check * 31 + want + x.len()) % 1000000007;
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, x, y);
+            let failed = [got != want, arm(a, y, x) != got, arm(a, mirrored(x), mirrored(y)) != got, arm(a, reversed(x), reversed(y)) != got];
+            answers.push(got);
+            for t in 0..4 {
+                checks += 1;
+                if failed[t] {
+                    failures += 1;
+                    by_property[t + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({x}, {y}), {arm_name(a)}: P{t + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for t in 1..6 {
+            if by_property[t] > 0 {
+                counts.push(f"P{t}: {by_property[t]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}
