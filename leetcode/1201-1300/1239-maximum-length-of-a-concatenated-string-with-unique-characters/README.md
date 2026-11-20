@@ -62,7 +62,7 @@ rest in one round of 11 fixes (it hoists the nested `fn`, writes
 Expected `=`, found `::`` and no fix. A `::` path in any type position
 stops the parse the same way, though the bare `HashSet<char>` in a type,
 and the qualified path in an expression, are both fixed (B-2026-11-19-34).
-A turbofish on a type in an expression, , kept
+A turbofish on a type in an expression, `HashSet::<char>::new()`, kept
 its argument only from B-2026-11-19-89 on.
 
 ## Differential
