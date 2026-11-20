@@ -1,0 +1,40 @@
+// LeetCode #2367: Number of Arithmetic Triplets -- the bench, the ★ arm in
+// Rust: a `HashSet` of the values, and each value x the start of a
+// triplet when the set holds x + diff and x + 2 diff.
+
+use std::collections::HashSet;
+
+fn arithmetic_triplets(nums: &[i64], diff: i64) -> i64 {
+    let values: HashSet<i64> = nums.iter().cloned().collect();
+    let mut count = 0i64;
+    for &x in nums {
+        if values.contains(&(x + diff)) && values.contains(&(x + 2 * diff)) {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // set s: each value from 0 to 200 kept with a chance of 1 + s % 8 in 8,
+    // and at least the three values 0, 1 and 2
+    let mut seed = 2367i64;
+    let mut sets: Vec<Vec<i64>> = Vec::new();
+    for s in 0..1000i64 {
+        let nums: Vec<i64> = (0..201i64).filter(|&v| v < 3 || next_random(&mut seed) % 8 <= s % 8).collect();
+        sets.push(nums);
+    }
+    let mut check = 0i64;
+    for p in 0..50i64 {
+        for s in 0..1000i64 {
+            let diff = 1 + (s + p) % 50;
+            check = (check * 31 + arithmetic_triplets(&sets[s as usize], diff) + p) % 1000000007;
+        }
+    }
+    println!("50 passes over 1000 sets of up to 201 values: checksum {}", check);
+}

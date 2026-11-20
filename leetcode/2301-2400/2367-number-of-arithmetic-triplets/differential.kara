@@ -1,0 +1,231 @@
+// LeetCode #2367: Number of Arithmetic Triplets -- the differential. The
+// six arms, against the statement read literally: every three places
+// (i, j, k) tried, each from the first place to the last, and the triple
+// counted when i < j < k, nums[j] - nums[i] == diff and nums[k] - nums[j]
+// == diff. No use of the values rising. 300 random sets of 3 to 40 values
+// from 0 to 0 to 200 with a diff of 1 to 50; then 30 dense sets, up to
+// every value from 0 to up to 60, with a diff of 1 to 10; then 30 of up
+// to 200 values from 0 to 200 with a diff of 1 to 50. Every case is drawn
+// before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  from 0 to n - 2
+// P3  every value lowered by the smallest: the same answer
+// P4  every value x written 200 - x, in rising order: the same answer
+// P5  the last value removed: one fewer exactly when it ends a triplet
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn triplets_literally(nums: Vec[i64], diff: i64) -> i64 {
+    let n = nums.len();
+    let mut count = 0;
+    for i in 0..n {
+        for j in 0..n {
+            for k in 0..n {
+                if i < j and j < k and nums[j] - nums[i] == diff and nums[k] - nums[j] == diff {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
+}
+
+// ---- star (triplets.kara) ------------------------------------------------
+
+fn star_arithmetic_triplets(nums: Vec[i64], diff: i64) -> i64 {
+    let values: Set[i64] = nums.iter().collect();
+    let mut count = 0;
+    for x in nums.iter() {
+        if values.contains(x + diff) and values.contains(x + 2 * diff) {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- brute (triplets_brute.kara) -----------------------------------------
+
+fn brute_arithmetic_triplets(nums: Vec[i64], diff: i64) -> i64 {
+    let n = nums.len();
+    let mut count = 0;
+    for i in 0..n {
+        for j in i + 1..n {
+            for k in j + 1..n {
+                if nums[j] - nums[i] == diff and nums[k] - nums[j] == diff {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
+}
+
+// ---- pointers (triplets_pointers.kara) -----------------------------------
+
+fn pointers_arithmetic_triplets(nums: Vec[i64], diff: i64) -> i64 {
+    let n = nums.len();
+    let mut j = 0;
+    let mut k = 0;
+    let mut count = 0;
+    for i in 0..n {
+        while j < n and nums[j] < nums[i] + diff {
+            j += 1;
+        }
+        while k < n and nums[k] < nums[i] + 2 * diff {
+            k += 1;
+        }
+        if j < n and k < n and nums[j] == nums[i] + diff and nums[k] == nums[i] + 2 * diff {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- table (triplets_table.kara) -----------------------------------------
+
+fn table_arithmetic_triplets(nums: Vec[i64], diff: i64) -> i64 {
+    let mut present: Vec[bool] = Vec.filled(201, false);
+    for x in nums.iter() {
+        present[x] = true;
+    }
+    let mut count = 0;
+    for x in nums.iter() {
+        if x - diff >= 0 and x + diff <= 200 and present[x - diff] and present[x + diff] {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- iter (triplets_iter.kara) -------------------------------------------
+
+fn iter_arithmetic_triplets(nums: Vec[i64], diff: i64) -> i64 {
+    let values: Set[i64] = nums.iter().collect();
+    nums.iter().filter(|x| values.contains(x + diff) and values.contains(x + 2 * diff)).count()
+}
+
+// ---- solution (triplets_solution.kara) -----------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn arithmetic_triplets(nums: Vec[i32], diff: i32) -> i32 {
+        let seen: Set[i32] = nums.iter().cloned().collect();
+        let mut count = 0;
+        for x in ref nums {
+            if seen.contains(x + diff) and seen.contains(x + 2 * diff) {
+                count += 1;
+            }
+        }
+        count
+    }
+}
+
+fn solution_arithmetic_triplets(nums: Vec[i64], diff: i64) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.arithmetic_triplets(nums, diff as i32)
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64], diff: i64) -> i64 {
+    match arm {
+        0 => star_arithmetic_triplets(nums, diff),
+        1 => brute_arithmetic_triplets(nums, diff),
+        2 => pointers_arithmetic_triplets(nums, diff),
+        3 => table_arithmetic_triplets(nums, diff),
+        4 => iter_arithmetic_triplets(nums, diff),
+        _ => solution_arithmetic_triplets(nums, diff),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "brute", "pointers", "table", "iter", "solution"];
+    let mut seed = 2367;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..360 {
+        let (top, n, diff) = if c < 300 {
+            let top = 3 + next_random(mut seed) % 198;
+            (top, 3 + next_random(mut seed) % (top - 2).min(38), 1 + next_random(mut seed) % 50)
+        } else if c < 330 {
+            let top = 3 + next_random(mut seed) % 58;
+            (top, (top + 1 - next_random(mut seed) % 4).max(3), 1 + next_random(mut seed) % 10)
+        } else {
+            (200, 3 + next_random(mut seed) % 198, 1 + next_random(mut seed) % 50)
+        };
+        let mut taken: Vec[bool] = Vec.filled(top + 1, false);
+        let mut count = 0;
+        while count < n {
+            let v = next_random(mut seed) % (top + 1);
+            if not taken[v] {
+                taken[v] = true;
+                count += 1;
+            }
+        }
+        let nums: Vec[i64] = (0..top + 1).filter(|v| taken[v]).collect();
+        cases.push((nums, diff));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (nums, diff) = cases[c].clone();
+        let n = nums.len();
+        let truth = triplets_literally(nums, diff);
+        check = (check * 31 + truth) % 1000000007;
+        let low = nums[0];
+        let lowered: Vec[i64] = nums.iter().map(|x| x - low).collect();
+        let mut mirrored: Vec[i64] = nums.iter().map(|x| 200 - x).collect();
+        mirrored.reverse();
+        let mut shorter = nums.clone();
+        let last = shorter.pop().unwrap();
+        let ends = nums.contains(last - diff) and nums.contains(last - 2 * diff);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums, diff)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                value >= 0 and value <= n - 2,
+                answer(arm, lowered, diff) == value,
+                answer(arm, mirrored, diff) == value,
+                answer(arm, shorter, diff) == value - if ends { 1 } else { 0 },
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

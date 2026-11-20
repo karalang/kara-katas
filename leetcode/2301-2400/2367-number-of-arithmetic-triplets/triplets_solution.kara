@@ -1,0 +1,66 @@
+// LeetCode #2367: Number of Arithmetic Triplets -- LeetCode's Rust
+// template, as Rust writes it, carried by karac fix. A HashSet of the
+// values, each value the start of a triplet when the set holds the next
+// two.
+
+struct Solution {}
+
+impl Solution {
+    pub fn arithmetic_triplets(nums: Vec[i32], diff: i32) -> i32 {
+        let seen: Set[i32] = nums.iter().cloned().collect();
+        let mut count = 0;
+        for x in ref nums {
+            if seen.contains(x + diff) and seen.contains(x + 2 * diff) {
+                count += 1;
+            }
+        }
+        count
+    }
+}
+
+fn arithmetic_triplets(nums: Vec[i64], diff: i64) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.arithmetic_triplets(nums, diff as i32)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; three values; every value from 0 to 199
+    // with a diff of 1 and of 50; then 3000 random sets of 3 to 40 values
+    // from 0 to 0 to 200, with a diff of 1 to 50
+    println(f"{arithmetic_triplets([0, 1, 4, 6, 7, 10], 3)}");
+    println(f"{arithmetic_triplets([4, 5, 6, 7, 8, 9], 2)}");
+    println(f"{arithmetic_triplets([1, 3, 5], 2)}");
+    let all: Vec[i64] = (0..200).collect();
+    println(f"{arithmetic_triplets(all, 1)} {arithmetic_triplets(all, 50)}");
+    let mut seed = 2367;
+    let mut check = 0;
+    let mut none = 0;
+    for _ in 0..3000 {
+        let top = 3 + next_random(mut seed) % 198;
+        let n = 3 + next_random(mut seed) % (top - 2).min(38);
+        let mut taken: Vec[bool] = Vec.filled(top + 1, false);
+        let mut count = 0;
+        while count < n {
+            let v = next_random(mut seed) % (top + 1);
+            if not taken[v] {
+                taken[v] = true;
+                count += 1;
+            }
+        }
+        let nums: Vec[i64] = (0..top + 1).filter(|v| taken[v]).collect();
+        let diff = 1 + next_random(mut seed) % 50;
+        let t = arithmetic_triplets(nums, diff);
+        check = (check * 31 + t) % 1000000007;
+        if t == 0 {
+            none += 1;
+        }
+    }
+    println(f"3000 sets: checksum {check}, {none} with no triplet");
+}
