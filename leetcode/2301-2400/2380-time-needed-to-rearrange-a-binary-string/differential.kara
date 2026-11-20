@@ -1,0 +1,231 @@
+// LeetCode #2380: Time Needed to Rearrange a Binary String -- the
+// differential. The six arms, against the statement read literally: every
+// 01 replaced by 10 at once, by the string's own replace, and the seconds
+// counted until no 01 is left. No counting of 0s or 1s. 300 random
+// strings of 1 to 60 digits; then 30 of up to 1000; then 30 of up to
+// 1000 whose 1s grow likelier from left to right. Every case is drawn
+// before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  0 exactly when no 0 stands before a 1, and below n
+// P3  the string reversed and every digit flipped: the same answer
+// P4  a 1 put in front and a 0 appended: the same answer
+// P5  the string after one second: the answer less one, while it is
+//     above 0
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn seconds_literally(s: own String) -> i64 {
+    let mut x = s;
+    let mut seconds = 0;
+    while x.contains("01") {
+        x = x.replace("01", "10");
+        seconds += 1;
+    }
+    seconds
+}
+
+// ---- star (seconds.kara) -------------------------------------------------
+
+fn star_seconds_to_remove_occurrences(s: String) -> i64 {
+    let mut zeros = 0;
+    let mut seconds = 0;
+    for c in s.bytes().iter() {
+        if c == b'0' {
+            zeros += 1;
+        } else if zeros > 0 {
+            seconds = (seconds + 1).max(zeros);
+        }
+    }
+    seconds
+}
+
+// ---- simulate (seconds_simulate.kara) ------------------------------------
+
+fn simulate_seconds_to_remove_occurrences(s: String) -> i64 {
+    let mut d: Vec[u8] = s.bytes().to_vec();
+    let mut seconds = 0;
+    loop {
+        let mut swapped = false;
+        let mut i = 0;
+        while i + 1 < d.len() {
+            if d[i] == b'0' and d[i + 1] == b'1' {
+                d[i] = b'1';
+                d[i + 1] = b'0';
+                swapped = true;
+                i += 2;
+            } else {
+                i += 1;
+            }
+        }
+        if not swapped {
+            return seconds;
+        }
+        seconds += 1;
+    }
+}
+
+// ---- formula (seconds_formula.kara) --------------------------------------
+
+fn formula_seconds_to_remove_occurrences(s: String) -> i64 {
+    let d = s.bytes();
+    let mut ones_after: Vec[i64] = Vec.filled(d.len() + 1, 0);
+    for i in (0..d.len()).rev() {
+        ones_after[i] = ones_after[i + 1] + if d[i] == b'1' { 1 } else { 0 };
+    }
+    let mut zeros = 0;
+    let mut most = 0;
+    for i in 0..d.len() {
+        if d[i] == b'0' {
+            zeros += 1;
+        } else if zeros > 0 {
+            most = most.max(zeros + ones_after[i + 1]);
+        }
+    }
+    most
+}
+
+// ---- zeros (seconds_zeros.kara) ------------------------------------------
+
+fn zeros_seconds_to_remove_occurrences(s: String) -> i64 {
+    let d = s.bytes();
+    let mut ones = 0;
+    let mut seconds = 0;
+    for i in (0..d.len()).rev() {
+        if d[i] == b'1' {
+            ones += 1;
+        } else if ones > 0 {
+            seconds = (seconds + 1).max(ones);
+        }
+    }
+    seconds
+}
+
+// ---- iter (seconds_iter.kara) --------------------------------------------
+
+fn iter_seconds_to_remove_occurrences(s: String) -> i64 {
+    let (_, seconds) = s.bytes().iter().fold((0, 0), |state: (i64, i64), c| {
+        let (zeros, seconds) = state;
+        if c == b'0' {
+            (zeros + 1, seconds)
+        } else if zeros > 0 {
+            (zeros, (seconds + 1).max(zeros))
+        } else {
+            (zeros, seconds)
+        }
+    });
+    seconds
+}
+
+// ---- solution (seconds_solution.kara) ------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn seconds_to_remove_occurrences(s: String) -> i32 {
+        let mut zeros: i32 = 0;
+        let mut res: i32 = 0;
+        for c in s.chars() {
+            if c == '0' {
+                zeros += 1;
+            } else if zeros > 0 {
+                res = max(res + 1, zeros);
+            }
+        }
+        res
+    }
+}
+
+fn solution_seconds_to_remove_occurrences(s: String) -> i64 {
+    Solution.seconds_to_remove_occurrences(s)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, s: String) -> i64 {
+    match arm {
+        0 => star_seconds_to_remove_occurrences(s),
+        1 => simulate_seconds_to_remove_occurrences(s),
+        2 => formula_seconds_to_remove_occurrences(s),
+        3 => zeros_seconds_to_remove_occurrences(s),
+        4 => iter_seconds_to_remove_occurrences(s),
+        _ => solution_seconds_to_remove_occurrences(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "simulate", "formula", "zeros", "iter", "solution"];
+    let mut seed = 2380;
+    let mut cases: Vec[String] = Vec.new();
+    for c in 0..360 {
+        let digits: Vec[u8] = if c < 330 {
+            let n = if c < 300 { 1 + next_random(mut seed) % 60 } else { 1 + next_random(mut seed) % 1000 };
+            let chance = next_random(mut seed) % 11;
+            (0..n).map(|_| if next_random(mut seed) % 10 < chance { b'1' } else { b'0' }).collect()
+        } else {
+            let n = 1 + next_random(mut seed) % 1000;
+            (0..n).map(|i| if next_random(mut seed) % n < i { b'1' } else { b'0' }).collect()
+        };
+        cases.push(String.from_utf8(digits).unwrap());
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let s = cases[c].clone();
+        let n = s.len();
+        let truth = seconds_literally(s.clone());
+        check = (check * 31 + truth) % 1000000007;
+        let settled = not s.contains("01");
+        let flipped: Vec[u8] = s.bytes().iter().rev().map(|c| if c == b'0' { b'1' } else { b'0' }).collect();
+        let mirrored = String.from_utf8(flipped).unwrap();
+        let padded = f"1{s}0";
+        let later = s.replace("01", "10");
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, s)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                (value == 0) == settled and value < n,
+                answer(arm, mirrored) == value,
+                answer(arm, padded) == value,
+                value == 0 or answer(arm, later) == value - 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,62 @@
+// LeetCode #2380: Time Needed to Rearrange a Binary String -- the process
+// simulated. Each second one pass from the left swaps every 01 into 10,
+// stepping past the pair it swapped so that every swap of the second
+// sees the string as it stood at its start; the seconds are counted
+// until a pass swaps nothing. O(n^2).
+
+fn seconds_to_remove_occurrences(s: String) -> i64 {
+    let mut d: Vec[u8] = s.bytes().to_vec();
+    let mut seconds = 0;
+    loop {
+        let mut swapped = false;
+        let mut i = 0;
+        while i + 1 < d.len() {
+            if d[i] == b'0' and d[i + 1] == b'1' {
+                d[i] = b'1';
+                d[i + 1] = b'0';
+                swapped = true;
+                i += 2;
+            } else {
+                i += 1;
+            }
+        }
+        if not swapped {
+            return seconds;
+        }
+        seconds += 1;
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; one 0; 500 0s then 500 1s; 01 500 times;
+    // 1s then 0s, 500 each; then 2000 random strings of 1 to 60 digits,
+    // 1 with a chance of 0 to 10 in 10, with a checksum and how many take
+    // no time
+    println(f"{seconds_to_remove_occurrences("0110101")} {seconds_to_remove_occurrences("11100")}");
+    println(f"{seconds_to_remove_occurrences("0")}");
+    let ramp = String.from_utf8((0..1000).map(|i| if i < 500 { b'0' } else { b'1' }).collect()).unwrap();
+    let pairs = String.from_utf8((0..1000).map(|i| if i % 2 == 0 { b'0' } else { b'1' }).collect()).unwrap();
+    let sorted = String.from_utf8((0..1000).map(|i| if i < 500 { b'1' } else { b'0' }).collect()).unwrap();
+    println(f"{seconds_to_remove_occurrences(ramp)} {seconds_to_remove_occurrences(pairs)} {seconds_to_remove_occurrences(sorted)}");
+    let mut seed = 2380;
+    let mut check = 0;
+    let mut none = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 60;
+        let chance = next_random(mut seed) % 11;
+        let digits: Vec[u8] = (0..n).map(|_| if next_random(mut seed) % 10 < chance { b'1' } else { b'0' }).collect();
+        let t = seconds_to_remove_occurrences(String.from_utf8(digits).unwrap());
+        check = (check * 31 + t) % 1000000007;
+        if t == 0 {
+            none += 1;
+        }
+    }
+    println(f"2000 strings: checksum {check}, {none} take no time");
+}
