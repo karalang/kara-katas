@@ -134,12 +134,16 @@ compiled program and one of Python, with kara `ad6400d909` on LLVM 22:
 | Kāra (`karac build`) | 1.444 s |
 | Python | 6.0 s |
 
-The sequential Kāra build is 1.06x Rust and level with Rust with overflow checks on, the equal-safety comparison (BENCHMARKS.md). C is the fastest here at 0.303 s.
+The sequential Kāra build takes 1.06x Rust's time and is level with Rust
+with overflow checks on, the equal-safety comparison (BENCHMARKS.md). C
+is the fastest here at 0.303 s, four times ahead, because its table
+holds at most two neighbours in each slot, where the others allocate a
+growable list for every value.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
-the sequential lane. A plain `karac build` parallelizes
-nothing here: its user time is not above its real time (1.095 s and
-1.111 s on one run).
+the sequential lane. A plain `karac build` parallelizes nothing here:
+its user time is not above its real time (1.095 s and 1.111 s on one
+run).
 
 ## Verification
 
@@ -150,7 +154,7 @@ and the three `Map` arms do so under `KARAC_HASH_SEED` 1, 7 and 99 as
 well. `karac run` and a `karac build` binary print the same output for
 them, the differential and the bench. `karac check` reports nothing on
 any of them, and `karac fix` has nothing left to change. Checked at kara
-`SHA`.
+`ad6400d909`.
 
 ## Writing it
 
