@@ -1,0 +1,336 @@
+// LeetCode #2381: Shifting Letters II -- the differential. The six arms,
+// against the statement read literally: each letter checked against every
+// shift, counting the forward ones that cover it less the backward ones,
+// then walked that many places through the alphabet written out, one
+// place at a time. No difference array. 300 random strings of 1 to 30
+// letters with 0 to 30 shifts; then 30 of up to 600 letters with up to
+// 600 shifts; then 30 of up to 300 letters whose shifts all go one way.
+// Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  as long as the string, every letter from a to z, and a letter no
+//     shift covers unchanged
+// P3  the string reversed and every shift mirrored: the answer reversed
+// P4  every shift followed by its opposite: the string unchanged
+// P5  the first half of the shifts applied, then the rest to that: the
+//     same answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn shifted_literally(s: String, shifts: Vec[Vec[i64]]) -> String {
+    let alphabet: Vec[u8] = "abcdefghijklmnopqrstuvwxyz".bytes().to_vec();
+    let b = s.bytes();
+    let mut out: Vec[u8] = Vec.new();
+    for i in 0..b.len() {
+        let mut net = 0;
+        for shift in shifts.iter() {
+            if shift[0] <= i and i <= shift[1] {
+                net += if shift[2] == 1 { 1 } else { -1 };
+            }
+        }
+        let mut place = 0;
+        while alphabet[place] != b[i] {
+            place += 1;
+        }
+        while net > 0 {
+            place = if place == 25 { 0 } else { place + 1 };
+            net -= 1;
+        }
+        while net < 0 {
+            place = if place == 0 { 25 } else { place - 1 };
+            net += 1;
+        }
+        out.push(alphabet[place]);
+    }
+    String.from_utf8(out).unwrap()
+}
+
+// ---- star (shift.kara) ---------------------------------------------------
+
+fn star_shifting_letters(s: String, shifts: Vec[Vec[i64]]) -> String {
+    let b = s.bytes();
+    let n = b.len();
+    let mut diff: Vec[i64] = Vec.filled(n + 1, 0);
+    for shift in shifts.iter() {
+        let step = if shift[2] == 1 {
+            1
+        } else {
+            -1
+        };
+        diff[shift[0]] += step;
+        diff[shift[1] + 1] -= step;
+    }
+    let mut out: Vec[u8] = Vec.new();
+    let mut total = 0;
+    for i in 0..n {
+        total += diff[i];
+        let letter = (b[i] - b'a' + total).rem_euclid(26);
+        out.push(b'a' + letter as u8);
+    }
+    String.from_utf8(out).unwrap()
+}
+
+// ---- each (shift_each.kara) ----------------------------------------------
+
+fn each_shifting_letters(s: String, shifts: Vec[Vec[i64]]) -> String {
+    let mut letters: Vec[i64] = s.bytes().iter().map(|c| (c - b'a') as i64).collect();
+    for shift in shifts.iter() {
+        for i in shift[0]..shift[1] + 1 {
+            letters[i] = if shift[2] == 1 {
+                (letters[i] + 1) % 26
+            } else {
+                (letters[i] + 25) % 26
+            };
+        }
+    }
+    let out: Vec[u8] = letters.iter().map(|v| b'a' + v as u8).collect();
+    String.from_utf8(out).unwrap()
+}
+
+// ---- fenwick (shift_fenwick.kara) ----------------------------------------
+
+fn fenwick_add(tree: mut ref Vec[i64], at: i64, step: i64) {
+    let mut i = at + 1;
+    while i < tree.len() {
+        tree[i] += step;
+        i += i & -i;
+    }
+}
+
+fn fenwick_prefix(tree: Vec[i64], at: i64) -> i64 {
+    let mut i = at + 1;
+    let mut total = 0;
+    while i > 0 {
+        total += tree[i];
+        i -= i & -i;
+    }
+    total
+}
+
+fn fenwick_shifting_letters(s: String, shifts: Vec[Vec[i64]]) -> String {
+    let b = s.bytes();
+    let n = b.len();
+    let mut tree: Vec[i64] = Vec.filled(n + 2, 0);
+    for shift in shifts.iter() {
+        let step = if shift[2] == 1 {
+            1
+        } else {
+            -1
+        };
+        fenwick_add(mut tree, shift[0], step);
+        fenwick_add(mut tree, shift[1] + 1, -step);
+    }
+    let out: Vec[u8] = (0..n).map(|i| b'a' + (b[i] - b'a' + fenwick_prefix(tree, i)).rem_euclid(26) as u8).collect();
+    String.from_utf8(out).unwrap()
+}
+
+// ---- events (shift_events.kara) ------------------------------------------
+
+fn events_shifting_letters(s: String, shifts: Vec[Vec[i64]]) -> String {
+    let b = s.bytes();
+    let mut events: Vec[(i64, i64)] = Vec.new();
+    for shift in shifts.iter() {
+        let step = if shift[2] == 1 {
+            1
+        } else {
+            -1
+        };
+        events.push((shift[0], step));
+        events.push((shift[1] + 1, -step));
+    }
+    events.sort();
+    let mut out: Vec[u8] = Vec.new();
+    let mut next = 0;
+    let mut total = 0;
+    for i in 0..b.len() {
+        while next < events.len() and events[next].0 <= i {
+            total += events[next].1;
+            next += 1;
+        }
+        out.push(b'a' + (b[i] - b'a' + total).rem_euclid(26) as u8);
+    }
+    String.from_utf8(out).unwrap()
+}
+
+// ---- iter (shift_iter.kara) ----------------------------------------------
+
+fn iter_shifting_letters(s: String, shifts: Vec[Vec[i64]]) -> String {
+    let n = s.len();
+    let diff = shifts.iter().fold(Vec.filled(n + 1, 0), |d: own Vec[i64], shift| {
+        let mut d = d;
+        let step = 2 * shift[2] - 1;
+        d[shift[0]] += step;
+        d[shift[1] + 1] -= step;
+        d
+    });
+    let steps: Vec[i64] = diff.iter().scan(0, |total, x| {
+        let total = total + x;
+        Some((total, total))
+    }).collect();
+    let out: Vec[u8] = s.bytes().iter().zip(steps.iter()).map(|(c, t)| b'a' + (c - b'a' + t).rem_euclid(26) as u8).collect();
+    String.from_utf8(out).unwrap()
+}
+
+// ---- solution (shift_solution.kara) --------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn shifting_letters(s: String, shifts: Vec[Vec[i32]]) -> String {
+        let n = s.len();
+        let mut diff = Vec.filled(n + 1, 0i32);
+        for sh in shifts.iter() {
+            let (a, b) = (sh[0] as usize, sh[1] as usize);
+            let d = if sh[2] == 1 { 1 } else { -1 };
+            diff[a] += d;
+            diff[b + 1] -= d;
+        }
+        let mut cur = 0;
+        let mut res = String.with_capacity(n);
+        for (i, c) in s.chars().enumerate() {
+            cur += diff[i];
+            let v = ((c as u32 as u8 - b'a') as i32 + cur).rem_euclid(26);
+            res.push((b'a' + v as u8) as char);
+        }
+        res
+    }
+}
+
+fn solution_shifting_letters(s: String, shifts: Vec[Vec[i64]]) -> String {
+    let shifts: Vec[Vec[i32]] = shifts.iter().map(|sh| sh.iter().map(|x| x as i32).collect()).collect();
+    Solution.shifting_letters(s, shifts)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, s: String, shifts: Vec[Vec[i64]]) -> String {
+    match arm {
+        0 => star_shifting_letters(s, shifts),
+        1 => each_shifting_letters(s, shifts),
+        2 => fenwick_shifting_letters(s, shifts),
+        3 => events_shifting_letters(s, shifts),
+        4 => iter_shifting_letters(s, shifts),
+        _ => solution_shifting_letters(s, shifts),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn reverse_text(s: String) -> String {
+    let mut b = s.bytes().to_vec();
+    b.reverse();
+    String.from_utf8(b).unwrap()
+}
+
+fn letters_checksum(s: String) -> i64 {
+    let mut check = 0;
+    for b in s.bytes().iter() {
+        check = (check * 31 + (b - b'a')) % 1000000007;
+    }
+    check
+}
+
+fn main() {
+    let names = ["star", "each", "fenwick", "events", "iter", "solution"];
+    let mut seed = 2381;
+    let mut cases: Vec[(String, Vec[Vec[i64]])] = Vec.new();
+    for c in 0..360 {
+        let (len, count) = if c < 300 {
+            (1 + next_random(mut seed) % 30, next_random(mut seed) % 31)
+        } else if c < 330 {
+            (1 + next_random(mut seed) % 600, next_random(mut seed) % 601)
+        } else {
+            (1 + next_random(mut seed) % 300, next_random(mut seed) % 301)
+        };
+        let s = String.from_utf8((0..len).map(|_| b'a' + (next_random(mut seed) % 26) as u8).collect()).unwrap();
+        let way = next_random(mut seed) % 2;
+        let shifts: Vec[Vec[i64]] = (0..count).map(|_| {
+            let a = next_random(mut seed) % len;
+            let b = next_random(mut seed) % len;
+            let direction = next_random(mut seed) % 2;
+            [a.min(b), a.max(b), if c < 330 { direction } else { way }]
+        }).collect();
+        cases.push((s, shifts));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (s, shifts) = cases[c].clone();
+        let b = s.bytes();
+        let n = b.len();
+        let truth = shifted_literally(s, shifts);
+        check = (check * 31 + letters_checksum(truth)) % 1000000007;
+        let mut covered: Vec[bool] = Vec.filled(n, false);
+        for shift in shifts.iter() {
+            for i in shift[0]..shift[1] + 1 {
+                covered[i] = true;
+            }
+        }
+        let mut back = b.to_vec();
+        back.reverse();
+        let mirrored = String.from_utf8(back).unwrap();
+        let flipped: Vec[Vec[i64]] = shifts.iter().map(|shift| [n - 1 - shift[1], n - 1 - shift[0], shift[2]]).collect();
+        let mut undone: Vec[Vec[i64]] = Vec.new();
+        for shift in shifts.iter() {
+            undone.push(shift.clone());
+            undone.push([shift[0], shift[1], 1 - shift[2]]);
+        }
+        let half = shifts.len() / 2;
+        let first: Vec[Vec[i64]] = shifts[0..half].to_vec();
+        let rest: Vec[Vec[i64]] = shifts[half..shifts.len()].to_vec();
+        let got: Vec[String] = (0..6).map(|arm| answer(arm, s, shifts)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let v = value.bytes();
+            let mut shaped = v.len() == n;
+            if shaped {
+                for i in 0..n {
+                    if v[i] < b'a' or v[i] > b'z' or (not covered[i] and v[i] != b[i]) {
+                        shaped = false;
+                    }
+                }
+            }
+            let verdicts = [
+                value == truth,
+                shaped,
+                answer(arm, mirrored, flipped) == reverse_text(value),
+                answer(arm, s, undone) == s,
+                answer(arm, answer(arm, s, first), rest) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

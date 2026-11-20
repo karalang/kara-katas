@@ -1,0 +1,87 @@
+// LeetCode #2381: Shifting Letters II -- LeetCode's Rust template, as Rust
+// writes it, carried by karac fix. A difference array from vec![0i32;
+// n + 1], each shift's bounds cast `as usize`, and the letters rebuilt
+// from s.chars().enumerate() into a String::with_capacity, each through
+// `c as u8` and `rem_euclid`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn shifting_letters(s: String, shifts: Vec[Vec[i32]]) -> String {
+        let n = s.len();
+        let mut diff = Vec.filled(n + 1, 0i32);
+        for sh in shifts.iter() {
+            let (a, b) = (sh[0] as usize, sh[1] as usize);
+            let d = if sh[2] == 1 { 1 } else { -1 };
+            diff[a] += d;
+            diff[b + 1] -= d;
+        }
+        let mut cur = 0;
+        let mut res = String.with_capacity(n);
+        for (i, c) in s.chars().enumerate() {
+            cur += diff[i];
+            let v = ((c as u32 as u8 - b'a') as i32 + cur).rem_euclid(26);
+            res.push((b'a' + v as u8) as char);
+        }
+        res
+    }
+}
+
+fn shifting_letters(s: String, shifts: Vec[Vec[i64]]) -> String {
+    let shifts: Vec[Vec[i32]] = shifts.iter().map(|sh| sh.iter().map(|x| x as i32).collect()).collect();
+    Solution.shifting_letters(s, shifts)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letters_checksum(s: String) -> i64 {
+    let mut check = 0;
+    for b in s.bytes().iter() {
+        check = (check * 31 + (b - b'a')) % 1000000007;
+    }
+    check
+}
+
+fn main() {
+    // LeetCode's two examples; one letter shifted back past a; 5 * 10^4
+    // letters with 5 * 10^4 shifts of up to 100 letters, and with 200
+    // shifts of every letter, as checksums; then 2000 random strings of 1
+    // to 30 letters with 0 to 30 shifts, with a checksum and how many come
+    // back unchanged
+    println(shifting_letters("abc", [[0, 1, 0], [1, 2, 1], [0, 2, 1]]));
+    println(shifting_letters("dztz", [[0, 0, 0], [1, 1, 1]]));
+    println(shifting_letters("a", [[0, 0, 0]]));
+    let mut seed = 2381;
+    let n = 50000;
+    let long = String.from_utf8((0..n).map(|_| b'a' + (next_random(mut seed) % 26) as u8).collect()).unwrap();
+    let short: Vec[Vec[i64]] = (0..n).map(|_| {
+        let start = next_random(mut seed) % n;
+        let end = (start + next_random(mut seed) % 100).min(n - 1);
+        [start, end, next_random(mut seed) % 2]
+    }).collect();
+    let whole: Vec[Vec[i64]] = (0..200).map(|i| [0, n - 1, i % 3 % 2]).collect();
+    println(f"{letters_checksum(shifting_letters(long, short))} {letters_checksum(shifting_letters(long, whole))}");
+    let mut check = 0;
+    let mut same = 0;
+    for _ in 0..2000 {
+        let len = 1 + next_random(mut seed) % 30;
+        let s = String.from_utf8((0..len).map(|_| b'a' + (next_random(mut seed) % 26) as u8).collect()).unwrap();
+        let count = next_random(mut seed) % 31;
+        let shifts: Vec[Vec[i64]] = (0..count).map(|_| {
+            let a = next_random(mut seed) % len;
+            let b = next_random(mut seed) % len;
+            [a.min(b), a.max(b), next_random(mut seed) % 2]
+        }).collect();
+        let t = shifting_letters(s, shifts);
+        check = (check * 31 + letters_checksum(t)) % 1000000007;
+        if t == s {
+            same += 1;
+        }
+    }
+    println(f"2000 strings: checksum {check}, {same} come back unchanged");
+}
