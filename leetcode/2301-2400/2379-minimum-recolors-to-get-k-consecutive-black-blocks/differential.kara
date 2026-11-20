@@ -1,0 +1,259 @@
+// LeetCode #2379: Minimum Recolors to Get K Consecutive Black Blocks --
+// the differential. The six arms, against the statement read literally:
+// every set of white blocks recolored, smallest sets first, until one
+// leaves k black blocks in a row. No windows. 300 random strings of 1 to
+// 12 blocks, which the literal reading answers; then 30 of up to 100;
+// then 30 of up to 100 nearly all black. Every case is drawn before any
+// arm answers.
+//
+// P1  up to 12 blocks, the answer is the literal reading's
+// P2  from 0 to k, and 0 exactly when k black blocks already stand in a
+//     row
+// P3  the blocks reversed: the same answer
+// P4  a black block appended: the answer or one less
+// P5  k one more, while it fits: the answer or one more
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn black_run(b: Vec[u8], k: i64) -> bool {
+    let mut run = 0;
+    for c in b.iter() {
+        run = if c == b'B' { run + 1 } else { 0 };
+        if run >= k {
+            return true;
+        }
+    }
+    false
+}
+
+fn recolors_literally(blocks: String, k: i64) -> i64 {
+    let b: Vec[u8] = blocks.bytes().to_vec();
+    let whites: Vec[i64] = (0..b.len()).filter(|i| b[i] == b'W').collect();
+    let mut fewest = whites.len() + 1;
+    for set in 0..1 << whites.len() {
+        let mut painted = b.clone();
+        let mut size = 0;
+        for j in 0..whites.len() {
+            if (set >> j) & 1 == 1 {
+                painted[whites[j]] = b'B';
+                size += 1;
+            }
+        }
+        if size < fewest and black_run(painted, k) {
+            fewest = size;
+        }
+    }
+    fewest
+}
+
+// ---- star (recolor.kara) -------------------------------------------------
+
+fn star_minimum_recolors(blocks: String, k: i64) -> i64 {
+    let b = blocks.bytes();
+    let mut whites = 0;
+    for i in 0..k {
+        if b[i] == b'W' {
+            whites += 1;
+        }
+    }
+    let mut fewest = whites;
+    for i in k..b.len() {
+        if b[i] == b'W' {
+            whites += 1;
+        }
+        if b[i - k] == b'W' {
+            whites -= 1;
+        }
+        fewest = fewest.min(whites);
+    }
+    fewest
+}
+
+// ---- prefix (recolor_prefix.kara) ----------------------------------------
+
+fn prefix_minimum_recolors(blocks: String, k: i64) -> i64 {
+    let b = blocks.bytes();
+    let n = b.len();
+    let mut whites: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        whites[i + 1] = whites[i] + if b[i] == b'W' { 1 } else { 0 };
+    }
+    let mut fewest = k;
+    for i in 0..n - k + 1 {
+        fewest = fewest.min(whites[i + k] - whites[i]);
+    }
+    fewest
+}
+
+// ---- each (recolor_each.kara) --------------------------------------------
+
+fn each_minimum_recolors(blocks: String, k: i64) -> i64 {
+    let b = blocks.bytes();
+    let mut fewest = k;
+    for start in 0..b.len() - k + 1 {
+        let mut whites = 0;
+        for i in start..start + k {
+            if b[i] == b'W' {
+                whites += 1;
+            }
+        }
+        if whites < fewest {
+            fewest = whites;
+        }
+    }
+    fewest
+}
+
+// ---- queue (recolor_queue.kara) ------------------------------------------
+
+fn queue_minimum_recolors(blocks: String, k: i64) -> i64 {
+    let mut window: VecDeque[u8] = VecDeque.new();
+    let mut blacks = 0;
+    let mut most = 0;
+    for c in blocks.bytes().iter() {
+        window.push_back(c);
+        if c == b'B' {
+            blacks += 1;
+        }
+        if window.len() > k {
+            if window.pop_front().unwrap() == b'B' {
+                blacks -= 1;
+            }
+        }
+        if window.len() == k {
+            most = most.max(blacks);
+        }
+    }
+    k - most
+}
+
+// ---- iter (recolor_iter.kara) --------------------------------------------
+
+fn iter_minimum_recolors(blocks: String, k: i64) -> i64 {
+    let white: Vec[i64] = blocks.bytes().iter().map(|c| if c == b'W' { 1 } else { 0 }).collect();
+    (0..white.len() - k + 1).map(|i| white[i..i + k].iter().sum()).min().unwrap()
+}
+
+// ---- solution (recolor_solution.kara) ------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_recolors(blocks: String, k: i32) -> i32 {
+        let b = blocks.bytes();
+        let k = k as i64;
+        let mut w = b[..k].iter().filter(|c| c == b'W').count() as i32;
+        let mut res = w;
+        for i in k..b.len() {
+            if b[i] == b'W' {
+                w += 1;
+            }
+            if b[i - k] == b'W' {
+                w -= 1;
+            }
+            res = res.min(w);
+        }
+        res
+    }
+}
+
+fn solution_minimum_recolors(blocks: String, k: i64) -> i64 {
+    Solution.minimum_recolors(blocks, k as i32)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, blocks: String, k: i64) -> i64 {
+    match arm {
+        0 => star_minimum_recolors(blocks, k),
+        1 => prefix_minimum_recolors(blocks, k),
+        2 => each_minimum_recolors(blocks, k),
+        3 => queue_minimum_recolors(blocks, k),
+        4 => iter_minimum_recolors(blocks, k),
+        _ => solution_minimum_recolors(blocks, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "prefix", "each", "queue", "iter", "solution"];
+    let mut seed = 2379;
+    let mut cases: Vec[(String, i64)] = Vec.new();
+    for c in 0..360 {
+        let (n, chance) = if c < 300 {
+            (1 + next_random(mut seed) % 12, next_random(mut seed) % 11)
+        } else if c < 330 {
+            (1 + next_random(mut seed) % 100, next_random(mut seed) % 11)
+        } else {
+            (1 + next_random(mut seed) % 100, 1)
+        };
+        let k = 1 + next_random(mut seed) % n;
+        let letters: Vec[u8] = (0..n).map(|_| if next_random(mut seed) % 10 < chance { b'W' } else { b'B' }).collect();
+        cases.push((String.from_utf8(letters).unwrap(), k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (blocks, k) = cases[c].clone();
+        let b: Vec[u8] = blocks.bytes().to_vec();
+        let n = b.len();
+        let small = n <= 12;
+        let truth = if small { recolors_literally(blocks, k) } else { 0 };
+        if small {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let already = black_run(b, k);
+        let mut back = b.clone();
+        back.reverse();
+        let reversed = String.from_utf8(back).unwrap();
+        let longer = f"{blocks}B";
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, blocks, k)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let appended = answer(arm, longer, k);
+            let wider = if k < n { answer(arm, blocks, k + 1) } else { value };
+            let verdicts = [
+                not small or value == truth,
+                value >= 0 and value <= k and (value == 0) == already,
+                answer(arm, reversed, k) == value,
+                appended == value or appended == value - 1,
+                wider == value or wider == value + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
