@@ -1,0 +1,131 @@
+// LeetCode #1263: Minimum Moves to Move a Box to Their Target Location --
+// a Rust solution as LeetCode's Rust users write it, carried to Kāra by
+// `karac fix`.
+
+impl Solution {
+    pub fn min_push_box(grid: Vec[Vec[char]]) -> i32 {
+        let m = grid.len();
+        let n = grid[0].len();
+        let mut (sx, sy, bx, by, tx, ty) = (0, 0, 0, 0, 0, 0);
+        for i in 0..m {
+            for j in 0..n {
+                match grid[i][j] {
+                    'S' => {
+                        sx = i;
+                        sy = j;
+                    }
+                    'B' => {
+                        bx = i;
+                        by = j;
+                    }
+                    'T' => {
+                        tx = i;
+                        ty = j;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let dirs = [(0i32, 1i32), (1, 0), (0, -1), (-1, 0)];
+        let ok = |x: i32, y: i32| {
+            x >= 0 and y >= 0 and x < m and y < n and grid[x][y] != '#'
+        };
+        let mut dist = Vec.filled(m * n, Vec.filled(m * n, i32.MAX));
+        let mut q = VecDeque.new();
+        dist[bx * n + by][sx * n + sy] = 0;
+        q.push_back((bx, by, sx, sy));
+        while let Some((bx, by, sx, sy)) = q.pop_front() {
+            let d = dist[bx * n + by][sx * n + sy];
+            if bx == tx and by == ty {
+                return d;
+            }
+            for (dx, dy) in dirs.iter() {
+                let nx = sx as i32 + dx;
+                let ny = sy as i32 + dy;
+                if not ok(nx, ny) {
+                    continue;
+                }
+                let (nx, ny) = (nx as i64, ny as i64);
+                if nx == bx and ny == by {
+                    let nbx = bx as i32 + dx;
+                    let nby = by as i32 + dy;
+                    if not ok(nbx, nby) {
+                        continue;
+                    }
+                    let (nbx, nby) = (nbx as i64, nby as i64);
+                    if dist[nbx * n + nby][nx * n + ny] > d + 1 {
+                        dist[nbx * n + nby][nx * n + ny] = d + 1;
+                        q.push_back((nbx, nby, nx, ny));
+                    }
+                } else if dist[bx * n + by][nx * n + ny] > d {
+                    dist[bx * n + by][nx * n + ny] = d;
+                    q.push_front((bx, by, nx, ny));
+                }
+            }
+        }
+        -1
+    }
+}
+
+struct Solution {}
+
+fn min_push_box(grid: Vec[Vec[char]]) -> i64 {
+    Solution.min_push_box(grid)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn parse(rows: Vec[Str]) -> Vec[Vec[char]] {
+    rows.iter().map(|row| row.chars().collect()).collect()
+}
+
+// An `m` by `n` grid, each cell a wall one time in `walls`, and the
+// player, the box and the target on three different cells.
+fn random_grid(m: i64, n: i64, walls: i64, seed: mut ref i64) -> Vec[Vec[char]] {
+    let mut grid: Vec[Vec[char]] = (0..m).map(|_| (0..n).map(|_| if next_random(mut seed) % walls == 0 { '#' } else { '.' }).collect()).collect();
+    for mark in ['S', 'B', 'T'] {
+        let mut p = next_random(mut seed) % (m * n);
+        while ['S', 'B', 'T'].contains(grid[p / n][p % n]) {
+            p = (p + 1) % (m * n);
+        }
+        grid[p / n][p % n] = mark;
+    }
+    grid
+}
+
+fn main() {
+    // LeetCode's examples
+    let one = parse(["######", "#T####", "#..B.#", "#.##.#", "#...S#", "######"]);
+    let two = parse(["######", "#T####", "#..B.#", "####.#", "#...S#", "######"]);
+    let three = parse(["######", "#T..##", "#.#B.#", "#....#", "#...S#", "######"]);
+    println(f"{min_push_box(one)} {min_push_box(two)} {min_push_box(three)}");
+    // 1000 random grids of 3 to 10 by 3 to 10, a cell in 8 a wall
+    let mut seed = 1263;
+    let mut total = 0;
+    let mut stuck = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let m = next_random(mut seed) % 8 + 3;
+        let n = next_random(mut seed) % 8 + 3;
+        let pushes = min_push_box(random_grid(m, n, 8, mut seed));
+        if pushes < 0 {
+            stuck += 1;
+        } else {
+            total += pushes;
+        }
+        check = (check * 131 + pushes + 1) % 1000000007;
+    }
+    println(f"1000 random grids: {total} pushes, {stuck} stuck, checksum {check}");
+    // the constraints' top: 20 by 20 open, the box across from its target,
+    // and twice 20 by 20 a cell in 10 a wall
+    let mut open: Vec[Vec[char]] = (0..20).map(|_| Vec.filled(20, '.')).collect();
+    open[0][0] = 'S';
+    open[1][1] = 'B';
+    open[18][18] = 'T';
+    println(f"{min_push_box(open)} {min_push_box(random_grid(20, 20, 10, mut seed))} {min_push_box(random_grid(20, 20, 10, mut seed))}");
+}

@@ -1,0 +1,89 @@
+// LeetCode #1208: Get Equal Substrings Within Budget -- binary search on
+// the answer: a window of width `w` fits when the cheapest of all windows
+// of that width does, found by sliding a window of exactly `w`; fitting
+// only gets easier as `w` shrinks, so the widest that fits is searched
+// for. O(n log n).
+
+fn cheapest(costs: Vec[i64], w: i64) -> i64 {
+    let mut window = 0;
+    for i in 0..w {
+        window += costs[i];
+    }
+    let mut least = window;
+    for i in w..costs.len() {
+        window += costs[i] - costs[i - w];
+        least = least.min(window);
+    }
+    least
+}
+
+fn equal_substring(s: String, t: String, max_cost: i64) -> i64 {
+    let a = s.bytes();
+    let b = t.bytes();
+    let costs: Vec[i64] = (0..a.len()).map(|i| ((a[i] as i64) - (b[i] as i64)).abs()).collect();
+    let mut low = 0;
+    let mut high = costs.len();
+    while low < high {
+        let mid = (low + high + 1) / 2;
+        if cheapest(costs, mid) <= max_cost {
+            low = mid;
+        } else {
+            high = mid - 1;
+        }
+    }
+    low
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_text(seed: mut ref i64, n: i64, letters: i64) -> String {
+    let mut out = String.with_capacity(n);
+    for _ in 0..n {
+        out.push((b'a' + next_random(mut seed) % letters) as u8 as char);
+    }
+    out
+}
+
+fn main() {
+    let cases: Vec[(String, String, i64)] = [
+        ("abcd", "bcdf", 3),
+        ("abcd", "cdef", 3),
+        ("abcd", "acde", 0),
+        ("a", "z", 25),
+        ("a", "z", 24),
+        ("krrgw", "zjxss", 19),
+        ("pxezla", "loewbi", 25),
+        ("abc", "abc", 0),
+        ("zzzz", "aaaa", 100),
+    ];
+    for (s, t, c) in cases.iter() {
+        println(f"{s} {t} {c}: {equal_substring(s, t, c)}");
+    }
+    let mut seed = 1208;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let letters = [2, 5, 26][next_random(mut seed) % 3];
+        let s = random_text(mut seed, n, letters);
+        let t = random_text(mut seed, n, letters);
+        let c = next_random(mut seed) % 40;
+        let answer = equal_substring(s, t, c);
+        total += answer;
+        check = (check * 131 + answer) % 1000000007;
+    }
+    println(f"1000 small cases: total {total}, checksum {check}");
+    // The constraints' top: 100000 letters and budgets 0, 1000, 10^6.
+    let s = random_text(mut seed, 100000, 26);
+    let t = random_text(mut seed, 100000, 26);
+    for c in [0, 1000, 1000000] {
+        println(f"100000 random letters, budget {c}: {equal_substring(s, t, c)}");
+    }
+    let flat = random_text(mut seed, 100000, 2);
+    println(f"100000 of a and b against themselves, budget 0: {equal_substring(flat, flat, 0)}");
+}

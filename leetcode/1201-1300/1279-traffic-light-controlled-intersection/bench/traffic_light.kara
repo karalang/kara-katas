@@ -1,0 +1,91 @@
+// LeetCode #1279 bench, in Kāra: the ★ arm (the green road behind a
+// `Mutex`, held while a car turns its light and crosses) over 2000 runs of
+// 20 cars, a task for each car, on random roads and started in a random
+// order; each run's log judged by the statement read literally.
+
+import std.sync.{Mutex, TaskGroup};
+
+sync struct TrafficLight {
+    // 1 for road A, 2 for road B
+    green: Mutex[i64],
+}
+
+impl TrafficLight {
+    fn new() -> TrafficLight {
+        TrafficLight { green: Mutex.new(1) }
+    }
+
+    fn car_arrived(self, car_id: i64, road_id: i64, direction: i64, turn_green: Fn(), cross_car: Fn()) {
+        let g = self.green.lock();
+        if *g.value != road_id {
+            turn_green();
+            *g.value = road_id;
+        }
+        cross_car();
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A task for each car, started in `order`; the log holds (0, road) for a
+// light turned green and (1, car) for a car crossing.
+fn run(directions: Vec[i64], order: Vec[i64]) -> Vec[(i64, i64)] {
+    let light = TrafficLight.new();
+    let log: Mutex[Vec[(i64, i64)]] = Mutex.new([]);
+    {
+        let group = TaskGroup.new();
+        for i in order.iter() {
+            let direction = directions[i];
+            let road = if direction <= 2 { 1 } else { 2 };
+            group.spawn(|| {
+                light.car_arrived(i, road, direction, || log.lock().value.push((0, road)), || log.lock().value.push((1, i)));
+            });
+        }
+    }
+    log.lock().value.clone()
+}
+
+// The light starts green on road A, turns green only where it is red, a
+// car crosses only on its road's green, and every car crosses once.
+fn judge(directions: Vec[i64], log: Vec[(i64, i64)]) -> bool {
+    let mut green = 1;
+    let mut crossed: Vec[bool] = Vec.filled(directions.len(), false);
+    for (kind, x) in log.iter() {
+        if kind == 0 {
+            if x == green {
+                return false;
+            }
+            green = x;
+        } else {
+            let road = if directions[x] <= 2 { 1 } else { 2 };
+            if road != green or crossed[x] {
+                return false;
+            }
+            crossed[x] = true;
+        }
+    }
+    crossed.iter().all(|c| *c)
+}
+
+fn main() {
+    let mut seed = 1279;
+    let mut cars = 0;
+    let mut valid = 0;
+    for _ in 0..2000 {
+        let directions: Vec[i64] = (0..20).map(|_| next_random(mut seed) % 4 + 1).collect();
+        let mut order: Vec[i64] = (0..20).collect();
+        for i in (1..20).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            order.swap(i, j);
+        }
+        let log = run(directions, order);
+        cars += log.iter().filter(|(k, _)| k == 1).count();
+        if judge(directions, log) {
+            valid += 1;
+        }
+    }
+    println(f"2000 runs of 20 cars: {cars} cars crossed, {valid} valid");
+}

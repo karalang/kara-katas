@@ -1,0 +1,147 @@
+// LeetCode #1210: Minimum Moves to Reach Target with Rotations -- another
+// Rust solution: the distances in `vec![vec![[-1i32; 2]; n]; n]`, a fully
+// qualified `std::collections::VecDeque::new()`, `usize` states with the
+// bounds tested as `c + 2 < n` before each index, and the answer read
+// from the distances when the queue runs dry, carried to Kāra by `karac
+// fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_moves(grid: Vec[Vec[i32]]) -> i32 {
+        let n = grid.len();
+        let mut dist = Vec.filled(n, Vec.filled(n, [-1i32; 2]));
+        let mut queue = VecDeque.new();
+        dist[0][0][0] = 0;
+        queue.push_back((0, 0, 0));
+        while let Some((r, c, o)) = queue.pop_front() {
+            let d = dist[r][c][o];
+            let mut moves: Vec[(i64, i64, i64)] = Vec.new();
+            if o == 0 {
+                if c + 2 < n and grid[r][c + 2] == 0 {
+                    moves.push((r, c + 1, 0));
+                }
+                if r + 1 < n and grid[r + 1][c] == 0 and grid[r + 1][c + 1] == 0 {
+                    moves.push((r + 1, c, 0));
+                    moves.push((r, c, 1));
+                }
+            } else {
+                if r + 2 < n and grid[r + 2][c] == 0 {
+                    moves.push((r + 1, c, 1));
+                }
+                if c + 1 < n and grid[r][c + 1] == 0 and grid[r + 1][c + 1] == 0 {
+                    moves.push((r, c + 1, 1));
+                    moves.push((r, c, 0));
+                }
+            }
+            for (nr, nc, no) in moves {
+                if dist[nr][nc][no] == -1 {
+                    dist[nr][nc][no] = d + 1;
+                    queue.push_back((nr, nc, no));
+                }
+            }
+        }
+        dist[n - 1][n - 2][0]
+    }
+}
+
+fn minimum_moves(grid: Vec[Vec[i64]]) -> i64 {
+    let g: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|x| x as i32).collect()).collect();
+    Solution.minimum_moves(g)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n by n, each cell blocked with chance `percent` in 100, the snake's two
+// start cells and the target's two always free
+fn random_grid(seed: mut ref i64, n: i64, percent: i64) -> Vec[Vec[i64]] {
+    let mut grid: Vec[Vec[i64]] = Vec.new();
+    for r in 0..n {
+        let mut row: Vec[i64] = Vec.new();
+        for c in 0..n {
+            let corner = (r == 0 and c < 2) or (r == n - 1 and c >= n - 2);
+            row.push(if not corner and next_random(mut seed) % 100 < percent { 1 } else { 0 });
+        }
+        grid.push(row);
+    }
+    grid
+}
+
+// everything blocked but a staircase: steps `s` long, each a row the
+// snake runs flat along and a column it drops down upright, a 2 by 2
+// square at each corner to turn in, and the last two rows and columns
+// open
+fn staircase(n: i64, s: i64) -> Vec[Vec[i64]] {
+    let mut grid: Vec[Vec[i64]] = (0..n).map(|_| Vec.filled(n, 1)).collect();
+    let mut open = |r: i64, c: i64| {
+        if r < n and c < n {
+            grid[r][c] = 0;
+        }
+    };
+    let mut k = 0;
+    while k * s < n {
+        let at = k * s;
+        for c in at..at + s + 2 {
+            open(at, c);
+        }
+        for r in at..at + s + 2 {
+            open(r, at + s);
+        }
+        for d in 0..4 {
+            open(at + d / 2, at + d % 2);
+            open(at + d / 2, at + s + d % 2);
+        }
+        k += 1;
+    }
+    for i in 0..n {
+        open(n - 1, i);
+        open(n - 2, i);
+        open(i, n - 1);
+        open(i, n - 2);
+    }
+    grid
+}
+
+fn main() {
+    let cases: Vec[Vec[Vec[i64]]] = [
+        [[0, 0, 0, 0, 0, 1], [1, 1, 0, 0, 1, 0], [0, 0, 0, 0, 1, 1], [0, 0, 1, 0, 1, 0], [0, 1, 1, 0, 0, 0], [0, 1, 1, 0, 0, 0]],
+        [[0, 0, 1, 1, 1, 1], [0, 0, 0, 0, 1, 1], [1, 1, 0, 0, 0, 1], [1, 1, 1, 0, 0, 1], [1, 1, 1, 0, 0, 1], [1, 1, 1, 0, 0, 0]],
+        [[0, 0], [0, 0]],
+        [[0, 0], [1, 0]],
+        [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+        [[0, 0, 1], [0, 0, 0], [1, 0, 0]],
+        [[0, 0, 0, 0], [1, 1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+        [[0, 0, 0], [0, 1, 0], [0, 0, 0]],
+        staircase(6, 3),
+        staircase(10, 7),
+    ];
+    for grid in cases.iter() {
+        println(f"{grid}: {minimum_moves(grid)}");
+    }
+    let mut seed = 1210;
+    let mut found = 0;
+    let mut moves = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 6 + 2;
+        let percent = next_random(mut seed) % 4 * 10;
+        let grid = random_grid(mut seed, n, percent);
+        let answer = minimum_moves(grid);
+        if answer >= 0 {
+            found += 1;
+            moves += answer;
+        }
+        check = (check * 131 + answer + 2) % 1000000007;
+    }
+    println(f"1000 small grids: {found} reached, {moves} moves in all, checksum {check}");
+    // The constraints' top: n = 100.
+    println(f"100 by 100, empty: {minimum_moves(random_grid(mut seed, 100, 0))}");
+    println(f"100 by 100, a tenth blocked: {minimum_moves(random_grid(mut seed, 100, 10))}");
+    println(f"100 by 100, a fifth blocked: {minimum_moves(random_grid(mut seed, 100, 20))}");
+    println(f"100 by 100, a staircase of corridors: {minimum_moves(staircase(100, 4))}");
+}

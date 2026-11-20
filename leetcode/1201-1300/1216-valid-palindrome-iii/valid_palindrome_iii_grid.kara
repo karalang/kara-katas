@@ -1,0 +1,97 @@
+// LeetCode #1216: Valid Palindrome III -- a Rust solution as LeetCode's
+// Rust users write it: `s.as_bytes()`, a `vec![vec![0; n]; n]` table of
+// the longest palindromic subsequence of each span filled from the last
+// row up, `dp[i + 1][j].max(dp[i][j - 1])` where the ends differ, and the
+// answer `(n as i32 - dp[0][n - 1]) <= k`, carried to Kāra by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn is_valid_palindrome(s: String, k: i32) -> bool {
+        let s = s.bytes();
+        let n = s.len();
+        let mut dp = Vec.filled(n, Vec.filled(n, 0));
+        for i in (0..n).rev() {
+            dp[i][i] = 1;
+            for j in i + 1..n {
+                if s[i] == s[j] {
+                    dp[i][j] = dp[i + 1][j - 1] + 2;
+                } else {
+                    dp[i][j] = dp[i + 1][j].max(dp[i][j - 1]);
+                }
+            }
+        }
+        (n as i32 - dp[0][n - 1]) <= k
+    }
+}
+
+fn is_valid_palindrome(s: String, k: i64) -> bool {
+    Solution.is_valid_palindrome(s, k as i32)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_text(seed: mut ref i64, n: i64, letters: i64) -> String {
+    let mut s = String.with_capacity(n);
+    for _ in 0..n {
+        s.push((b'a' + next_random(mut seed) % letters) as u8 as char);
+    }
+    s
+}
+
+// the least k for which `s` is a k-palindrome, found by halving
+fn least_k(s: String) -> i64 {
+    let mut lo = 0;
+    let mut hi = s.len();
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if is_valid_palindrome(s, mid) {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    lo
+}
+
+fn main() {
+    let cases: Vec[(String, i64)] = [("abcdeca", 2), ("abbababa", 1), ("a", 1), ("ab", 1), ("abc", 1), ("abcd", 2), ("abcd", 3), ("racecar", 1), ("abacdcaba", 1), ("abxcydzba", 2)];
+    for (s, k) in cases.iter() {
+        println(f"{s} {k}: {is_valid_palindrome(s, k)}");
+    }
+    let mut seed = 1216;
+    let mut yes = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let letters = next_random(mut seed) % 3 + 2;
+        let s = random_text(mut seed, n, letters);
+        let k = next_random(mut seed) % n + 1;
+        let answer = is_valid_palindrome(s, k);
+        if answer {
+            yes += 1;
+        }
+        check = (check * 131 + if answer { 2 } else { 1 }) % 1000000007;
+    }
+    println(f"1000 small cases: {yes} true, checksum {check}");
+    // The constraints' top: 1000 letters.
+    let s = random_text(mut seed, 1000, 26);
+    let k = least_k(s);
+    println(f"1000 random letters: the least k {k}, and k - 1 {is_valid_palindrome(s, k - 1)}");
+    let s = random_text(mut seed, 1000, 2);
+    println(f"1000 random a and b: the least k {least_k(s)}");
+    let half = random_text(mut seed, 500, 26);
+    let mirror: String = half.chars().rev().collect();
+    let whole = f"{half}{mirror}";
+    println(f"500 letters and their reverse: k 1 {is_valid_palindrome(whole, 1)}");
+    let mut steps = String.new();
+    for i in 0..1000 {
+        steps.push((b'a' + i % 26) as u8 as char);
+    }
+    println(f"a to z over and over, 1000 letters: the least k {least_k(steps)}");
+}

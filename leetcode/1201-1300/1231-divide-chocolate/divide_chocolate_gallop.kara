@@ -1,0 +1,61 @@
+// LeetCode #1231: Divide Chocolate -- galloping instead of bisecting: from
+// the smallest chunk, which always works, step up by the largest power of
+// two that still leaves every piece at least that sweet, halving the step
+// when it overshoots. The answer is built bit by bit from the top. O(n
+// log S).
+
+fn works(sweetness: Vec[i64], k: i64, m: i64) -> bool {
+    let mut count = 0;
+    let mut piece = 0;
+    for s in sweetness.iter() {
+        piece += s;
+        if piece >= m {
+            count += 1;
+            piece = 0;
+        }
+    }
+    count > k
+}
+
+fn maximize_sweetness(sweetness: Vec[i64], k: i64) -> i64 {
+    let mut best = *sweetness.iter().min().unwrap();
+    let mut step = 1;
+    while step * 2 <= sweetness.iter().sum() {
+        step *= 2;
+    }
+    while step > 0 {
+        if works(sweetness, k, best + step) {
+            best += step;
+        }
+        step /= 2;
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples, and no cut at all
+    println(f"{maximize_sweetness([1, 2, 3, 4, 5, 6, 7, 8, 9], 5)}");
+    println(f"{maximize_sweetness([5, 6, 7, 8, 9, 1, 2, 3, 4], 8)}");
+    println(f"{maximize_sweetness([1, 2, 2, 1, 2, 2, 1, 2, 2], 2)}");
+    println(f"{maximize_sweetness([3, 1, 4], 0)}");
+    // 1000 random bars of 1 to 40 chunks, sweetness up to 100
+    let mut seed = 1231;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 40 + 1;
+        let bar: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 100 + 1).collect();
+        let k = next_random(mut seed) % n;
+        check = (check * 131 + maximize_sweetness(bar, k)) % 1000000007;
+    }
+    println(f"1000 random bars: checksum {check}");
+    // the constraints' top: 10^4 chunks up to 10^5, 0, 99 and 9999 cuts
+    let bar: Vec[i64] = (0..10000).map(|_| next_random(mut seed) % 100000 + 1).collect();
+    println(f"10^4 chunks: {maximize_sweetness(bar, 0)}, {maximize_sweetness(bar, 99)}, {maximize_sweetness(bar, 9999)}");
+}

@@ -1,0 +1,166 @@
+// LeetCode #1266: the differential -- the five arms against the statement
+// read literally and five more properties, on 2000 random walks.
+
+// arm 0: min_time_to_visit_all_points.kara
+fn a0_min_time_to_visit_all_points(points: Vec[Vec[i64]]) -> i64 {
+    points
+        .windows(2)
+        .into_iter()
+        .map(|w| (w[1][0] - w[0][0]).abs().max((w[1][1] - w[0][1]).abs()))
+        .sum()
+}
+
+// arm 1: min_time_to_visit_all_points_loop.kara
+fn a1_min_time_to_visit_all_points(points: Vec[Vec[i64]]) -> i64 {
+    let mut time = 0;
+    for i in 1..points.len() {
+        let dx = (points[i][0] - points[i - 1][0]).abs();
+        let dy = (points[i][1] - points[i - 1][1]).abs();
+        let diagonal = dx.min(dy);
+        time += diagonal + (dx.max(dy) - diagonal);
+    }
+    time
+}
+
+// arm 2: min_time_to_visit_all_points_zip.kara
+fn a2_min_time_to_visit_all_points(points: Vec[Vec[i64]]) -> i64 {
+    points.iter().zip(points.iter().skip(1)).fold(0, |time, (a, b)| {
+        time + (a[0] - b[0]).abs().max((a[1] - b[1]).abs())
+    })
+}
+
+// arm 3: min_time_to_visit_all_points_walk.kara
+fn a3_min_time_to_visit_all_points(points: Vec[Vec[i64]]) -> i64 {
+    let mut x = points[0][0];
+    let mut y = points[0][1];
+    let mut seconds = 0;
+    for p in points.iter().skip(1) {
+        while x != p[0] or y != p[1] {
+            x += (p[0] - x).signum();
+            y += (p[1] - y).signum();
+            seconds += 1;
+        }
+    }
+    seconds
+}
+
+// arm 4: min_time_to_visit_all_points_solution.kara
+impl A4Solution {
+    pub fn min_time_to_visit_all_points(points: Vec[Vec[i32]]) -> i32 {
+        points
+            .windows(2)
+            .into_iter()
+            .map(|w| {
+                let dx = (w[0][0] - w[1][0]).abs();
+                let dy = (w[0][1] - w[1][1]).abs();
+                max(dx, dy)
+            })
+            .sum()
+    }
+}
+
+struct A4Solution {}
+
+fn a4_min_time_to_visit_all_points(points: Vec[Vec[i64]]) -> i64 {
+    A4Solution.min_time_to_visit_all_points(
+        points.iter().map(|p| p.iter().map(|c| c as i32).collect()).collect(),
+    )
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// ---- the differential ------------------------------------------------------
+
+fn arm(k: i64, points: Vec[Vec[i64]]) -> i64 {
+    match k {
+        0 => a0_min_time_to_visit_all_points(points),
+        1 => a1_min_time_to_visit_all_points(points),
+        2 => a2_min_time_to_visit_all_points(points),
+        3 => a3_min_time_to_visit_all_points(points),
+        _ => a4_min_time_to_visit_all_points(points),
+    }
+}
+
+// The statement read literally: a breadth-first search over the grid from
+// each point to the next, a second per move to any of the 8 cells around,
+// inside a box a cell wider than every point.
+fn literal(points: Vec[Vec[i64]]) -> i64 {
+    let side = 2 * 8 + 1;
+    let mut time = 0;
+    for i in 1..points.len() {
+        let mut dist = Vec.filled(side * side, -1);
+        let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+        dist[(points[i - 1][0] + 8) * side + points[i - 1][1] + 8] = 0;
+        queue.push_back((points[i - 1][0], points[i - 1][1]));
+        while let Some((x, y)) = queue.pop_front() {
+            for dx in -1..2 {
+                for dy in -1..2 {
+                    let (nx, ny) = (x + dx, y + dy);
+                    if nx < -8 or nx > 8 or ny < -8 or ny > 8 {
+                        continue;
+                    }
+                    if dist[(nx + 8) * side + ny + 8] < 0 {
+                        dist[(nx + 8) * side + ny + 8] = dist[(x + 8) * side + y + 8] + 1;
+                        queue.push_back((nx, ny));
+                    }
+                }
+            }
+        }
+        time += dist[(points[i][0] + 8) * side + points[i][1] + 8];
+    }
+    time
+}
+
+fn main() {
+    let mut seed = 1266;
+    let mut fails: Array[i64, 6] = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let points: Vec[Vec[i64]] = (0..n).map(|_| [next_random(mut seed) % 13 - 6, next_random(mut seed) % 13 - 6]).collect();
+        let want = literal(points);
+        let reversed: Vec[Vec[i64]] = points.iter().rev().map(|p| p.clone()).collect();
+        let (sx, sy) = (next_random(mut seed) % 2001 - 1000, next_random(mut seed) % 2001 - 1000);
+        let shifted: Vec[Vec[i64]] = points.iter().map(|p| [p[0] + sx, p[1] + sy]).collect();
+        let swapped: Vec[Vec[i64]] = points.iter().map(|p| [p[1], p[0]]).collect();
+        let at = next_random(mut seed) % (n + 1);
+        let mut grown: Vec[Vec[i64]] = points.clone();
+        grown.insert(at, [next_random(mut seed) % 13 - 6, next_random(mut seed) % 13 - 6]);
+        let star = arm(0, points);
+        check = (check * 131 + star) % 1000000007;
+        for k in 0..5 {
+            let got = arm(k, points);
+            if got != want {
+                fails[0] += 1;
+            }
+            if arm(k, reversed) != got {
+                fails[1] += 1;
+            }
+            if arm(k, shifted) != got {
+                fails[2] += 1;
+            }
+            if arm(k, swapped) != got {
+                fails[3] += 1;
+            }
+            if arm(k, grown) < got {
+                fails[4] += 1;
+            }
+            if got != star {
+                fails[5] += 1;
+            }
+            checks += 6;
+        }
+    }
+    let mut total = 0;
+    for p in 0..6 {
+        if fails[p] > 0 {
+            print(f"P{p + 1}: {fails[p]} failures ");
+        }
+        total += fails[p];
+    }
+    println(f"2000 walks: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

@@ -1,0 +1,123 @@
+// LeetCode #1219: Path with Maximum Gold -- the ★ arm's search, started
+// only at gold cells with at most two neighbours with gold: some best path
+// always starts at one, which the README checks by brute force rather than
+// proves. There is always such a cell: the first gold cell in reading order
+// has no gold above it or to its left.
+
+fn collect(grid: mut ref Vec[Vec[i64]], r: i64, c: i64) -> i64 {
+    if r < 0 or c < 0 or r >= grid.len() or c >= grid[0].len() or grid[r][c] == 0 {
+        return 0;
+    }
+    let gold = grid[r][c];
+    grid[r][c] = 0;
+    let mut best = 0;
+    for (dr, dc) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+        best = max(best, collect(mut grid, r + dr, c + dc));
+    }
+    grid[r][c] = gold;
+    gold + best
+}
+
+fn golden(grid: Vec[Vec[i64]], r: i64, c: i64) -> bool {
+    r >= 0 and c >= 0 and r < grid.len() and c < grid[0].len() and grid[r][c] > 0
+}
+
+fn get_maximum_gold(grid: Vec[Vec[i64]]) -> i64 {
+    let mut g = grid.clone();
+    let mut starts: Vec[(i64, i64)] = Vec.new();
+    for r in 0..g.len() {
+        for c in 0..g[0].len() {
+            if g[r][c] > 0 {
+                let mut around = 0;
+                for (dr, dc) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                    if golden(g, r + dr, c + dc) {
+                        around += 1;
+                    }
+                }
+                if around <= 2 {
+                    starts.push((r, c));
+                }
+            }
+        }
+    }
+    let mut best = 0;
+    for (r, c) in starts.iter() {
+        best = max(best, collect(mut g, r, c));
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let cases: Vec[Vec[Vec[i64]]] = [
+        [[0, 6, 0], [5, 8, 7], [0, 9, 0]],
+        [[1, 0, 7], [2, 0, 6], [3, 4, 5], [0, 3, 0], [9, 0, 20]],
+        [[0]],
+        [[5]],
+        [[0, 0], [0, 0]],
+        [[1, 1], [1, 1]],
+        [[100, 0, 100], [0, 0, 0], [100, 0, 100]],
+        [[1, 2, 3, 4, 5]],
+    ];
+    for grid in cases.iter() {
+        println(f"{grid}: {get_maximum_gold(grid)}");
+    }
+    let mut seed = 1219;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let rows = next_random(mut seed) % 4 + 1;
+        let cols = next_random(mut seed) % 4 + 1;
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..rows {
+            let mut row: Vec[i64] = Vec.new();
+            for _ in 0..cols {
+                let v = next_random(mut seed) % 150;
+                row.push(if v < 50 { 0 } else { v - 49 });
+            }
+            grid.push(row);
+        }
+        let answer = get_maximum_gold(grid);
+        total += answer;
+        check = (check * 131 + answer) % 1000000007;
+    }
+    println(f"1000 grids up to 4 by 4: gold total {total}, checksum {check}");
+    // The constraints' top: 15 by 15, at most 25 cells with gold.
+    let mut scattered: Vec[Vec[i64]] = Vec.filled(15, Vec.filled(15, 0));
+    let mut placed = 0;
+    while placed < 25 {
+        let r = next_random(mut seed) % 15;
+        let c = next_random(mut seed) % 15;
+        if scattered[r][c] == 0 {
+            scattered[r][c] = next_random(mut seed) % 100 + 1;
+            placed += 1;
+        }
+    }
+    println(f"25 cells with gold scattered over 15 by 15: {get_maximum_gold(scattered)}");
+    let mut block: Vec[Vec[i64]] = Vec.filled(15, Vec.filled(15, 0));
+    for r in 5..10 {
+        for c in 5..10 {
+            block[r][c] = next_random(mut seed) % 100 + 1;
+        }
+    }
+    println(f"a full 5 by 5 block of gold in 15 by 15: {get_maximum_gold(block)}");
+    let mut snake: Vec[Vec[i64]] = Vec.filled(15, Vec.filled(15, 0));
+    for c in 0..15 {
+        snake[0][c] = next_random(mut seed) % 100 + 1;
+    }
+    for r in 1..11 {
+        snake[r][14] = next_random(mut seed) % 100 + 1;
+    }
+    println(f"25 cells of gold in one bent line: {get_maximum_gold(snake)}");
+    let mut apart: Vec[Vec[i64]] = Vec.filled(15, Vec.filled(15, 0));
+    for k in 0..25 {
+        apart[(k / 5) * 3][(k % 5) * 3] = k + 1;
+    }
+    println(f"25 cells of gold, none next to another: {get_maximum_gold(apart)}");
+}

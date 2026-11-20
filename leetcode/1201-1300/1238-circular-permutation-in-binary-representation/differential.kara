@@ -1,0 +1,190 @@
+// LeetCode #1238: Circular Permutation in Binary Representation -- the arms
+// against the statement read literally and five more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_circular_permutation(n: i64, start: i64) -> Vec[i64] {
+    (0..1 << n).map(|i| start ^ i ^ (i >> 1)).collect()
+}
+
+// ---- arm 1: reflect -----------------------------------------------------
+fn a1_circular_permutation(n: i64, start: i64) -> Vec[i64] {
+    let mut codes = [0];
+    for bit in 0..n {
+        let high = 1 << bit;
+        for k in (0..codes.len()).rev() {
+            codes.push(codes[k] | high);
+        }
+    }
+    let at = codes.iter().position(|c| c == start).unwrap();
+    let mut out = codes[at..].to_vec();
+    out.extend_from_slice(codes[..at]);
+    out
+}
+
+// ---- arm 2: greedy ------------------------------------------------------
+fn a2_circular_permutation(n: i64, start: i64) -> Vec[i64] {
+    let size = 1 << n;
+    let mut seen = Vec.filled(size, false);
+    let mut out = Vec.with_capacity(size);
+    let mut cur = start;
+    seen[cur] = true;
+    out.push(cur);
+    while out.len() < size {
+        let mut bit = 0;
+        while seen[cur ^ (1 << bit)] {
+            bit += 1;
+        }
+        cur ^= 1 << bit;
+        seen[cur] = true;
+        out.push(cur);
+    }
+    out
+}
+
+// ---- arm 3: halves ------------------------------------------------------
+fn a3_gray(n: i64) -> Vec[i64] {
+    if n == 0 {
+        return [0];
+    }
+    let lower = a3_gray(n - 1);
+    let top = 1 << (n - 1);
+    let mut out = lower.clone();
+    out.extend(lower.iter().rev().map(|c| c | top));
+    out
+}
+
+fn a3_circular_permutation(n: i64, start: i64) -> Vec[i64] {
+    a3_gray(n).iter().map(|c| c ^ start).collect()
+}
+
+// ---- arm 4: rotate ------------------------------------------------------
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn circular_permutation(n: i32, start: i32) -> Vec[i32] {
+        let mut res = [0];
+        for i in 0..n {
+            for j in (0..res.len()).rev() {
+                res.push(res[j] | 1 << i);
+            }
+        }
+        let pos = res.iter().position(|x| x == start).unwrap();
+        res.rotate_left(pos);
+        res
+    }
+}
+
+fn a4_circular_permutation(n: i64, start: i64) -> Vec[i64] {
+    A4Solution.circular_permutation(n as i32, start as i32).iter().map(|v| v as i64).collect()
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// The number of bits in which `a` and `b` differ, bit by bit.
+fn bits_apart(a: i64, b: i64, n: i64) -> i64 {
+    let mut count = 0;
+    for k in 0..n {
+        if (a >> k) % 2 != (b >> k) % 2 {
+            count += 1;
+        }
+    }
+    count
+}
+
+// `p` is a permutation of 0 to 2^n - 1, `p[0]` is `start`, each `p[i]` and
+// `p[i + 1]` differ in exactly one bit, and so do `p[0]` and the last.
+fn literal(n: i64, start: i64, p: Vec[i64]) -> bool {
+    let size = 1 << n;
+    let mut sorted = p.clone();
+    sorted.sort();
+    let every: Vec[i64] = (0..size).collect();
+    if sorted != every or p[0] != start {
+        return false;
+    }
+    for i in 0..size {
+        let next = if i + 1 == size { p[0] } else { p[i + 1] };
+        if bits_apart(p[i], next, n) != 1 {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(n: i64, start: i64) -> Vec[Vec[i64]] {
+    [a0_circular_permutation(n, start), a1_circular_permutation(n, start), a2_circular_permutation(n, start), a3_circular_permutation(n, start), a4_circular_permutation(n, start)]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["the statement read literally", "2^n values", "`start` first", "each step and the wrap flip one bit", "no value twice", "each bit flipped an even number of times"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1238;
+    for c in 0..2000 {
+        let n = if c < 40 { c % 4 + 1 } else { next_random(mut seed) % 12 + 1 };
+        let size = 1 << n;
+        let start = next_random(mut seed) % size;
+        let got = arms(n, start);
+        for arm in 0..5 {
+            let p = got[arm].clone();
+            let len_ok = p.len() == size;
+            let mut seen = Vec.filled(size, false);
+            let mut distinct = len_ok;
+            let mut flips = Vec.filled(n, 0);
+            let mut steps_ok = len_ok;
+            if len_ok {
+                for i in 0..size {
+                    let v = p[i];
+                    if v < 0 or v >= size or seen[v] {
+                        distinct = false;
+                    } else {
+                        seen[v] = true;
+                    }
+                    let d = p[i] ^ p[(i + 1) % size];
+                    if d == 0 or d & (d - 1) != 0 or d >= size {
+                        steps_ok = false;
+                    } else {
+                        let mut k = 0;
+                        while (1 << k) != d {
+                            k += 1;
+                        }
+                        flips[k] += 1;
+                    }
+                }
+            }
+            let held = [
+                len_ok and literal(n, start, p),
+                len_ok,
+                p.len() > 0 and p[0] == start,
+                steps_ok,
+                distinct,
+                steps_ok and flips.iter().all(|f| f % 2 == 0),
+            ];
+            for t in 0..6 {
+                checks += 1;
+                if not held[t] {
+                    fails[t] += 1;
+                    if fails[t] <= 2 {
+                        println(f"P{t + 1} ({names[t]}) fails on arm {arm}: n = {n}, start = {start}");
+                    }
+                }
+            }
+        }
+        check = (check * 131 + n * 65536 + start) % 1000000007;
+    }
+    for t in 0..6 {
+        if fails[t] > 0 {
+            println(f"P{t + 1}: {fails[t]} failures");
+        }
+    }
+    let failures = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over {5} arms: {failures} failures");
+}

@@ -1,0 +1,381 @@
+// LeetCode #1202: Smallest String With Swaps -- the six arms against the
+// statement read literally and six more properties.
+// Generated from the arms; see the README.
+
+import std.cmp.Reverse;
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+fn a0_smallest_string_with_swaps(s: String, pairs: Vec[Vec[i64]]) -> String {
+    let bytes = s.bytes();
+    let n = bytes.len();
+    let mut parent: Vec[i64] = (0..n).collect();
+    let mut size = Vec.filled(n, 1);
+    for p in pairs.iter() {
+        let mut a = a0_find(mut parent, p[0]);
+        let mut b = a0_find(mut parent, p[1]);
+        if a != b {
+            if size[a] < size[b] {
+                let t = a;
+                a = b;
+                b = t;
+            }
+            parent[b] = a;
+            size[a] += size[b];
+        }
+    }
+    let mut groups: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for i in 0..n {
+        let r = a0_find(mut parent, i);
+        groups[r].push(i);
+    }
+    let mut out = bytes.to_vec();
+    for g in groups.iter() {
+        let mut letters: Vec[u8] = g.iter().map(|i| bytes[i]).collect();
+        letters.sort();
+        for k in 0..g.len() {
+            out[g[k]] = letters[k];
+        }
+    }
+    String.from_utf8(out).unwrap()
+}
+
+// ---- arm 1: dfs ---------------------------------------------------------
+fn a1_smallest_string_with_swaps(s: String, pairs: Vec[Vec[i64]]) -> String {
+    let bytes = s.bytes();
+    let n = bytes.len();
+    let mut adj: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for p in pairs.iter() {
+        adj[p[0]].push(p[1]);
+        adj[p[1]].push(p[0]);
+    }
+    let mut seen = Vec.filled(n, false);
+    let mut out = bytes.to_vec();
+    for start in 0..n {
+        if seen[start] {
+            continue;
+        }
+        seen[start] = true;
+        let mut stack = [start];
+        let mut group: Vec[i64] = Vec.new();
+        while let Some(v) = stack.pop() {
+            group.push(v);
+            for w in adj[v].iter() {
+                if not seen[w] {
+                    seen[w] = true;
+                    stack.push(w);
+                }
+            }
+        }
+        group.sort();
+        let mut letters: Vec[u8] = group.iter().map(|i| bytes[i]).collect();
+        letters.sort();
+        for k in 0..group.len() {
+            out[group[k]] = letters[k];
+        }
+    }
+    String.from_utf8(out).unwrap()
+}
+
+// ---- arm 2: bfs ---------------------------------------------------------
+fn a2_smallest_string_with_swaps(s: String, pairs: Vec[Vec[i64]]) -> String {
+    let bytes = s.bytes();
+    let n = bytes.len();
+    let mut adj: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for p in pairs.iter() {
+        adj[p[0]].push(p[1]);
+        adj[p[1]].push(p[0]);
+    }
+    let mut group = Vec.filled(n, -1);
+    let mut groups = 0;
+    for start in 0..n {
+        if group[start] >= 0 {
+            continue;
+        }
+        group[start] = groups;
+        let mut queue = VecDeque.new();
+        queue.push_back(start);
+        while let Some(v) = queue.pop_front() {
+            for w in adj[v].iter() {
+                if group[w] < 0 {
+                    group[w] = groups;
+                    queue.push_back(w);
+                }
+            }
+        }
+        groups += 1;
+    }
+    let mut counts: Vec[Array[i64, 26]] = Vec.filled(groups, [0; 26]);
+    for i in 0..n {
+        counts[group[i]][bytes[i] - b'a'] += 1;
+    }
+    let mut next = Vec.filled(groups, 0);
+    let mut out = String.with_capacity(n);
+    for i in 0..n {
+        let g = group[i];
+        while counts[g][next[g]] == 0 {
+            next[g] += 1;
+        }
+        counts[g][next[g]] -= 1;
+        out.push((b'a' + next[g]) as u8 as char);
+    }
+    out
+}
+
+// ---- arm 3: rank --------------------------------------------------------
+fn a3_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    if parent[x] == x {
+        return x;
+    }
+    let r = a3_find(mut parent, parent[x]);
+    parent[x] = r;
+    r
+}
+
+fn a3_smallest_string_with_swaps(s: String, pairs: Vec[Vec[i64]]) -> String {
+    let bytes = s.bytes();
+    let n = bytes.len();
+    let mut parent: Vec[i64] = (0..n).collect();
+    for p in pairs.iter() {
+        let a = a3_find(mut parent, p[0]);
+        let b = a3_find(mut parent, p[1]);
+        parent[a] = b;
+    }
+    let root: Vec[i64] = (0..n).map(|i| a3_find(mut parent, i)).collect();
+    let mut by_letter: Vec[i64] = (0..n).collect();
+    by_letter.sort_by_key(|i| (root[i], bytes[i]));
+    let mut by_index: Vec[i64] = (0..n).collect();
+    by_index.sort_by_key(|i| (root[i], i));
+    let mut out = bytes.to_vec();
+    for k in 0..n {
+        out[by_index[k]] = bytes[by_letter[k]];
+    }
+    String.from_utf8(out).unwrap()
+}
+
+// ---- arm 4: solution ----------------------------------------------------
+struct Dsu {
+    parent: Vec[i64],
+}
+
+impl Dsu {
+    fn new(n: i64) -> Self {
+        Dsu { parent: (0..n).collect() }
+    }
+
+    fn find(mut ref self, x: i64) -> i64 {
+        if self.parent[x] != x {
+            self.parent[x] = self.find(self.parent[x]);
+        }
+        self.parent[x]
+    }
+
+    fn union(mut ref self, a: i64, b: i64) {
+        let ra = self.find(a);
+        let rb = self.find(b);
+        if ra != rb {
+            self.parent[ra] = rb;
+        }
+    }
+}
+
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn smallest_string_with_swaps(s: String, pairs: Vec[Vec[i32]]) -> String {
+        let n = s.len();
+        let mut dsu = Dsu.new(n);
+        for p in ref pairs {
+            dsu.union(p[0], p[1]);
+        }
+        let mut groups: Map[i64, Vec[i64]] = Map.new();
+        for i in 0..n {
+            groups.entry(dsu.find(i)).or_insert(Vec.new()).push(i);
+        }
+        let bytes = s.bytes();
+        let mut res = Vec.filled(n, 0u8);
+        for (_, idx) in groups.iter() {
+            let mut chars: Vec[u8] = idx.iter().map(|i| bytes[i]).collect();
+            chars.sort();
+            for (k, i) in idx.iter().enumerate() {
+                res[i] = chars[k];
+            }
+        }
+        String.from_utf8(res).unwrap()
+    }
+}
+
+fn a4_smallest_string_with_swaps(s: String, pairs: Vec[Vec[i64]]) -> String {
+    let pairs: Vec[Vec[i32]] = pairs.iter().map(|p| p.iter().map(|v| v as i32).collect()).collect();
+    A4Solution.smallest_string_with_swaps(s, pairs)
+}
+
+// ---- arm 5: heap --------------------------------------------------------
+struct A5Solution {}
+
+fn a5_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+impl A5Solution {
+    pub fn smallest_string_with_swaps(s: String, pairs: Vec[Vec[i32]]) -> String {
+        let n = s.len();
+        let mut parent: Vec[i64] = (0..n).collect();
+        for p in pairs.iter() {
+            let a = a5_find(mut parent, p[0]);
+            let b = a5_find(mut parent, p[1]);
+            parent[a] = b;
+        }
+        let chars: Vec[char] = s.chars().collect();
+        let mut heaps: Map[i64, PriorityQueue[Reverse[char]]] = Map.new();
+        for i in 0..n {
+            let r = a5_find(mut parent, i);
+            heaps.entry(r).or_insert(PriorityQueue.max_first()).push(Reverse { value: chars[i] });
+        }
+        let mut ans = String.with_capacity(n);
+        for i in 0..n {
+            let r = a5_find(mut parent, i);
+            let Reverse { value: c } = heaps.get_mut(r).unwrap().pop().unwrap();
+            ans.push(c);
+        }
+        ans
+    }
+}
+
+fn a5_smallest_string_with_swaps(s: String, pairs: Vec[Vec[i64]]) -> String {
+    let pairs: Vec[Vec[i32]] = pairs.iter().map(|p| p.iter().map(|v| v as i32).collect()).collect();
+    A5Solution.smallest_string_with_swaps(s, pairs)
+}
+
+// ---- the statement read literally ----------------------------------------
+
+// Every string the swaps can reach, found by a breadth-first search from
+// `s` that tries every pair on every string it reaches, and the least of
+// them.
+fn literal(s: String, pairs: Vec[Vec[i64]]) -> String {
+    let mut seen: Set[String] = Set.new();
+    let mut queue = VecDeque.new();
+    seen.insert(s.clone());
+    queue.push_back(s.clone());
+    let mut best = s.clone();
+    while let Some(t) = queue.pop_front() {
+        if t < best {
+            best = t.clone();
+        }
+        for p in pairs.iter() {
+            let mut b = t.bytes().to_vec();
+            let x = b[p[0]];
+            b[p[0]] = b[p[1]];
+            b[p[1]] = x;
+            let u = String.from_utf8(b).unwrap();
+            if seen.insert(u.clone()) {
+                queue.push_back(u);
+            }
+        }
+    }
+    best
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(s: String, pairs: Vec[Vec[i64]]) -> Vec[String] {
+    [
+        a0_smallest_string_with_swaps(s, pairs),
+        a1_smallest_string_with_swaps(s, pairs),
+        a2_smallest_string_with_swaps(s, pairs),
+        a3_smallest_string_with_swaps(s, pairs),
+        a4_smallest_string_with_swaps(s, pairs),
+        a5_smallest_string_with_swaps(s, pairs),
+    ]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn sorted_letters(s: String) -> Vec[u8] {
+    let mut b = s.bytes().to_vec();
+    b.sort();
+    b
+}
+
+fn shifted(s: String) -> String {
+    String.from_utf8(s.bytes().iter().map(|b| b + 1).collect()).unwrap()
+}
+
+fn main() {
+    let names = ["the statement read literally", "the same letters, and no greater than the string", "the pairs reversed, each and in order, give the same", "the answer given again comes back unchanged", "one pair fewer gives as small or greater", "every letter one later gives every letter of the answer one later", "the ★ arm's answer"];
+    let mut fails = Vec.filled(7, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1202;
+    for _ in 0..2000 {
+        // 1 to 7 letters from the first 2, 3 or 5; 0 to 6 pairs
+        let n = next_random(mut seed) % 7 + 1;
+        let letters = [2, 3, 5][next_random(mut seed) % 3];
+        let mut s = String.new();
+        for _ in 0..n {
+            s.push((b'a' + next_random(mut seed) % letters) as u8 as char);
+        }
+        let m = next_random(mut seed) % 7;
+        let mut pairs: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..m {
+            pairs.push([next_random(mut seed) % n, next_random(mut seed) % n]);
+        }
+        let got = arms(s, pairs);
+        let want = literal(s, pairs);
+        let mut turned: Vec[Vec[i64]] = pairs.iter().map(|p| [p[1], p[0]]).collect();
+        turned.reverse();
+        let back = arms(s, turned);
+        let fewer: Vec[Vec[i64]] = pairs.iter().take(if m > 0 { m - 1 } else { 0 }).cloned().collect();
+        let less = arms(s, fewer);
+        let up = arms(shifted(s), pairs);
+        for i in 0..6 {
+            let v = ref got[i];
+            let again = arms(v, pairs);
+            let held = [
+                v == want,
+                sorted_letters(v) == sorted_letters(s) and v <= s,
+                back[i] == v,
+                again[i] == v,
+                less[i] >= v,
+                up[i] == shifted(v),
+                v == got[0],
+            ];
+            for p in 0..7 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {i}: {s} {pairs} -> {v}");
+                    }
+                }
+            }
+        }
+        for b in got[0].bytes().iter() {
+            check = (check * 131 + (b as i64)) % 1000000007;
+        }
+        check = (check * 131 + 7) % 1000000007;
+    }
+    for p in 0..7 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let total = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+}

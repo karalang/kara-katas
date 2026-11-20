@@ -1,0 +1,3 @@
+module remove_all_adjacent_duplicates_in_string_ii
+
+go 1.21

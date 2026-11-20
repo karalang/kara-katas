@@ -1,0 +1,71 @@
+// LeetCode #1232: Check If It Is a Straight Line -- the line through the
+// first two points written as a x + b y = c, with a = dy, b = −dx and c
+// from the first point; every point must satisfy it. The test as an
+// `all` over the points.
+
+fn check_straight_line(coordinates: Vec[Vec[i64]]) -> bool {
+    let a = coordinates[1][1] - coordinates[0][1];
+    let b = coordinates[0][0] - coordinates[1][0];
+    let c = a * coordinates[0][0] + b * coordinates[0][1];
+    coordinates.iter().all(|p| a * p[0] + b * p[1] == c)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` distinct points on a line from `seed`: a start, a direction and the
+// steps 0 to n − 1 along it, shuffled; with `bent`, one point moved off it.
+fn points(n: i64, spread: i64, bent: bool, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let x0 = next_random(mut seed) % (2 * spread + 1) - spread;
+    let y0 = next_random(mut seed) % (2 * spread + 1) - spread;
+    let mut dx = next_random(mut seed) % 21 - 10;
+    let dy = next_random(mut seed) % 21 - 10;
+    if dx == 0 and dy == 0 {
+        dx = 1;
+    }
+    let mut pts: Vec[Vec[i64]] = (0..n).map(|t| [x0 + t * dx, y0 + t * dy]).collect();
+    for k in 0..n {
+        let j = k + next_random(mut seed) % (n - k);
+        pts.swap(k, j);
+    }
+    if bent {
+        let i = next_random(mut seed) % n;
+        if dx == 0 {
+            pts[i][0] += 1;
+        } else {
+            pts[i][1] += 1;
+        }
+    }
+    pts
+}
+
+fn main() {
+    // LeetCode's two examples, two points, an upright and a level line
+    println(f"{check_straight_line([[1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7]])}");
+    println(f"{check_straight_line([[1, 1], [2, 2], [3, 4], [4, 5], [5, 6], [7, 7]])}");
+    println(f"{check_straight_line([[0, 0], [5, -3]])}");
+    println(f"{check_straight_line([[2, -1], [2, 7], [2, 3], [2, 0]])}");
+    println(f"{check_straight_line([[-4, 9], [8, 9], [0, 9], [0, 8]])}");
+    // 1000 random sets of 2 to 40 points, half of them with one moved
+    let mut seed = 1232;
+    let mut straight = 0;
+    let mut check = 0;
+    for c in 0..1000 {
+        let n = next_random(mut seed) % 39 + 2;
+        let pts = points(n, 100, c % 2 == 1, mut seed);
+        let on = check_straight_line(pts);
+        if on {
+            straight += 1;
+        }
+        check = (check * 131 + if on { 2 } else { 1 }) % 1000000007;
+    }
+    println(f"1000 random sets: {straight} straight, checksum {check}");
+    // the constraints' top: 1000 points within 10^4, straight and one moved
+    let line = points(1000, 0, false, mut seed);
+    let bent = points(1000, 0, true, mut seed);
+    println(f"1000 points: {check_straight_line(line)}, {check_straight_line(bent)}");
+}

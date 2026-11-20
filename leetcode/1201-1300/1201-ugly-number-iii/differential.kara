@@ -1,0 +1,303 @@
+// LeetCode #1201: Ugly Number III -- the six arms against the statement
+// read literally and six more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { a0_gcd(b, a % b) }
+}
+
+fn a0_lcm(a: i64, b: i64) -> i64 {
+    a / a0_gcd(a, b) * b
+}
+
+fn a0_nth_ugly_number(n: i64, a: i64, b: i64, c: i64) -> i64 {
+    let ab = a0_lcm(a, b);
+    let bc = a0_lcm(b, c);
+    let ac = a0_lcm(a, c);
+    let abc = a0_lcm(ab, c);
+    let count = |x: i64| x / a + x / b + x / c - x / ab - x / bc - x / ac + x / abc;
+    let mut low = 1;
+    let mut high = n * a.min(b).min(c);
+    while low < high {
+        let mid = low + (high - low) / 2;
+        if count(mid) >= n {
+            high = mid;
+        } else {
+            low = mid + 1;
+        }
+    }
+    low
+}
+
+// ---- arm 1: lifting -----------------------------------------------------
+fn a1_gcd(a: i64, b: i64) -> i64 {
+    let mut a = a;
+    let mut b = b;
+    while b != 0 {
+        let r = a % b;
+        a = b;
+        b = r;
+    }
+    a
+}
+
+fn a1_lcm(a: i64, b: i64) -> i64 {
+    a / a1_gcd(a, b) * b
+}
+
+fn a1_below(x: i64, a: i64, b: i64, c: i64, ab: i64, bc: i64, ac: i64, abc: i64) -> i64 {
+    x / a + x / b + x / c - x / ab - x / bc - x / ac + x / abc
+}
+
+fn a1_nth_ugly_number(n: i64, a: i64, b: i64, c: i64) -> i64 {
+    let ab = a1_lcm(a, b);
+    let bc = a1_lcm(b, c);
+    let ac = a1_lcm(a, c);
+    let abc = a1_lcm(ab, c);
+    let mut x = 0;
+    let mut step = 1 << 30;
+    while step > 0 {
+        if a1_below(x + step, a, b, c, ab, bc, ac, abc) < n {
+            x += step;
+        }
+        step /= 2;
+    }
+    x + 1
+}
+
+// ---- arm 2: estimate ----------------------------------------------------
+fn a2_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { a2_gcd(b, a % b) }
+}
+
+fn a2_lcm(a: i64, b: i64) -> i64 {
+    a / a2_gcd(a, b) * b
+}
+
+fn a2_nth_ugly_number(n: i64, a: i64, b: i64, c: i64) -> i64 {
+    let ab = a2_lcm(a, b);
+    let bc = a2_lcm(b, c);
+    let ac = a2_lcm(a, c);
+    let abc = a2_lcm(ab, c);
+    let count = |x: i64| x / a + x / b + x / c - x / ab - x / bc - x / ac + x / abc;
+    let inv = |d: i64| 1.0 / (d as f64);
+    let density = inv(a) + inv(b) + inv(c) - inv(ab) - inv(bc) - inv(ac) + inv(abc);
+    let guess = ((n as f64) / density) as i64;
+    let mut x = (guess / a * a).max(guess / b * b).max(guess / c * c);
+    let mut rank = count(x);
+    while rank < n {
+        x = ((x / a + 1) * a).min((x / b + 1) * b).min((x / c + 1) * c);
+        rank += 1;
+    }
+    while rank > n {
+        x = ((x - 1) / a * a).max((x - 1) / b * b).max((x - 1) / c * c);
+        rank -= 1;
+    }
+    x
+}
+
+// ---- arm 3: subsets -----------------------------------------------------
+fn a3_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { a3_gcd(b, a % b) }
+}
+
+fn a3_nth_ugly_number(n: i64, a: i64, b: i64, c: i64) -> i64 {
+    let values = [a, b, c];
+    let mut multiples: Vec[(i64, i64)] = Vec.new();
+    for mask in 1..8 {
+        let mut l = 1;
+        let mut size = 0;
+        for i in 0..3 {
+            if mask & (1 << i) != 0 {
+                l = l / a3_gcd(l, values[i]) * values[i];
+                size += 1;
+            }
+        }
+        multiples.push((l, if size % 2 == 1 { 1 } else { -1 }));
+    }
+    let mut low = 1;
+    let mut high = 2000000000;
+    let mut best = high;
+    while low <= high {
+        let mid = (low + high) / 2;
+        let mut count = 0;
+        for (l, sign) in multiples.iter() {
+            count += sign * (mid / l);
+        }
+        if count >= n {
+            best = mid;
+            high = mid - 1;
+        } else {
+            low = mid + 1;
+        }
+    }
+    best
+}
+
+// ---- arm 4: solution ----------------------------------------------------
+struct A4Solution {}
+
+fn a4_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { a4_gcd(b, a % b) }
+}
+
+impl A4Solution {
+    pub fn nth_ugly_number(n: i32, a: i32, b: i32, c: i32) -> i32 {
+        let (n, a, b, c) = (n as i64, a as i64, b as i64, c as i64);
+        let lcm = |x: i64, y: i64| x / a4_gcd(x, y) * y;
+        let ab = lcm(a, b);
+        let bc = lcm(b, c);
+        let ac = lcm(a, c);
+        let abc = lcm(ab, c);
+        let count = |x: i64| x / a + x / b + x / c - x / ab - x / bc - x / ac + x / abc;
+        let mut (lo, hi) = (1, 2_000_000_000);
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            if count(mid) < n {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        lo as i32
+    }
+}
+
+fn a4_nth_ugly_number(n: i64, a: i64, b: i64, c: i64) -> i64 {
+    A4Solution.nth_ugly_number(n as i32, a as i32, b as i32, c as i32)
+}
+
+// ---- arm 5: methods -----------------------------------------------------
+struct A5Solution {}
+
+impl A5Solution {
+    fn gcd(a: i64, b: i64) -> i64 {
+        let mut a = a;
+        let mut b = b;
+        while b != 0 {
+            let t = a % b;
+            a = b;
+            b = t;
+        }
+        a
+    }
+
+    fn lcm(a: i64, b: i64) -> i64 {
+        a / A5Solution.gcd(a, b) * b
+    }
+
+    fn count(x: i64, a: i64, b: i64, c: i64) -> i64 {
+        let ab = A5Solution.lcm(a, b);
+        let bc = A5Solution.lcm(b, c);
+        let ac = A5Solution.lcm(a, c);
+        let abc = A5Solution.lcm(ab, c);
+        x / a + x / b + x / c - x / ab - x / bc - x / ac + x / abc
+    }
+
+    pub fn nth_ugly_number(n: i32, a: i32, b: i32, c: i32) -> i32 {
+        let (a, b, c) = (a as i64, b as i64, c as i64);
+        let mut left: i64 = 1;
+        let mut right: i64 = min(min(a, b), c) * n;
+        while left < right {
+            let mid = (left + right) >> 1;
+            if A5Solution.count(mid, a, b, c) >= n {
+                right = mid;
+            } else {
+                left = mid + 1;
+            }
+        }
+        left as i32
+    }
+}
+
+fn a5_nth_ugly_number(n: i64, a: i64, b: i64, c: i64) -> i64 {
+    A5Solution.nth_ugly_number(n as i32, a as i32, b as i32, c as i32)
+}
+
+// ---- the statement read literally ----------------------------------------
+
+// The positive integers walked from 1, each divisible by a, b or c
+// counted, until the n-th.
+fn literal(n: i64, a: i64, b: i64, c: i64) -> i64 {
+    let mut seen = 0;
+    let mut x = 0;
+    while seen < n {
+        x += 1;
+        if x % a == 0 or x % b == 0 or x % c == 0 {
+            seen += 1;
+        }
+    }
+    x
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(n: i64, a: i64, b: i64, c: i64) -> Vec[i64] {
+    [
+        a0_nth_ugly_number(n, a, b, c),
+        a1_nth_ugly_number(n, a, b, c),
+        a2_nth_ugly_number(n, a, b, c),
+        a3_nth_ugly_number(n, a, b, c),
+        a4_nth_ugly_number(n, a, b, c),
+        a5_nth_ugly_number(n, a, b, c),
+    ]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["the statement read literally", "divisible by a, b or c, and at most n times the least of them", "a, b and c turned round give the same", "the (n + 1)-th is greater", "a, b and c tripled triple the answer", "c replaced by a multiple of a reads as c = a", "the ★ arm's answer"];
+    let mut fails = Vec.filled(7, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1201;
+    for _ in 0..2000 {
+        // a, b, c from 1 to 12, 30 or 100; n from 1 to 40
+        let top = [12, 30, 100][next_random(mut seed) % 3];
+        let a = next_random(mut seed) % top + 1;
+        let b = next_random(mut seed) % top + 1;
+        let c = next_random(mut seed) % top + 1;
+        let n = next_random(mut seed) % 40 + 1;
+        let got = arms(n, a, b, c);
+        let want = literal(n, a, b, c);
+        let turned = arms(n, c, a, b);
+        let next = arms(n + 1, a, b, c);
+        let tripled = arms(n, 3 * a, 3 * b, 3 * c);
+        let k = next_random(mut seed) % 5 + 1;
+        let folded = arms(n, a, b, a * k);
+        let same = arms(n, a, b, a);
+        for i in 0..6 {
+            let v = got[i];
+            let held = [
+                v == want,
+                (v % a == 0 or v % b == 0 or v % c == 0) and v >= 1 and v <= n * a.min(b).min(c),
+                turned[i] == v,
+                next[i] > v,
+                tripled[i] == 3 * v,
+                folded[i] == same[i],
+                v == got[0],
+            ];
+            for p in 0..7 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {i}: n = {n}, a = {a}, b = {b}, c = {c} -> {v}");
+                    }
+                }
+            }
+        }
+        check = (check * 131 + got[0]) % 1000000007;
+    }
+    for p in 0..7 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let total = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+}

@@ -1,0 +1,177 @@
+// LeetCode #1287: the differential -- the five arms against the statement
+// read literally and five more properties, on 2000 random problems.
+
+// arm 0: find_special_integer.kara
+fn a0_find_special_integer(arr: Vec[i64]) -> i64 {
+    let quarter = arr.len() / 4;
+    for i in 0..(arr.len() - quarter) {
+        if arr[i] == arr[i + quarter] {
+            return arr[i];
+        }
+    }
+    -1
+}
+
+// arm 1: find_special_integer_bounds.kara
+fn a1_find_special_integer(arr: Vec[i64]) -> i64 {
+    let n = arr.len();
+    for at in [n / 4, n / 2, 3 * n / 4] {
+        let x = arr[at];
+        let first = arr.partition_point(|y| *y < x);
+        let past = arr.partition_point(|y| *y <= x);
+        if (past - first) * 4 > n {
+            return x;
+        }
+    }
+    -1
+}
+
+// arm 2: find_special_integer_runs.kara
+fn a2_find_special_integer(arr: Vec[i64]) -> i64 {
+    let mut start = 0;
+    while start < arr.len() {
+        let mut end = start;
+        while end < arr.len() and arr[end] == arr[start] {
+            end += 1;
+        }
+        if (end - start) * 4 > arr.len() {
+            return arr[start];
+        }
+        start = end;
+    }
+    -1
+}
+
+// arm 3: find_special_integer_counts.kara
+fn a3_find_special_integer(arr: Vec[i64]) -> i64 {
+    let mut counts: Map[i64, i64] = Map.new();
+    for x in arr.iter() {
+        *counts.entry(*x).or_insert(0) += 1;
+    }
+    for (x, c) in counts.iter() {
+        if c * 4 > arr.len() {
+            return *x;
+        }
+    }
+    -1
+}
+
+// arm 4: find_special_integer_solution.kara
+impl A4Solution {
+    pub fn find_special_integer(arr: Vec[i32]) -> i32 {
+        let q = arr.len() / 4;
+        arr.windows(q + 1).into_iter()
+            .find(|w| w[0] == w[q])
+            .map(|w| w[0])
+            .unwrap()
+    }
+}
+
+struct A4Solution {}
+
+fn a4_find_special_integer(arr: Vec[i64]) -> i64 {
+    let small: Vec[i32] = arr.iter().map(|x| *x as i32).collect();
+    A4Solution.find_special_integer(small)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// ---- the differential ------------------------------------------------------
+
+fn arm(k: i64, arr: Vec[i64]) -> i64 {
+    match k {
+        0 => a0_find_special_integer(arr),
+        1 => a1_find_special_integer(arr),
+        2 => a2_find_special_integer(arr),
+        3 => a3_find_special_integer(arr),
+        _ => a4_find_special_integer(arr),
+    }
+}
+
+// The statement read literally: for each number, how many times it occurs,
+// counted over the whole array; the one occurring in more than 25% of it.
+fn literal(arr: Vec[i64]) -> i64 {
+    for x in arr.iter() {
+        let mut times = 0;
+        for y in arr.iter() {
+            if y == x {
+                times += 1;
+            }
+        }
+        if times * 100 > 25 * arr.len() {
+            return *x;
+        }
+    }
+    -1
+}
+
+// A random problem: `n` values up to 10^5 with one of them planted more
+// than n / 4 times, sorted.
+fn problem(seed: mut ref i64, n: i64) -> Vec[i64] {
+    let planted = next_random(mut *seed) % 100001;
+    // below 4 numbers, any other value would pass a quarter too
+    let times = if n < 4 { n } else { n / 4 + 1 + next_random(mut *seed) % (n - n / 4) };
+    let mut arr: Vec[i64] = Vec.filled(times, planted);
+    let mut drawn: Map[i64, i64] = Map.new();
+    drawn.insert(planted, times);
+    while arr.len() < n {
+        // mostly a few values, so that runs are long; a value that would
+        // pass a quarter too is drawn again
+        let x = if next_random(mut *seed) % 2 == 0 { planted + next_random(mut *seed) % 5 - 2 } else { next_random(mut *seed) % 100001 };
+        let c = drawn.get(x) ?? 0;
+        if x >= 0 and x != planted and (c + 1) * 4 <= n {
+            drawn.insert(x, c + 1);
+            arr.push(x);
+        }
+    }
+    arr.sort();
+    arr
+}
+
+fn main() {
+    let mut seed = 12870;
+    let mut fails: Array[i64, 6] = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 60 + 1;
+        let arr = problem(mut seed, n);
+        let want = literal(arr);
+        let shift = next_random(mut seed) % 1000 - 500;
+        let shifted: Vec[i64] = arr.iter().map(|x| x + shift).collect();
+        let negated: Vec[i64] = arr.iter().rev().map(|x| -x).collect();
+        let star = arm(0, arr);
+        check = (check * 131 + star) % 1000000007;
+        for a in 0..5 {
+            let got = arm(a, arr);
+            let mut longer = arr.clone();
+            longer.insert(arr.partition_point(|y| *y < got), got);
+            let times = arr.iter().filter(|y| *y == got).count();
+            let held = [
+                got == want,
+                times * 4 > n,
+                arm(a, shifted) == got + shift,
+                arm(a, negated) == -got,
+                arm(a, longer) == got,
+                got == star,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                }
+            }
+        }
+    }
+    let mut total = 0;
+    for p in 0..6 {
+        if fails[p] > 0 {
+            print(f"P{p + 1}: {fails[p]} failures ");
+        }
+        total += fails[p];
+    }
+    println(f"2000 problems: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

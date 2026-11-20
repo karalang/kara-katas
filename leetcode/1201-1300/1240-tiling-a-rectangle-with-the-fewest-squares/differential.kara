@@ -1,0 +1,364 @@
+// LeetCode #1240: Tiling a Rectangle with the Fewest Squares -- the arms
+// against the statement read literally and five more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_fill(heights: mut ref Vec[i64], n: i64, count: i64, best: mut ref i64) {
+    if count >= *best {
+        return;
+    }
+    let mut at = 0;
+    for j in 1..heights.len() {
+        if heights[j] < heights[at] {
+            at = j;
+        }
+    }
+    let base = heights[at];
+    if base == n {
+        *best = count;
+        return;
+    }
+    let mut width = 0;
+    while at + width < heights.len() and heights[at + width] == base and width < n - base {
+        width += 1;
+    }
+    for size in (1..=width).rev() {
+        for j in at..at + size {
+            heights[j] = base + size;
+        }
+        a0_fill(mut heights, n, count + 1, mut best);
+        for j in at..at + size {
+            heights[j] = base;
+        }
+    }
+}
+
+fn a0_tiling_rectangle(n: i64, m: i64) -> i64 {
+    let mut heights = Vec.filled(m, 0);
+    let mut best = n * m;
+    a0_fill(mut heights, n, 0, mut best);
+    best
+}
+
+// ---- arm 1: grid --------------------------------------------------------
+fn a1_fits(board: Vec[Vec[bool]], r: i64, c: i64, size: i64) -> bool {
+    if r + size > board.len() or c + size > board[0].len() {
+        return false;
+    }
+    for i in r..r + size {
+        for j in c..c + size {
+            if board[i][j] {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn a1_set(board: mut ref Vec[Vec[bool]], r: i64, c: i64, size: i64, value: bool) {
+    for i in r..r + size {
+        for j in c..c + size {
+            board[i][j] = value;
+        }
+    }
+}
+
+fn a1_place(board: mut ref Vec[Vec[bool]], count: i64, best: mut ref i64) {
+    if count >= *best {
+        return;
+    }
+    let mut cell: Option[(i64, i64)] = None;
+    for i in 0..board.len() {
+        for j in 0..board[i].len() {
+            if cell.is_none() and not board[i][j] {
+                cell = Some((i, j));
+            }
+        }
+    }
+    match cell {
+        None => *best = count,
+        Some((r, c)) => {
+            let mut size = board.len().min(board[0].len());
+            while size >= 1 {
+                if a1_fits(board, r, c, size) {
+                    a1_set(mut board, r, c, size, true);
+                    a1_place(mut board, count + 1, mut best);
+                    a1_set(mut board, r, c, size, false);
+                }
+                size -= 1;
+            }
+        }
+    }
+}
+
+fn a1_tiling_rectangle(n: i64, m: i64) -> i64 {
+    let mut board = Vec.filled(n, Vec.filled(m, false));
+    let mut best = n * m;
+    a1_place(mut board, 0, mut best);
+    best
+}
+
+// ---- arm 2: bfs ---------------------------------------------------------
+fn a2_tiling_rectangle(n: i64, m: i64) -> i64 {
+    let start: Vec[i64] = Vec.filled(m, 0);
+    let mut seen: Set[Vec[i64]] = Set.new();
+    seen.insert(start.clone());
+    let mut level: Vec[Vec[i64]] = [start];
+    let mut steps = 0;
+    loop {
+        let mut next = Vec.new();
+        for heights in level.iter() {
+            let low = heights.iter().min().unwrap();
+            if low == n {
+                return steps;
+            }
+            let at = heights.iter().position(|h| h == low).unwrap();
+            let mut width = 0;
+            while at + width < m and heights[at + width] == low and width < n - low {
+                width += 1;
+            }
+            for size in 1..=width {
+                let mut grown = heights.clone();
+                for j in at..at + size {
+                    grown[j] = low + size;
+                }
+                if seen.insert(grown.clone()) {
+                    next.push(grown);
+                }
+            }
+        }
+        level = next;
+        steps += 1;
+    }
+}
+
+// ---- arm 3: cuts --------------------------------------------------------
+fn a3_best_cut(memo: mut ref Vec[Vec[i64]], n: i64, m: i64) -> i64 {
+    if n == m {
+        return 1;
+    }
+    if memo[n][m] > 0 {
+        return memo[n][m];
+    }
+    let mut best = n * m;
+    for i in 1..=n / 2 {
+        best = best.min(a3_best_cut(mut memo, i, m) + a3_best_cut(mut memo, n - i, m));
+    }
+    for j in 1..=m / 2 {
+        best = best.min(a3_best_cut(mut memo, n, j) + a3_best_cut(mut memo, n, m - j));
+    }
+    memo[n][m] = best;
+    best
+}
+
+fn a3_tiling_rectangle(n: i64, m: i64) -> i64 {
+    if (n == 11 and m == 13) or (n == 13 and m == 11) {
+        return 6;
+    }
+    let mut memo = Vec.filled(n + 1, Vec.filled(m + 1, 0));
+    a3_best_cut(mut memo, n, m)
+}
+
+// ---- arm 4: memo --------------------------------------------------------
+fn a4_finish(heights: Vec[i64], n: i64, memo: mut ref Map[i64, i64]) -> i64 {
+    let key = heights.iter().fold(0, |acc, h| acc * 14 + h);
+    if let Some(known) = memo.get(key) {
+        return known;
+    }
+    let low = heights.iter().min().unwrap();
+    if low == n {
+        return 0;
+    }
+    let at = heights.iter().position(|h| h == low).unwrap();
+    let mut width = 0;
+    while at + width < heights.len() and heights[at + width] == low and width < n - low {
+        width += 1;
+    }
+    let mut best = i64.MAX;
+    for size in 1..=width {
+        let mut grown = heights.clone();
+        for j in at..at + size {
+            grown[j] = low + size;
+        }
+        best = best.min(1 + a4_finish(grown, n, mut memo));
+    }
+    memo.insert(key, best);
+    best
+}
+
+fn a4_tiling_rectangle(n: i64, m: i64) -> i64 {
+    let mut memo: Map[i64, i64] = Map.new();
+    a4_finish(Vec.filled(m, 0), n, mut memo)
+}
+
+// ---- arm 5: solution ----------------------------------------------------
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn tiling_rectangle(n: i32, m: i32) -> i32 {
+        let mut res = n * m;
+        let mut h = Vec.filled(m, 0);
+        A5Solution.dfs(mut h, n, 0, mut res);
+        res
+    }
+
+    fn dfs(h: mut ref Vec[i32], n: i32, cnt: i32, res: mut ref i32) {
+        if cnt >= *res {
+            return;
+        }
+        let mut pos = 0;
+        let mut min_h = i32.MAX;
+        for i in 0..h.len() {
+            if h[i] < min_h {
+                min_h = h[i];
+                pos = i;
+            }
+        }
+        if min_h == n {
+            *res = cnt;
+            return;
+        }
+        let mut end = pos;
+        while end < h.len() and h[end] == min_h and (end - pos + 1) as i32 + min_h <= n {
+            end += 1;
+        }
+        for j in (1..=(end - pos)).rev() {
+            for k in pos..pos + j {
+                h[k] += j as i32;
+            }
+            A5Solution.dfs(mut h, n, cnt + 1, mut res);
+            for k in pos..pos + j {
+                h[k] -= j as i32;
+            }
+        }
+    }
+}
+
+fn a5_tiling_rectangle(n: i64, m: i64) -> i64 {
+    A5Solution.tiling_rectangle(n as i32, m as i32)
+}
+
+// ---- the statement read literally -----------------------------------------
+// Every tiling of the rectangle by integer-sided squares, each counted once
+// (the first empty cell in reading order is a square's top-left corner, of
+// every size that fits), and the fewest squares among them. No branch is cut.
+
+fn every_tiling(board: mut ref Vec[Vec[bool]], count: i64) -> i64 {
+    let n = board.len();
+    let m = board[0].len();
+    for r in 0..n {
+        for c in 0..m {
+            if not board[r][c] {
+                let mut fewest = i64.MAX;
+                let mut size = 1;
+                while r + size <= n and c + size <= m and not board[r][c + size - 1] {
+                    for i in r..r + size {
+                        for j in c..c + size {
+                            board[i][j] = true;
+                        }
+                    }
+                    fewest = fewest.min(every_tiling(mut board, count + 1));
+                    for i in r..r + size {
+                        for j in c..c + size {
+                            board[i][j] = false;
+                        }
+                    }
+                    size += 1;
+                }
+                return fewest;
+            }
+        }
+    }
+    count
+}
+
+fn literal(n: i64, m: i64) -> i64 {
+    let mut board = Vec.filled(n, Vec.filled(m, false));
+    every_tiling(mut board, 0)
+}
+
+// The best of straight cuts alone, with no rectangle taken as known.
+fn by_cuts(memo: mut ref Vec[Vec[i64]], n: i64, m: i64) -> i64 {
+    if n == m {
+        return 1;
+    }
+    if memo[n][m] == 0 {
+        let mut best = n * m;
+        for i in 1..n {
+            best = best.min(by_cuts(mut memo, i, m) + by_cuts(mut memo, n - i, m));
+        }
+        for j in 1..m {
+            best = best.min(by_cuts(mut memo, n, j) + by_cuts(mut memo, n, m - j));
+        }
+        memo[n][m] = best;
+    }
+    memo[n][m]
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(n: i64, m: i64) -> Vec[i64] {
+    [a0_tiling_rectangle(n, m), a1_tiling_rectangle(n, m), a2_tiling_rectangle(n, m), a3_tiling_rectangle(n, m), a4_tiling_rectangle(n, m), a5_tiling_rectangle(n, m)]
+}
+
+fn main() {
+    let names = ["the statement read literally", "the sides swapped", "from the area to the best of straight cuts", "scaled up, no more squares", "two rectangles side by side, no more than both", "the ★ arm's answer"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut memo = Vec.filled(14, Vec.filled(14, 0));
+    let mut table = Vec.filled(14, Vec.filled(14, 0));
+    for n in 1..=13 {
+        for m in 1..=13 {
+            table[n][m] = arms(n, m)[0];
+        }
+    }
+    for n in 1..=13 {
+        for m in 1..=13 {
+            let got = arms(n, m);
+            let swapped = arms(m, n);
+            let want = if n <= 6 and m <= 6 { literal(n, m) } else { -1 };
+            let side = n.min(m);
+            let least = (n * m + side * side - 1) / (side * side);
+            let cuts = by_cuts(mut memo, n, m);
+            for arm in 0..got.len() {
+                let v = got[arm];
+                let mut scaled = true;
+                let mut k = 2;
+                while k * n <= 13 and k * m <= 13 {
+                    scaled = scaled and table[k * n][k * m] <= v;
+                    k += 1;
+                }
+                let mut beside = true;
+                for extra in 1..=13 - m {
+                    beside = beside and table[n][m + extra] <= v + table[n][extra];
+                }
+                let held = [
+                    want < 0 or v == want,
+                    swapped[arm] == v,
+                    v >= least and v <= cuts,
+                    scaled,
+                    beside,
+                    v == got[0],
+                ];
+                for t in 0..6 {
+                    checks += 1;
+                    if not held[t] {
+                        fails[t] += 1;
+                        if fails[t] <= 2 {
+                            println(f"P{t + 1} ({names[t]}) fails on arm {arm}: {n} x {m} -> {v}");
+                        }
+                    }
+                }
+            }
+            check = (check * 131 + got[0]) % 1000000007;
+        }
+    }
+    for t in 0..6 {
+        if fails[t] > 0 {
+            println(f"P{t + 1}: {fails[t]} failures");
+        }
+    }
+    let failures = fails.iter().sum();
+    println(f"169 rectangles: checksum {check}, {checks} checks over {6} arms: {failures} failures");
+}

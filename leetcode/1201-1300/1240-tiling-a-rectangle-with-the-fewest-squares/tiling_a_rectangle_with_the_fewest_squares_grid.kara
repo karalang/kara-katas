@@ -1,0 +1,93 @@
+// LeetCode #1240: Tiling a Rectangle with the Fewest Squares -- on the
+// grid itself: an n x m board of filled cells, the first empty cell in
+// reading order, and at it every square that fits on empty cells, the
+// largest first. A branch stops once it has used as many squares as the
+// best tiling found so far.
+
+fn fits(board: Vec[Vec[bool]], r: i64, c: i64, size: i64) -> bool {
+    if r + size > board.len() or c + size > board[0].len() {
+        return false;
+    }
+    for i in r..r + size {
+        for j in c..c + size {
+            if board[i][j] {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn set(board: mut ref Vec[Vec[bool]], r: i64, c: i64, size: i64, value: bool) {
+    for i in r..r + size {
+        for j in c..c + size {
+            board[i][j] = value;
+        }
+    }
+}
+
+fn place(board: mut ref Vec[Vec[bool]], count: i64, best: mut ref i64) {
+    if count >= *best {
+        return;
+    }
+    let mut cell: Option[(i64, i64)] = None;
+    for i in 0..board.len() {
+        for j in 0..board[i].len() {
+            if cell.is_none() and not board[i][j] {
+                cell = Some((i, j));
+            }
+        }
+    }
+    match cell {
+        None => *best = count,
+        Some((r, c)) => {
+            let mut size = board.len().min(board[0].len());
+            while size >= 1 {
+                if fits(board, r, c, size) {
+                    set(mut board, r, c, size, true);
+                    place(mut board, count + 1, mut best);
+                    set(mut board, r, c, size, false);
+                }
+                size -= 1;
+            }
+        }
+    }
+}
+
+fn tiling_rectangle(n: i64, m: i64) -> i64 {
+    let mut board = Vec.filled(n, Vec.filled(m, false));
+    let mut best = n * m;
+    place(mut board, 0, mut best);
+    best
+}
+
+
+// ---- test harness ---------------------------------------------------------
+
+fn row(n: i64) -> String {
+    let answers: Vec[String] = (1..=13).map(|m| f"{tiling_rectangle(n, m)}").collect();
+    answers.join(" ")
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{tiling_rectangle(2, 3)}");
+    println(f"{tiling_rectangle(5, 8)}");
+    println(f"{tiling_rectangle(11, 13)}");
+    // the smallest, the largest square, and the longest strip
+    println(f"{tiling_rectangle(1, 1)} {tiling_rectangle(13, 13)} {tiling_rectangle(1, 13)} {tiling_rectangle(13, 1)}");
+    // two rows of the table: 11 x 1..13 and 13 x 1..13
+    println(f"11 x 1..13: {row(11)}");
+    println(f"13 x 1..13: {row(13)}");
+    // every rectangle up to 13 x 13
+    let mut check = 0;
+    let mut total = 0;
+    for n in 1..=13 {
+        for m in 1..=13 {
+            let t = tiling_rectangle(n, m);
+            check = (check * 131 + t) % 1000000007;
+            total += t;
+        }
+    }
+    println(f"169 rectangles: checksum {check}, total {total}");
+}

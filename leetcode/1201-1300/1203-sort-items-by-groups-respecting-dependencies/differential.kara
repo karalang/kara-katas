@@ -1,0 +1,549 @@
+// LeetCode #1203: Sort Items by Groups Respecting Dependencies -- the six arms
+// against the statement read literally and six more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_topo_sort(nodes: i64, edges: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut indegree = Vec.filled(nodes, 0);
+    for out in edges.iter() {
+        for v in out.iter() {
+            indegree[v] += 1;
+        }
+    }
+    let mut order: Vec[i64] = (0..nodes).filter(|v| indegree[v] == 0).collect();
+    let mut head = 0;
+    while head < order.len() {
+        let u = order[head];
+        head += 1;
+        for v in edges[u].iter() {
+            indegree[v] -= 1;
+            if indegree[v] == 0 {
+                order.push(v);
+            }
+        }
+    }
+    if order.len() == nodes { order } else { Vec.new() }
+}
+
+fn a0_sort_items(n: i64, m: i64, group: Vec[i64], before_items: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut group = group.clone();
+    let mut groups = m;
+    for i in 0..n {
+        if group[i] < 0 {
+            group[i] = groups;
+            groups += 1;
+        }
+    }
+    let mut item_edges: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    let mut group_edges: Vec[Vec[i64]] = Vec.filled(groups, Vec.new());
+    for i in 0..n {
+        for b in before_items[i].iter() {
+            item_edges[b].push(i);
+            if group[b] != group[i] {
+                group_edges[group[b]].push(group[i]);
+            }
+        }
+    }
+    let items = a0_topo_sort(n, item_edges);
+    let ranks = a0_topo_sort(groups, group_edges);
+    if items.is_empty() or ranks.is_empty() {
+        return Vec.new();
+    }
+    let mut members: Vec[Vec[i64]] = Vec.filled(groups, Vec.new());
+    for i in items.iter() {
+        members[group[i]].push(i);
+    }
+    let mut out = Vec.new();
+    for g in ranks.iter() {
+        out.extend_from_slice(members[g]);
+    }
+    out
+}
+
+// ---- arm 1: dfs ---------------------------------------------------------
+fn a1_visit(u: i64, edges: Vec[Vec[i64]], colour: mut ref Vec[i64], finished: mut ref Vec[i64]) -> bool {
+    colour[u] = 1;
+    for v in edges[u].iter() {
+        if colour[v] == 1 {
+            return false;
+        }
+        if colour[v] == 0 and not a1_visit(v, edges, mut colour, mut finished) {
+            return false;
+        }
+    }
+    colour[u] = 2;
+    finished.push(u);
+    true
+}
+
+fn a1_topo_sort(nodes: i64, edges: Vec[Vec[i64]]) -> Option[Vec[i64]] {
+    let mut colour = Vec.filled(nodes, 0);
+    let mut finished = Vec.new();
+    for u in 0..nodes {
+        if colour[u] == 0 and not a1_visit(u, edges, mut colour, mut finished) {
+            return None;
+        }
+    }
+    finished.reverse();
+    Some(finished)
+}
+
+fn a1_sort_items(n: i64, m: i64, group: Vec[i64], before_items: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut owner = Vec.new();
+    let mut groups = m;
+    for g in group.iter() {
+        if g >= 0 {
+            owner.push(g);
+        } else {
+            owner.push(groups);
+            groups += 1;
+        }
+    }
+    let mut item_edges: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    let mut group_edges: Vec[Vec[i64]] = Vec.filled(groups, Vec.new());
+    for i in 0..n {
+        for b in before_items[i].iter() {
+            item_edges[b].push(i);
+            if owner[b] != owner[i] {
+                group_edges[owner[b]].push(owner[i]);
+            }
+        }
+    }
+    let Some(items) = a1_topo_sort(n, item_edges) else {
+        return Vec.new();
+    };
+    let Some(ranks) = a1_topo_sort(groups, group_edges) else {
+        return Vec.new();
+    };
+    let mut members: Vec[Vec[i64]] = Vec.filled(groups, Vec.new());
+    for i in items.iter() {
+        members[owner[i]].push(i);
+    }
+    let mut out = Vec.new();
+    for g in ranks.iter() {
+        for i in members[g].iter() {
+            out.push(i);
+        }
+    }
+    out
+}
+
+// ---- arm 2: lifo --------------------------------------------------------
+fn a2_sort_items(n: i64, m: i64, group: Vec[i64], before_items: Vec[Vec[i64]]) -> Vec[i64] {
+    // Nodes: the items 0..n, gate in n + g, gate out n + m + g.
+    let total = n + 2 * m;
+    let mut edges: Vec[Vec[i64]] = Vec.filled(total, Vec.new());
+    let gate_in = |i: i64| if group[i] >= 0 { n + group[i] } else { i };
+    let gate_out = |i: i64| if group[i] >= 0 { n + m + group[i] } else { i };
+    for i in 0..n {
+        if group[i] >= 0 {
+            edges[n + group[i]].push(i);
+            edges[i].push(n + m + group[i]);
+        }
+    }
+    for i in 0..n {
+        for b in before_items[i].iter() {
+            if group[b] >= 0 and group[b] == group[i] {
+                edges[b].push(i);
+            } else {
+                edges[gate_out(b)].push(gate_in(i));
+            }
+        }
+    }
+    let mut indegree = Vec.filled(total, 0);
+    for out in edges.iter() {
+        for v in out.iter() {
+            indegree[v] += 1;
+        }
+    }
+    let mut stack: Vec[i64] = (0..total).filter(|v| indegree[v] == 0).collect();
+    stack.reverse();
+    let mut order = Vec.new();
+    let mut taken = 0;
+    while let Some(u) = stack.pop() {
+        taken += 1;
+        if u < n {
+            order.push(u);
+        }
+        for v in edges[u].iter() {
+            indegree[v] -= 1;
+            if indegree[v] == 0 {
+                stack.push(v);
+            }
+        }
+    }
+    if taken == total { order } else { Vec.new() }
+}
+
+// ---- arm 3: heap --------------------------------------------------------
+fn a3_least_order(nodes: i64, edges: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut indegree = Vec.filled(nodes, 0);
+    for out in edges.iter() {
+        for v in out.iter() {
+            indegree[v] += 1;
+        }
+    }
+    let mut ready = PriorityQueue.new();
+    for v in 0..nodes {
+        if indegree[v] == 0 {
+            ready.push(v);
+        }
+    }
+    let mut order = Vec.with_capacity(nodes);
+    while let Some(u) = ready.pop() {
+        order.push(u);
+        for v in edges[u].iter() {
+            indegree[v] -= 1;
+            if indegree[v] == 0 {
+                ready.push(v);
+            }
+        }
+    }
+    order
+}
+
+fn a3_sort_items(n: i64, m: i64, group: Vec[i64], before_items: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut owner = group.clone();
+    let mut groups = m;
+    for i in 0..n {
+        if owner[i] < 0 {
+            owner[i] = groups;
+            groups += 1;
+        }
+    }
+    let mut item_edges: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    let mut group_edges: Vec[Vec[i64]] = Vec.filled(groups, Vec.new());
+    for i in 0..n {
+        for b in before_items[i].iter() {
+            item_edges[b].push(i);
+            if owner[b] != owner[i] {
+                group_edges[owner[b]].push(owner[i]);
+            }
+        }
+    }
+    let items = a3_least_order(n, item_edges);
+    let ranks = a3_least_order(groups, group_edges);
+    if items.len() < n or ranks.len() < groups {
+        return Vec.new();
+    }
+    let mut members: Vec[Vec[i64]] = Vec.filled(groups, Vec.new());
+    for i in items.iter() {
+        members[owner[i]].push(i);
+    }
+    ranks.iter().flat_map(|g| members[g].iter()).collect()
+}
+
+// ---- arm 4: solution ----------------------------------------------------
+struct A4Solution {}
+
+fn a4_topo(graph: Vec[Vec[i64]], indeg: mut ref Vec[i32]) -> Option[Vec[i64]] {
+    let mut q: VecDeque[i64] = (0..graph.len()).filter(|i| indeg[i] == 0).collect();
+    let mut res = Vec.with_capacity(graph.len());
+    while let Some(u) = q.pop_front() {
+        res.push(u);
+        for v in ref graph[u] {
+            indeg[v] -= 1;
+            if indeg[v] == 0 {
+                q.push_back(v);
+            }
+        }
+    }
+    if res.len() == graph.len() {
+        Some(res)
+    } else {
+        None
+    }
+}
+
+impl A4Solution {
+    pub fn sort_items(n: i32, m: i32, group: own Vec[i32], before_items: Vec[Vec[i32]]) -> Vec[i32] {
+        let n = n as i64;
+        let mut group = group;
+        let mut m = m;
+        for g in group.iter_mut() {
+            if *g == -1 {
+                *g = m;
+                m += 1;
+            }
+        }
+        let m = m as i64;
+        let mut group_graph: Vec[Vec[i64]] = Vec.filled(m, Vec.new());
+        let mut item_graph: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+        let mut group_in = Vec.filled(m, 0);
+        let mut item_in = Vec.filled(n, 0);
+        for i in 0..n {
+            for b in ref before_items[i] {
+                let b = b as i64;
+                item_graph[b].push(i);
+                item_in[i] += 1;
+                let (gb, gi) = (group[b] as i64, group[i] as i64);
+                if gb != gi {
+                    group_graph[gb].push(gi);
+                    group_in[gi] += 1;
+                }
+            }
+        }
+        let group_order = match a4_topo(group_graph, mut group_in) {
+            Some(o) => o,
+            None => return Vec.new(),
+        };
+        let item_order = match a4_topo(item_graph, mut item_in) {
+            Some(o) => o,
+            None => return Vec.new(),
+        };
+        let mut buckets: Vec[Vec[i32]] = Vec.filled(m, Vec.new());
+        for i in item_order {
+            buckets[group[i]].push(i as i32);
+        }
+        group_order
+            .into_iter()
+            .flat_map(|g| take(mut buckets[g]).into_iter())
+            .collect()
+    }
+}
+
+fn a4_sort_items(n: i64, m: i64, group: Vec[i64], before_items: Vec[Vec[i64]]) -> Vec[i64] {
+    let group: Vec[i32] = group.iter().map(|g| g as i32).collect();
+    let before_items: Vec[Vec[i32]] = before_items.iter().map(|b| b.iter().map(|v| v as i32).collect()).collect();
+    A4Solution.sort_items(n as i32, m as i32, group, before_items).iter().map(|v| v as i64).collect()
+}
+
+// ---- arm 5: methods -----------------------------------------------------
+struct A5Solution {}
+
+fn a5_dfs(u: i32, adj: Map[i32, Vec[i32]], state: mut ref Map[i32, u8], out: mut ref Vec[i32]) -> bool {
+    match state.get(u) {
+        Some(1) => return false,
+        Some(2) => return true,
+        _ => {}
+    }
+    state.insert(u, 1);
+    if let Some(vs) = adj.get(u) {
+        for v in vs {
+            if not a5_dfs(v, adj, mut state, mut out) {
+                return false;
+            }
+        }
+    }
+    state.insert(u, 2);
+    out.push(u);
+    true
+}
+
+impl A5Solution {
+    pub fn sort_items(n: i32, m: i32, group: own Vec[i32], before_items: Vec[Vec[i32]]) -> Vec[i32] {
+        let mut group = group;
+        let mut next = m;
+        for i in 0..n as usize {
+            if group[i] < 0 {
+                group[i] = next;
+                next += 1;
+            }
+        }
+        let mut item_adj: Map[i32, Vec[i32]] = Map.new();
+        let mut group_adj: Map[i32, Vec[i32]] = Map.new();
+        for (i, before) in before_items.iter().enumerate() {
+            let i = i as i32;
+            for b in before {
+                item_adj.entry(b).or_insert_with(Vec.new).push(i);
+                let (gb, gi) = (group[b as usize], group[i as usize]);
+                if gb != gi {
+                    group_adj.entry(gb).or_insert_with(Vec.new).push(gi);
+                }
+            }
+        }
+        let mut items = Vec.new();
+        let mut state = Map.new();
+        for i in 0..n {
+            if not a5_dfs(i, item_adj, mut state, mut items) {
+                return Vec.new();
+            }
+        }
+        items.reverse();
+        let mut groups = Vec.new();
+        let mut group_state = Map.new();
+        for g in 0..next {
+            if not a5_dfs(g, group_adj, mut group_state, mut groups) {
+                return Vec.new();
+            }
+        }
+        groups.reverse();
+        let mut members: Map[i32, Vec[i32]] = Map.new();
+        for i in ref items {
+            members.entry(group[i as usize]).or_insert(Vec.new()).push(i);
+        }
+        let mut res = Vec.new();
+        for g in groups {
+            if let Some(v) = members.remove(g) {
+                res.extend(v);
+            }
+        }
+        res
+    }
+}
+
+fn a5_sort_items(n: i64, m: i64, group: Vec[i64], before_items: Vec[Vec[i64]]) -> Vec[i64] {
+    let group: Vec[i32] = group.iter().map(|g| g as i32).collect();
+    let before_items: Vec[Vec[i32]] = before_items.iter().map(|b| b.iter().map(|v| v as i32).collect()).collect();
+    A5Solution.sort_items(n as i32, m as i32, group, before_items).iter().map(|v| v as i64).collect()
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// Every item once, and each group's items side by side.
+fn side_by_side(n: i64, group: Vec[i64], order: Vec[i64]) -> bool {
+    if order.len() != n {
+        return false;
+    }
+    let mut seen = Vec.filled(n, false);
+    for i in order.iter() {
+        if i < 0 or i >= n or seen[i] {
+            return false;
+        }
+        seen[i] = true;
+    }
+    let mut closed: Set[i64] = Set.new();
+    for k in 1..n {
+        let prev = group[order[k - 1]];
+        let g = group[order[k]];
+        if prev != g {
+            if g >= 0 and closed.contains(g) {
+                return false;
+            }
+            closed.insert(prev);
+        }
+    }
+    true
+}
+
+// Every item after the items it must follow.
+fn in_dependency_order(n: i64, before_items: Vec[Vec[i64]], order: Vec[i64]) -> bool {
+    if order.len() != n or order.iter().any(|i| i < 0 or i >= n) {
+        return false;
+    }
+    let mut at = Vec.filled(n, 0);
+    for k in 0..n {
+        at[order[k]] = k;
+    }
+    (0..n).all(|i| before_items[i].iter().all(|b| at[b] < at[i]))
+}
+
+// Whether some order of the items is an answer: every order tried, each
+// checked against the statement.
+fn some_order(
+    n: i64,
+    group: Vec[i64],
+    before_items: Vec[Vec[i64]],
+    order: mut ref Vec[i64],
+    used: mut ref Vec[bool],
+) -> bool {
+    if order.len() == n {
+        return side_by_side(n, group, order) and in_dependency_order(n, before_items, order);
+    }
+    for i in 0..n {
+        if not used[i] {
+            used[i] = true;
+            order.push(i);
+            if some_order(n, group, before_items, mut order, mut used) {
+                return true;
+            }
+            order.pop();
+            used[i] = false;
+        }
+    }
+    false
+}
+
+fn literal(n: i64, group: Vec[i64], before_items: Vec[Vec[i64]]) -> bool {
+    let mut order = Vec.new();
+    let mut used = Vec.filled(n, false);
+    some_order(n, group, before_items, mut order, mut used)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(n: i64, m: i64, group: Vec[i64], before_items: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    [
+        a0_sort_items(n, m, group, before_items),
+        a1_sort_items(n, m, group, before_items),
+        a2_sort_items(n, m, group, before_items),
+        a3_sort_items(n, m, group, before_items),
+        a4_sort_items(n, m, group, before_items),
+        a5_sort_items(n, m, group, before_items),
+    ]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["the statement read literally", "every item once, each group's items side by side", "every item after the items it must follow", "the items numbered the other way round give an answer just when the items do", "the groups numbered the other way round give an answer just when they do", "one more dependency never makes an answer where there was none", "the ★ arm gives an answer"];
+    let mut fails = Vec.filled(7, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1203;
+    for _ in 0..2000 {
+        // 1 to 6 items in up to as many groups; each item after up to two others
+        let n = next_random(mut seed) % 6 + 1;
+        let m = next_random(mut seed) % n + 1;
+        let group: Vec[i64] = (0..n).map(|_| next_random(mut seed) % (m + 1) - 1).collect();
+        let mut before_items: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+        for i in 0..n {
+            for _ in 0..next_random(mut seed) % 3 {
+                let b = next_random(mut seed) % n;
+                if b != i and not before_items[i].contains(b) {
+                    before_items[i].push(b);
+                }
+            }
+        }
+        let mut extra = before_items.clone();
+        let i = next_random(mut seed) % n;
+        let b = next_random(mut seed) % n;
+        if b != i and not extra[i].contains(b) {
+            extra[i].push(b);
+        }
+        let got = arms(n, m, group, before_items);
+        let want = literal(n, group, before_items);
+        let turned_group: Vec[i64] = (0..n).map(|i| group[n - 1 - i]).collect();
+        let turned_before: Vec[Vec[i64]] = (0..n).map(|i| before_items[n - 1 - i].iter().map(|b| n - 1 - b).collect()).collect();
+        let turned = arms(n, m, turned_group, turned_before);
+        let regroup: Vec[i64] = group.iter().map(|g| if g < 0 { g } else { m - 1 - g }).collect();
+        let regrouped = arms(n, m, regroup, before_items);
+        let more = arms(n, m, group, extra);
+        for k in 0..6 {
+            let v = ref got[k];
+            let some = not v.is_empty();
+            let held = [
+                some == want,
+                not some or side_by_side(n, group, v),
+                not some or in_dependency_order(n, before_items, v),
+                turned[k].is_empty() != some,
+                regrouped[k].is_empty() != some,
+                some or more[k].is_empty(),
+                some == not got[0].is_empty(),
+            ];
+            for p in 0..7 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {k}: {n} {m} {group} {before_items} -> {v}");
+                    }
+                }
+            }
+        }
+        for i in got[0].iter() {
+            check = (check * 131 + i + 1) % 1000000007;
+        }
+        check = (check * 131 + if want { 7 } else { 8 }) % 1000000007;
+    }
+    for p in 0..7 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let total = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+}

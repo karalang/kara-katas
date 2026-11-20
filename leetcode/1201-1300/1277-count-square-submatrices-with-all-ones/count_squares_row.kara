@@ -1,0 +1,61 @@
+// LeetCode #1277: Count Square Submatrices with All Ones -- by one row: the
+// ★ arm's sides kept for the previous row only, the diagonal neighbour
+// saved before it is overwritten. O(n) memory
+
+fn count_squares(matrix: Vec[Vec[i64]]) -> i64 {
+    let n = matrix[0].len();
+    let mut side: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut total = 0;
+    for row in matrix.iter() {
+        let mut diagonal = 0;
+        for j in 1..(n + 1) {
+            let above = side[j];
+            side[j] = if row[j - 1] == 1 { above.min(side[j - 1]).min(diagonal) + 1 } else { 0 };
+            total += side[j];
+            diagonal = above;
+        }
+    }
+    total
+}
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// An m by n matrix, each entry 1 with chance `percent` in 100.
+fn random_matrix(m: i64, n: i64, percent: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut matrix: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..m {
+        let row: Vec[i64] = (0..n).map(|_| if next_random(mut seed) % 100 < percent { 1 } else { 0 }).collect();
+        matrix.push(row);
+    }
+    matrix
+}
+
+fn main() {
+    // LeetCode's examples
+    println(f"{count_squares([[0, 1, 1, 1], [1, 1, 1, 1], [0, 1, 1, 1]])} {count_squares([[1, 0, 1], [1, 1, 0], [1, 1, 0]])}");
+    // 2000 random matrices of 1 to 12 by 1 to 12, half, four fifths and
+    // nineteen twentieths ones
+    let mut seed = 1277;
+    let mut total = 0;
+    let mut check = 0;
+    for case in 0..2000 {
+        let m = next_random(mut seed) % 12 + 1;
+        let n = next_random(mut seed) % 12 + 1;
+        let percent = if case % 3 == 0 { 50 } else if case % 3 == 1 { 80 } else { 95 };
+        let got = count_squares(random_matrix(m, n, percent, mut seed));
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random matrices: {total} squares, checksum {check}");
+    // the constraints' top: 300 by 300 all ones and nine tenths ones, and
+    // a row and a column of 300 ones
+    let ones: Vec[Vec[i64]] = Vec.filled(300, Vec.filled(300, 1));
+    let dense = random_matrix(300, 300, 90, mut seed);
+    let row: Vec[Vec[i64]] = [Vec.filled(300, 1)];
+    let column: Vec[Vec[i64]] = Vec.filled(300, [1]);
+    println(f"{count_squares(ones)} {count_squares(dense)} {count_squares(row)} {count_squares(column)}");
+}

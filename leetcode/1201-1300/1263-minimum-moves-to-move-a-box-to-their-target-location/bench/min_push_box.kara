@@ -1,0 +1,94 @@
+// LeetCode #1263 bench, in Kāra: the ★ arm (a 0-1 BFS over (box,
+// player) states in a `VecDeque`, a step to the front and a push to the
+// back, each state final the first time it leaves) on 100 random 20 by 20
+// grids, a cell in 10 a wall, built once, 20 rounds; every answer folded
+// into a checksum.
+
+fn min_push_box(grid: Vec[Vec[char]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut player = 0;
+    let mut box_at = 0;
+    let mut target = 0;
+    for r in 0..m {
+        for c in 0..n {
+            match grid[r][c] {
+                'S' => player = r * n + c,
+                'B' => box_at = r * n + c,
+                'T' => target = r * n + c,
+                _ => {}
+            }
+        }
+    }
+    let cells = m * n;
+    let mut done = Vec.filled(cells * cells, false);
+    let mut deque: VecDeque[(i64, i64, i64)] = VecDeque.new();
+    deque.push_back((box_at, player, 0));
+    while let Some((b, p, pushes)) = deque.pop_front() {
+        if done[b * cells + p] {
+            continue;
+        }
+        done[b * cells + p] = true;
+        if b == target {
+            return pushes;
+        }
+        for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let r = p / n + dr;
+            let c = p % n + dc;
+            if r < 0 or r >= m or c < 0 or c >= n or grid[r][c] == '#' {
+                continue;
+            }
+            let q = r * n + c;
+            if q != b {
+                deque.push_front((b, q, pushes));
+                continue;
+            }
+            // The player steps into the box, which moves on the same way.
+            let br = r + dr;
+            let bc = c + dc;
+            if br >= 0 and br < m and bc >= 0 and bc < n and grid[br][bc] != '#' {
+                deque.push_back((br * n + bc, q, pushes + 1));
+            }
+        }
+    }
+    -1
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// An `m` by `n` grid, each cell a wall one time in `walls`, and the
+// player, the box and the target on three different cells.
+fn random_grid(m: i64, n: i64, walls: i64, seed: mut ref i64) -> Vec[Vec[char]] {
+    let mut grid: Vec[Vec[char]] = (0..m).map(|_| (0..n).map(|_| if next_random(mut seed) % walls == 0 { '#' } else { '.' }).collect()).collect();
+    for mark in ['S', 'B', 'T'] {
+        let mut p = next_random(mut seed) % (m * n);
+        while ['S', 'B', 'T'].contains(grid[p / n][p % n]) {
+            p = (p + 1) % (m * n);
+        }
+        grid[p / n][p % n] = mark;
+    }
+    grid
+}
+
+fn main() {
+    let mut seed = 1263;
+    let mut grids: Vec[Vec[Vec[char]]] = Vec.new();
+    for _ in 0..100 {
+        grids.push(random_grid(20, 20, 10, mut seed));
+    }
+    let mut check = 0;
+    let mut total = 0;
+    for round in 0..20 {
+        for g in 0..100 {
+            let pushes = min_push_box(grids[g]);
+            if pushes > 0 {
+                total += pushes;
+            }
+            check = (check * 131 + pushes + 1 + round) % 1000000007;
+        }
+    }
+    println(f"20 rounds of 100 grids of 20 by 20: {total} pushes, checksum {check}");
+}

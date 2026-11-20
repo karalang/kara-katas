@@ -1,0 +1,130 @@
+// LeetCode #1265: Print Immutable Linked List in Reverse -- in blocks: the
+// list cut into blocks of about sqrt(n) nodes, the first node of each
+// block kept on the way down, and the blocks printed from the last, each by
+// a stack of its own nodes. O(n) time and O(sqrt(n)) space, the second
+// follow-up.
+
+// The judge's interface: a node prints its value, and hands out the node
+// after it.
+trait ImmutableListNode {
+    fn print_value(self);
+    fn get_next(self) -> Option[dyn ImmutableListNode];
+}
+
+// The `len` nodes from `first` on, printed from the last.
+fn print_block(first: dyn ImmutableListNode, len: i64) {
+    let mut rest: Vec[dyn ImmutableListNode] = Vec.new();
+    let mut at = first.get_next();
+    while rest.len() + 1 < len {
+        let node = at.unwrap();
+        at = node.get_next();
+        rest.push(node);
+    }
+    for node in rest.iter().rev() {
+        node.print_value();
+    }
+    first.print_value();
+}
+
+fn print_linked_list_in_reverse(head: dyn ImmutableListNode) {
+    let mut n = 1;
+    let mut at = head.get_next();
+    while let Some(node) = at {
+        at = node.get_next();
+        n += 1;
+    }
+    let mut size = 1;
+    while (size + 1) * (size + 1) <= n {
+        size += 1;
+    }
+    // The first node of every block but the head's.
+    let mut starts: Vec[dyn ImmutableListNode] = Vec.new();
+    let mut place = 1;
+    at = head.get_next();
+    while let Some(node) = at {
+        at = node.get_next();
+        if place % size == 0 {
+            starts.push(node);
+        }
+        place += 1;
+    }
+    for b in (0..starts.len()).rev() {
+        let from = (b + 1) * size;
+        print_block(starts[b], size.min(n - from));
+    }
+    print_block(head, size.min(n));
+}
+
+// ---- test harness ---------------------------------------------------------
+
+// What the nodes have printed, in order.
+shared struct Printed {
+    mut values: Vec[i64],
+}
+
+// A list node, as the judge holds it: its value, its next node and where
+// it prints.
+shared struct Node {
+    val: i64,
+    next: Option[Node],
+    printed: Printed,
+}
+
+impl ImmutableListNode for Node {
+    fn print_value(self) {
+        self.printed.values.push(self.val);
+    }
+
+    fn get_next(self) -> Option[dyn ImmutableListNode] {
+        match self.next {
+            Some(n) => Some(n),
+            None => None,
+        }
+    }
+}
+
+// The list of `values`, and what its nodes print into.
+fn list(values: Vec[i64]) -> (Node, Printed) {
+    let printed = Printed { values: Vec.new() };
+    let mut head: Option[Node] = None;
+    for v in values.iter().rev() {
+        head = Some(Node { val: v, next: head, printed: printed });
+    }
+    (head.unwrap(), printed)
+}
+
+// What printing `values` in reverse prints.
+fn printed_in_reverse(values: Vec[i64]) -> Vec[i64] {
+    let (head, printed) = list(values);
+    print_linked_list_in_reverse(head);
+    printed.values.clone()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's examples
+    println(f"{printed_in_reverse([1, 2, 3, 4])}");
+    println(f"{printed_in_reverse([0, -4, -1, 3, -5])}");
+    println(f"{printed_in_reverse([-2, 0, 6, 4, 4, -6])}");
+    // 1000 random lists of 1 to 60 values from -1000 to 1000
+    let mut seed = 1265;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 60 + 1;
+        let values: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 2001 - 1000).collect();
+        let got = printed_in_reverse(values);
+        total += got.len();
+        for v in got.iter() {
+            check = (check * 131 + v + 1000) % 1000000007;
+        }
+    }
+    println(f"1000 random lists: {total} values printed, checksum {check}");
+    // the constraints' top: 1000 nodes
+    let got = printed_in_reverse((0..1000).map(|i| i * 7 % 2001 - 1000).collect());
+    println(f"1000 nodes: first {got[0]}, last {got[999]}, {got.len()} printed");
+}

@@ -1,0 +1,270 @@
+// LeetCode #1274: the differential -- the five arms against the statement
+// read literally and five more properties, on 2000 random seas.
+
+// arm 0: count_ships.kara
+fn a0_count_ships(sea: dyn Sea, top_right: Vec[i64], bottom_left: Vec[i64]) -> i64 {
+    if bottom_left[0] > top_right[0] or bottom_left[1] > top_right[1] {
+        return 0;
+    }
+    if not sea.has_ships(top_right, bottom_left) {
+        return 0;
+    }
+    if top_right == bottom_left {
+        return 1;
+    }
+    let mx = (top_right[0] + bottom_left[0]) / 2;
+    let my = (top_right[1] + bottom_left[1]) / 2;
+    a0_count_ships(sea, [mx, my], bottom_left)
+        + a0_count_ships(sea, [top_right[0], my], [mx + 1, bottom_left[1]])
+        + a0_count_ships(sea, [mx, top_right[1]], [bottom_left[0], my + 1])
+        + a0_count_ships(sea, top_right, [mx + 1, my + 1])
+}
+
+// arm 1: count_ships_halves.kara
+fn a1_count_in[S: Sea](sea: S, x0: i64, y0: i64, x1: i64, y1: i64, known: bool) -> i64 {
+    if x0 > x1 or y0 > y1 {
+        return 0;
+    }
+    if not known and not sea.has_ships([x1, y1], [x0, y0]) {
+        return 0;
+    }
+    if x0 == x1 and y0 == y1 {
+        return 1;
+    }
+    let (left, right) = if x1 - x0 >= y1 - y0 {
+        let mid = (x0 + x1) / 2;
+        (a1_count_in(sea, x0, y0, mid, y1, false), (mid + 1, y0, x1, y1))
+    } else {
+        let mid = (y0 + y1) / 2;
+        (a1_count_in(sea, x0, y0, x1, mid, false), (x0, mid + 1, x1, y1))
+    };
+    // the whole has a ship: when the first half has none, the second must
+    left + a1_count_in(sea, right.0, right.1, right.2, right.3, left == 0)
+}
+
+fn a1_count_ships[S: Sea](sea: S, top_right: Vec[i64], bottom_left: Vec[i64]) -> i64 {
+    a1_count_in(sea, bottom_left[0], bottom_left[1], top_right[0], top_right[1], false)
+}
+
+// arm 2: count_ships_stack.kara
+fn a2_count_ships(sea: dyn Sea, top_right: Vec[i64], bottom_left: Vec[i64]) -> i64 {
+    let mut todo: Vec[(i64, i64, i64, i64)] = [(bottom_left[0], bottom_left[1], top_right[0], top_right[1])];
+    let mut ships = 0;
+    while let Some((x0, y0, x1, y1)) = todo.pop() {
+        if x0 > x1 or y0 > y1 or not sea.has_ships([x1, y1], [x0, y0]) {
+            continue;
+        }
+        if x0 == x1 and y0 == y1 {
+            ships += 1;
+            continue;
+        }
+        let mx = (x0 + x1) / 2;
+        let my = (y0 + y1) / 2;
+        todo.push((x0, y0, mx, my));
+        todo.push((mx + 1, y0, x1, my));
+        todo.push((x0, my + 1, mx, y1));
+        todo.push((mx + 1, my + 1, x1, y1));
+    }
+    ships
+}
+
+// arm 3: count_ships_rect.kara
+struct A3Rect {
+    x0: i64,
+    y0: i64,
+    x1: i64,
+    y1: i64,
+}
+
+impl A3Rect {
+    fn is_empty(self) -> bool {
+        self.x0 > self.x1 or self.y0 > self.y1
+    }
+
+    fn is_point(self) -> bool {
+        self.x0 == self.x1 and self.y0 == self.y1
+    }
+
+    fn quarters(self) -> Vec[A3Rect] {
+        let mx = (self.x0 + self.x1) / 2;
+        let my = (self.y0 + self.y1) / 2;
+        [
+            A3Rect { x0: self.x0, y0: self.y0, x1: mx, y1: my },
+            A3Rect { x0: mx + 1, y0: self.y0, x1: self.x1, y1: my },
+            A3Rect { x0: self.x0, y0: my + 1, x1: mx, y1: self.y1 },
+            A3Rect { x0: mx + 1, y0: my + 1, x1: self.x1, y1: self.y1 },
+        ]
+    }
+
+    fn ships(self, sea: dyn Sea) -> i64 {
+        if self.is_empty() or not sea.has_ships([self.x1, self.y1], [self.x0, self.y0]) {
+            return 0;
+        }
+        if self.is_point() {
+            return 1;
+        }
+        self.quarters().iter().map(|q| q.ships(sea)).sum()
+    }
+}
+
+fn a3_count_ships(sea: dyn Sea, top_right: Vec[i64], bottom_left: Vec[i64]) -> i64 {
+    A3Rect { x0: bottom_left[0], y0: bottom_left[1], x1: top_right[0], y1: top_right[1] }.ships(sea)
+}
+
+// arm 4: count_ships_solution.kara
+impl A4Solution {
+    pub fn count_ships(sea: dyn Sea, top_right: Vec[i64], bottom_left: Vec[i64]) -> i64 {
+        if bottom_left[0] > top_right[0] or bottom_left[1] > top_right[1] {
+            return 0;
+        }
+        if not sea.has_ships(top_right.clone(), bottom_left.clone()) {
+            return 0;
+        }
+        if top_right == bottom_left {
+            return 1;
+        }
+        let mx = (top_right[0] + bottom_left[0]) / 2;
+        let my = (top_right[1] + bottom_left[1]) / 2;
+        A4Solution.count_ships(sea, [mx, my], bottom_left)
+            + A4Solution.count_ships(sea, [top_right[0], my], [mx + 1, bottom_left[1]])
+            + A4Solution.count_ships(sea, [mx, top_right[1]], [bottom_left[0], my + 1])
+            + A4Solution.count_ships(sea, top_right, [mx + 1, my + 1])
+    }
+}
+
+struct A4Solution {}
+
+fn a4_count_ships(sea: dyn Sea, top_right: Vec[i64], bottom_left: Vec[i64]) -> i64 {
+    A4Solution.count_ships(sea, top_right, bottom_left)
+}
+
+// The judge's interface: whether any ship lies in the rectangle from
+// `bottom_left` to `top_right`, both corners included.
+trait Sea {
+    fn has_ships(self, top_right: Vec[i64], bottom_left: Vec[i64]) -> bool;
+}
+
+shared struct Tally {
+    calls: i64,
+}
+
+// The harness's sea: its ships, and a count of the questions asked.
+struct Ocean {
+    ships: Vec[(i64, i64)],
+    tally: Tally,
+}
+
+impl Sea for Ocean {
+    fn has_ships(self, top_right: Vec[i64], bottom_left: Vec[i64]) -> bool {
+        self.tally.calls += 1;
+        self.ships.iter().any(|(x, y)| bottom_left[0] <= x and x <= top_right[0] and bottom_left[1] <= y and y <= top_right[1])
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// Up to `inside` ships in the rectangle and up to `outside` more anywhere
+// in the sea, never two on a point.
+fn random_ships(top_right: Vec[i64], bottom_left: Vec[i64], inside: i64, outside: i64, seed: mut ref i64) -> Vec[(i64, i64)] {
+    let mut ships: Vec[(i64, i64)] = Vec.new();
+    let w = top_right[0] - bottom_left[0] + 1;
+    let h = top_right[1] - bottom_left[1] + 1;
+    for _ in 0..inside {
+        let p = (bottom_left[0] + next_random(mut seed) % w, bottom_left[1] + next_random(mut seed) % h);
+        if not ships.contains(p) {
+            ships.push(p);
+        }
+    }
+    for _ in 0..outside {
+        let p = (next_random(mut seed) % 1001, next_random(mut seed) % 1001);
+        let inside_it = bottom_left[0] <= p.0 and p.0 <= top_right[0] and bottom_left[1] <= p.1 and p.1 <= top_right[1];
+        if not inside_it and not ships.contains(p) {
+            ships.push(p);
+        }
+    }
+    ships
+}
+
+// ---- the differential ------------------------------------------------------
+
+fn arm(k: i64, ships: Vec[(i64, i64)], top_right: Vec[i64], bottom_left: Vec[i64]) -> (i64, bool) {
+    let tally = Tally { calls: 0 };
+    let sea = Ocean { ships: ships.clone(), tally: tally };
+    let n = match k {
+        0 => a0_count_ships(sea, top_right, bottom_left),
+        1 => a1_count_ships(sea, top_right, bottom_left),
+        2 => a2_count_ships(sea, top_right, bottom_left),
+        3 => a3_count_ships(sea, top_right, bottom_left),
+        _ => a4_count_ships(sea, top_right, bottom_left),
+    };
+    (n, tally.calls <= 400)
+}
+
+// The statement read literally: the ships whose point lies in the
+// rectangle, its boundary included, counted one by one.
+fn literal(ships: Vec[(i64, i64)], top_right: Vec[i64], bottom_left: Vec[i64]) -> i64 {
+    ships.iter().filter(|(x, y)| bottom_left[0] <= x and x <= top_right[0] and bottom_left[1] <= y and y <= top_right[1]).count()
+}
+
+fn main() {
+    let mut seed = 12740;
+    let mut fails: Array[i64, 6] = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for case in 0..2000 {
+        // a third of the rectangles small, so ships crowd and touch the edges
+        let span = if case % 3 == 0 { 12 } else { 1001 };
+        let x0 = next_random(mut seed) % 1001;
+        let y0 = next_random(mut seed) % 1001;
+        let x1 = x0 + next_random(mut seed) % (1001 - x0).min(span);
+        let y1 = y0 + next_random(mut seed) % (1001 - y0).min(span);
+        let (tr, bl) = ([x1, y1], [x0, y0]);
+        let ships = random_ships(tr, bl, next_random(mut seed) % 11, 10, mut seed);
+        let want = literal(ships, tr, bl);
+        let more = random_ships(tr, bl, 0, 30, mut seed);
+        let mut crowded = ships.clone();
+        for p in more.iter() {
+            if not crowded.contains(p) {
+                crowded.push(p);
+            }
+        }
+        let mirrored: Vec[(i64, i64)] = ships.iter().map(|(x, y)| (1000 - x, y)).collect();
+        let cut = x0 + next_random(mut seed) % (x1 - x0 + 1);
+        let star = arm(0, ships, tr, bl).0;
+        check = (check * 131 + star) % 1000000007;
+        for k in 0..5 {
+            let (got, within) = arm(k, ships, tr, bl);
+            if got != want {
+                fails[0] += 1;
+            }
+            if not within {
+                fails[1] += 1;
+            }
+            if arm(k, crowded, tr, bl).0 != got {
+                fails[2] += 1;
+            }
+            if arm(k, mirrored, [1000 - x0, y1], [1000 - x1, y0]).0 != got {
+                fails[3] += 1;
+            }
+            // cut in two at a column, the halves' counts add up
+            if arm(k, ships, [cut, y1], bl).0 + arm(k, ships, tr, [cut + 1, y0]).0 != got {
+                fails[4] += 1;
+            }
+            if got != star {
+                fails[5] += 1;
+            }
+            checks += 6;
+        }
+    }
+    let mut total = 0;
+    for p in 0..6 {
+        if fails[p] > 0 {
+            print(f"P{p + 1}: {fails[p]} failures ");
+        }
+        total += fails[p];
+    }
+    println(f"2000 seas: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

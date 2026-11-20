@@ -1,0 +1,116 @@
+// LeetCode #1261: Find Elements in a Contaminated Binary Tree -- a Rust
+// solution as LeetCode's Rust users write it, carried to Kāra by
+// `karac fix`.
+
+shared struct TreeNode {
+    mut val: i64,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+struct FindElements {
+    seen: Set[i32],
+}
+
+fn dfs(node: Option[TreeNode], val: i32, seen: mut ref Set[i32]) {
+    if let Some(n) = node {
+        n.val = val;
+        seen.insert(val);
+        dfs(n.left, 2 * val + 1, mut seen);
+        dfs(n.right, 2 * val + 2, mut seen);
+    }
+}
+
+impl FindElements {
+    fn new(root: Option[TreeNode]) -> Self {
+        let mut seen = Set.new();
+        dfs(root, 0, mut seen);
+        FindElements { seen }
+    }
+
+    fn find(self, target: i32) -> bool {
+        self.seen.contains(target)
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// The contaminated tree with a node at each heap place in `present`: the
+// root at 0 and the children of place `p` at `2p + 1` and `2p + 2`, every
+// value -1.
+fn build(present: SortedSet[i64], at: i64) -> Option[TreeNode] {
+    if not present.contains(at) {
+        return None;
+    }
+    Some(TreeNode { val: -1, left: build(present, 2 * at + 1), right: build(present, 2 * at + 2) })
+}
+
+// `n` heap places grown from the root, each a free child of a random
+// place already there, at most 20 levels below the root.
+fn random_places(n: i64, seed: mut ref i64) -> SortedSet[i64] {
+    let mut places: Vec[i64] = [0];
+    let mut present: SortedSet[i64] = SortedSet.new();
+    present.insert(0);
+    while places.len() < n {
+        let p = places[next_random(mut seed) % places.len()];
+        let child = 2 * p + 1 + next_random(mut seed) % 2;
+        if child < 2097151 and not present.contains(child) {
+            present.insert(child);
+            places.push(child);
+        }
+    }
+    present
+}
+
+fn main() {
+    // LeetCode's three examples; the targets are handed over as LeetCode's
+    // `i32`
+    let one = FindElements.new(Some(TreeNode { val: -1, left: None, right: Some(TreeNode { val: -1, left: None, right: None }) }));
+    println(f"{one.find(1)} {one.find(2)}");
+    let two = FindElements.new(build([0, 1, 2, 3, 4].into_iter().collect(), 0));
+    println(f"{two.find(1)} {two.find(3)} {two.find(5)}");
+    let three = FindElements.new(build([0, 2, 5, 11].into_iter().collect(), 0));
+    println(f"{three.find(2)} {three.find(3)} {three.find(4)} {three.find(5)}");
+    // 300 random trees of 1 to 300 nodes, 100 targets each, half of them
+    // places in the tree and half from 0 to 10^6
+    let mut seed = 1261;
+    let mut found = 0;
+    let mut check = 0;
+    for _ in 0..300 {
+        let n = next_random(mut seed) % 300 + 1;
+        let present = random_places(n, mut seed);
+        let places: Vec[i64] = present.iter().cloned().collect();
+        let tree = FindElements.new(build(present, 0));
+        for q in 0..100 {
+            let target = if q % 2 == 0 { places[next_random(mut seed) % places.len()] % 1000001 } else { next_random(mut seed) * 32 % 1000001 };
+            if tree.find(target as i32) {
+                found += 1;
+                check = (check * 131 + target) % 1000000007;
+            }
+        }
+    }
+    println(f"30000 targets: {found} found, checksum {check}");
+    // the constraints' top: 10^4 nodes as a full heap, and a path of 20
+    // levels zigzagging down, each asked of 0 to 10^4 and 10^6
+    let mut full: SortedSet[i64] = SortedSet.new();
+    for p in 0..10000 {
+        full.insert(p);
+    }
+    let heap = FindElements.new(build(full, 0));
+    let hits = (0..=10000).filter(|t| heap.find(t as i32)).count();
+    let mut zig: SortedSet[i64] = SortedSet.new();
+    let mut p = 0;
+    zig.insert(0);
+    for level in 0..20 {
+        p = 2 * p + 1 + level % 2;
+        zig.insert(p);
+    }
+    let path = FindElements.new(build(zig, 0));
+    let on_path = (0..=1000000).filter(|t| path.find(t as i32)).count();
+    println(f"heap of 10000: {hits} of 0 to 10000, {heap.find(10000)}; zigzag: {on_path} up to 10^6, {path.find(p as i32)}");
+}

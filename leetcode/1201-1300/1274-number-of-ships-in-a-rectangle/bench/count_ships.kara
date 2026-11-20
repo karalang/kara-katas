@@ -1,0 +1,75 @@
+// LeetCode #1274 bench, in Kāra: the ★ arm (divide and conquer by
+// quarters through the sea's interface) on 500 random seas of 10 ships in
+// the whole 1001-by-1001 square and 10 more in a corner, drawn once, 30
+// rounds; every count, and the number of questions asked, folded into a
+// checksum.
+
+trait Sea {
+    fn has_ships(self, top_right: Vec[i64], bottom_left: Vec[i64]) -> bool;
+}
+
+shared struct Tally {
+    calls: i64,
+}
+
+struct Ocean {
+    ships: Vec[(i64, i64)],
+    tally: Tally,
+}
+
+impl Sea for Ocean {
+    fn has_ships(self, top_right: Vec[i64], bottom_left: Vec[i64]) -> bool {
+        self.tally.calls += 1;
+        self.ships.iter().any(|(x, y)| bottom_left[0] <= x and x <= top_right[0] and bottom_left[1] <= y and y <= top_right[1])
+    }
+}
+
+fn count_ships(sea: dyn Sea, top_right: Vec[i64], bottom_left: Vec[i64]) -> i64 {
+    if bottom_left[0] > top_right[0] or bottom_left[1] > top_right[1] {
+        return 0;
+    }
+    if not sea.has_ships(top_right, bottom_left) {
+        return 0;
+    }
+    if top_right == bottom_left {
+        return 1;
+    }
+    let mx = (top_right[0] + bottom_left[0]) / 2;
+    let my = (top_right[1] + bottom_left[1]) / 2;
+    count_ships(sea, [mx, my], bottom_left)
+        + count_ships(sea, [top_right[0], my], [mx + 1, bottom_left[1]])
+        + count_ships(sea, [mx, top_right[1]], [bottom_left[0], my + 1])
+        + count_ships(sea, top_right, [mx + 1, my + 1])
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1274;
+    let mut seas: Vec[Vec[(i64, i64)]] = Vec.new();
+    for _ in 0..500 {
+        let mut ships: Vec[(i64, i64)] = Vec.new();
+        for i in 0..20 {
+            let span = if i < 10 { 1001 } else { 30 };
+            let p = (next_random(mut seed) % span, next_random(mut seed) % span);
+            if not ships.contains(p) {
+                ships.push(p);
+            }
+        }
+        seas.push(ships);
+    }
+    let mut check = 0;
+    for round in 0..30 {
+        for ships in seas.iter() {
+            let tally = Tally { calls: 0 };
+            let sea = Ocean { ships: ships.clone(), tally: tally };
+            let n = count_ships(sea, [1000, 1000], [0, 0]);
+            check = (check * 131 + n + round) % 1000000007;
+            check = (check * 131 + tally.calls) % 1000000007;
+        }
+    }
+    println(f"30 rounds of 500 seas: checksum {check}");
+}

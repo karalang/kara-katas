@@ -1,0 +1,244 @@
+// LeetCode #1282: the differential -- the five arms against the statement
+// read literally and five more properties, on 2000 random problems.
+
+// arm 0: group_the_people.kara
+fn a0_group_the_people(group_sizes: Vec[i64]) -> Vec[Vec[i64]] {
+    let n = group_sizes.len();
+    let mut open: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..(n + 1) {
+        open.push(Vec.new());
+    }
+    let mut groups: Vec[Vec[i64]] = Vec.new();
+    for (person, size) in group_sizes.iter().enumerate() {
+        open[*size].push(person);
+        if open[*size].len() == *size {
+            groups.push(open[*size].clone());
+            open[*size].clear();
+        }
+    }
+    groups
+}
+
+// arm 1: group_the_people_map.kara
+fn a1_group_the_people(group_sizes: Vec[i64]) -> Vec[Vec[i64]] {
+    let mut by_size: Map[i64, Vec[i64]] = Map.new();
+    for (person, size) in group_sizes.iter().enumerate() {
+        by_size.entry(*size).or_insert(Vec.new()).push(person);
+    }
+    let mut groups: Vec[Vec[i64]] = Vec.new();
+    for (size, people) in by_size.iter() {
+        for chunk in people.chunks(*size) {
+            groups.push(chunk.to_vec());
+        }
+    }
+    groups
+}
+
+// arm 2: group_the_people_sort.kara
+fn a2_group_the_people(group_sizes: Vec[i64]) -> Vec[Vec[i64]] {
+    let mut order: Vec[i64] = (0..group_sizes.len()).collect();
+    order.sort_by_key(|p| (group_sizes[p], p));
+    let mut groups: Vec[Vec[i64]] = Vec.new();
+    let mut at = 0;
+    while at < order.len() {
+        let size = group_sizes[order[at]];
+        groups.push(order[at..at + size].to_vec());
+        at += size;
+    }
+    groups
+}
+
+// arm 3: group_the_people_labels.kara
+fn a3_group_the_people(group_sizes: Vec[i64]) -> Vec[Vec[i64]] {
+    let n = group_sizes.len();
+    let mut open: Vec[Option[i64]] = Vec.filled(n + 1, None);
+    let mut members: Vec[i64] = Vec.new();
+    let mut label: Vec[i64] = Vec.filled(n, 0);
+    for person in 0..n {
+        let size = group_sizes[person];
+        let id = match open[size] {
+            Some(id) => id,
+            None => {
+                members.push(0);
+                open[size] = Some(members.len() - 1);
+                members.len() - 1
+            }
+        };
+        label[person] = id;
+        members[id] += 1;
+        if members[id] == size {
+            open[size] = None;
+        }
+    }
+    let mut groups: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..members.len() {
+        groups.push(Vec.new());
+    }
+    for person in 0..n {
+        groups[label[person]].push(person);
+    }
+    groups
+}
+
+// arm 4: group_the_people_solution.kara
+impl A4Solution {
+    pub fn group_the_people(group_sizes: Vec[i32]) -> Vec[Vec[i32]] {
+        let mut map: Map[i32, Vec[i32]] = Map.new();
+        let mut res = Vec.new();
+        for (i, s) in group_sizes.iter().enumerate() {
+            let e = map.entry(s).or_insert(Vec.new());
+            e.push(i as i32);
+            if e.len() == s as i64 {
+                res.push(take(mut e));
+            }
+        }
+        res
+    }
+}
+
+struct A4Solution {}
+
+fn a4_group_the_people(group_sizes: Vec[i64]) -> Vec[Vec[i64]] {
+    let sizes: Vec[i32] = group_sizes.iter().map(|s| *s as i32).collect();
+    A4Solution.group_the_people(sizes).iter().map(|g| g.iter().map(|p| *p as i64).collect()).collect()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// ---- the differential ------------------------------------------------------
+
+fn arm(k: i64, sizes: Vec[i64]) -> Vec[Vec[i64]] {
+    match k {
+        0 => a0_group_the_people(sizes),
+        1 => a1_group_the_people(sizes),
+        2 => a2_group_the_people(sizes),
+        3 => a3_group_the_people(sizes),
+        _ => a4_group_the_people(sizes),
+    }
+}
+
+// The statement read literally: every person is found in exactly one
+// group, and that group has as many people as the person was given.
+fn literal(sizes: Vec[i64], groups: Vec[Vec[i64]]) -> bool {
+    for person in 0..sizes.len() {
+        let mut found = 0;
+        let mut size = 0;
+        for g in groups.iter() {
+            for p in g.iter() {
+                if *p == person {
+                    found += 1;
+                    size = g.len();
+                }
+            }
+        }
+        if found != 1 or size != sizes[person] {
+            return false;
+        }
+    }
+    let mut total = 0;
+    for g in groups.iter() {
+        total += g.len();
+    }
+    total == sizes.len()
+}
+
+fn canonical(groups: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    for g in groups.iter() {
+        let mut c = g.clone();
+        c.sort();
+        out.push(c);
+    }
+    out.sort();
+    out
+}
+
+fn problem(seed: mut ref i64, most: i64) -> Vec[i64] {
+    let n = next_random(mut *seed) % most + 1;
+    let mut sizes: Vec[i64] = Vec.new();
+    while sizes.len() < n {
+        let left = n - sizes.len();
+        let cap = if next_random(mut *seed) % 4 == 0 { left } else { left.min(5) };
+        let s = next_random(mut *seed) % cap + 1;
+        for _ in 0..s {
+            sizes.push(s);
+        }
+    }
+    let mut i = n - 1;
+    while i > 0 {
+        let j = next_random(mut *seed) % (i + 1);
+        sizes.swap(i, j);
+        i -= 1;
+    }
+    sizes
+}
+
+fn main() {
+    let mut seed = 12820;
+    let mut fails: Array[i64, 6] = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let sizes = problem(mut seed, 40);
+        let other = problem(mut seed, 20);
+        let n = sizes.len();
+        // how many groups there must be: each size's people over the size
+        let mut of_size = Vec.filled(n + 1, 0);
+        for s in sizes.iter() {
+            of_size[*s] += 1;
+        }
+        let mut must = 0;
+        for s in 1..(n + 1) {
+            must += of_size[s] / s;
+        }
+        let reversed: Vec[i64] = sizes.iter().rev().map(|s| *s).collect();
+        let mut joined = sizes.clone();
+        for s in other.iter() {
+            joined.push(*s);
+        }
+        let mut doubled: Vec[i64] = Vec.new();
+        for s in sizes.iter() {
+            doubled.push(2 * s);
+            doubled.push(2 * s);
+        }
+        let star = canonical(arm(0, sizes));
+        for g in star.iter() {
+            for p in g.iter() {
+                check = (check * 131 + p + 1) % 1000000007;
+            }
+            check = (check * 131 + 7) % 1000000007;
+        }
+        for a in 0..5 {
+            let got = arm(a, sizes);
+            // the reversed problem's answer, every person renamed back
+            let back: Vec[Vec[i64]] = arm(a, reversed).iter().map(|g| g.iter().map(|p| n - 1 - p).collect()).collect();
+            let side = arm(a, joined);
+            let twice = arm(a, doubled);
+            let held = [
+                literal(sizes, got),
+                got.len() == must,
+                literal(sizes, back),
+                literal(joined, side) and side.len() == must + arm(a, other).len(),
+                literal(doubled, twice) and twice.len() == must,
+                canonical(got) == star,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                }
+            }
+        }
+    }
+    let mut total = 0;
+    for p in 0..6 {
+        if fails[p] > 0 {
+            print(f"P{p + 1}: {fails[p]} failures ");
+        }
+        total += fails[p];
+    }
+    println(f"2000 problems: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

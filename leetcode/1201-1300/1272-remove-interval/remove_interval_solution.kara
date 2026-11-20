@@ -1,0 +1,96 @@
+// LeetCode #1272: Remove Interval -- a Rust solution as LeetCode's Rust
+// users write it (`Vec<Vec<i32>>`, `for iv in intervals`, `vec![..]`
+// pushes), carried to Kāra by `karac fix`.
+
+impl Solution {
+    pub fn remove_interval(intervals: Vec[Vec[i32]], to_be_removed: Vec[i32]) -> Vec[Vec[i32]] {
+        let (rs, re) = (to_be_removed[0], to_be_removed[1]);
+        let mut res = Vec.new();
+        for iv in intervals {
+            let (s, e) = (iv[0], iv[1]);
+            if e <= rs or s >= re {
+                res.push([s, e]);
+            } else {
+                if s < rs {
+                    res.push([s, rs]);
+                }
+                if e > re {
+                    res.push([re, e]);
+                }
+            }
+        }
+        res
+    }
+}
+
+struct Solution {}
+
+// The harness's intervals, handed over as LeetCode's `i32`s.
+fn remove_interval(intervals: Vec[Vec[i64]], to_be_removed: Vec[i64]) -> Vec[Vec[i64]] {
+    let got = Solution.remove_interval(
+        intervals.iter().map(|iv| iv.iter().map(|x| x as i32).collect()).collect(),
+        to_be_removed.iter().map(|x| x as i32).collect(),
+    );
+    got.iter().map(|iv| iv.iter().map(|x| x as i64).collect()).collect()
+}
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// 30 random bits.
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// `n` sorted disjoint intervals from `low`, each gap 0 to `step - 1` and
+// each length 1 to `step`.
+fn random_intervals(n: i64, low: i64, step: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    let mut at = low;
+    for _ in 0..n {
+        let a = at + wide_random(mut seed) % step;
+        let b = a + 1 + wide_random(mut seed) % step;
+        out.push([a, b]);
+        at = b;
+    }
+    out
+}
+
+fn fold(check: i64, intervals: Vec[Vec[i64]]) -> i64 {
+    let mut c = (check * 131 + intervals.len()) % 1000000007;
+    for iv in intervals.iter() {
+        c = (c * 131 + iv[0] % 1000000007 + 1000000007) % 1000000007;
+        c = (c * 131 + iv[1] % 1000000007 + 1000000007) % 1000000007;
+    }
+    c
+}
+
+fn main() {
+    // LeetCode's examples
+    println(f"{remove_interval([[0, 2], [3, 4], [5, 7]], [1, 6])}");
+    println(f"{remove_interval([[0, 5]], [2, 3])}");
+    println(f"{remove_interval([[-5, -4], [-3, -2], [1, 2], [3, 5], [8, 9]], [-1, 4])}");
+    // 3000 random cases of 1 to 30 intervals among -100 to 300
+    let mut seed = 1272;
+    let mut kept = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 30 + 1;
+        let intervals = random_intervals(n, -100, 6, mut seed);
+        let lo = next_random(mut seed) % 400 - 110;
+        let hi = lo + 1 + next_random(mut seed) % 80;
+        let got = remove_interval(intervals, [lo, hi]);
+        kept += got.len();
+        check = fold(check, got);
+    }
+    println(f"3000 random cases: {kept} intervals kept, checksum {check}");
+    // the constraints' top: 10^4 intervals across the whole range, one cut
+    // through the middle and one past every end
+    let wide = random_intervals(10000, -1000000000, 100000, mut seed);
+    let middle = remove_interval(wide, [-300000000, 250000000]);
+    let all = remove_interval(wide, [-1000000000, 1000000000]);
+    println(f"{middle.len()} and {all.len()} intervals kept, checksum {fold(fold(0, middle), all)}");
+}

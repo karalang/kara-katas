@@ -1,0 +1,60 @@
+// LeetCode #1220: Count Vowels Permutation -- the rule as a 5 by 5 matrix,
+// a 1 where one vowel may follow another, raised to the power n - 1 by
+// repeated squaring; the answer is the sum of its entries. O(log n).
+
+fn multiply(x: Vec[Vec[i64]], y: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let modulus = 1_000_000_007;
+    let mut product = Vec.filled(5, Vec.filled(5, 0));
+    for r in 0..5 {
+        for c in 0..5 {
+            let mut sum = 0;
+            for k in 0..5 {
+                sum = (sum + x[r][k] * y[k][c]) % modulus;
+            }
+            product[r][c] = sum;
+        }
+    }
+    product
+}
+
+fn count_vowel_permutation(n: i64) -> i64 {
+    let modulus = 1_000_000_007;
+    let mut step: Vec[Vec[i64]] = [
+        [0, 1, 0, 0, 0],
+        [1, 0, 1, 0, 0],
+        [1, 1, 0, 1, 1],
+        [0, 0, 1, 0, 1],
+        [1, 0, 0, 0, 0],
+    ];
+    let mut power: Vec[Vec[i64]] = (0..5).map(|r| (0..5).map(|c| if r == c { 1 } else { 0 }).collect()).collect();
+    let mut left = n - 1;
+    while left > 0 {
+        if left % 2 == 1 {
+            power = multiply(power, step);
+        }
+        step = multiply(step, step);
+        left /= 2;
+    }
+    let mut total = 0;
+    for row in power.iter() {
+        for x in row.iter() {
+            total = (total + x) % modulus;
+        }
+    }
+    total
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn main() {
+    for n in [1, 2, 5, 144] {
+        println(f"n = {n}: {count_vowel_permutation(n)}");
+    }
+    let mut check = 0;
+    for n in 1..=200 {
+        check = (check * 131 + count_vowel_permutation(n)) % 1000000007;
+    }
+    println(f"n from 1 to 200: checksum {check}");
+    println(f"n = 10^4: {count_vowel_permutation(10000)}");
+    println(f"n = 2 * 10^4: {count_vowel_permutation(20000)}");
+}

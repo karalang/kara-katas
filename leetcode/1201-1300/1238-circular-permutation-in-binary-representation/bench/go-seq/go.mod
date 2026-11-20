@@ -1,0 +1,3 @@
+module circular_permutation_in_binary_representation
+
+go 1.21

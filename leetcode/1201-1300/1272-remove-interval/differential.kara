@@ -1,0 +1,255 @@
+// LeetCode #1272: the differential -- the six arms against the statement
+// read literally and five more properties, on 2000 random cases.
+
+// arm 0: remove_interval.kara
+fn a0_remove_interval(intervals: Vec[Vec[i64]], to_be_removed: Vec[i64]) -> Vec[Vec[i64]] {
+    let (lo, hi) = (to_be_removed[0], to_be_removed[1]);
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    for iv in intervals.iter() {
+        let (a, b) = (iv[0], iv[1]);
+        if b <= lo or a >= hi {
+            out.push([a, b]);
+            continue;
+        }
+        if a < lo {
+            out.push([a, lo]);
+        }
+        if b > hi {
+            out.push([hi, b]);
+        }
+    }
+    out
+}
+
+// arm 1: remove_interval_flat.kara
+fn a1_remove_interval(intervals: Vec[Vec[i64]], to_be_removed: Vec[i64]) -> Vec[Vec[i64]] {
+    let lo = to_be_removed[0];
+    let hi = to_be_removed[1];
+    intervals
+        .iter()
+        .flat_map(|iv| {
+            let before = [iv[0], iv[1].min(lo)];
+            let after = [iv[0].max(hi), iv[1]];
+            [before, after].into_iter().filter(|p| p[0] < p[1])
+        })
+        .collect()
+}
+
+// arm 2: remove_interval_binary.kara
+fn a2_remove_interval(intervals: Vec[Vec[i64]], to_be_removed: Vec[i64]) -> Vec[Vec[i64]] {
+    let lo = to_be_removed[0];
+    let hi = to_be_removed[1];
+    let first = intervals.partition_point(|iv| iv[1] <= lo);
+    let last = intervals.partition_point(|iv| iv[0] < hi);
+    let mut out: Vec[Vec[i64]] = intervals[0..first].to_vec();
+    if first < last {
+        if intervals[first][0] < lo {
+            out.push([intervals[first][0], lo]);
+        }
+        if intervals[last - 1][1] > hi {
+            out.push([hi, intervals[last - 1][1]]);
+        }
+    }
+    out.extend_from_slice(intervals[last..intervals.len()]);
+    out
+}
+
+// arm 3: remove_interval_tree.kara
+fn a3_remove_interval(intervals: Vec[Vec[i64]], to_be_removed: Vec[i64]) -> Vec[Vec[i64]] {
+    let (lo, hi) = (to_be_removed[0], to_be_removed[1]);
+    let mut spans: SortedMap[i64, i64] = SortedMap.new();
+    for iv in intervals.iter() {
+        spans.insert(iv[0], iv[1]);
+    }
+    let met: Vec[(i64, i64)] = spans.range(-2000000000, hi).filter(|(_, b)| b > lo).map(|(a, b)| (a, b)).collect();
+    for (a, b) in met.iter() {
+        spans.remove(a);
+        if a < lo {
+            spans.insert(a, lo);
+        }
+        if b > hi {
+            spans.insert(hi, b);
+        }
+    }
+    spans.iter().map(|(a, b)| [a, b]).collect()
+}
+
+// arm 4: remove_interval_retain.kara
+fn a4_remove_interval(intervals: Vec[Vec[i64]], to_be_removed: Vec[i64]) -> Vec[Vec[i64]] {
+    let lo = to_be_removed[0];
+    let hi = to_be_removed[1];
+    let meets = |iv: Vec[i64]| iv[0] < hi and iv[1] > lo;
+    let mut parts: Vec[Vec[i64]] = Vec.new();
+    for iv in intervals.iter().filter(|iv| meets(iv)) {
+        if iv[0] < lo {
+            parts.push([iv[0], lo]);
+        }
+        if iv[1] > hi {
+            parts.push([hi, iv[1]]);
+        }
+    }
+    let mut out = intervals.clone();
+    out.retain(|iv| not meets(iv));
+    out.extend(parts);
+    out.sort_by_key(|iv| iv[0]);
+    out
+}
+
+// arm 5: remove_interval_solution.kara
+impl A5Solution {
+    pub fn remove_interval(intervals: Vec[Vec[i32]], to_be_removed: Vec[i32]) -> Vec[Vec[i32]] {
+        let (rs, re) = (to_be_removed[0], to_be_removed[1]);
+        let mut res = Vec.new();
+        for iv in intervals {
+            let (s, e) = (iv[0], iv[1]);
+            if e <= rs or s >= re {
+                res.push([s, e]);
+            } else {
+                if s < rs {
+                    res.push([s, rs]);
+                }
+                if e > re {
+                    res.push([re, e]);
+                }
+            }
+        }
+        res
+    }
+}
+
+struct A5Solution {}
+
+fn a5_remove_interval(intervals: Vec[Vec[i64]], to_be_removed: Vec[i64]) -> Vec[Vec[i64]] {
+    let got = A5Solution.remove_interval(
+        intervals.iter().map(|iv| iv.iter().map(|x| x as i32).collect()).collect(),
+        to_be_removed.iter().map(|x| x as i32).collect(),
+    );
+    got.iter().map(|iv| iv.iter().map(|x| x as i64).collect()).collect()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// 30 random bits.
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// `n` sorted disjoint intervals from `low`, each gap 0 to `step - 1` and
+// each length 1 to `step`.
+fn random_intervals(n: i64, low: i64, step: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    let mut at = low;
+    for _ in 0..n {
+        let a = at + wide_random(mut seed) % step;
+        let b = a + 1 + wide_random(mut seed) % step;
+        out.push([a, b]);
+        at = b;
+    }
+    out
+}
+
+fn fold(check: i64, intervals: Vec[Vec[i64]]) -> i64 {
+    let mut c = (check * 131 + intervals.len()) % 1000000007;
+    for iv in intervals.iter() {
+        c = (c * 131 + iv[0] % 1000000007 + 1000000007) % 1000000007;
+        c = (c * 131 + iv[1] % 1000000007 + 1000000007) % 1000000007;
+    }
+    c
+}
+
+// ---- the differential ------------------------------------------------------
+
+fn arm(k: i64, intervals: Vec[Vec[i64]], cut: Vec[i64]) -> Vec[Vec[i64]] {
+    match k {
+        0 => a0_remove_interval(intervals, cut),
+        1 => a1_remove_interval(intervals, cut),
+        2 => a2_remove_interval(intervals, cut),
+        3 => a3_remove_interval(intervals, cut),
+        4 => a4_remove_interval(intervals, cut),
+        _ => a5_remove_interval(intervals, cut),
+    }
+}
+
+// The statement read literally, on whole numbers: walking each interval a
+// unit at a time, a unit [x, x + 1) stays when it is not in the cut, and
+// each run of units that stay is one interval of the answer.
+fn literal(intervals: Vec[Vec[i64]], cut: Vec[i64]) -> Vec[Vec[i64]] {
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    for iv in intervals.iter() {
+        let mut start = -1000000;
+        for x in iv[0]..iv[1] {
+            let stays = not (cut[0] <= x and x < cut[1]);
+            if stays and start == -1000000 {
+                start = x;
+            }
+            if not stays and start != -1000000 {
+                out.push([start, x]);
+                start = -1000000;
+            }
+        }
+        if start != -1000000 {
+            out.push([start, iv[1]]);
+        }
+    }
+    out
+}
+
+fn length(intervals: Vec[Vec[i64]]) -> i64 {
+    intervals.iter().map(|iv| iv[1] - iv[0]).sum()
+}
+
+fn main() {
+    let mut seed = 12720;
+    let mut fails: Array[i64, 6] = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let intervals = random_intervals(n, -20, 4, mut seed);
+        let lo = next_random(mut seed) % 80 - 25;
+        let hi = lo + 1 + next_random(mut seed) % 20;
+        let mid = lo + next_random(mut seed) % (hi - lo + 1);
+        let cut = [lo, hi];
+        let want = literal(intervals, cut);
+        let overlap: i64 = intervals.iter().map(|iv| (iv[1].min(hi) - iv[0].max(lo)).max(0)).sum();
+        let star = arm(0, intervals, cut);
+        check = fold(check, star);
+        for k in 0..6 {
+            let got = arm(k, intervals, cut);
+            if got != want {
+                fails[0] += 1;
+            }
+            // sorted, disjoint, none empty
+            if (0..got.len()).any(|i| got[i][0] >= got[i][1] or (i > 0 and got[i - 1][1] > got[i][0])) {
+                fails[1] += 1;
+            }
+            // the cut made in two halves, the same answer
+            if arm(k, arm(k, intervals, [lo, mid]), [mid, hi]) != got {
+                fails[2] += 1;
+            }
+            // a cut that meets nothing changes nothing
+            if arm(k, intervals, [500, 501]) != intervals {
+                fails[3] += 1;
+            }
+            // the length lost is the overlap
+            if length(got) != length(intervals) - overlap {
+                fails[4] += 1;
+            }
+            if got != star {
+                fails[5] += 1;
+            }
+            checks += 6;
+        }
+    }
+    let mut total = 0;
+    for p in 0..6 {
+        if fails[p] > 0 {
+            print(f"P{p + 1}: {fails[p]} failures ");
+        }
+        total += fails[p];
+    }
+    println(f"2000 cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+}

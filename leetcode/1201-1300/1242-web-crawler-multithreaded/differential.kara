@@ -1,0 +1,326 @@
+// LeetCode #1242: Web Crawler Multithreaded -- the arms
+// against the statement read literally and five more properties.
+// Generated from the arms; see the README.
+
+import std.sync.{TaskGroup};
+
+// ---- the judge and the webs -----------------------------------------------
+
+// The judge's interface: the urls a page links to. A call may block, so
+// the crawl fetches pages on several tasks at once.
+trait HtmlParser {
+    fn get_urls(self, url: String) -> Vec[String];
+}
+
+// A web of pages: each url's links.
+struct Site {
+    links: Map[String, Vec[String]],
+}
+
+impl HtmlParser for Site {
+    fn get_urls(self, url: String) -> Vec[String] {
+        self.links.get(url).cloned().unwrap_or(Vec.new())
+    }
+}
+
+fn site(urls: Vec[String], edges: Vec[(i64, i64)]) -> Site {
+    let mut links: Map[String, Vec[String]] = Map.new();
+    for url in urls.iter() {
+        links.insert(url.clone(), Vec.new());
+    }
+    for (from, to) in edges {
+        links.get_mut(urls[from]).unwrap().push(urls[to].clone());
+    }
+    Site { links: links }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` distinct urls on `hosts` hostnames, with up to three path segments,
+// and `m` random links.
+fn random_site(n: i64, hosts: i64, m: i64, seed: mut ref i64) -> (Vec[String], Vec[(i64, i64)]) {
+    let names = ["news.yahoo.com", "news.google.com", "yahoo.com", "a.b", "a.b.c", "x-1.org"];
+    let mut urls: Vec[String] = Vec.new();
+    let mut have: Set[String] = Set.new();
+    while urls.len() < n {
+        let mut url = f"http://{names[next_random(mut seed) % hosts]}";
+        for _ in 0..next_random(mut seed) % 4 {
+            url.push('/');
+            url.push_str(["news", "us", "topics", "a", "b"][next_random(mut seed) % 5]);
+            if next_random(mut seed) % 2 == 0 {
+                url.push_str(f"{next_random(mut seed) % 10}");
+            }
+        }
+        if next_random(mut seed) % 4 == 0 {
+            url.push('/');
+        }
+        if have.insert(url.clone()) {
+            urls.push(url);
+        }
+    }
+    let edges = (0..m).map(|_| (next_random(mut seed) % n, next_random(mut seed) % n)).collect();
+    (urls, edges)
+}
+
+// ---- arm 0: star --------------------------------------------------------
+
+fn a0_hostname(url: String) -> String {
+    url.strip_prefix("http://").unwrap().split("/").next().unwrap().to_string()
+}
+
+fn a0_crawl(start_url: String, parser: dyn HtmlParser + CrossTask) -> Vec[String] {
+    let host = a0_hostname(start_url);
+    let mut seen: Set[String] = Set.new();
+    seen.insert(start_url.clone());
+    let mut level = [start_url.clone()];
+    while not level.is_empty() {
+        let pages: Vec[Vec[String]] = {
+            let group = TaskGroup.new();
+            let mut handles = Vec.new();
+            for url in level.iter() {
+                handles.push(group.spawn(|| parser.get_urls(url)));
+            }
+            handles.into_iter().map(|h| h.join()).collect()
+        };
+        let mut next_level = Vec.new();
+        for links in pages.into_iter() {
+            for next in links.into_iter() {
+                if a0_hostname(next) == host and seen.insert(next.clone()) {
+                    next_level.push(next);
+                }
+            }
+        }
+        level = next_level;
+    }
+    seen.into_iter().collect()
+}
+
+// ---- arm 1: par ---------------------------------------------------------
+
+fn a1_same_host(url: String, host: String) -> bool {
+    match url.strip_prefix("http://") {
+        Some(rest) => rest.split("/").next() == Some(host.as_str()),
+        None => false,
+    }
+}
+
+fn a1_crawl(start_url: String, parser: dyn HtmlParser + CrossTask) -> Vec[String] {
+    let host = start_url.strip_prefix("http://").unwrap().split("/").next().unwrap().to_string();
+    let mut seen: Set[String] = Set.new();
+    seen.insert(start_url.clone());
+    let mut level = [start_url.clone()];
+    while not level.is_empty() {
+        let pages = par for url in level.iter() { parser.get_urls(url) };
+        level = pages
+            .into_iter().flat_map(|v| v.into_iter())
+            .filter(|u| a1_same_host(u, host) and seen.insert(u.clone()))
+            .collect();
+    }
+    seen.into_iter().collect()
+}
+
+// ---- arm 2: chan --------------------------------------------------------
+
+fn a2_hostname(url: String) -> String {
+    url.strip_prefix("http://").unwrap().split("/").next().unwrap().to_string()
+}
+
+fn a2_crawl(start_url: String, parser: dyn HtmlParser + CrossTask) -> Vec[String] {
+    let host = a2_hostname(start_url);
+    let mut seen: Set[String] = Set.new();
+    seen.insert(start_url.clone());
+    let (tx, rx) = channel(16);
+    let group = TaskGroup.new();
+    let first = tx.clone();
+    group.spawn(|| first.send(parser.get_urls(start_url)));
+    let mut pending = 1;
+    while pending > 0 {
+        let links = rx.recv().unwrap();
+        pending -= 1;
+        for next in links.into_iter() {
+            if a2_hostname(next) == host and seen.insert(next.clone()) {
+                let back = tx.clone();
+                group.spawn(|| back.send(parser.get_urls(next)));
+                pending += 1;
+            }
+        }
+    }
+    seen.into_iter().collect()
+}
+
+// ---- arm 3: pool --------------------------------------------------------
+
+const A3_WORKERS: i64 = 4;
+
+fn a3_hostname(url: String) -> String {
+    url.strip_prefix("http://").unwrap().split("/").next().unwrap().to_string()
+}
+
+fn a3_crawl(start_url: own String, parser: dyn HtmlParser + CrossTask) -> Vec[String] {
+    let host = a3_hostname(start_url);
+    let mut seen: Set[String] = Set.new();
+    seen.insert(start_url.clone());
+    let (reply_tx, reply_rx) = channel(A3_WORKERS);
+    let group = TaskGroup.new();
+    let mut requests: Vec[Sender[String]] = Vec.new();
+    for i in 0..A3_WORKERS {
+        let (tx, rx) = channel(1);
+        requests.push(tx);
+        let reply = reply_tx.clone();
+        group.spawn(|| {
+            while let Some(url) = rx.recv() {
+                reply.send((i, parser.get_urls(url))).unwrap();
+            }
+        });
+    }
+    let mut todo: VecDeque[String] = VecDeque.new();
+    todo.push_back(start_url);
+    let mut idle: Vec[i64] = (0..A3_WORKERS).collect();
+    while not todo.is_empty() or idle.len() < A3_WORKERS {
+        while not todo.is_empty() and not idle.is_empty() {
+            requests[idle.pop().unwrap()].send(todo.pop_front().unwrap()).unwrap();
+        }
+        let (worker, links) = reply_rx.recv().unwrap();
+        idle.push(worker);
+        for next in links.into_iter() {
+            if a3_hostname(next) == host and seen.insert(next.clone()) {
+                todo.push_back(next);
+            }
+        }
+    }
+    drop(requests);
+    seen.into_iter().collect()
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// The urls reachable from the start through links between urls of the
+// start's hostname, by closing the link matrix under composition: the
+// hostname read character by character, up to the first '/' after the
+// seven of "http://".
+fn host_of(url: String) -> String {
+    let mut host = "".to_string();
+    let mut i = 0;
+    for c in url.chars() {
+        if i >= 7 {
+            if c == '/' {
+                break;
+            }
+            host.push(c);
+        }
+        i += 1;
+    }
+    host
+}
+
+fn literal(urls: Vec[String], edges: Vec[(i64, i64)], start: i64) -> Vec[String] {
+    let n = urls.len();
+    let host = host_of(urls[start]);
+    let mut reach = Vec.filled(n, Vec.filled(n, false));
+    for i in 0..n {
+        reach[i][i] = true;
+    }
+    for (a, b) in edges.iter() {
+        if host_of(urls[a]) == host and host_of(urls[b]) == host {
+            reach[a][b] = true;
+        }
+    }
+    for k in 0..n {
+        for i in 0..n {
+            for j in 0..n {
+                if reach[i][k] and reach[k][j] {
+                    reach[i][j] = true;
+                }
+            }
+        }
+    }
+    let mut out: Vec[String] = Vec.new();
+    for j in 0..n {
+        if reach[start][j] {
+            out.push(urls[j].clone());
+        }
+    }
+    out.sort();
+    out
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(start: String, web: Site) -> Vec[Vec[String]] {
+    [a0_crawl(start, web), a1_crawl(start, web), a2_crawl(start, web), a3_crawl(start.clone(), web)]
+}
+
+fn main() {
+    let names = ["the statement read literally", "the start is crawled, and only its hostname", "no url is crawled twice", "every link out of the crawl's hostname is followed", "the links listed backwards give the same", "the ★ arm's answer"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1242;
+    for c in 0..2000 {
+        let n = match c % 3 {
+            0 => next_random(mut seed) % 12 + 1,
+            1 => next_random(mut seed) % 28 + 13,
+            _ => next_random(mut seed) % 260 + 41,
+        };
+        let hosts = next_random(mut seed) % 6 + 1;
+        let (urls, edges) = random_site(n, hosts, next_random(mut seed) % (3 * n), mut seed);
+        let start = next_random(mut seed) % n;
+        let web = site(urls, edges);
+        let got = arms(urls[start], web);
+        let backwards = arms(urls[start], site(urls, edges.iter().rev().collect()));
+        let want = if n <= 40 { literal(urls, edges, start) } else { Vec.new() };
+        let host = host_of(urls[start]);
+        for a in 0..4 {
+            let mut v = got[a].clone();
+            v.sort();
+            let mut distinct = v.clone();
+            distinct.dedup();
+            let mut closed = true;
+            for url in v.iter() {
+                for next in web.get_urls(url).iter() {
+                    if host_of(next) == host and v.binary_search(next).is_none() {
+                        closed = false;
+                    }
+                }
+            }
+            let mut back = backwards[a].clone();
+            back.sort();
+            let mut first = got[0].clone();
+            first.sort();
+            let held = [
+                n > 40 or v == want,
+                v.contains(urls[start]) and v.iter().all(|u| host_of(u) == host),
+                distinct.len() == v.len(),
+                closed,
+                back == v,
+                v == first,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not held[q] {
+                    fails[q] += 1;
+                    if fails[q] <= 2 {
+                        println(f"P{q + 1} ({names[q]}) fails on arm {a}: {urls} {edges} from {start} -> {v}");
+                    }
+                }
+            }
+        }
+        let mut first = got[0].clone();
+        first.sort();
+        for url in first.iter() {
+            for b in url.bytes() {
+                check = (check * 131 + b) % 1000000007;
+            }
+        }
+    }
+    for q in 0..6 {
+        if fails[q] > 0 {
+            println(f"P{q + 1}: {fails[q]} failures");
+        }
+    }
+    let failures = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over {4} arms: {failures} failures");
+}

@@ -1,0 +1,69 @@
+// LeetCode #1223: Dice Roll Simulation -- a Rust solution as LeetCode's
+// Rust users write it: `dp[i][face][run]` in a `vec![vec![vec![0i64; 16];
+// 6]; n + 1]`, every length kept, indexed by `usize` through `as usize`,
+// carried to Kāra by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn die_simulator(n: i32, roll_max: Vec[i32]) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let n = n as i64;
+        let mut dp = Vec.filled(n + 1, Vec.filled(6, Vec.filled(16, 0)));
+        for j in 0..6 {
+            dp[1][j][1] = 1;
+        }
+        for i in 2..=n {
+            for j in 0..6 {
+                for k in 1..=roll_max[j] as i64 {
+                    let v = dp[i - 1][j][k];
+                    if v == 0 {
+                        continue;
+                    }
+                    for t in 0..6 {
+                        if t != j {
+                            dp[i][t][1] = (dp[i][t][1] + v) % MOD;
+                        } else if k + 1 <= roll_max[j] {
+                            dp[i][j][k + 1] = (dp[i][j][k + 1] + v) % MOD;
+                        }
+                    }
+                }
+            }
+        }
+        let mut ans = 0;
+        for j in 0..6 {
+            for k in 1..=15 {
+                ans = (ans + dp[n][j][k]) % MOD;
+            }
+        }
+        ans as i32
+    }
+}
+
+fn die_simulator(n: i64, roll_max: Vec[i64]) -> i64 {
+    Solution.die_simulator(n as i32, roll_max.iter().map(|v| v as i32).collect())
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    println(f"{die_simulator(2, [1, 1, 2, 2, 2, 3])}");
+    println(f"{die_simulator(2, [1, 1, 1, 1, 1, 1])}");
+    println(f"{die_simulator(3, [1, 1, 1, 2, 2, 3])}");
+    println(f"{die_simulator(1, [1, 1, 1, 1, 1, 1])}");
+    let mut seed = 1223;
+    let mut check = 0;
+    for _ in 0..300 {
+        let n = next_random(mut seed) % 60 + 1;
+        let roll_max: Vec[i64] = (0..6).map(|_| next_random(mut seed) % 15 + 1).collect();
+        check = (check * 131 + die_simulator(n, roll_max)) % 1000000007;
+    }
+    println(f"300 random cases with n up to 60: checksum {check}");
+    let wide: Vec[i64] = (0..6).map(|_| next_random(mut seed) % 15 + 1).collect();
+    println(f"n = 5000: no face twice {die_simulator(5000, [1, 1, 1, 1, 1, 1])}, up to 15 {die_simulator(5000, [15, 15, 15, 15, 15, 15])}, {wide}: {die_simulator(5000, wide)}");
+}

@@ -1,0 +1,64 @@
+// LeetCode #1289: Minimum Falling Path Sum II -- the ★ arm: by keeping only
+// the previous row's two smallest path sums. A cell continues from the
+// smallest unless that one ends in its own column, and then from the
+// second smallest. O(n^2)
+
+fn min_falling_path_sum(grid: Vec[Vec[i64]]) -> i64 {
+    // (smallest sum, its column, second smallest sum) over the row above
+    let mut first = 0;
+    let mut first_col = -1;
+    let mut second = 0;
+    for row in grid.iter() {
+        let mut next_first = i64.MAX;
+        let mut next_col = -1;
+        let mut next_second = i64.MAX;
+        for (j, x) in row.iter().enumerate() {
+            let sum = x + if j == first_col { second } else { first };
+            if sum < next_first {
+                next_second = next_first;
+                next_first = sum;
+                next_col = j;
+            } else if sum < next_second {
+                next_second = sum;
+            }
+        }
+        first = next_first;
+        first_col = next_col;
+        second = next_second;
+    }
+    first
+}
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn problem(seed: mut ref i64, n: i64) -> Vec[Vec[i64]] {
+    let mut grid: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..n {
+        let mut row: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            row.push(next_random(mut *seed) % 199 - 99);
+        }
+        grid.push(row);
+    }
+    grid
+}
+
+fn main() {
+    // LeetCode's examples, and a tie for the smallest in every row
+    println(f"{min_falling_path_sum([[1, 2, 3], [4, 5, 6], [7, 8, 9]])} {min_falling_path_sum([[7]])} {min_falling_path_sum([[1, 1], [1, 1]])} {min_falling_path_sum([[-5, -5, 3], [-5, 2, -5], [0, -5, -5]])}");
+    // 300 random grids up to 30 by 30, then 3 of 200 by 200
+    let mut seed = 1289;
+    let mut total = 0;
+    let mut check = 0;
+    for case in 0..303 {
+        let n = if case < 300 { next_random(mut seed) % 30 + 1 } else { 200 };
+        let best = min_falling_path_sum(problem(mut seed, n));
+        total += best;
+        check = (check * 131 + best + 1000000) % 1000000007;
+    }
+    println(f"303 random grids: total {total}, checksum {check}");
+}

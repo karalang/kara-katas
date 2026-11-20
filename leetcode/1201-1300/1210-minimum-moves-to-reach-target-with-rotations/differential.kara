@@ -1,0 +1,414 @@
+// LeetCode #1210: Minimum Moves to Reach Target with Rotations -- the six arms
+// against the statement read literally and six more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_minimum_moves(grid: Vec[Vec[i64]]) -> i64 {
+    let n = grid.len();
+    let free = |r: i64, c: i64| r < n and c < n and grid[r][c] == 0;
+    let mut dist = Vec.filled(n * n * 2, -1);
+    let mut queue: Vec[(i64, i64, i64)] = [(0, 0, 0)];
+    dist[0] = 0;
+    let mut head = 0;
+    while head < queue.len() {
+        let (r, c, up) = queue[head];
+        head += 1;
+        let d = dist[(r * n + c) * 2 + up];
+        if r == n - 1 and c == n - 2 and up == 0 {
+            return d;
+        }
+        let mut next: Vec[(i64, i64, i64)] = Vec.new();
+        if up == 0 {
+            // flat on (r, c) and (r, c + 1)
+            if free(r, c + 2) {
+                next.push((r, c + 1, 0));
+            }
+            if free(r + 1, c) and free(r + 1, c + 1) {
+                next.push((r + 1, c, 0));
+                next.push((r, c, 1));
+            }
+        } else {
+            // upright on (r, c) and (r + 1, c)
+            if free(r + 2, c) {
+                next.push((r + 1, c, 1));
+            }
+            if free(r, c + 1) and free(r + 1, c + 1) {
+                next.push((r, c + 1, 1));
+                next.push((r, c, 0));
+            }
+        }
+        for (nr, nc, nu) in next.iter() {
+            let at = (nr * n + nc) * 2 + nu;
+            if dist[at] < 0 {
+                dist[at] = d + 1;
+                queue.push((nr, nc, nu));
+            }
+        }
+    }
+    -1
+}
+
+// ---- arm 1: levels ------------------------------------------------------
+fn a1_moves_from(grid: Vec[Vec[i64]], r: i64, c: i64, upright: bool) -> Vec[(i64, i64, bool)] {
+    let n = grid.len();
+    let free = |r: i64, c: i64| r < n and c < n and grid[r][c] == 0;
+    let mut out: Vec[(i64, i64, bool)] = Vec.new();
+    let square = free(r + 1, c + 1) and free(r + 1, c) and free(r, c + 1);
+    if not upright {
+        if free(r, c + 2) {
+            out.push((r, c + 1, false));
+        }
+        if square {
+            out.push((r + 1, c, false));
+            out.push((r, c, true));
+        }
+    } else {
+        if free(r + 2, c) {
+            out.push((r + 1, c, true));
+        }
+        if square {
+            out.push((r, c + 1, true));
+            out.push((r, c, false));
+        }
+    }
+    out
+}
+
+fn a1_minimum_moves(grid: Vec[Vec[i64]]) -> i64 {
+    let n = grid.len();
+    let target = (n - 1, n - 2, false);
+    let mut seen: Set[(i64, i64, bool)] = Set.new();
+    seen.insert((0, 0, false));
+    let mut level: Vec[(i64, i64, bool)] = [(0, 0, false)];
+    let mut steps = 0;
+    while not level.is_empty() {
+        if level.contains(target) {
+            return steps;
+        }
+        let mut next: Vec[(i64, i64, bool)] = Vec.new();
+        for (r, c, upright) in level.iter() {
+            for state in a1_moves_from(grid, r, c, upright) {
+                if seen.insert(state) {
+                    next.push(state);
+                }
+            }
+        }
+        level = next;
+        steps += 1;
+    }
+    -1
+}
+
+// ---- arm 2: sweep -------------------------------------------------------
+fn a2_minimum_moves(grid: Vec[Vec[i64]]) -> i64 {
+    let n = grid.len();
+    let far = n * n * 2;
+    let free = |r: i64, c: i64| r < n and c < n and grid[r][c] == 0;
+    let mut flat: Vec[Vec[i64]] = (0..n).map(|_| Vec.filled(n, far)).collect();
+    let mut upright: Vec[Vec[i64]] = (0..n).map(|_| Vec.filled(n, far)).collect();
+    flat[0][0] = 0;
+    for r in 0..n {
+        for c in 0..n {
+            if free(r, c) and free(r, c + 1) {
+                if c > 0 {
+                    flat[r][c] = flat[r][c].min(flat[r][c - 1] + 1);
+                }
+                if r > 0 and free(r - 1, c) and free(r - 1, c + 1) {
+                    flat[r][c] = flat[r][c].min(flat[r - 1][c] + 1);
+                }
+            }
+            if free(r, c) and free(r + 1, c) {
+                if r > 0 {
+                    upright[r][c] = upright[r][c].min(upright[r - 1][c] + 1);
+                }
+                if c > 0 and free(r, c - 1) and free(r + 1, c - 1) {
+                    upright[r][c] = upright[r][c].min(upright[r][c - 1] + 1);
+                }
+            }
+            if free(r, c) and free(r, c + 1) and free(r + 1, c) and free(r + 1, c + 1) {
+                let turned = flat[r][c].min(upright[r][c]);
+                flat[r][c] = flat[r][c].min(turned + 1);
+                upright[r][c] = upright[r][c].min(turned + 1);
+            }
+        }
+    }
+    let d = flat[n - 1][n - 2];
+    if d >= far { -1 } else { d }
+}
+
+// ---- arm 3: astar -------------------------------------------------------
+fn a3_minimum_moves(grid: Vec[Vec[i64]]) -> i64 {
+    let n = grid.len();
+    let free = |r: i64, c: i64| r < n and c < n and grid[r][c] == 0;
+    let bound = |r: i64, c: i64, up: i64| (n - 1 - r).abs() + (n - 2 - c).abs() + up;
+    let mut best = Vec.filled(n * n * 2, i64.MAX);
+    let mut done = Vec.filled(n * n * 2, false);
+    // (estimate, moves, r, c, up), least estimate first
+    let mut open: PriorityQueue[(i64, i64, i64, i64, i64)] = PriorityQueue.new();
+    best[0] = 0;
+    open.push((bound(0, 0, 0), 0, 0, 0, 0));
+    while let Some((_, d, r, c, up)) = open.pop() {
+        let at = (r * n + c) * 2 + up;
+        if done[at] {
+            continue;
+        }
+        done[at] = true;
+        if r == n - 1 and c == n - 2 and up == 0 {
+            return d;
+        }
+        let square = free(r + 1, c + 1) and free(r + 1, c) and free(r, c + 1);
+        let steps: Vec[(i64, i64, i64)] = if up == 0 {
+            let mut s: Vec[(i64, i64, i64)] = Vec.new();
+            if free(r, c + 2) {
+                s.push((r, c + 1, 0));
+            }
+            if square {
+                s.push((r + 1, c, 0));
+                s.push((r, c, 1));
+            }
+            s
+        } else {
+            let mut s: Vec[(i64, i64, i64)] = Vec.new();
+            if free(r + 2, c) {
+                s.push((r + 1, c, 1));
+            }
+            if square {
+                s.push((r, c + 1, 1));
+                s.push((r, c, 0));
+            }
+            s
+        };
+        for (nr, nc, nu) in steps.iter() {
+            let next = (nr * n + nc) * 2 + nu;
+            if d + 1 < best[next] {
+                best[next] = d + 1;
+                open.push((d + 1 + bound(nr, nc, nu), d + 1, nr, nc, nu));
+            }
+        }
+    }
+    -1
+}
+
+// ---- arm 4: deque -------------------------------------------------------
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn minimum_moves(grid: Vec[Vec[i32]]) -> i32 {
+        let n = grid.len();
+        let free = |r: i64, c: i64| r < n and c < n and grid[r][c] == 0;
+        let mut seen: Set[(i64, i64, bool)] = Set.new();
+        let mut q: VecDeque[(i64, i64, bool, i32)] = VecDeque.new();
+        q.push_back((0, 0, false, 0));
+        seen.insert((0, 0, false));
+        while let Some((r, c, vertical, d)) = q.pop_front() {
+            if (r, c, vertical) == (n - 1, n - 2, false) {
+                return d;
+            }
+            let mut next = Vec.new();
+            if not vertical {
+                if free(r, c + 2) {
+                    next.push((r, c + 1, false));
+                }
+                if free(r + 1, c) and free(r + 1, c + 1) {
+                    next.push((r + 1, c, false));
+                    next.push((r, c, true));
+                }
+            } else {
+                if free(r + 2, c) {
+                    next.push((r + 1, c, true));
+                }
+                if free(r, c + 1) and free(r + 1, c + 1) {
+                    next.push((r, c + 1, true));
+                    next.push((r, c, false));
+                }
+            }
+            for s in next {
+                if seen.insert(s) {
+                    q.push_back((s.0, s.1, s.2, d + 1));
+                }
+            }
+        }
+        -1
+    }
+}
+
+fn a4_minimum_moves(grid: Vec[Vec[i64]]) -> i64 {
+    let g: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|x| x as i32).collect()).collect();
+    A4Solution.minimum_moves(g)
+}
+
+// ---- arm 5: dist --------------------------------------------------------
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn minimum_moves(grid: Vec[Vec[i32]]) -> i32 {
+        let n = grid.len();
+        let mut dist = Vec.filled(n, Vec.filled(n, [-1i32; 2]));
+        let mut queue = VecDeque.new();
+        dist[0][0][0] = 0;
+        queue.push_back((0, 0, 0));
+        while let Some((r, c, o)) = queue.pop_front() {
+            let d = dist[r][c][o];
+            let mut moves: Vec[(i64, i64, i64)] = Vec.new();
+            if o == 0 {
+                if c + 2 < n and grid[r][c + 2] == 0 {
+                    moves.push((r, c + 1, 0));
+                }
+                if r + 1 < n and grid[r + 1][c] == 0 and grid[r + 1][c + 1] == 0 {
+                    moves.push((r + 1, c, 0));
+                    moves.push((r, c, 1));
+                }
+            } else {
+                if r + 2 < n and grid[r + 2][c] == 0 {
+                    moves.push((r + 1, c, 1));
+                }
+                if c + 1 < n and grid[r][c + 1] == 0 and grid[r + 1][c + 1] == 0 {
+                    moves.push((r, c + 1, 1));
+                    moves.push((r, c, 0));
+                }
+            }
+            for (nr, nc, no) in moves {
+                if dist[nr][nc][no] == -1 {
+                    dist[nr][nc][no] = d + 1;
+                    queue.push_back((nr, nc, no));
+                }
+            }
+        }
+        dist[n - 1][n - 2][0]
+    }
+}
+
+fn a5_minimum_moves(grid: Vec[Vec[i64]]) -> i64 {
+    let g: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|x| x as i32).collect()).collect();
+    A5Solution.minimum_moves(g)
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// The snake as its two cells, each move as the statement words it, and a
+// breadth-first search keeping every pair of cells reached in a list.
+fn literal(grid: Vec[Vec[i64]]) -> i64 {
+    let n = grid.len();
+    let empty = |cell: (i64, i64)| cell.0 < n and cell.1 < n and grid[cell.0][cell.1] == 0;
+    let start = ((0, 0), (0, 1));
+    let target = ((n - 1, n - 2), (n - 1, n - 1));
+    let mut reached: Vec[((i64, i64), (i64, i64))] = [start];
+    let mut level: Vec[((i64, i64), (i64, i64))] = [start];
+    let mut moves = 0;
+    while not level.is_empty() {
+        if level.contains(target) {
+            return moves;
+        }
+        let mut next: Vec[((i64, i64), (i64, i64))] = Vec.new();
+        for (a, b) in level.iter() {
+            let horizontal = a.0 == b.0;
+            let mut to: Vec[((i64, i64), (i64, i64))] = Vec.new();
+            // one cell right, one cell down
+            let right = ((a.0, a.1 + 1), (b.0, b.1 + 1));
+            let down = ((a.0 + 1, a.1), (b.0 + 1, b.1));
+            for (p, q) in [right, down] {
+                if empty(p) and empty(q) {
+                    to.push((p, q));
+                }
+            }
+            if horizontal and empty((a.0 + 1, a.1)) and empty((b.0 + 1, b.1)) {
+                to.push((a, (a.0 + 1, a.1)));
+            }
+            if not horizontal and empty((a.0, a.1 + 1)) and empty((b.0, b.1 + 1)) {
+                to.push((a, (a.0, a.1 + 1)));
+            }
+            for pair in to.iter() {
+                if not reached.contains(pair) {
+                    reached.push(pair);
+                    next.push(pair);
+                }
+            }
+        }
+        level = next;
+        moves += 1;
+    }
+    -1
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(grid: Vec[Vec[i64]]) -> Vec[i64] {
+    [a0_minimum_moves(grid), a1_minimum_moves(grid), a2_minimum_moves(grid), a3_minimum_moves(grid), a4_minimum_moves(grid), a5_minimum_moves(grid)]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["the statement read literally", "unreached, or at least 2n - 3 moves", "a blocked cell cleared gives an answer no longer", "a free cell blocked gives an answer no shorter", "a target cell blocked gives -1", "a free row and column added: reached again, in at most 2 more moves", "the ★ arm's answer"];
+    let mut fails = Vec.filled(7, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1210;
+    for _ in 0..2000 {
+        // 2 to 6 cells a side, up to two in five blocked; the snake's start
+        // cells free
+        let n = next_random(mut seed) % 5 + 2;
+        let percent = next_random(mut seed) % 5 * 10;
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        for r in 0..n {
+            let mut row: Vec[i64] = Vec.new();
+            for c in 0..n {
+                let start = r == 0 and c < 2;
+                row.push(if not start and next_random(mut seed) % 100 < percent { 1 } else { 0 });
+            }
+            grid.push(row);
+        }
+        let pick_r = next_random(mut seed) % n;
+        let pick_c = next_random(mut seed) % n;
+        let pick_start = pick_r == 0 and pick_c < 2;
+        let mut flipped = grid.clone();
+        flipped[pick_r][pick_c] = 1 - flipped[pick_r][pick_c];
+        let mut no_target = grid.clone();
+        no_target[n - 1][n - 1 - next_random(mut seed) % 2] = 1;
+        let mut wider: Vec[Vec[i64]] = grid.iter().map(|row| {
+            let mut w = row.clone();
+            w.push(0);
+            w
+        }).collect();
+        wider.push(Vec.filled(n + 1, 0));
+        let got = arms(grid);
+        let want = literal(grid);
+        let other = if pick_start { got.clone() } else { arms(flipped) };
+        let blocked = arms(no_target);
+        let grown = arms(wider);
+        for a in 0..6 {
+            let v = got[a];
+            let w = other[a];
+            let cleared = grid[pick_r][pick_c] == 1;
+            let held = [
+                v == want,
+                v == -1 or v >= 2 * n - 3,
+                not cleared or v == -1 or (w >= 0 and w <= v),
+                cleared or w == -1 or (v >= 0 and w >= v),
+                blocked[a] == -1,
+                v == -1 or (grown[a] >= 0 and grown[a] <= v + 2),
+                v == got[0],
+            ];
+            for p in 0..7 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {a}: {grid} -> {v}");
+                    }
+                }
+            }
+        }
+        check = (check * 131 + want + 2) % 1000000007;
+    }
+    for p in 0..7 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let total = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+}

@@ -1,0 +1,79 @@
+// LeetCode #1239: Maximum Length of a Concatenated String with Unique
+// Characters -- every reachable letter set, grown a word at a time: the
+// sets so far, and each of them joined with the word's mask when the two
+// share no letter. The answer is the largest set. O(n 2^n) at worst.
+
+fn max_length(arr: Vec[String]) -> i64 {
+    let mut sets = [0];
+    let mut best = 0;
+    for word in arr.iter() {
+        let mut mask = 0;
+        let mut unique = true;
+        for c in word.chars() {
+            let bit = 1 << (c as i64 - 'a' as i64);
+            if mask & bit != 0 {
+                unique = false;
+            }
+            mask |= bit;
+        }
+        if not unique {
+            continue;
+        }
+        let known = sets.len();
+        for k in 0..known {
+            if sets[k] & mask == 0 {
+                let joined = sets[k] | mask;
+                sets.push(joined);
+                best = best.max(joined.count_ones());
+            }
+        }
+    }
+    best
+}
+
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` words of 1 to `longest` letters, each letter one of the first
+// `alphabet` letters, so that words share and repeat letters.
+fn random_words(seed: mut ref i64, count: i64, longest: i64, alphabet: i64) -> Vec[String] {
+    let mut words = Vec.new();
+    for _ in 0..count {
+        let len = next_random(mut seed) % longest + 1;
+        let mut w = String.new();
+        for _ in 0..len {
+            w.push((b'a' + (next_random(mut seed) % alphabet) as u8) as char);
+        }
+        words.push(w);
+    }
+    words
+}
+
+fn main() {
+    // LeetCode's three examples, and words that each repeat a letter
+    println(f"{max_length(["un", "iq", "ue"])}");
+    println(f"{max_length(["cha", "r", "act", "ers"])}");
+    println(f"{max_length(["abcdefghijklmnopqrstuvwxyz"])}");
+    println(f"{max_length(["aa", "bb"])}");
+    // 1000 random lists of 1 to 16 words of 1 to 6 letters, from 8 to 26 letters
+    let mut seed = 1239;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let count = next_random(mut seed) % 16 + 1;
+        let alphabet = next_random(mut seed) % 19 + 8;
+        let words = random_words(mut seed, count, 6, alphabet);
+        check = (check * 131 + max_length(words)) % 1000000007;
+    }
+    println(f"1000 random lists: checksum {check}");
+    // the constraints' top: 16 words of one letter each, of up to 4 letters, and
+    // 16 copies of the alphabet
+    let singles: Vec[String] = (0..16).map(|k| ((b'a' + k as u8) as char).to_string()).collect();
+    let long = random_words(mut seed, 16, 4, 26);
+    let alphabets: Vec[String] = (0..16).map(|_| "abcdefghijklmnopqrstuvwxyz").collect();
+    println(f"16 words: {max_length(singles)}, {max_length(long)}, {max_length(alphabets)}");
+}

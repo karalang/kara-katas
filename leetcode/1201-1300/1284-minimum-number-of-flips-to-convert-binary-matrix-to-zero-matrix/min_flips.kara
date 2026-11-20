@@ -1,0 +1,91 @@
+// LeetCode #1284: Minimum Number of Flips to Convert Binary Matrix to Zero
+// Matrix -- the ★ arm: breadth-first search over the matrix's states, each
+// a bit mask of its cells; a flip XORs the mask of a cell and its
+// neighbours, and the first time the zero state is reached is the answer.
+// O(2^(mn) mn)
+
+fn min_flips(mat: Vec[Vec[i64]]) -> i64 {
+    let rows = mat.len();
+    let cols = mat[0].len();
+    let cells = rows * cols;
+    let mut start = 0;
+    let mut flip: Vec[i64] = Vec.new();
+    for i in 0..rows {
+        for j in 0..cols {
+            if mat[i][j] == 1 {
+                start |= 1 << (i * cols + j);
+            }
+            let mut mask = 1 << (i * cols + j);
+            if i > 0 {
+                mask |= 1 << ((i - 1) * cols + j);
+            }
+            if i + 1 < rows {
+                mask |= 1 << ((i + 1) * cols + j);
+            }
+            if j > 0 {
+                mask |= 1 << (i * cols + j - 1);
+            }
+            if j + 1 < cols {
+                mask |= 1 << (i * cols + j + 1);
+            }
+            flip.push(mask);
+        }
+    }
+    let mut dist = Vec.filled(1 << cells, -1);
+    dist[start] = 0;
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    queue.push_back(start);
+    while let Some(state) = queue.pop_front() {
+        if state == 0 {
+            return dist[state];
+        }
+        for mask in flip.iter() {
+            let next = state ^ mask;
+            if dist[next] < 0 {
+                dist[next] = dist[state] + 1;
+                queue.push_back(next);
+            }
+        }
+    }
+    -1
+}
+// ---- test harness ---------------------------------------------------------
+
+// The matrix of `rows` by `cols` whose cells are the bits of `bits`, row by
+// row from the lowest bit.
+fn matrix(rows: i64, cols: i64, bits: i64) -> Vec[Vec[i64]] {
+    let mut mat: Vec[Vec[i64]] = Vec.new();
+    for i in 0..rows {
+        let mut row: Vec[i64] = Vec.new();
+        for j in 0..cols {
+            row.push((bits >> (i * cols + j)) & 1);
+        }
+        mat.push(row);
+    }
+    mat
+}
+
+fn main() {
+    // LeetCode's examples
+    println(f"{min_flips([[0, 0], [0, 1]])} {min_flips([[0]])} {min_flips([[1, 0, 0], [1, 0, 0]])}");
+    // every matrix of every shape the constraints allow, 1 by 1 to 3 by 3
+    let mut check = 0;
+    for rows in 1..4 {
+        for cols in 1..4 {
+            let mut solvable = 0;
+            let mut flips = 0;
+            let mut most = 0;
+            for bits in 0..(1 << (rows * cols)) {
+                let f = min_flips(matrix(rows, cols, bits));
+                check = (check * 131 + f + 2) % 1000000007;
+                if f >= 0 {
+                    solvable += 1;
+                    flips += f;
+                    most = most.max(f);
+                }
+            }
+            println(f"{rows} by {cols}: {solvable} of {1 << (rows * cols)} solvable, {flips} flips, at most {most}");
+        }
+    }
+    println(f"checksum {check}");
+}

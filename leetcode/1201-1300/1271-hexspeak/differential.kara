@@ -1,0 +1,262 @@
+// LeetCode #1271: the differential -- the six arms against the statement
+// read literally and five more properties, on 2000 random numbers.
+
+// arm 0: hexspeak.kara
+fn a0_to_hexspeak(num: Str) -> String {
+    let mut n = i64.parse(num).unwrap();
+    let mut letters: Vec[char] = Vec.new();
+    while n > 0 {
+        let d = n % 16;
+        if d == 0 {
+            letters.push('O');
+        } else if d == 1 {
+            letters.push('I');
+        } else if d >= 10 {
+            letters.push((b'A' + (d - 10) as u8) as char);
+        } else {
+            return "ERROR";
+        }
+        n /= 16;
+    }
+    letters.iter().rev().collect()
+}
+
+// arm 1: hexspeak_format.kara
+fn a1_to_hexspeak(num: Str) -> String {
+    let n = i64.parse(num).unwrap();
+    let speak = f"{n:X}".replace("0", "O").replace("1", "I");
+    if speak.chars().all(|c| "ABCDEFIO".contains(c.to_string())) {
+        speak
+    } else {
+        "ERROR"
+    }
+}
+
+// arm 2: hexspeak_table.kara
+fn a2_spell(n: i64) -> Option[String] {
+    let table: Array[Option[char], 16] = [
+        Some('O'), Some('I'), None, None, None, None, None, None,
+        None, None, Some('A'), Some('B'), Some('C'), Some('D'), Some('E'), Some('F'),
+    ];
+    let mut out = String.new();
+    let mut shift = 60;
+    while shift >= 0 {
+        let d = (n >> shift) & 15;
+        if not out.is_empty() or d != 0 {
+            out.push(table[d]?);
+        }
+        shift -= 4;
+    }
+    Some(out)
+}
+
+fn a2_to_hexspeak(num: Str) -> String {
+    a2_spell(i64.parse(num).unwrap()).unwrap_or("ERROR")
+}
+
+// arm 3: hexspeak_recursive.kara
+fn a3_spell(n: i64) -> Result[String, String] {
+    if n == 0 {
+        return Ok(String.new());
+    }
+    let letter = match n % 16 {
+        0 => 'O',
+        1 => 'I',
+        10 => 'A',
+        11 => 'B',
+        12 => 'C',
+        13 => 'D',
+        14 => 'E',
+        15 => 'F',
+        d => return Err(f"digit {d}"),
+    };
+    let mut head = a3_spell(n / 16)?;
+    head.push(letter);
+    Ok(head)
+}
+
+fn a3_to_hexspeak(num: Str) -> String {
+    match a3_spell(i64.parse(num).unwrap()) {
+        Ok(s) => s,
+        Err(_) => "ERROR",
+    }
+}
+
+// arm 4: hexspeak_collect.kara
+fn a4_to_hexspeak(num: Str) -> String {
+    let n = i64.parse(num).unwrap();
+    let spelled: Option[String] = f"{n:x}"
+        .chars()
+        .map(|c| match c {
+            '0' => Some('O'),
+            '1' => Some('I'),
+            'a'..='f' => Some(c.to_ascii_uppercase()),
+            _ => None,
+        })
+        .collect();
+    spelled.unwrap_or("ERROR")
+}
+
+// arm 5: hexspeak_solution.kara
+impl A5Solution {
+    pub fn to_hexspeak(num: String) -> String {
+        let n: u64 = u64.parse(num).unwrap();
+        let hex = f"{n:X}";
+        let mut res = String.new();
+        for c in hex.chars() {
+            match c {
+                '0' => res.push('O'),
+                '1' => res.push('I'),
+                'A'..='F' => res.push(c),
+                _ => return "ERROR",
+            }
+        }
+        res
+    }
+}
+
+struct A5Solution {}
+
+fn a5_to_hexspeak(num: Str) -> String {
+    A5Solution.to_hexspeak(num.to_string())
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A number whose hexadecimal digits are drawn from `digits`, which must not
+// start with 0, written in decimal.
+fn spelled(len: i64, digits: Vec[i64], seed: mut ref i64) -> i64 {
+    let mut n = 0;
+    for i in 0..len {
+        let mut d = digits[next_random(mut seed) % digits.len()];
+        while i == 0 and d == 0 {
+            d = digits[next_random(mut seed) % digits.len()];
+        }
+        n = n * 16 + d;
+    }
+    n
+}
+
+fn fold(check: i64, s: Str) -> i64 {
+    let mut c = (check * 131 + s.len()) % 1000000007;
+    for b in s.bytes() {
+        c = (c * 131 + b) % 1000000007;
+    }
+    c
+}
+
+// ---- the differential ------------------------------------------------------
+
+fn arm(k: i64, num: Str) -> String {
+    match k {
+        0 => a0_to_hexspeak(num),
+        1 => a1_to_hexspeak(num),
+        2 => a2_to_hexspeak(num),
+        3 => a3_to_hexspeak(num),
+        4 => a4_to_hexspeak(num),
+        _ => a5_to_hexspeak(num),
+    }
+}
+
+// The statement read literally: the number written in upper case
+// hexadecimal digit by digit, every `0` then replaced by `O` and every `1`
+// by `I`, and the result valid only if each of its characters is one of
+// the set {A, B, C, D, E, F, I, O}.
+fn literal(n: i64) -> String {
+    let digits = "0123456789ABCDEF";
+    let mut hex = String.new();
+    let mut m = n;
+    while m > 0 {
+        hex = digits[m % 16..m % 16 + 1].to_string() + hex;
+        m /= 16;
+    }
+    let mut speak = String.new();
+    for c in hex.chars() {
+        speak.push(if c == '0' { 'O' } else if c == '1' { 'I' } else { c });
+    }
+    for c in speak.chars() {
+        if not ['A', 'B', 'C', 'D', 'E', 'F', 'I', 'O'].contains(c) {
+            return "ERROR".to_string();
+        }
+    }
+    speak
+}
+
+// The letters read back as hexadecimal digits.
+fn read_back(s: Str) -> i64 {
+    let mut n = 0;
+    for c in s.chars() {
+        let d = if c == 'O' {
+            0
+        } else if c == 'I' {
+            1
+        } else if c >= 'A' and c <= 'F' {
+            (c as u32 - 65) as i64 + 10
+        } else {
+            return -1;
+        };
+        n = n * 16 + d;
+    }
+    n
+}
+
+fn main() {
+    let mut seed = 12710;
+    let mut fails: Array[i64, 6] = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let letters: Vec[i64] = [0, 1, 10, 11, 12, 13, 14, 15];
+    for case in 0..2000 {
+        let n = match case % 3 {
+            0 => (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000000 + 1,
+            1 => spelled(next_random(mut seed) % 10 + 1, letters, mut seed),
+            _ => {
+                let mut digits = letters.clone();
+                digits.push(next_random(mut seed) % 8 + 2);
+                spelled(next_random(mut seed) % 10 + 1, digits, mut seed)
+            }
+        };
+        let want = literal(n);
+        let bad = next_random(mut seed) % 8 + 2;
+        let star = arm(0, f"{n}");
+        check = fold(check, star);
+        for k in 0..6 {
+            let got = arm(k, f"{n}");
+            if got != want {
+                fails[0] += 1;
+            }
+            // nothing but the eight letters, or exactly ERROR
+            if got != "ERROR" and (got.is_empty() or not got.chars().all(|c| "ABCDEFIO".contains(c.to_string()))) {
+                fails[1] += 1;
+            }
+            // a spelling read back is the number
+            if got != "ERROR" and read_back(got) != n {
+                fails[2] += 1;
+            }
+            // times 16 is the same spelling and an O
+            let times = arm(k, f"{n * 16}");
+            if (got == "ERROR") != (times == "ERROR") or (got != "ERROR" and times != got + "O") {
+                fails[3] += 1;
+            }
+            // a last digit of 2 to 9 is an error
+            if arm(k, f"{n * 16 + bad}") != "ERROR" {
+                fails[4] += 1;
+            }
+            if got != star {
+                fails[5] += 1;
+            }
+            checks += 6;
+        }
+    }
+    let mut total = 0;
+    for p in 0..6 {
+        if fails[p] > 0 {
+            print(f"P{p + 1}: {fails[p]} failures ");
+        }
+        total += fails[p];
+    }
+    println(f"2000 numbers: checksum {check}, {checks} checks over 6 arms: {total} failures");
+}

@@ -1,0 +1,220 @@
+// LeetCode #1230: Toss Strange Coins -- the arms against the
+// statement read literally and five more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_probability_of_heads(prob: Vec[f64], target: i64) -> f64 {
+    let mut ways = Vec.filled(target + 1, 0.0);
+    ways[0] = 1.0;
+    for p in prob.iter() {
+        for j in (1..=target).rev() {
+            ways[j] = ways[j] * (1.0 - p) + ways[j - 1] * p;
+        }
+        ways[0] = ways[0] * (1.0 - p);
+    }
+    ways[target]
+}
+
+// ---- arm 1: table -------------------------------------------------------
+fn a1_probability_of_heads(prob: Vec[f64], target: i64) -> f64 {
+    let n = prob.len();
+    let mut dp = Vec.filled(n + 1, Vec.filled(target + 1, 0.0));
+    dp[0][0] = 1.0;
+    for i in 1..=n {
+        let p = prob[i - 1];
+        for j in 0..=target {
+            dp[i][j] = dp[i - 1][j] * (1.0 - p);
+            if j > 0 {
+                dp[i][j] += dp[i - 1][j - 1] * p;
+            }
+        }
+    }
+    dp[n][target]
+}
+
+// ---- arm 2: memo --------------------------------------------------------
+fn a2_chance(prob: Vec[f64], i: i64, need: i64, memo: mut ref Map[(i64, i64), f64]) -> f64 {
+    if need < 0 or need > prob.len() - i {
+        return 0.0;
+    }
+    if i == prob.len() {
+        return 1.0;
+    }
+    if let Some(known) = memo.get((i, need)) {
+        return *known;
+    }
+    let p = prob[i];
+    let total = p * a2_chance(prob, i + 1, need - 1, mut memo) + (1.0 - p) * a2_chance(prob, i + 1, need, mut memo);
+    memo.insert((i, need), total);
+    total
+}
+
+fn a2_probability_of_heads(prob: Vec[f64], target: i64) -> f64 {
+    let mut memo: Map[(i64, i64), f64] = Map.new();
+    a2_chance(prob, 0, target, mut memo)
+}
+
+// ---- arm 3: product -----------------------------------------------------
+fn a3_product(prob: Slice[f64]) -> Vec[f64] {
+    if prob.len() == 1 {
+        return [1.0 - prob[0], prob[0]];
+    }
+    let half = prob.len() / 2;
+    let left = a3_product(prob[0..half]);
+    let right = a3_product(prob[half..]);
+    let mut out = Vec.filled(left.len() + right.len() - 1, 0.0);
+    for (a, x) in left.iter().enumerate() {
+        for (b, y) in right.iter().enumerate() {
+            out[a + b] += x * y;
+        }
+    }
+    out
+}
+
+fn a3_probability_of_heads(prob: Vec[f64], target: i64) -> f64 {
+    a3_product(prob[..])[target]
+}
+
+// ---- arm 4: row ---------------------------------------------------------
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn probability_of_heads(prob: Vec[f64], target: i32) -> f64 {
+        let target = target as i64;
+        let mut dp = Vec.filled(target + 1, 0.0);
+        dp[0] = 1.0;
+        for p in prob.iter() {
+            for j in (1..=target).rev() {
+                dp[j] = dp[j] * (1.0 - p) + dp[j - 1] * p;
+            }
+            dp[0] *= 1.0 - p;
+        }
+        dp[target]
+    }
+}
+
+fn a4_probability_of_heads(prob: Vec[f64], target: i64) -> f64 {
+    A4Solution.probability_of_heads(prob, target as i32)
+}
+
+// ---- arm 5: grid --------------------------------------------------------
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn probability_of_heads(prob: Vec[f64], target: i32) -> f64 {
+        let n = prob.len();
+        let t = target as i64;
+        let mut dp = Vec.filled(n + 1, Vec.filled(t + 1, 0.0));
+        dp[0][0] = 1.0;
+        for i in 1..=n {
+            for j in 0..=t.min(i) {
+                dp[i][j] = dp[i - 1][j] * (1.0 - prob[i - 1]);
+                if j > 0 {
+                    dp[i][j] += dp[i - 1][j - 1] * prob[i - 1];
+                }
+            }
+        }
+        dp[n][t]
+    }
+}
+
+fn a5_probability_of_heads(prob: Vec[f64], target: i64) -> f64 {
+    A5Solution.probability_of_heads(prob, target as i32)
+}
+
+
+// ---- the statement read literally -----------------------------------------
+
+// Every outcome of the tosses, as the bits of a number, its probability the
+// product of each coin's heads or tails, summed over the outcomes with
+// `target` heads.
+fn literal(prob: Vec[f64], target: i64) -> f64 {
+    let n = prob.len();
+    let mut total = 0.0;
+    for outcome in 0..(1 << n) {
+        let mut heads = 0;
+        let mut chance = 1.0;
+        for i in 0..n {
+            if (outcome >> i) & 1 == 1 {
+                heads += 1;
+                chance *= prob[i];
+            } else {
+                chance *= 1.0 - prob[i];
+            }
+        }
+        if heads == target {
+            total += chance;
+        }
+    }
+    total
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(prob: Vec[f64], target: i64) -> Vec[f64] {
+    [a0_probability_of_heads(prob, target), a1_probability_of_heads(prob, target), a2_probability_of_heads(prob, target), a3_probability_of_heads(prob, target), a4_probability_of_heads(prob, target), a5_probability_of_heads(prob, target)]
+}
+
+fn close(a: f64, b: f64) -> bool {
+    (a - b).abs() < 0.000000001
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn coin(seed: mut ref i64) -> f64 {
+    let r = next_random(mut seed) % 120;
+    if r < 6 { 0.0 } else if r < 12 { 1.0 } else { (r - 12) as f64 / 108.0 }
+}
+
+fn main() {
+    let names = ["the statement read literally", "from 0 to 1", "the chances of every target sum to 1", "the coins in reverse give the same", "heads and tails swapped give the chance of the other count", "the ★ arm's answer"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut total = 0.0;
+    let mut seed = 1230;
+    for c in 0..1500 {
+        let n = match c % 3 {
+            0 => next_random(mut seed) % 12 + 1,
+            1 => next_random(mut seed) % 28 + 13,
+            _ => next_random(mut seed) % 160 + 41,
+        };
+        let prob: Vec[f64] = (0..n).map(|_| coin(mut seed)).collect();
+        let target = next_random(mut seed) % (n + 1);
+        let want = if n <= 12 { literal(prob, target) } else { -1.0 };
+        let got = arms(prob, target);
+        let reversed = arms(prob.iter().rev().collect(), target);
+        let swapped = arms(prob.iter().map(|p| 1.0 - p).collect(), n - target);
+        let every: Vec[Vec[f64]] = if n <= 40 { (0..=n).map(|t| arms(prob, t)).collect() } else { [] };
+        for a in 0..6 {
+            let v = got[a];
+            let held = [
+                n > 12 or close(v, want),
+                v >= -0.000000001 and v <= 1.000000001,
+                n > 40 or close(every.iter().map(|e| e[a]).sum(), 1.0),
+                close(reversed[a], v),
+                close(swapped[a], v),
+                close(v, got[0]),
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {a}: {n} coins, target {target} -> {v}");
+                    }
+                }
+            }
+        }
+        total += if n <= 12 { want } else { got[0] };
+    }
+    for p in 0..6 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let failures = fails.iter().sum();
+    println(f"1500 cases: total {total:.6}, {checks} checks over {6} arms: {failures} failures");
+}

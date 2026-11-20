@@ -1,0 +1,161 @@
+// LeetCode #1281: the differential -- the five arms against the statement
+// read literally and five more properties, on 2000 random numbers.
+
+// arm 0: subtract_product_and_sum.kara
+fn a0_subtract_product_and_sum(n: i64) -> i64 {
+    let mut product = 1;
+    let mut sum = 0;
+    let mut rest = n;
+    while rest > 0 {
+        let digit = rest % 10;
+        product *= digit;
+        sum += digit;
+        rest /= 10;
+    }
+    product - sum
+}
+
+// arm 1: subtract_product_and_sum_text.kara
+fn a1_subtract_product_and_sum(n: i64) -> i64 {
+    let digits: Vec[i64] = n.to_string().chars().map(|c| c.to_digit(10).unwrap() as i64).collect();
+    digits.iter().product() - digits.iter().sum()
+}
+
+// arm 2: subtract_product_and_sum_recursive.kara
+fn a2_product_and_sum(n: i64) -> (i64, i64) {
+    if n < 10 {
+        return (n, n);
+    }
+    let (product, sum) = a2_product_and_sum(n / 10);
+    (product * (n % 10), sum + n % 10)
+}
+
+fn a2_subtract_product_and_sum(n: i64) -> i64 {
+    let (product, sum) = a2_product_and_sum(n);
+    product - sum
+}
+
+// arm 3: subtract_product_and_sum_fold.kara
+fn a3_subtract_product_and_sum(n: i64) -> i64 {
+    let (product, sum) = f"{n}".bytes().iter().fold((1, 0), |(p, s), b| {
+        let digit = (b - 48) as i64;
+        (p * digit, s + digit)
+    });
+    product - sum
+}
+
+// arm 4: subtract_product_and_sum_solution.kara
+impl A4Solution {
+    pub fn subtract_product_and_sum(n: i32) -> i32 {
+        let mut n = n;
+        let mut (p, s) = (1i32, 0i32);
+        while n > 0 {
+            p *= n % 10;
+            s += n % 10;
+            n /= 10;
+        }
+        p - s
+    }
+}
+
+struct A4Solution {}
+
+fn a4_subtract_product_and_sum(n: i64) -> i64 {
+    A4Solution.subtract_product_and_sum(n as i32)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// ---- the differential ------------------------------------------------------
+
+fn arm(k: i64, n: i64) -> i64 {
+    match k {
+        0 => a0_subtract_product_and_sum(n),
+        1 => a1_subtract_product_and_sum(n),
+        2 => a2_subtract_product_and_sum(n),
+        3 => a3_subtract_product_and_sum(n),
+        _ => a4_subtract_product_and_sum(n),
+    }
+}
+
+// The statement read literally: the number's decimal digits, each found
+// as how many times its power of ten fits in what is left, from the
+// largest power down; then their product and their sum.
+fn digits(n: i64) -> Vec[i64] {
+    let mut power = 1;
+    while power * 10 <= n {
+        power *= 10;
+    }
+    let mut left = n;
+    let mut out: Vec[i64] = Vec.new();
+    while power >= 1 {
+        let mut d = 0;
+        while left >= power {
+            left -= power;
+            d += 1;
+        }
+        out.push(d);
+        power /= 10;
+    }
+    out
+}
+
+fn literal(n: i64) -> i64 {
+    let ds = digits(n);
+    let mut product = 1;
+    let mut sum = 0;
+    for d in ds.iter() {
+        product = product * d;
+        sum = sum + d;
+    }
+    product - sum
+}
+
+fn main() {
+    let mut seed = 12810;
+    let mut fails: Array[i64, 6] = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for case in 0..2000 {
+        let n = if case % 3 == 0 { next_random(mut seed) % 999 + 1 } else { next_random(mut seed) % 100000 + 1 };
+        let want = literal(n);
+        let ds = digits(n);
+        let sum: i64 = ds.iter().sum();
+        let product: i64 = ds.iter().product();
+        let reversed = ds.iter().rev().fold(0, |acc, d| acc * 10 + d);
+        let mut power = 1;
+        while power <= n {
+            power *= 10;
+        }
+        let star = arm(0, n);
+        check = (check * 131 + star + 1000) % 1000000007;
+        for a in 0..5 {
+            let got = arm(a, n);
+            let held = [
+                got == want,
+                arm(a, n * 10) == -sum,
+                n % 10 == 0 or arm(a, reversed) == got,
+                arm(a, n * 10 + 1) == got - 1,
+                arm(a, 2 * power + n) == 2 * product - sum - 2,
+                got == star,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                }
+            }
+        }
+    }
+    let mut total = 0;
+    for p in 0..6 {
+        if fails[p] > 0 {
+            print(f"P{p + 1}: {fails[p]} failures ");
+        }
+        total += fails[p];
+    }
+    println(f"2000 numbers: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

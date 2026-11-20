@@ -1,0 +1,92 @@
+// LeetCode #1284: Minimum Number of Flips to Convert Binary Matrix to Zero
+// Matrix -- a Rust solution as LeetCode's Rust users write it (a breadth-
+// first search with a `VecDeque` of (state, steps) and a `HashSet` of seen
+// states, `while let Some(..) = q.pop_front()`, `i32` offsets checked
+// against `usize` bounds), carried to Kāra by `karac fix`.
+
+impl Solution {
+    pub fn min_flips(mat: Vec[Vec[i32]]) -> i32 {
+        let m = mat.len();
+        let n = mat[0].len();
+        let mut start = 0;
+        for i in 0..m {
+            for j in 0..n {
+                if mat[i][j] == 1 {
+                    start |= 1 << (i * n + j);
+                }
+            }
+        }
+        let mut q = VecDeque.new();
+        let mut seen = Set.new();
+        q.push_back((start, 0));
+        seen.insert(start);
+        while let Some((s, d)) = q.pop_front() {
+            if s == 0 {
+                return d;
+            }
+            for i in 0..m {
+                for j in 0..n {
+                    let mut t = s;
+                    for (di, dj) in [(0, 0), (0, 1), (1, 0), (0, -1), (-1, 0)] {
+                        let (x, y) = (i as i32 + di, j as i32 + dj);
+                        if x >= 0 and y >= 0 and (x) < m and (y) < n {
+                            t ^= 1 << (x * n + y);
+                        }
+                    }
+                    if seen.insert(t) {
+                        q.push_back((t, d + 1));
+                    }
+                }
+            }
+        }
+        -1
+    }
+}
+
+struct Solution {}
+
+// The harness's matrix, handed over as LeetCode's `Vec<Vec<i32>>`.
+fn min_flips(mat: Vec[Vec[i64]]) -> i64 {
+    let small: Vec[Vec[i32]] = mat.iter().map(|row| row.iter().map(|x| *x as i32).collect()).collect();
+    Solution.min_flips(small)
+}
+// ---- test harness ---------------------------------------------------------
+
+// The matrix of `rows` by `cols` whose cells are the bits of `bits`, row by
+// row from the lowest bit.
+fn matrix(rows: i64, cols: i64, bits: i64) -> Vec[Vec[i64]] {
+    let mut mat: Vec[Vec[i64]] = Vec.new();
+    for i in 0..rows {
+        let mut row: Vec[i64] = Vec.new();
+        for j in 0..cols {
+            row.push((bits >> (i * cols + j)) & 1);
+        }
+        mat.push(row);
+    }
+    mat
+}
+
+fn main() {
+    // LeetCode's examples
+    println(f"{min_flips([[0, 0], [0, 1]])} {min_flips([[0]])} {min_flips([[1, 0, 0], [1, 0, 0]])}");
+    // every matrix of every shape the constraints allow, 1 by 1 to 3 by 3
+    let mut check = 0;
+    for rows in 1..4 {
+        for cols in 1..4 {
+            let mut solvable = 0;
+            let mut flips = 0;
+            let mut most = 0;
+            for bits in 0..(1 << (rows * cols)) {
+                let f = min_flips(matrix(rows, cols, bits));
+                check = (check * 131 + f + 2) % 1000000007;
+                if f >= 0 {
+                    solvable += 1;
+                    flips += f;
+                    most = most.max(f);
+                }
+            }
+            println(f"{rows} by {cols}: {solvable} of {1 << (rows * cols)} solvable, {flips} flips, at most {most}");
+        }
+    }
+    println(f"checksum {check}");
+}

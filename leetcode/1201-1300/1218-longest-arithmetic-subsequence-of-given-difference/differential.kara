@@ -1,0 +1,209 @@
+// LeetCode #1218: Longest Arithmetic Subsequence of Given Difference -- the six arms
+// against the statement read literally and six more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_longest_subsequence(arr: Vec[i64], difference: i64) -> i64 {
+    let mut ending: Map[i64, i64] = Map.new();
+    let mut best = 0;
+    for x in arr.iter() {
+        let length = ending.get(x - difference).unwrap_or(0) + 1;
+        ending.insert(x, length);
+        best = max(best, length);
+    }
+    best
+}
+
+// ---- arm 1: slots -------------------------------------------------------
+fn a1_longest_subsequence(arr: Vec[i64], difference: i64) -> i64 {
+    let mut ending: Vec[i64] = Vec.filled(20001, 0);
+    let mut best = 0;
+    for x in arr.iter() {
+        let before = x - difference;
+        let length = if before >= -10000 and before <= 10000 { ending[before + 10000] + 1 } else { 1 };
+        ending[x + 10000] = length;
+        best = max(best, length);
+    }
+    best
+}
+
+// ---- arm 2: jumps -------------------------------------------------------
+fn a2_first_after(places: Vec[i64], i: i64) -> i64 {
+    let mut lo = 0;
+    let mut hi = places.len();
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if places[mid] <= i {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    if lo < places.len() { places[lo] } else { -1 }
+}
+
+fn a2_longest_subsequence(arr: Vec[i64], difference: i64) -> i64 {
+    let n = arr.len();
+    let mut places: Map[i64, Vec[i64]] = Map.new();
+    for i in 0..n {
+        places.entry(arr[i]).or_insert(Vec.new()).push(i);
+    }
+    let mut starting: Vec[i64] = Vec.filled(n, 1);
+    let mut best = 0;
+    for i in (0..n).rev() {
+        if let Some(list) = places.get(arr[i] + difference) {
+            let next = a2_first_after(list, i);
+            if next >= 0 {
+                starting[i] = starting[next] + 1;
+            }
+        }
+        best = max(best, starting[i]);
+    }
+    best
+}
+
+// ---- arm 3: ordered -----------------------------------------------------
+fn a3_longest_subsequence(arr: Vec[i64], difference: i64) -> i64 {
+    let mut ending: SortedMap[i64, i64] = SortedMap.new();
+    for x in arr.iter() {
+        let length = match ending.get(x - difference) {
+            Some(l) => l + 1,
+            None => 1,
+        };
+        ending.insert(x, length);
+    }
+    ending.values().max().unwrap()
+}
+
+// ---- arm 4: hash --------------------------------------------------------
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn longest_subsequence(arr: Vec[i32], difference: i32) -> i32 {
+        let mut dp: Map[i32, i32] = Map.new();
+        let mut ans: i32 = 0;
+        for x in ref arr {
+            let v = *dp.get(x - difference).unwrap_or(0) + 1;
+            dp.insert(x, v);
+            ans = ans.max(v);
+        }
+        ans
+    }
+}
+
+fn a4_longest_subsequence(arr: Vec[i64], difference: i64) -> i64 {
+    A4Solution.longest_subsequence(arr.iter().map(|v| v as i32).collect(), difference as i32)
+}
+
+// ---- arm 5: offset ------------------------------------------------------
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn longest_subsequence(arr: Vec[i32], difference: i32) -> i32 {
+        const OFFSET: i32 = 20000;
+        let mut dp = Vec.filled(40001, 0i32);
+        let mut res: i32 = 1;
+        for x in arr {
+            let prev = x - difference;
+            let p = if (-OFFSET..=OFFSET).contains(prev) { dp[(prev + OFFSET) as usize] } else { 0 };
+            dp[(x + OFFSET) as usize] = p + 1;
+            res = res.max(p + 1);
+        }
+        res
+    }
+}
+
+fn a5_longest_subsequence(arr: Vec[i64], difference: i64) -> i64 {
+    A5Solution.longest_subsequence(arr.iter().map(|v| v as i32).collect(), difference as i32)
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// Every subsequence, as a mask of the places it keeps, checked for steps
+// of exactly `difference`; the longest that passes.
+fn literal(arr: Vec[i64], difference: i64) -> i64 {
+    let n = arr.len();
+    let mut best = 0;
+    for keep in 1..(1 << n) {
+        let mut length = 0;
+        let mut last = 0;
+        let mut steady = true;
+        for i in 0..n {
+            if (keep >> i) & 1 == 1 {
+                if length > 0 and arr[i] - last != difference {
+                    steady = false;
+                }
+                last = arr[i];
+                length += 1;
+            }
+        }
+        if steady and length > best {
+            best = length;
+        }
+    }
+    best
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(arr: Vec[i64], difference: i64) -> Vec[i64] {
+    [a0_longest_subsequence(arr, difference), a1_longest_subsequence(arr, difference), a2_longest_subsequence(arr, difference), a3_longest_subsequence(arr, difference), a4_longest_subsequence(arr, difference), a5_longest_subsequence(arr, difference)]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["the statement read literally", "every value three more gives the same", "the array reversed, with the difference negated, gives the same", "every value negated, with the difference negated, gives the same", "a value put at the end lengthens the answer by at most one, and never shortens it", "between 1 and the array's length", "the ★ arm's answer"];
+    let mut fails = Vec.filled(7, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1218;
+    for _ in 0..2000 {
+        // 1 to 12 values from -s to s, s from 1 to 6, a difference from -3 to 3
+        let n = next_random(mut seed) % 12 + 1;
+        let spread = next_random(mut seed) % 6 + 1;
+        let arr: Vec[i64] = (0..n).map(|_| next_random(mut seed) % (2 * spread + 1) - spread).collect();
+        let difference = next_random(mut seed) % 7 - 3;
+        let extra = next_random(mut seed) % (2 * spread + 1) - spread;
+        let want = literal(arr, difference);
+        let got = arms(arr, difference);
+        let shifted = arms(arr.iter().map(|v| v + 3).collect(), difference);
+        let backwards = arms(arr.iter().rev().collect(), -difference);
+        let negated = arms(arr.iter().map(|v| -v).collect(), -difference);
+        let mut longer_values = arr.clone();
+        longer_values.push(extra);
+        let longer = arms(longer_values, difference);
+        for a in 0..6 {
+            let v = got[a];
+            let held = [
+                v == want,
+                shifted[a] == v,
+                backwards[a] == v,
+                negated[a] == v,
+                longer[a] == v or longer[a] == v + 1,
+                v >= 1 and v <= n,
+                v == got[0],
+            ];
+            for p in 0..7 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {a}: {arr} {difference} -> {v}");
+                    }
+                }
+            }
+        }
+        check = (check * 131 + want) % 1000000007;
+    }
+    for p in 0..7 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let total = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+}

@@ -1,0 +1,71 @@
+// LeetCode #1235: Maximum Profit in Job Scheduling -- dynamic programming
+// from the back over the jobs sorted by start time: the best profit from
+// job k onward either skips job k or takes it and continues from the first
+// job that starts at or after its end. O(n log n).
+
+struct Job {
+    start: i64,
+    end: i64,
+    profit: i64,
+}
+
+fn job_scheduling(start_time: Vec[i64], end_time: Vec[i64], profit: Vec[i64]) -> i64 {
+    let mut jobs: Vec[Job] = Vec.new();
+    for i in 0..start_time.len() {
+        jobs.push(Job { start: start_time[i], end: end_time[i], profit: profit[i] });
+    }
+    jobs.sort_by_key(|j| j.start);
+    let n = jobs.len();
+    let mut best = Vec.filled(n + 1, 0);
+    for k in (0..n).rev() {
+        let next = jobs.partition_point(|j| j.start < jobs[k].end);
+        best[k] = best[k + 1].max(jobs[k].profit + best[next]);
+    }
+    best[0]
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` jobs from `seed`: starts below `span`, each lasting 1 to `long`, each
+// worth 1 to 10^4.
+fn jobs(n: i64, span: i64, long: i64, seed: mut ref i64) -> (Vec[i64], Vec[i64], Vec[i64]) {
+    let mut start = Vec.new();
+    let mut end = Vec.new();
+    let mut profit = Vec.new();
+    for _ in 0..n {
+        let s = next_random(mut seed) * 32768 % span + next_random(mut seed) % span;
+        let s = s % span + 1;
+        start.push(s);
+        end.push(s + next_random(mut seed) * 32768 % long + 1);
+        profit.push(next_random(mut seed) % 10000 + 1);
+    }
+    (start, end, profit)
+}
+
+fn main() {
+    // LeetCode's three examples, and one job
+    println(f"{job_scheduling([1, 2, 3, 3], [3, 4, 5, 6], [50, 10, 40, 70])}");
+    println(f"{job_scheduling([1, 2, 3, 4, 6], [3, 5, 10, 6, 9], [20, 20, 100, 70, 60])}");
+    println(f"{job_scheduling([1, 1, 1], [2, 3, 4], [5, 6, 4])}");
+    println(f"{job_scheduling([7], [9], [4])}");
+    // 1000 random sets of 1 to 30 jobs, times up to 50
+    let mut seed = 1235;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 30 + 1;
+        let (start, end, profit) = jobs(n, 40, next_random(mut seed) % 10 + 1, mut seed);
+        check = (check * 131 + job_scheduling(start, end, profit)) % 1000000007;
+    }
+    println(f"1000 random sets: checksum {check}");
+    // the constraints' top, 5 * 10^4 jobs: spread over 10^9, all at once, and back to back
+    let (start, end, profit) = jobs(50000, 999000000, 1000000, mut seed);
+    let all: Vec[i64] = (0..50000).map(|i| i % 10000 + 1).collect();
+    let chain: Vec[i64] = (0..50000).map(|i| i * 20000 + 1).collect();
+    let after: Vec[i64] = chain.iter().map(|s| s + 20000).collect();
+    println(f"5 * 10^4 jobs: {job_scheduling(start, end, profit)}, {job_scheduling(Vec.filled(50000, 1), Vec.filled(50000, 1000000000), all)}, {job_scheduling(chain, after, all)}");
+}

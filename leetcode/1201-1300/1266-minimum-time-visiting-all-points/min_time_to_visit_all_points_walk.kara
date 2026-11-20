@@ -1,0 +1,50 @@
+// LeetCode #1266: Minimum Time Visiting All Points -- by walking: a
+// cursor moves a second at a time, each coordinate a unit toward the next
+// point while it differs, so it steps diagonally until one gap closes and
+// straight after. O(total time).
+
+fn min_time_to_visit_all_points(points: Vec[Vec[i64]]) -> i64 {
+    let mut x = points[0][0];
+    let mut y = points[0][1];
+    let mut seconds = 0;
+    for p in points.iter().skip(1) {
+        while x != p[0] or y != p[1] {
+            x += (p[0] - x).signum();
+            y += (p[1] - y).signum();
+            seconds += 1;
+        }
+    }
+    seconds
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_points(n: i64, top: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    (0..n).map(|_| [next_random(mut seed) % (2 * top + 1) - top, next_random(mut seed) % (2 * top + 1) - top]).collect()
+}
+
+fn main() {
+    // LeetCode's examples
+    println(f"{min_time_to_visit_all_points([[1, 1], [3, 4], [-1, 0]])} {min_time_to_visit_all_points([[3, 2], [-2, 2]])}");
+    // 2000 random walks of 1 to 100 points, half within 5 of the origin
+    let mut seed = 1266;
+    let mut total = 0;
+    let mut check = 0;
+    for case in 0..2000 {
+        let n = next_random(mut seed) % 100 + 1;
+        let top = if case % 2 == 0 { 5 } else { 1000 };
+        let t = min_time_to_visit_all_points(random_points(n, top, mut seed));
+        total += t;
+        check = (check * 131 + t) % 1000000007;
+    }
+    println(f"2000 random walks: {total} seconds, checksum {check}");
+    // the constraints' top: 100 points from corner to corner, and on a line
+    let corners: Vec[Vec[i64]] = (0..100).map(|i| if i % 2 == 0 { [-1000, -1000] } else { [1000, 1000] }).collect();
+    let line: Vec[Vec[i64]] = (0..100).map(|i| [i * 20 - 1000, 7]).collect();
+    println(f"{min_time_to_visit_all_points(corners)} {min_time_to_visit_all_points(line)}");
+}

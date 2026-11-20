@@ -1,0 +1,79 @@
+// LeetCode #1229: Meeting Scheduler -- both people's slots in one list,
+// each tagged with its owner, sorted by start. Walking it, keep for each
+// person the slot of theirs that reaches furthest so far; at each slot, the
+// other person's furthest-reaching slot is the only one of theirs that can
+// still overlap it from the left. O((n + m) log(n + m)).
+
+fn min_available_duration(slots1: Vec[Vec[i64]], slots2: Vec[Vec[i64]], duration: i64) -> Vec[i64] {
+    let mut all: Vec[(i64, i64, i64)] = Vec.new();
+    for s in slots1.iter() {
+        all.push((s[0], s[1], 0));
+    }
+    for s in slots2.iter() {
+        all.push((s[0], s[1], 1));
+    }
+    all.sort();
+    let mut reach = [-1, -1];
+    for (start, end, who) in all.iter() {
+        let other = reach[1 - who];
+        if other.min(end) - start >= duration {
+            return [start, start + duration];
+        }
+        reach[who] = reach[who].max(end);
+    }
+    []
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` slots that never touch, each up to `width` long with gaps of up
+// to `gap` between them, in a shuffled order.
+fn slots(seed: mut ref i64, count: i64, width: i64, gap: i64) -> Vec[Vec[i64]] {
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    let mut at = next_random(mut seed) % (gap + 1);
+    for _ in 0..count {
+        let end = at + next_random(mut seed) % width + 1;
+        out.push([at, end]);
+        at = end + next_random(mut seed) % gap + 1;
+    }
+    for i in (1..out.len()).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        out.swap(i, j);
+    }
+    out
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{min_available_duration([[10, 50], [60, 120], [140, 210]], [[0, 15], [60, 70]], 8)}");
+    println(f"{min_available_duration([[10, 50], [60, 120], [140, 210]], [[0, 15], [60, 70]], 12)}");
+    // a meeting that exactly fills a shared slot, and touching slots
+    println(f"{min_available_duration([[5, 9]], [[0, 9]], 4)}");
+    println(f"{min_available_duration([[0, 5]], [[5, 10]], 1)}");
+    // 1000 random pairs of schedules of 1 to 30 slots
+    let mut seed = 1229;
+    let mut check = 0;
+    let mut none = 0;
+    for _ in 0..1000 {
+        let a = slots(mut seed, next_random(mut seed) % 30 + 1, 40, 40);
+        let b = slots(mut seed, next_random(mut seed) % 30 + 1, 40, 40);
+        let duration = next_random(mut seed) % 20 + 1;
+        let answer = min_available_duration(a, b, duration);
+        if answer.is_empty() {
+            none += 1;
+            check = (check * 131 + 7) % 1000000007;
+        } else {
+            check = (check * 131 + answer[0] * 3 + answer[1]) % 1000000007;
+        }
+    }
+    println(f"1000 random pairs: checksum {check}, {none} with no time");
+    // the constraints' top: 10^4 slots each, up to 10^9
+    let a = slots(mut seed, 10000, 50000, 50000);
+    let b = slots(mut seed, 10000, 50000, 50000);
+    println(f"10^4 slots each: {min_available_duration(a, b, 30000)}, {min_available_duration(a, b, 49000)}, {min_available_duration(a, b, 1000000)}");
+}

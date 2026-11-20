@@ -1,0 +1,273 @@
+// LeetCode #1265: the differential -- the six arms against the statement
+// read literally and five more properties, on 2000 random lists.
+
+trait ImmutableListNode {
+    fn print_value(self);
+    fn get_next(self) -> Option[dyn ImmutableListNode];
+}
+
+// arm 0: print_linked_list_in_reverse.kara
+fn a0_print_linked_list_in_reverse(head: dyn ImmutableListNode) {
+    if let Some(next) = head.get_next() {
+        a0_print_linked_list_in_reverse(next);
+    }
+    head.print_value();
+}
+
+// arm 1: print_linked_list_in_reverse_stack.kara
+fn a1_print_linked_list_in_reverse(head: dyn ImmutableListNode) {
+    let mut nodes: Vec[dyn ImmutableListNode] = Vec.new();
+    let mut at = head.get_next();
+    while let Some(node) = at {
+        at = node.get_next();
+        nodes.push(node);
+    }
+    for node in nodes.iter().rev() {
+        node.print_value();
+    }
+    head.print_value();
+}
+
+// arm 2: print_linked_list_in_reverse_constant.kara
+fn a2_print_linked_list_in_reverse(head: dyn ImmutableListNode) {
+    let mut n = 1;
+    let mut at = head.get_next();
+    while let Some(node) = at {
+        at = node.get_next();
+        n += 1;
+    }
+    for place in (1..n).rev() {
+        let mut node = head.get_next().unwrap();
+        for _ in 1..place {
+            node = node.get_next().unwrap();
+        }
+        node.print_value();
+    }
+    head.print_value();
+}
+
+// arm 3: print_linked_list_in_reverse_blocks.kara
+fn a3_print_block(first: dyn ImmutableListNode, len: i64) {
+    let mut rest: Vec[dyn ImmutableListNode] = Vec.new();
+    let mut at = first.get_next();
+    while rest.len() + 1 < len {
+        let node = at.unwrap();
+        at = node.get_next();
+        rest.push(node);
+    }
+    for node in rest.iter().rev() {
+        node.print_value();
+    }
+    first.print_value();
+}
+
+fn a3_print_linked_list_in_reverse(head: dyn ImmutableListNode) {
+    let mut n = 1;
+    let mut at = head.get_next();
+    while let Some(node) = at {
+        at = node.get_next();
+        n += 1;
+    }
+    let mut size = 1;
+    while (size + 1) * (size + 1) <= n {
+        size += 1;
+    }
+    // The first node of every block but the head's.
+    let mut starts: Vec[dyn ImmutableListNode] = Vec.new();
+    let mut place = 1;
+    at = head.get_next();
+    while let Some(node) = at {
+        at = node.get_next();
+        if place % size == 0 {
+            starts.push(node);
+        }
+        place += 1;
+    }
+    for b in (0..starts.len()).rev() {
+        let from = (b + 1) * size;
+        a3_print_block(starts[b], size.min(n - from));
+    }
+    a3_print_block(head, size.min(n));
+}
+
+// arm 4: print_linked_list_in_reverse_halves.kara
+fn a4_print_stretch(first: dyn ImmutableListNode, len: i64) {
+    if len == 1 {
+        first.print_value();
+        return;
+    }
+    let half = len / 2;
+    let mut second = first.get_next().unwrap();
+    for _ in 1..half {
+        second = second.get_next().unwrap();
+    }
+    a4_print_stretch(second, len - half);
+    a4_print_stretch(first, half);
+}
+
+fn a4_print_linked_list_in_reverse(head: dyn ImmutableListNode) {
+    let mut n = 1;
+    let mut at = head.get_next();
+    while let Some(node) = at {
+        at = node.get_next();
+        n += 1;
+    }
+    a4_print_stretch(head, n);
+}
+
+// arm 5: print_linked_list_in_reverse_solution.kara
+struct A5Solution {}
+
+impl A5Solution {
+    fn print_linked_list_in_reverse(head: own dyn ImmutableListNode) {
+        let mut stack: Vec[dyn ImmutableListNode] = Vec.new();
+        let mut cur = Some(head);
+        while let Some(node) = cur {
+            cur = node.get_next();
+            stack.push(node);
+        }
+        while let Some(node) = stack.pop() {
+            node.print_value();
+        }
+    }
+}
+
+fn a5_print_linked_list_in_reverse(head: own dyn ImmutableListNode) {
+    A5Solution.print_linked_list_in_reverse(head);
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// ---- the differential ------------------------------------------------------
+
+// What the nodes have printed: each print's value and the node's place.
+shared struct Printed {
+    mut values: Vec[i64],
+    mut places: Vec[i64],
+}
+
+shared struct Node {
+    val: i64,
+    place: i64,
+    next: Option[Node],
+    printed: Printed,
+}
+
+impl ImmutableListNode for Node {
+    fn print_value(self) {
+        self.printed.values.push(self.val);
+        self.printed.places.push(self.place);
+    }
+
+    fn get_next(self) -> Option[dyn ImmutableListNode] {
+        match self.next {
+            Some(n) => Some(n),
+            None => None,
+        }
+    }
+}
+
+// Arm `k` run on the list of `values`: what it printed, and at which places.
+fn run_arm(k: i64, values: Vec[i64]) -> (Vec[i64], Vec[i64]) {
+    let printed = Printed { values: Vec.new(), places: Vec.new() };
+    let mut head: Option[Node] = None;
+    for place in (0..values.len()).rev() {
+        head = Some(Node { val: values[place], place: place, next: head, printed: printed });
+    }
+    let h = head.unwrap();
+    match k {
+        0 => a0_print_linked_list_in_reverse(h),
+        1 => a1_print_linked_list_in_reverse(h),
+        2 => a2_print_linked_list_in_reverse(h),
+        3 => a3_print_linked_list_in_reverse(h),
+        4 => a4_print_linked_list_in_reverse(h),
+        _ => a5_print_linked_list_in_reverse(h),
+    }
+    (printed.values.clone(), printed.places.clone())
+}
+
+// The statement read literally: the values from the last node to the first.
+fn literal(values: Vec[i64]) -> Vec[i64] {
+    let mut out = Vec.new();
+    let mut i = values.len();
+    while i > 0 {
+        i -= 1;
+        out.push(values[i]);
+    }
+    out
+}
+
+fn main() {
+    let names = ["recursion", "stack", "constant", "blocks", "halves", "solution"];
+    let mut seed = 1265;
+    let mut fails: Array[i64, 6] = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for case in 0..2000 {
+        // a third of the lists short, a third longer, a third of few values
+        let n = if case % 3 == 0 { next_random(mut seed) % 8 + 1 } else { next_random(mut seed) % 120 + 1 };
+        let top = if case % 3 == 2 { 3 } else { 2001 };
+        let values: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top - top / 2).collect();
+        let cut = next_random(mut seed) % n;
+        let front: Vec[i64] = values[0..cut].to_vec();
+        let back: Vec[i64] = values[cut..n].to_vec();
+        let want = literal(values);
+        let (star, _) = run_arm(0, values);
+        for v in star.iter() {
+            check = (check * 131 + v + 1000) % 1000000007;
+        }
+        for k in 0..6 {
+            let (got, places) = run_arm(k, values);
+            // P1: the statement read literally
+            if got != want {
+                fails[0] += 1;
+                if fails[0] <= 3 {
+                    println(f"P1 {names[k]}: {values} printed {got}");
+                }
+            }
+            // P2: every node printed exactly once
+            let mut seen = Vec.filled(n, 0);
+            for p in places.iter() {
+                seen[p] += 1;
+            }
+            if seen.iter().any(|c| c != 1) {
+                fails[1] += 1;
+            }
+            // P3: the places printed run from the last to the first
+            if places != literal((0..n).collect()) {
+                fails[2] += 1;
+            }
+            // P4: printed twice, the same twice
+            let (again, _) = run_arm(k, values);
+            if again != got {
+                fails[3] += 1;
+            }
+            // P5: a list cut in two prints the back's reverse, then the front's
+            if cut > 0 {
+                let (b, _) = run_arm(k, back);
+                let (f, _) = run_arm(k, front);
+                let mut joined = b.clone();
+                joined.extend(f);
+                if joined != got {
+                    fails[4] += 1;
+                }
+            }
+            // P6: the ★ arm's answer
+            if got != star {
+                fails[5] += 1;
+            }
+            checks += 6;
+        }
+    }
+    let mut total = 0;
+    for p in 0..6 {
+        if fails[p] > 0 {
+            print(f"P{p + 1}: {fails[p]} failures ");
+        }
+        total += fails[p];
+    }
+    println(f"2000 lists: checksum {check}, {checks} checks over 6 arms: {total} failures");
+}

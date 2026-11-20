@@ -1,0 +1,79 @@
+// LeetCode #1238: Circular Permutation in Binary Representation -- the
+// Gray code by recursion on `n`: the code for `n - 1` bits, then the same
+// code backwards with the top bit set; then every value XORed with
+// `start`. O(2^n).
+
+fn gray(n: i64) -> Vec[i64] {
+    if n == 0 {
+        return [0];
+    }
+    let lower = gray(n - 1);
+    let top = 1 << (n - 1);
+    let mut out = lower.clone();
+    out.extend(lower.iter().rev().map(|c| c | top));
+    out
+}
+
+fn circular_permutation(n: i64, start: i64) -> Vec[i64] {
+    gray(n).iter().map(|c| c ^ start).collect()
+}
+
+
+// ---- test harness ---------------------------------------------------------
+
+// The statement's conditions: every value from 0 to 2^n - 1 once, `start`
+// first, and each value one bit from the next and the last from the first.
+// Any answer meeting them is right, so the harness prints the verdict, not
+// the permutation.
+fn is_cycle(n: i64, start: i64, p: Vec[i64]) -> bool {
+    let size = 1 << n;
+    if p.len() != size or p[0] != start {
+        return false;
+    }
+    let mut seen = Vec.filled(size, false);
+    for v in p.iter() {
+        if v < 0 or v >= size or seen[v] {
+            return false;
+        }
+        seen[v] = true;
+    }
+    (0..size).all(|i| {
+        let d = p[i] ^ p[(i + 1) % size];
+        d != 0 and d & (d - 1) == 0
+    })
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples
+    for (n, start) in [(2, 3), (3, 2)] {
+        let p = circular_permutation(n, start);
+        println(f"n = {n}, start = {start}: {p.len()} values, a cycle: {is_cycle(n, start, p)}");
+    }
+    // 1000 random cases, n from 1 to 12
+    let mut seed = 1238;
+    let mut cycles = 0;
+    let mut values = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let start = next_random(mut seed) % (1 << n);
+        let p = circular_permutation(n, start);
+        values += p.len();
+        if is_cycle(n, start, p) {
+            cycles += 1;
+        }
+    }
+    println(f"1000 random cases: {cycles} cycles, {values} values");
+    // the constraints' top: n = 16, from 0, from the middle and from the last
+    let mut top = 0;
+    for start in [0, 40000, 65535] {
+        if is_cycle(16, start, circular_permutation(16, start)) {
+            top += 1;
+        }
+    }
+    println(f"n = 16: {top} of 3 cycles of 65536");
+}

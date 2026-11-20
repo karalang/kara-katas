@@ -1,0 +1,283 @@
+// LeetCode #1261: the differential -- the five arms against the statement
+// read literally and five more properties, on 2000 random trees.
+
+// arm 0: find_elements.kara
+struct A0FindElements {
+    values: Set[i64],
+}
+
+fn a0_recover(node: Option[TreeNode], value: i64, values: mut ref Set[i64]) {
+    if let Some(n) = node {
+        n.val = value;
+        values.insert(value);
+        a0_recover(n.left, 2 * value + 1, mut values);
+        a0_recover(n.right, 2 * value + 2, mut values);
+    }
+}
+
+impl A0FindElements {
+    fn new(root: Option[TreeNode]) -> A0FindElements {
+        let mut values = Set.new();
+        a0_recover(root, 0, mut values);
+        A0FindElements { values }
+    }
+
+    fn find(self, target: i64) -> bool {
+        self.values.contains(target)
+    }
+}
+
+// arm 1: find_elements_walk.kara
+struct A1FindElements {
+    root: Option[TreeNode],
+}
+
+fn a1_recover(node: Option[TreeNode], value: i64) {
+    if let Some(n) = node {
+        n.val = value;
+        a1_recover(n.left, 2 * value + 1);
+        a1_recover(n.right, 2 * value + 2);
+    }
+}
+
+impl A1FindElements {
+    fn new(root: Option[TreeNode]) -> A1FindElements {
+        a1_recover(root, 0);
+        A1FindElements { root }
+    }
+
+    fn find(self, target: i64) -> bool {
+        let label = target + 1;
+        let mut bit = 63 - label.leading_zeros();
+        let mut at = self.root;
+        while bit > 0 {
+            bit -= 1;
+            at = match at {
+                None => return false,
+                Some(n) => if (label >> bit) & 1 == 0 { n.left } else { n.right },
+            };
+        }
+        match at {
+            Some(n) => n.val == target,
+            None => false,
+        }
+    }
+}
+
+// arm 2: find_elements_bfs.kara
+struct A2FindElements {
+    values: SortedSet[i64],
+}
+
+impl A2FindElements {
+    fn new(root: Option[TreeNode]) -> A2FindElements {
+        let mut values: SortedSet[i64] = SortedSet.new();
+        let mut queue: VecDeque[TreeNode] = VecDeque.new();
+        if let Some(r) = root {
+            r.val = 0;
+            queue.push_back(r);
+        }
+        while let Some(n) = queue.pop_front() {
+            values.insert(n.val);
+            if let Some(l) = n.left {
+                l.val = 2 * n.val + 1;
+                queue.push_back(l);
+            }
+            if let Some(r) = n.right {
+                r.val = 2 * n.val + 2;
+                queue.push_back(r);
+            }
+        }
+        A2FindElements { values }
+    }
+
+    fn find(self, target: i64) -> bool {
+        self.values.contains(target)
+    }
+}
+
+// arm 3: find_elements_bitmap.kara
+struct A3FindElements {
+    seen: Vec[bool],
+}
+
+impl A3FindElements {
+    fn new(root: Option[TreeNode]) -> A3FindElements {
+        let mut seen: Vec[bool] = Vec.new();
+        let mut stack: Vec[(Option[TreeNode], i64)] = [(root, 0)];
+        while let Some((node, value)) = stack.pop() {
+            if let Some(n) = node {
+                n.val = value;
+                if value >= seen.len() {
+                    seen.resize(value + 1, false);
+                }
+                seen[value] = true;
+                stack.push((n.right, 2 * value + 2));
+                stack.push((n.left, 2 * value + 1));
+            }
+        }
+        A3FindElements { seen }
+    }
+
+    fn find(self, target: i64) -> bool {
+        target < self.seen.len() and self.seen[target]
+    }
+}
+
+// arm 4: find_elements_solution.kara
+struct A4FindElements {
+    seen: Set[i32],
+}
+
+fn a4_dfs(node: Option[TreeNode], val: i32, seen: mut ref Set[i32]) {
+    if let Some(n) = node {
+        n.val = val;
+        seen.insert(val);
+        a4_dfs(n.left, 2 * val + 1, mut seen);
+        a4_dfs(n.right, 2 * val + 2, mut seen);
+    }
+}
+
+impl A4FindElements {
+    fn new(root: Option[TreeNode]) -> Self {
+        let mut seen = Set.new();
+        a4_dfs(root, 0, mut seen);
+        A4FindElements { seen }
+    }
+
+    fn find(self, target: i32) -> bool {
+        self.seen.contains(target)
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// The contaminated tree with a node at each heap place in `present`: the
+// root at 0 and the children of place `p` at `2p + 1` and `2p + 2`, every
+// value -1.
+fn build(present: SortedSet[i64], at: i64) -> Option[TreeNode] {
+    if not present.contains(at) {
+        return None;
+    }
+    Some(TreeNode { val: -1, left: build(present, 2 * at + 1), right: build(present, 2 * at + 2) })
+}
+
+// `n` heap places grown from the root, each a free child of a random
+// place already there, at most 20 levels below the root.
+fn random_places(n: i64, seed: mut ref i64) -> SortedSet[i64] {
+    let mut places: Vec[i64] = [0];
+    let mut present: SortedSet[i64] = SortedSet.new();
+    present.insert(0);
+    while places.len() < n {
+        let p = places[next_random(mut seed) % places.len()];
+        let child = 2 * p + 1 + next_random(mut seed) % 2;
+        if child < 2097151 and not present.contains(child) {
+            present.insert(child);
+            places.push(child);
+        }
+    }
+    present
+}
+
+shared struct TreeNode {
+    mut val: i64,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn ask(arm: i64, root: Option[TreeNode], targets: Vec[i64]) -> Vec[bool] {
+    match arm {
+        0 => {
+            let f = A0FindElements.new(root);
+            targets.iter().map(|t| f.find(t)).collect()
+        }
+        1 => {
+            let f = A1FindElements.new(root);
+            targets.iter().map(|t| f.find(t)).collect()
+        }
+        2 => {
+            let f = A2FindElements.new(root);
+            targets.iter().map(|t| f.find(t)).collect()
+        }
+        3 => {
+            let f = A3FindElements.new(root);
+            targets.iter().map(|t| f.find(t)).collect()
+        }
+        _ => {
+            let f = A4FindElements.new(root);
+            targets.iter().map(|t| f.find(t as i32)).collect()
+        }
+    }
+}
+
+// Every node holds the value of its heap place once recovered.
+fn values_recovered(node: Option[TreeNode], place: i64) -> bool {
+    match node {
+        None => true,
+        Some(n) => n.val == place and values_recovered(n.left, 2 * place + 1) and values_recovered(n.right, 2 * place + 2),
+    }
+}
+
+// The place `p` mirrored left to right within its level.
+fn mirrored(p: i64) -> i64 {
+    let mut first = 1;
+    while first * 2 <= p + 1 {
+        first *= 2;
+    }
+    let offset = p + 1 - first;
+    first + (first - 1 - offset) - 1
+}
+
+fn main() {
+    let names = ["the statement read literally: a target is found where the tree has a node at its heap place", "recovered a second time, the same answers", "the tree mirrored, the mirrored targets found alike", "every node holding its place's value", "a found target's parent found too", "the ★ arm's answers"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 12610;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 40 + 1;
+        let present = random_places(n, mut seed);
+        let places: Vec[i64] = present.iter().cloned().collect();
+        let deepest = places[places.len() - 1];
+        let targets: Vec[i64] = (0..30).map(|_| next_random(mut seed) % (deepest + 3)).collect();
+        let want: Vec[bool] = targets.iter().map(|t| present.contains(t)).collect();
+        for w in want.iter() {
+            check = (check * 131 + if w { 1 } else { 2 }) % 1000000007;
+        }
+        let flipped: SortedSet[i64] = places.iter().map(|p| mirrored(p)).collect();
+        let flipped_targets: Vec[i64] = targets.iter().map(|t| mirrored(t)).collect();
+        let parents: Vec[i64] = targets.iter().map(|t| if t == 0 { 0 } else { (t - 1) / 2 }).collect();
+        let mut star: Vec[bool] = Vec.new();
+        for arm in 0..5 {
+            let root = build(present, 0);
+            let got = ask(arm, root, targets);
+            if arm == 0 {
+                star = got.clone();
+            }
+            let recovered = values_recovered(root, 0);
+            let again = ask(arm, root, targets);
+            let mirror = ask(arm, build(flipped, 0), flipped_targets);
+            let up = ask(arm, build(present, 0), parents);
+            let held = [got == want, again == got, mirror == got, recovered, (0..30).all(|q| not got[q] or up[q]), got == star];
+            for q in 0..6 {
+                checks += 1;
+                if not held[q] {
+                    fails[q] += 1;
+                    if fails[q] <= 2 {
+                        println(f"P{q + 1} ({names[q]}) fails on arm {arm}: {places}");
+                    }
+                }
+            }
+        }
+    }
+    let total: i64 = fails.iter().sum();
+    for q in 0..6 {
+        if fails[q] > 0 {
+            print(f"P{q + 1}: {fails[q]} failures ");
+        }
+    }
+    println(f"2000 trees: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

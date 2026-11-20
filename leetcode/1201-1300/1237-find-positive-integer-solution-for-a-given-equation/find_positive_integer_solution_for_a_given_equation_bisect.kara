@@ -1,0 +1,70 @@
+// LeetCode #1237: Find Positive Integer Solution for a Given Equation -- for
+// each `x`, a binary search over `y` in 1 to 1000 for the least `y` with
+// `f(x, y) >= z`, kept when it is equal; `x` stops once `f(x, 1)` is past
+// `z`. O(x log y) calls.
+
+// The judge's hidden function: one of nine, each increasing in both
+// arguments.
+pub struct CustomFunction {
+    id: i32,
+}
+
+impl CustomFunction {
+    pub fn f(self, x: i32, y: i32) -> i32 {
+        match self.id {
+            1 => x + y,
+            2 => x * y,
+            3 => x * x + y,
+            4 => x + y * y,
+            5 => x * x + y * y,
+            6 => (x + y) * (x + y),
+            7 => x * x * x + y * y * y,
+            8 => x * x * y,
+            _ => x * y * y,
+        }
+    }
+}
+
+fn find_solution(customfunction: CustomFunction, z: i32) -> Vec[Vec[i32]] {
+    let mut out = Vec.new();
+    for x in 1..=1000 {
+        if customfunction.f(x, 1) > z {
+            break;
+        }
+        let mut lo = 1;
+        let mut hi = 1001;
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            if customfunction.f(x, mid) < z {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        if lo <= 1000 and customfunction.f(x, lo) == z {
+            out.push([x, lo]);
+        }
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{find_solution(CustomFunction { id: 1 }, 5)}");
+    println(f"{find_solution(CustomFunction { id: 2 }, 5)}");
+    // every function and every `z` from 1 to 100
+    let mut check = 0;
+    let mut pairs = 0;
+    for id in 1..=9 {
+        for z in 1..=100 {
+            let got = find_solution(CustomFunction { id: id }, z);
+            pairs += got.len();
+            for p in got.iter() {
+                check = (check * 131 + p[0] as i64 * 1001 + p[1]) % 1000000007;
+            }
+        }
+    }
+    println(f"9 functions, z from 1 to 100: {pairs} pairs, checksum {check}");
+}

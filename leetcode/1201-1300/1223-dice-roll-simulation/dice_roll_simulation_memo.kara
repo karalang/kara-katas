@@ -1,0 +1,56 @@
+// LeetCode #1223: Dice Roll Simulation -- top-down: the ways to finish
+// with `left` rolls to go, after a run of `run` of face `last`, is the sum
+// over the six faces that may come next, each answer kept in a `Map`
+// keyed by the triple.
+
+fn ways(left: i64, last: i64, run: i64, roll_max: Vec[i64], memo: mut ref Map[(i64, i64, i64), i64]) -> i64 {
+    if left == 0 {
+        return 1;
+    }
+    if let Some(known) = memo.get((left, last, run)) {
+        return known;
+    }
+    let mut total = 0;
+    for face in 0..6 {
+        if face != last {
+            total = (total + ways(left - 1, face, 1, roll_max, mut memo)) % 1_000_000_007;
+        } else if run < roll_max[face] {
+            total = (total + ways(left - 1, face, run + 1, roll_max, mut memo)) % 1_000_000_007;
+        }
+    }
+    memo.insert((left, last, run), total);
+    total
+}
+
+fn die_simulator(n: i64, roll_max: Vec[i64]) -> i64 {
+    let mut memo: Map[(i64, i64, i64), i64] = Map.new();
+    let mut total = 0;
+    for face in 0..6 {
+        total = (total + ways(n - 1, face, 1, roll_max, mut memo)) % 1_000_000_007;
+    }
+    total
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    println(f"{die_simulator(2, [1, 1, 2, 2, 2, 3])}");
+    println(f"{die_simulator(2, [1, 1, 1, 1, 1, 1])}");
+    println(f"{die_simulator(3, [1, 1, 1, 2, 2, 3])}");
+    println(f"{die_simulator(1, [1, 1, 1, 1, 1, 1])}");
+    let mut seed = 1223;
+    let mut check = 0;
+    for _ in 0..300 {
+        let n = next_random(mut seed) % 60 + 1;
+        let roll_max: Vec[i64] = (0..6).map(|_| next_random(mut seed) % 15 + 1).collect();
+        check = (check * 131 + die_simulator(n, roll_max)) % 1000000007;
+    }
+    println(f"300 random cases with n up to 60: checksum {check}");
+    let wide: Vec[i64] = (0..6).map(|_| next_random(mut seed) % 15 + 1).collect();
+    println(f"n = 5000: no face twice {die_simulator(5000, [1, 1, 1, 1, 1, 1])}, up to 15 {die_simulator(5000, [15, 15, 15, 15, 15, 15])}, {wide}: {die_simulator(5000, wide)}");
+}

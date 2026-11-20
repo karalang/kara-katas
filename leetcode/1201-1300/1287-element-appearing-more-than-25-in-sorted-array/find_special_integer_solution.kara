@@ -1,0 +1,68 @@
+// LeetCode #1287: Element Appearing More Than 25% In Sorted Array -- a
+// Rust solution as LeetCode's Rust users write it (`windows(n / 4 + 1)`
+// over the slice, the first window whose ends agree, `.map(|w| w[0])`),
+// carried to Kāra by `karac fix`.
+
+impl Solution {
+    pub fn find_special_integer(arr: Vec[i32]) -> i32 {
+        let q = arr.len() / 4;
+        arr.windows(q + 1).into_iter()
+            .find(|w| w[0] == w[q])
+            .map(|w| w[0])
+            .unwrap()
+    }
+}
+
+struct Solution {}
+
+// The harness's numbers, handed over as LeetCode's `Vec<i32>`.
+fn find_special_integer(arr: Vec[i64]) -> i64 {
+    let small: Vec[i32] = arr.iter().map(|x| *x as i32).collect();
+    Solution.find_special_integer(small)
+}
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A random problem: `n` values up to 10^5 with one of them planted more
+// than n / 4 times, sorted.
+fn problem(seed: mut ref i64, n: i64) -> Vec[i64] {
+    let planted = next_random(mut *seed) % 100001;
+    // below 4 numbers, any other value would pass a quarter too
+    let times = if n < 4 { n } else { n / 4 + 1 + next_random(mut *seed) % (n - n / 4) };
+    let mut arr: Vec[i64] = Vec.filled(times, planted);
+    let mut drawn: Map[i64, i64] = Map.new();
+    drawn.insert(planted, times);
+    while arr.len() < n {
+        // mostly a few values, so that runs are long; a value that would
+        // pass a quarter too is drawn again
+        let x = if next_random(mut *seed) % 2 == 0 { planted + next_random(mut *seed) % 5 - 2 } else { next_random(mut *seed) % 100001 };
+        let c = drawn.get(x) ?? 0;
+        if x >= 0 and x != planted and (c + 1) * 4 <= n {
+            drawn.insert(x, c + 1);
+            arr.push(x);
+        }
+    }
+    arr.sort();
+    arr
+}
+
+fn main() {
+    // LeetCode's examples, and the edges
+    println(f"{find_special_integer([1, 2, 2, 6, 6, 6, 6, 7, 10])} {find_special_integer([1, 1])} {find_special_integer([5])} {find_special_integer([1, 2, 3, 3])} {find_special_integer([1, 2, 3, 4, 4, 4])}");
+    // 1000 random problems of up to 400 numbers, then 20 of 10^4
+    let mut seed = 1287;
+    let mut total = 0;
+    let mut check = 0;
+    for case in 0..1020 {
+        let n = if case < 1000 { next_random(mut seed) % 400 + 1 } else { 10000 };
+        let arr = problem(mut seed, n);
+        let x = find_special_integer(arr);
+        total += x;
+        check = (check * 131 + x) % 1000000007;
+    }
+    println(f"1020 random problems: total {total}, checksum {check}");
+}

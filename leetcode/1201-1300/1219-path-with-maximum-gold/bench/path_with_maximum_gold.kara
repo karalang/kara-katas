@@ -1,0 +1,68 @@
+// LeetCode #1219 bench: the ★ arm (a depth-first search from every cell
+// with gold that zeroes a cell while the search goes on from it and puts
+// its gold back on the way out) on 160 grids of 15 by 15, the constraints'
+// most, each holding one blob of 25 cells with gold, the most they allow,
+// grown at random and drawn once; every answer folded into a checksum.
+
+fn collect(grid: mut ref Vec[Vec[i64]], r: i64, c: i64) -> i64 {
+    if r < 0 or c < 0 or r >= grid.len() or c >= grid[0].len() or grid[r][c] == 0 {
+        return 0;
+    }
+    let gold = grid[r][c];
+    grid[r][c] = 0;
+    let mut best = 0;
+    for (dr, dc) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+        best = max(best, collect(mut grid, r + dr, c + dc));
+    }
+    grid[r][c] = gold;
+    gold + best
+}
+
+fn get_maximum_gold(grid: Vec[Vec[i64]]) -> i64 {
+    let mut g = grid.clone();
+    let mut best = 0;
+    for r in 0..g.len() {
+        for c in 0..g[0].len() {
+            if g[r][c] > 0 {
+                best = max(best, collect(mut g, r, c));
+            }
+        }
+    }
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1219;
+    let steps = [(1, 0), (-1, 0), (0, 1), (0, -1)];
+    let mut grids: Vec[Vec[Vec[i64]]] = Vec.new();
+    for _ in 0..160 {
+        let mut grid: Vec[Vec[i64]] = Vec.filled(15, Vec.filled(15, 0));
+        let r0 = next_random(mut seed) % 15;
+        let c0 = next_random(mut seed) % 15;
+        grid[r0][c0] = next_random(mut seed) % 100 + 1;
+        let mut cells: Vec[(i64, i64)] = [(r0, c0)];
+        while cells.len() < 25 {
+            let at = next_random(mut seed) % cells.len();
+            let (dr, dc) = steps[next_random(mut seed) % 4];
+            let (r, c) = (cells[at].0 + dr, cells[at].1 + dc);
+            if r >= 0 and c >= 0 and r < 15 and c < 15 and grid[r][c] == 0 {
+                grid[r][c] = next_random(mut seed) % 100 + 1;
+                cells.push((r, c));
+            }
+        }
+        grids.push(grid);
+    }
+    let mut check = 0;
+    let mut total = 0;
+    for grid in grids.iter() {
+        let answer = get_maximum_gold(grid);
+        total += answer;
+        check = (check * 131 + answer) % 1000000007;
+    }
+    println(f"160 grids of 15 by 15, one blob of 25 cells with gold each: gold total {total}, checksum {check}");
+}

@@ -1,0 +1,72 @@
+// LeetCode #1265 bench, in Kāra: the ★ arm (by recursion: a node prints
+// after everything after it has, every call through the `dyn` interface)
+// on 100 random lists of 1000 nodes built once, 300 rounds; everything
+// each round prints folded into a checksum.
+
+// The judge's interface: a node prints its value, and hands out the node
+// after it.
+trait ImmutableListNode {
+    fn print_value(self);
+    fn get_next(self) -> Option[dyn ImmutableListNode];
+}
+
+fn print_linked_list_in_reverse(head: dyn ImmutableListNode) {
+    if let Some(next) = head.get_next() {
+        print_linked_list_in_reverse(next);
+    }
+    head.print_value();
+}
+
+// What the nodes have printed, in order.
+shared struct Printed {
+    mut values: Vec[i64],
+}
+
+shared struct Node {
+    val: i64,
+    next: Option[Node],
+    printed: Printed,
+}
+
+impl ImmutableListNode for Node {
+    fn print_value(self) {
+        self.printed.values.push(self.val);
+    }
+
+    fn get_next(self) -> Option[dyn ImmutableListNode] {
+        match self.next {
+            Some(n) => Some(n),
+            None => None,
+        }
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let printed = Printed { values: Vec.new() };
+    let mut seed = 1265;
+    let mut heads: Vec[Node] = Vec.new();
+    for _ in 0..100 {
+        let mut head: Option[Node] = None;
+        for _ in 0..1000 {
+            head = Some(Node { val: next_random(mut seed) % 2001 - 1000, next: head, printed: printed });
+        }
+        heads.push(head.unwrap());
+    }
+    let mut check = 0;
+    for round in 0..300 {
+        for h in 0..100 {
+            printed.values.clear();
+            print_linked_list_in_reverse(heads[h]);
+            check = (check + round) % 1000000007;
+            for v in printed.values.iter() {
+                check = (check * 131 + v + 1000) % 1000000007;
+            }
+        }
+    }
+    println(f"300 rounds of 100 lists of 1000 nodes: checksum {check}");
+}

@@ -1,0 +1,323 @@
+// LeetCode #1268: the differential -- the six arms against the statement
+// read literally and five more properties, on 2000 random searches.
+
+// arm 0: suggested_products.kara
+fn a0_suggested_products(products: Vec[String], search_word: String) -> Vec[Vec[String]] {
+    let mut sorted = products.clone();
+    sorted.sort();
+    let mut out: Vec[Vec[String]] = Vec.new();
+    for end in 1..search_word.len() + 1 {
+        let prefix = search_word[0..end];
+        // the first product not below the prefix
+        let mut lo = 0;
+        let mut hi = sorted.len();
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            if sorted[mid].as_str() < prefix {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        let mut list: Vec[String] = Vec.new();
+        let mut i = lo;
+        while i < sorted.len() and list.len() < 3 and sorted[i].starts_with(prefix) {
+            list.push(sorted[i].clone());
+            i += 1;
+        }
+        out.push(list);
+    }
+    out
+}
+
+// arm 1: suggested_products_narrow.kara
+fn a1_suggested_products(products: Vec[String], search_word: String) -> Vec[Vec[String]] {
+    let mut sorted = products.clone();
+    sorted.sort();
+    let typed: Vec[u8] = search_word.bytes().iter().collect();
+    let mut lo = 0;
+    let mut hi = sorted.len();
+    let mut out: Vec[Vec[String]] = Vec.new();
+    for (i, c) in typed.iter().enumerate() {
+        // a product too short for letter `i`, or with another there, leaves
+        while lo < hi and (sorted[lo].len() <= i or sorted[lo].bytes()[i] != c) {
+            lo += 1;
+        }
+        while lo < hi and (sorted[hi - 1].len() <= i or sorted[hi - 1].bytes()[i] != c) {
+            hi -= 1;
+        }
+        out.push(sorted[lo..hi.min(lo + 3)].to_vec());
+    }
+    out
+}
+
+// arm 2: suggested_products_trie.kara
+struct A2TrieNode {
+    next: Vec[Option[i64]],
+    best: Vec[String],
+}
+
+fn a2_suggested_products(products: Vec[String], search_word: String) -> Vec[Vec[String]] {
+    let mut sorted = products.clone();
+    sorted.sort();
+    let mut nodes: Vec[A2TrieNode] = [A2TrieNode { next: Vec.filled(26, None), best: Vec.new() }];
+    for p in sorted.iter() {
+        let mut at = 0;
+        for b in p.bytes() {
+            let k = (b - b'a') as i64;
+            at = match nodes[at].next[k] {
+                Some(child) => child,
+                None => {
+                    nodes.push(A2TrieNode { next: Vec.filled(26, None), best: Vec.new() });
+                    let child = nodes.len() - 1;
+                    nodes[at].next[k] = Some(child);
+                    child
+                }
+            };
+            if nodes[at].best.len() < 3 {
+                nodes[at].best.push(p.clone());
+            }
+        }
+    }
+    let mut out: Vec[Vec[String]] = Vec.new();
+    let mut at: Option[i64] = Some(0);
+    for b in search_word.bytes() {
+        at = match at {
+            Some(node) => nodes[node].next[b - b'a'],
+            None => None,
+        };
+        out.push(match at {
+            Some(node) => nodes[node].best.clone(),
+            None => Vec.new(),
+        });
+    }
+    out
+}
+
+// arm 3: suggested_products_filter.kara
+fn a3_suggested_products(products: Vec[String], search_word: String) -> Vec[Vec[String]] {
+    let mut sorted = products.clone();
+    sorted.sort();
+    (1..search_word.len() + 1)
+        .map(|end| {
+            let prefix = search_word[0..end];
+            sorted.iter().filter(|p| p.starts_with(prefix)).take(3).map(|p| p.clone()).collect()
+        })
+        .collect()
+}
+
+// arm 4: suggested_products_dfs.kara
+struct A4Trie {
+    children: SortedMap[char, A4Trie],
+    word: Option[String],
+}
+
+fn a4_new_trie() -> A4Trie {
+    A4Trie { children: SortedMap.new(), word: None }
+}
+
+fn a4_collect(node: A4Trie, want: i64, out: mut ref Vec[String]) {
+    if out.len() >= want {
+        return;
+    }
+    if let Some(w) = node.word {
+        out.push(w.clone());
+    }
+    for (_, child) in node.children.iter() {
+        if out.len() >= want {
+            return;
+        }
+        a4_collect(child, want, mut out);
+    }
+}
+
+fn a4_suggested_products(products: Vec[String], search_word: String) -> Vec[Vec[String]] {
+    let mut root = a4_new_trie();
+    for p in products.iter() {
+        let mut node = mut ref root;
+        for c in p.chars() {
+            if not node.children.contains_key(c) {
+                node.children.insert(c, a4_new_trie());
+            }
+            node = node.children.get_mut(c).unwrap();
+        }
+        node.word = Some(p.clone());
+    }
+    let mut out: Vec[Vec[String]] = Vec.new();
+    let mut node: Option[ref A4Trie] = Some(ref root);
+    for c in search_word.chars() {
+        node = match node {
+            Some(n) => n.children.get(c),
+            None => None,
+        };
+        let mut list: Vec[String] = Vec.new();
+        if let Some(n) = node {
+            a4_collect(n, 3, mut list);
+        }
+        out.push(list);
+    }
+    out
+}
+
+// arm 5: suggested_products_solution.kara
+impl A5Solution {
+    pub fn suggested_products(products: own Vec[String], search_word: String) -> Vec[Vec[String]] {
+        let mut products = products;
+        products.sort();
+        let mut res = Vec.new();
+        let mut prefix = String.new();
+        for c in search_word.chars() {
+            prefix.push(c);
+            let start = products.partition_point(|p| p.as_str() < prefix.as_str());
+            let mut row = Vec.new();
+            for p in products.iter().skip(start).take(3) {
+                if p.starts_with(prefix) {
+                    row.push(p.clone());
+                }
+            }
+            res.push(row);
+        }
+        res
+    }
+}
+
+struct A5Solution {}
+
+fn a5_suggested_products(products: own Vec[String], search_word: String) -> Vec[Vec[String]] {
+    A5Solution.suggested_products(products, search_word)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A word of 1 to `longest` letters from the first `letters` of the alphabet.
+fn random_word(longest: i64, letters: i64, seed: mut ref i64) -> String {
+    let len = next_random(mut seed) % longest + 1;
+    let mut w = String.new();
+    for _ in 0..len {
+        w.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+    }
+    w
+}
+
+// `n` different words.
+fn random_products(n: i64, longest: i64, letters: i64, seed: mut ref i64) -> Vec[String] {
+    let mut seen: SortedSet[String] = SortedSet.new();
+    let mut out: Vec[String] = Vec.new();
+    while out.len() < n {
+        let w = random_word(longest, letters, mut seed);
+        if seen.insert(w.clone()) {
+            out.push(w);
+        }
+    }
+    out
+}
+
+fn fold(check: i64, lists: Vec[Vec[String]]) -> i64 {
+    let mut c = check;
+    for list in lists.iter() {
+        c = (c * 131 + list.len()) % 1000000007;
+        for w in list.iter() {
+            for b in w.bytes() {
+                c = (c * 131 + b) % 1000000007;
+            }
+        }
+    }
+    c
+}
+
+// ---- the differential ------------------------------------------------------
+
+fn arm(k: i64, products: Vec[String], search: String) -> Vec[Vec[String]] {
+    match k {
+        0 => a0_suggested_products(products, search),
+        1 => a1_suggested_products(products, search),
+        2 => a2_suggested_products(products, search),
+        3 => a3_suggested_products(products, search),
+        4 => a4_suggested_products(products, search),
+        _ => a5_suggested_products(products.clone(), search),
+    }
+}
+
+// The statement read literally: after each letter typed, every product
+// with the typed prefix, sorted, and the first three of them.
+fn literal(products: Vec[String], search: String) -> Vec[Vec[String]] {
+    let mut out: Vec[Vec[String]] = Vec.new();
+    for end in 1..search.len() + 1 {
+        let prefix = search[0..end];
+        let mut matching: Vec[String] = Vec.new();
+        for p in products.iter() {
+            if p.len() >= end and p[0..end] == prefix {
+                matching.push(p.clone());
+            }
+        }
+        matching.sort();
+        matching.truncate(3);
+        out.push(matching);
+    }
+    out
+}
+
+fn main() {
+    let mut seed = 1268;
+    let mut fails: Array[i64, 6] = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 15 + 1;
+        let letters = next_random(mut seed) % 3 + 2;
+        let products = random_products(n, 5, letters, mut seed);
+        let search = random_word(6, letters, mut seed);
+        let want = literal(products, search);
+        let reversed: Vec[String] = products.iter().rev().map(|p| p.clone()).collect();
+        let mut more = products.clone();
+        more.insert(next_random(mut seed) % (n + 1), "zz".to_string());
+        let star = arm(0, products, search);
+        check = fold(check, star);
+        for k in 0..6 {
+            let got = arm(k, products, search);
+            if got != want {
+                fails[0] += 1;
+            }
+            if arm(k, reversed, search) != got {
+                fails[1] += 1;
+            }
+            // every list sorted, of at most three, each with its prefix
+            let mut formed = got.len() == search.len();
+            for (i, list) in got.iter().enumerate() {
+                if list.len() > 3 {
+                    formed = false;
+                }
+                for j in 0..list.len() {
+                    if not list[j].starts_with(search[0..i + 1]) or (j > 0 and list[j - 1] >= list[j]) {
+                        formed = false;
+                    }
+                }
+            }
+            if not formed {
+                fails[2] += 1;
+            }
+            // a longer prefix never has more suggestions
+            if (1..got.len()).any(|i| got[i].len() > got[i - 1].len()) {
+                fails[3] += 1;
+            }
+            if arm(k, more, search) != got {
+                fails[4] += 1;
+            }
+            if got != star {
+                fails[5] += 1;
+            }
+            checks += 6;
+        }
+    }
+    let mut total = 0;
+    for p in 0..6 {
+        if fails[p] > 0 {
+            print(f"P{p + 1}: {fails[p]} failures ");
+        }
+        total += fails[p];
+    }
+    println(f"2000 searches: checksum {check}, {checks} checks over 6 arms: {total} failures");
+}

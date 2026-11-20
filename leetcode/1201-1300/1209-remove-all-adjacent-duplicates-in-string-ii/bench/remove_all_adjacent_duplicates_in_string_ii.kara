@@ -1,0 +1,68 @@
+// LeetCode #1209 bench: the ★ arm (a stack of runs, each a letter and how
+// many times it has come in a row, a run popped when it reaches `k`) on 12
+// strings of 100000 letters, the constraints' most, drawn once: four from
+// two letters, four from three, and four of 50000 letters followed by
+// their reverse; then 10 rounds over the strings with k = 2, 3 and 4, each
+// answer's length and last letter folded into a checksum.
+
+fn remove_duplicates(s: String, k: i64) -> String {
+    let mut runs: Vec[(char, i64)] = Vec.new();
+    for c in s.chars() {
+        let top = runs.len() - 1;
+        if top >= 0 and runs[top].0 == c {
+            runs[top].1 += 1;
+            if runs[top].1 == k {
+                runs.pop();
+            }
+        } else {
+            runs.push((c, 1));
+        }
+    }
+    let mut out = String.with_capacity(s.len());
+    for (c, n) in runs.iter() {
+        for _ in 0..n {
+            out.push(c);
+        }
+    }
+    out
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_text(seed: mut ref i64, n: i64, letters: i64) -> String {
+    let mut out = String.with_capacity(n);
+    for _ in 0..n {
+        out.push((b'a' + next_random(mut seed) % letters) as u8 as char);
+    }
+    out
+}
+
+fn main() {
+    let mut seed = 1209;
+    let mut texts: Vec[String] = Vec.new();
+    for i in 0..12 {
+        if i < 4 {
+            texts.push(random_text(mut seed, 100000, 2));
+        } else if i < 8 {
+            texts.push(random_text(mut seed, 100000, 3));
+        } else {
+            let half = random_text(mut seed, 50000, 26);
+            let mirror: String = half.chars().rev().collect();
+            texts.push(f"{half}{mirror}");
+        }
+    }
+    let mut check = 0;
+    for round in 0..10 {
+        for s in texts.iter() {
+            for k in 2..5 {
+                let answer = remove_duplicates(s, k);
+                let last = if answer.len() > 0 { answer.bytes()[answer.len() - 1] as i64 } else { 0 };
+                check = (check * 131 + answer.len() + last + round) % 1000000007;
+            }
+        }
+    }
+    println(f"10 rounds over 12 strings of 100000 letters: checksum {check}");
+}

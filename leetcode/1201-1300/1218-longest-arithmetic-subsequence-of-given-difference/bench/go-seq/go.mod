@@ -1,0 +1,3 @@
+module longest_arithmetic_subsequence_of_given_difference
+
+go 1.21

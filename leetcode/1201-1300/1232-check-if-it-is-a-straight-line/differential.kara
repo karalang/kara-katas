@@ -1,0 +1,226 @@
+// LeetCode #1232: Check If It Is a Straight Line -- the arms against the
+// statement read literally and five more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_check_straight_line(coordinates: Vec[Vec[i64]]) -> bool {
+    let dx = coordinates[1][0] - coordinates[0][0];
+    let dy = coordinates[1][1] - coordinates[0][1];
+    for p in coordinates.iter() {
+        if (p[0] - coordinates[0][0]) * dy != (p[1] - coordinates[0][1]) * dx {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- arm 1: slopes ------------------------------------------------------
+fn a1_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a.abs() } else { a1_gcd(b, a % b) }
+}
+
+fn a1_direction(dx: i64, dy: i64) -> (i64, i64) {
+    let g = a1_gcd(dx, dy);
+    let (x, y) = (dx / g, dy / g);
+    if x < 0 or (x == 0 and y < 0) { (-x, -y) } else { (x, y) }
+}
+
+fn a1_check_straight_line(coordinates: Vec[Vec[i64]]) -> bool {
+    let first = ref coordinates[0];
+    let mut directions: Set[(i64, i64)] = Set.new();
+    for p in coordinates[1..].iter() {
+        directions.insert(a1_direction(p[0] - first[0], p[1] - first[1]));
+    }
+    directions.len() == 1
+}
+
+// ---- arm 2: triples -----------------------------------------------------
+fn a2_check_straight_line(coordinates: Vec[Vec[i64]]) -> bool {
+    coordinates.windows(3).into_iter().all(|w| {
+        (w[1][0] - w[0][0]) * (w[2][1] - w[0][1]) == (w[1][1] - w[0][1]) * (w[2][0] - w[0][0])
+    })
+}
+
+// ---- arm 3: fitted ------------------------------------------------------
+fn a3_check_straight_line(coordinates: Vec[Vec[i64]]) -> bool {
+    let a = coordinates[1][1] - coordinates[0][1];
+    let b = coordinates[0][0] - coordinates[1][0];
+    let c = a * coordinates[0][0] + b * coordinates[0][1];
+    coordinates.iter().all(|p| a * p[0] + b * p[1] == c)
+}
+
+// ---- arm 4: windows -----------------------------------------------------
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn check_straight_line(coordinates: Vec[Vec[i32]]) -> bool {
+        let (x0, y0) = (coordinates[0][0], coordinates[0][1]);
+        let (dx, dy) = (coordinates[1][0] - x0, coordinates[1][1] - y0);
+        coordinates
+            .iter()
+            .skip(2)
+            .all(|p| (p[0] - x0) * dy == (p[1] - y0) * dx)
+    }
+}
+
+fn a4_check_straight_line(coordinates: Vec[Vec[i64]]) -> bool {
+    let pts: Vec[Vec[i32]] = coordinates.iter().map(|p| p.iter().map(|v| v as i32).collect()).collect();
+    A4Solution.check_straight_line(pts)
+}
+
+// ---- arm 5: loop --------------------------------------------------------
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn check_straight_line(coordinates: Vec[Vec[i32]]) -> bool {
+        let n = coordinates.len();
+        if n <= 2 {
+            return true;
+        }
+        let x1 = coordinates[0][0] as i64;
+        let y1 = coordinates[0][1] as i64;
+        let x2 = coordinates[1][0] as i64;
+        let y2 = coordinates[1][1] as i64;
+        for i in 2..n {
+            let x = coordinates[i][0] as i64;
+            let y = coordinates[i][1] as i64;
+            if (y2 - y1) * (x - x1) != (y - y1) * (x2 - x1) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+fn a5_check_straight_line(coordinates: Vec[Vec[i64]]) -> bool {
+    let pts: Vec[Vec[i32]] = coordinates.iter().map(|p| p.iter().map(|v| v as i32).collect()).collect();
+    A5Solution.check_straight_line(pts)
+}
+
+
+// ---- the statement read literally -----------------------------------------
+
+// The points make a straight line when every three of them do: no three
+// span a triangle of any area.
+fn literal(pts: Vec[Vec[i64]]) -> bool {
+    let n = pts.len();
+    for i in 0..n {
+        for j in i + 1..n {
+            for k in j + 1..n {
+                let area = (pts[j][0] - pts[i][0]) * (pts[k][1] - pts[i][1]) - (pts[j][1] - pts[i][1]) * (pts[k][0] - pts[i][0]);
+                if area != 0 {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(pts: Vec[Vec[i64]]) -> Vec[bool] {
+    [a0_check_straight_line(pts), a1_check_straight_line(pts), a2_check_straight_line(pts), a3_check_straight_line(pts), a4_check_straight_line(pts), a5_check_straight_line(pts)]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` distinct points from `seed`. Mostly on a line, from a start and a
+// direction, the steps shuffled, every other set with one point moved off
+// it; one set in four drawn from a 6 by 6 grid instead, which lands on a
+// line only by chance.
+fn points(c: i64, n: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    if c % 4 == 3 {
+        let mut cells: Vec[i64] = (0..36).collect();
+        for k in 0..n {
+            let j = k + next_random(mut seed) % (36 - k);
+            cells.swap(k, j);
+        }
+        return cells[0..n].iter().map(|s| [s / 6 - 3, s % 6 - 3]).collect();
+    }
+    let x0 = next_random(mut seed) % 201 - 100;
+    let y0 = next_random(mut seed) % 201 - 100;
+    let mut dx = next_random(mut seed) % 21 - 10;
+    let dy = next_random(mut seed) % 21 - 10;
+    if dx == 0 and dy == 0 {
+        dx = 1;
+    }
+    let mut pts: Vec[Vec[i64]] = (0..n).map(|t| [x0 + t * dx, y0 + t * dy]).collect();
+    for k in 0..n {
+        let j = k + next_random(mut seed) % (n - k);
+        pts.swap(k, j);
+    }
+    if c % 4 == 1 {
+        let i = next_random(mut seed) % n;
+        if dx == 0 {
+            pts[i][0] += 1;
+        } else {
+            pts[i][1] += 1;
+        }
+    }
+    pts
+}
+
+fn main() {
+    let names = ["the statement read literally", "the points in another order give the same", "the points moved together give the same", "the points mirrored across the diagonal give the same", "a straight line less its last point stays straight", "the ★ arm's answer"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut straight = 0;
+    let mut seed = 1232;
+    for c in 0..2000 {
+        let n = match c % 3 {
+            0 => next_random(mut seed) % 11 + 2,
+            1 => next_random(mut seed) % 88 + 13,
+            _ => next_random(mut seed) % 900 + 101,
+        };
+        let n = if c % 4 == 3 { n.min(next_random(mut seed) % 5 + 2) } else { n };
+        let pts = points(c, n, mut seed);
+        let want = if n <= 12 { literal(pts) } else { false };
+        let got = arms(pts);
+        let mut shuffled = pts.clone();
+        shuffled.reverse();
+        let k = next_random(mut seed) % n;
+        shuffled.swap(0, k);
+        let other = arms(shuffled);
+        let sx = next_random(mut seed) % 2001 - 1000;
+        let sy = next_random(mut seed) % 2001 - 1000;
+        let moved = arms(pts.iter().map(|p| [p[0] + sx, p[1] + sy]).collect());
+        let mirrored = arms(pts.iter().map(|p| [p[1], p[0]]).collect());
+        let less = if n > 2 { arms(pts[0..n - 1].to_vec()) } else { got.clone() };
+        for a in 0..6 {
+            let v = got[a];
+            let held = [
+                n > 12 or v == want,
+                other[a] == v,
+                moved[a] == v,
+                mirrored[a] == v,
+                not v or less[a],
+                v == got[0],
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {a}: {n} points -> {v}");
+                    }
+                }
+            }
+        }
+        if got[0] {
+            straight += 1;
+        }
+        check = (check * 131 + if got[0] { 2 } else { 1 }) % 1000000007;
+    }
+    for p in 0..6 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let failures = fails.iter().sum();
+    println(f"2000 cases: {straight} straight, checksum {check}, {checks} checks over {6} arms: {failures} failures");
+}

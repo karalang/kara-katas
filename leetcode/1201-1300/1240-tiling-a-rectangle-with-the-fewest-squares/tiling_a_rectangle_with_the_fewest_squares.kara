@@ -1,0 +1,74 @@
+// LeetCode #1240: Tiling a Rectangle with the Fewest Squares -- the ★ arm,
+// backtracking on the skyline: the heights of the m columns filled so far.
+// Each step finds the lowest column (the leftmost of them), and puts a
+// square there of every size that fits, the largest first: as wide as the
+// run of columns at that height and no taller than the room above. A branch
+// stops once it has used as many squares as the best tiling found so far.
+
+fn fill(heights: mut ref Vec[i64], n: i64, count: i64, best: mut ref i64) {
+    if count >= *best {
+        return;
+    }
+    let mut at = 0;
+    for j in 1..heights.len() {
+        if heights[j] < heights[at] {
+            at = j;
+        }
+    }
+    let base = heights[at];
+    if base == n {
+        *best = count;
+        return;
+    }
+    let mut width = 0;
+    while at + width < heights.len() and heights[at + width] == base and width < n - base {
+        width += 1;
+    }
+    for size in (1..=width).rev() {
+        for j in at..at + size {
+            heights[j] = base + size;
+        }
+        fill(mut heights, n, count + 1, mut best);
+        for j in at..at + size {
+            heights[j] = base;
+        }
+    }
+}
+
+fn tiling_rectangle(n: i64, m: i64) -> i64 {
+    let mut heights = Vec.filled(m, 0);
+    let mut best = n * m;
+    fill(mut heights, n, 0, mut best);
+    best
+}
+
+
+// ---- test harness ---------------------------------------------------------
+
+fn row(n: i64) -> String {
+    let answers: Vec[String] = (1..=13).map(|m| f"{tiling_rectangle(n, m)}").collect();
+    answers.join(" ")
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{tiling_rectangle(2, 3)}");
+    println(f"{tiling_rectangle(5, 8)}");
+    println(f"{tiling_rectangle(11, 13)}");
+    // the smallest, the largest square, and the longest strip
+    println(f"{tiling_rectangle(1, 1)} {tiling_rectangle(13, 13)} {tiling_rectangle(1, 13)} {tiling_rectangle(13, 1)}");
+    // two rows of the table: 11 x 1..13 and 13 x 1..13
+    println(f"11 x 1..13: {row(11)}");
+    println(f"13 x 1..13: {row(13)}");
+    // every rectangle up to 13 x 13
+    let mut check = 0;
+    let mut total = 0;
+    for n in 1..=13 {
+        for m in 1..=13 {
+            let t = tiling_rectangle(n, m);
+            check = (check * 131 + t) % 1000000007;
+            total += t;
+        }
+    }
+    println(f"169 rectangles: checksum {check}, total {total}");
+}

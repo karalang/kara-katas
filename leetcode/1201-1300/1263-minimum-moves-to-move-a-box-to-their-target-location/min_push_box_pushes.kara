@@ -1,0 +1,134 @@
+// LeetCode #1263: Minimum Moves to Move a Box to Their Target Location --
+// push by push: a BFS whose states are the box and the side the player
+// pushed it from, each push allowed when the player can walk to the cell
+// behind the box, which a second BFS over the grid finds with the box as a
+// wall.
+
+fn open(grid: Vec[Vec[char]], r: i64, c: i64) -> bool {
+    r >= 0 and r < grid.len() and c >= 0 and c < grid[0].len() and grid[r][c] != '#'
+}
+
+// Can the player walk from `from` to `to` while the box stands at `box_at`?
+fn can_walk(grid: Vec[Vec[char]], from: (i64, i64), to: (i64, i64), box_at: (i64, i64)) -> bool {
+    let n = grid[0].len();
+    let mut seen: Set[i64] = Set.new();
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    seen.insert(from.0 * n + from.1);
+    queue.push_back(from);
+    while let Some((r, c)) = queue.pop_front() {
+        if (r, c) == to {
+            return true;
+        }
+        for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let next = (r + dr, c + dc);
+            if open(grid, next.0, next.1) and next != box_at and seen.insert(next.0 * n + next.1) {
+                queue.push_back(next);
+            }
+        }
+    }
+    false
+}
+
+fn min_push_box(grid: Vec[Vec[char]]) -> i64 {
+    let mut player = (0, 0);
+    let mut box_at = (0, 0);
+    let mut target = (0, 0);
+    for (r, row) in grid.iter().enumerate() {
+        for (c, cell) in row.iter().enumerate() {
+            if cell == 'S' {
+                player = (r, c);
+            } else if cell == 'B' {
+                box_at = (r, c);
+            } else if cell == 'T' {
+                target = (r, c);
+            }
+        }
+    }
+    if box_at == target {
+        return 0;
+    }
+    let moves = [(-1, 0), (1, 0), (0, -1), (0, 1)];
+    // A state is the box and the player just behind it.
+    let mut seen: Set[((i64, i64), (i64, i64))] = Set.new();
+    let mut level: Vec[((i64, i64), (i64, i64))] = [(box_at, player)];
+    let mut pushes = 0;
+    while not level.is_empty() {
+        pushes += 1;
+        let mut next: Vec[((i64, i64), (i64, i64))] = Vec.new();
+        for (b, p) in level.iter() {
+            for (dr, dc) in moves.iter() {
+                let behind = (b.0 - dr, b.1 - dc);
+                let ahead = (b.0 + dr, b.1 + dc);
+                if not open(grid, behind.0, behind.1) or not open(grid, ahead.0, ahead.1) {
+                    continue;
+                }
+                if not can_walk(grid, p, behind, b) or not seen.insert((ahead, b)) {
+                    continue;
+                }
+                if ahead == target {
+                    return pushes;
+                }
+                next.push((ahead, b));
+            }
+        }
+        level = next;
+    }
+    -1
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn parse(rows: Vec[Str]) -> Vec[Vec[char]] {
+    rows.iter().map(|row| row.chars().collect()).collect()
+}
+
+// An `m` by `n` grid, each cell a wall one time in `walls`, and the
+// player, the box and the target on three different cells.
+fn random_grid(m: i64, n: i64, walls: i64, seed: mut ref i64) -> Vec[Vec[char]] {
+    let mut grid: Vec[Vec[char]] = (0..m).map(|_| (0..n).map(|_| if next_random(mut seed) % walls == 0 { '#' } else { '.' }).collect()).collect();
+    for mark in ['S', 'B', 'T'] {
+        let mut p = next_random(mut seed) % (m * n);
+        while ['S', 'B', 'T'].contains(grid[p / n][p % n]) {
+            p = (p + 1) % (m * n);
+        }
+        grid[p / n][p % n] = mark;
+    }
+    grid
+}
+
+fn main() {
+    // LeetCode's examples
+    let one = parse(["######", "#T####", "#..B.#", "#.##.#", "#...S#", "######"]);
+    let two = parse(["######", "#T####", "#..B.#", "####.#", "#...S#", "######"]);
+    let three = parse(["######", "#T..##", "#.#B.#", "#....#", "#...S#", "######"]);
+    println(f"{min_push_box(one)} {min_push_box(two)} {min_push_box(three)}");
+    // 1000 random grids of 3 to 10 by 3 to 10, a cell in 8 a wall
+    let mut seed = 1263;
+    let mut total = 0;
+    let mut stuck = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let m = next_random(mut seed) % 8 + 3;
+        let n = next_random(mut seed) % 8 + 3;
+        let pushes = min_push_box(random_grid(m, n, 8, mut seed));
+        if pushes < 0 {
+            stuck += 1;
+        } else {
+            total += pushes;
+        }
+        check = (check * 131 + pushes + 1) % 1000000007;
+    }
+    println(f"1000 random grids: {total} pushes, {stuck} stuck, checksum {check}");
+    // the constraints' top: 20 by 20 open, the box across from its target,
+    // and twice 20 by 20 a cell in 10 a wall
+    let mut open: Vec[Vec[char]] = (0..20).map(|_| Vec.filled(20, '.')).collect();
+    open[0][0] = 'S';
+    open[1][1] = 'B';
+    open[18][18] = 'T';
+    println(f"{min_push_box(open)} {min_push_box(random_grid(20, 20, 10, mut seed))} {min_push_box(random_grid(20, 20, 10, mut seed))}");
+}

@@ -1,0 +1,67 @@
+// LeetCode #1230: Toss Strange Coins -- a Rust solution as LeetCode's Rust
+// users write it: one row `vec![0.0; target + 1]` over a `usize` target,
+// `for &p in prob.iter()`, the counts updated top down by `(1..=target)
+// .rev()`, carried to Kāra by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn probability_of_heads(prob: Vec[f64], target: i32) -> f64 {
+        let target = target as i64;
+        let mut dp = Vec.filled(target + 1, 0.0);
+        dp[0] = 1.0;
+        for p in prob.iter() {
+            for j in (1..=target).rev() {
+                dp[j] = dp[j] * (1.0 - p) + dp[j - 1] * p;
+            }
+            dp[0] *= 1.0 - p;
+        }
+        dp[target]
+    }
+}
+
+fn probability_of_heads(prob: Vec[f64], target: i64) -> f64 {
+    Solution.probability_of_heads(prob, target as i32)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A coin's chance of heads, in hundredths, as LeetCode's tests give them;
+// one in ten is a sure head or a sure tail.
+fn coin(seed: mut ref i64) -> f64 {
+    let r = next_random(mut seed) % 120;
+    if r < 6 { 0.0 } else if r < 12 { 1.0 } else { (r - 12) as f64 / 108.0 }
+}
+
+fn main() {
+    // LeetCode's two examples, and sure coins
+    println(f"{probability_of_heads([0.4], 1):.5}");
+    println(f"{probability_of_heads([0.5, 0.5, 0.5, 0.5, 0.5], 0):.5}");
+    println(f"{probability_of_heads([1.0, 0.0, 1.0], 2):.5}");
+    println(f"{probability_of_heads([1.0, 0.0, 1.0], 1):.5}");
+    // 500 random sets of 1 to 60 coins, a random target
+    let mut seed = 1230;
+    let mut total = 0.0;
+    let mut impossible = 0;
+    for _ in 0..500 {
+        let n = next_random(mut seed) % 60 + 1;
+        let prob: Vec[f64] = (0..n).map(|_| coin(mut seed)).collect();
+        let target = next_random(mut seed) % (n + 1);
+        let p = probability_of_heads(prob, target);
+        total += p;
+        if p == 0.0 {
+            impossible += 1;
+        }
+    }
+    println(f"500 random sets: total {total:.6}, {impossible} impossible");
+    // the constraints' top: 1000 coins, targets 500 and 480, and 1000 fair
+    // coins, target 500
+    let prob: Vec[f64] = (0..1000).map(|i| (i % 97) as f64 / 96.0).collect();
+    let fair: Vec[f64] = Vec.filled(1000, 0.5);
+    println(f"1000 coins: {probability_of_heads(prob, 500):.5}, {probability_of_heads(prob, 480):.5}, {probability_of_heads(fair, 500):.5}");
+}

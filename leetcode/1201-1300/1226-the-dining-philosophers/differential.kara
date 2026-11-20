@@ -1,0 +1,743 @@
+// LeetCode #1226: The Dining Philosophers -- the arms against the
+// statement read literally and five more properties. Every callback
+// yields the processor (a pick-up and the meal once logged, a put-down
+// before), so that the tasks interleave on the interpreter too.
+// Generated from the arms; see the README.
+
+import std.sync.{Atomic, Mutex, TaskGroup};
+import std.time.{Duration, sleep};
+
+// ---- arm 0: star --------------------------------------------------------
+sync struct A0DiningPhilosophers {
+    forks: Vec[Mutex[i64]],
+}
+
+impl A0DiningPhilosophers {
+    fn new() -> A0DiningPhilosophers {
+        A0DiningPhilosophers { forks: (0..5).map(|_| Mutex.new(0)).collect() }
+    }
+
+    fn wants_to_eat(
+        self,
+        philosopher: i64,
+        pick_left_fork: Fn(),
+        pick_right_fork: Fn(),
+        eat: Fn(),
+        put_left_fork: Fn(),
+        put_right_fork: Fn(),
+    ) {
+        let left = philosopher;
+        let right = (philosopher + 4) % 5;
+        let _first = self.forks[left.min(right)].lock();
+        let _second = self.forks[left.max(right)].lock();
+        pick_left_fork();
+        pick_right_fork();
+        eat();
+        put_left_fork();
+        put_right_fork();
+    }
+}
+
+fn run0(n: i64, order: Vec[i64]) -> Vec[(i64, i64, i64)] {
+    let table = A0DiningPhilosophers.new();
+    let log: Mutex[Vec[(i64, i64, i64)]] = Mutex.new([]);
+    {
+        let group = TaskGroup.new();
+        for p in order.iter() {
+            group.spawn(|| {
+                for _ in 0..n {
+                    table.wants_to_eat(
+                        p,
+                        || {
+                            log.lock().value.push((p, 1, 1));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            log.lock().value.push((p, 2, 1));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            log.lock().value.push((p, 0, 3));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            sleep(Duration.ms(0));
+                            log.lock().value.push((p, 1, 2));
+                        },
+                        || {
+                            sleep(Duration.ms(0));
+                            log.lock().value.push((p, 2, 2));
+                        },
+                    );
+                }
+            });
+        }
+    }
+    log.lock().value.clone()
+}
+
+// ---- arm 1: table -------------------------------------------------------
+sync struct A1DiningPhilosophers {
+    table: Mutex[i64],
+}
+
+impl A1DiningPhilosophers {
+    fn new() -> A1DiningPhilosophers {
+        A1DiningPhilosophers { table: Mutex.new(0) }
+    }
+
+    fn wants_to_eat(
+        self,
+        philosopher: i64,
+        pick_left_fork: Fn(),
+        pick_right_fork: Fn(),
+        eat: Fn(),
+        put_left_fork: Fn(),
+        put_right_fork: Fn(),
+    ) {
+        let _turn = self.table.lock();
+        pick_left_fork();
+        pick_right_fork();
+        eat();
+        put_left_fork();
+        put_right_fork();
+    }
+}
+
+fn run1(n: i64, order: Vec[i64]) -> Vec[(i64, i64, i64)] {
+    let table = A1DiningPhilosophers.new();
+    let log: Mutex[Vec[(i64, i64, i64)]] = Mutex.new([]);
+    {
+        let group = TaskGroup.new();
+        for p in order.iter() {
+            group.spawn(|| {
+                for _ in 0..n {
+                    table.wants_to_eat(
+                        p,
+                        || {
+                            log.lock().value.push((p, 1, 1));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            log.lock().value.push((p, 2, 1));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            log.lock().value.push((p, 0, 3));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            sleep(Duration.ms(0));
+                            log.lock().value.push((p, 1, 2));
+                        },
+                        || {
+                            sleep(Duration.ms(0));
+                            log.lock().value.push((p, 2, 2));
+                        },
+                    );
+                }
+            });
+        }
+    }
+    log.lock().value.clone()
+}
+
+// ---- arm 2: butler ------------------------------------------------------
+sync struct A2DiningPhilosophers {
+    seats: Semaphore,
+    forks: Vec[Semaphore],
+}
+
+impl A2DiningPhilosophers {
+    fn new() -> A2DiningPhilosophers {
+        A2DiningPhilosophers {
+            seats: Semaphore.new(4),
+            forks: (0..5).map(|_| Semaphore.new(1)).collect(),
+        }
+    }
+
+    fn wants_to_eat(
+        self,
+        philosopher: i64,
+        pick_left_fork: Fn(),
+        pick_right_fork: Fn(),
+        eat: Fn(),
+        put_left_fork: Fn(),
+        put_right_fork: Fn(),
+    ) {
+        let left = philosopher;
+        let right = (philosopher + 4) % 5;
+        let _ = self.seats.acquire(60000);
+        let _ = self.forks[left].acquire(60000);
+        pick_left_fork();
+        let _ = self.forks[right].acquire(60000);
+        pick_right_fork();
+        eat();
+        put_left_fork();
+        self.forks[left].release();
+        put_right_fork();
+        self.forks[right].release();
+        self.seats.release();
+    }
+}
+
+fn run2(n: i64, order: Vec[i64]) -> Vec[(i64, i64, i64)] {
+    let table = A2DiningPhilosophers.new();
+    let log: Mutex[Vec[(i64, i64, i64)]] = Mutex.new([]);
+    {
+        let group = TaskGroup.new();
+        for p in order.iter() {
+            group.spawn(|| {
+                for _ in 0..n {
+                    table.wants_to_eat(
+                        p,
+                        || {
+                            log.lock().value.push((p, 1, 1));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            log.lock().value.push((p, 2, 1));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            log.lock().value.push((p, 0, 3));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            sleep(Duration.ms(0));
+                            log.lock().value.push((p, 1, 2));
+                        },
+                        || {
+                            sleep(Duration.ms(0));
+                            log.lock().value.push((p, 2, 2));
+                        },
+                    );
+                }
+            });
+        }
+    }
+    log.lock().value.clone()
+}
+
+// ---- arm 3: lefty -------------------------------------------------------
+sync struct A3DiningPhilosophers {
+    forks: Vec[Mutex[i64]],
+}
+
+impl A3DiningPhilosophers {
+    fn new() -> A3DiningPhilosophers {
+        A3DiningPhilosophers { forks: (0..5).map(|_| Mutex.new(0)).collect() }
+    }
+
+    fn wants_to_eat(
+        self,
+        philosopher: i64,
+        pick_left_fork: Fn(),
+        pick_right_fork: Fn(),
+        eat: Fn(),
+        put_left_fork: Fn(),
+        put_right_fork: Fn(),
+    ) {
+        let left = philosopher;
+        let right = (philosopher + 4) % 5;
+        if philosopher % 2 == 0 {
+            let _left = self.forks[left].lock();
+            pick_left_fork();
+            let _right = self.forks[right].lock();
+            pick_right_fork();
+            eat();
+            put_right_fork();
+            put_left_fork();
+        } else {
+            let _right = self.forks[right].lock();
+            pick_right_fork();
+            let _left = self.forks[left].lock();
+            pick_left_fork();
+            eat();
+            put_left_fork();
+            put_right_fork();
+        }
+    }
+}
+
+fn run3(n: i64, order: Vec[i64]) -> Vec[(i64, i64, i64)] {
+    let table = A3DiningPhilosophers.new();
+    let log: Mutex[Vec[(i64, i64, i64)]] = Mutex.new([]);
+    {
+        let group = TaskGroup.new();
+        for p in order.iter() {
+            group.spawn(|| {
+                for _ in 0..n {
+                    table.wants_to_eat(
+                        p,
+                        || {
+                            log.lock().value.push((p, 1, 1));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            log.lock().value.push((p, 2, 1));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            log.lock().value.push((p, 0, 3));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            sleep(Duration.ms(0));
+                            log.lock().value.push((p, 1, 2));
+                        },
+                        || {
+                            sleep(Duration.ms(0));
+                            log.lock().value.push((p, 2, 2));
+                        },
+                    );
+                }
+            });
+        }
+    }
+    log.lock().value.clone()
+}
+
+// ---- arm 4: polling -----------------------------------------------------
+sync struct A4DiningPhilosophers {
+    in_use: Mutex[Vec[bool]],
+}
+
+impl A4DiningPhilosophers {
+    fn new() -> A4DiningPhilosophers {
+        A4DiningPhilosophers { in_use: Mutex.new(Vec.filled(5, false)) }
+    }
+
+    fn wants_to_eat(
+        self,
+        philosopher: i64,
+        pick_left_fork: Fn(),
+        pick_right_fork: Fn(),
+        eat: Fn(),
+        put_left_fork: Fn(),
+        put_right_fork: Fn(),
+    ) {
+        let left = philosopher;
+        let right = (philosopher + 4) % 5;
+        loop {
+            {
+                let g = self.in_use.lock();
+                if not g.value[left] and not g.value[right] {
+                    g.value[left] = true;
+                    g.value[right] = true;
+                    break;
+                }
+            }
+            sleep(Duration.ms(0));
+        }
+        pick_left_fork();
+        pick_right_fork();
+        eat();
+        put_left_fork();
+        put_right_fork();
+        let g = self.in_use.lock();
+        g.value[left] = false;
+        g.value[right] = false;
+    }
+}
+
+fn run4(n: i64, order: Vec[i64]) -> Vec[(i64, i64, i64)] {
+    let table = A4DiningPhilosophers.new();
+    let log: Mutex[Vec[(i64, i64, i64)]] = Mutex.new([]);
+    {
+        let group = TaskGroup.new();
+        for p in order.iter() {
+            group.spawn(|| {
+                for _ in 0..n {
+                    table.wants_to_eat(
+                        p,
+                        || {
+                            log.lock().value.push((p, 1, 1));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            log.lock().value.push((p, 2, 1));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            log.lock().value.push((p, 0, 3));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            sleep(Duration.ms(0));
+                            log.lock().value.push((p, 1, 2));
+                        },
+                        || {
+                            sleep(Duration.ms(0));
+                            log.lock().value.push((p, 2, 2));
+                        },
+                    );
+                }
+            });
+        }
+    }
+    log.lock().value.clone()
+}
+
+// ---- arm 5: atomic ------------------------------------------------------
+sync struct A5DiningPhilosophers {
+    forks: Vec[Atomic[bool]],
+}
+
+impl A5DiningPhilosophers {
+    fn new() -> A5DiningPhilosophers {
+        A5DiningPhilosophers { forks: (0..5).map(|_| Atomic.new(false)).collect() }
+    }
+
+    // Waits until fork `f` is free and takes it.
+    fn take(self, f: i64) {
+        while self.forks[f].compare_exchange(false, true).is_err() {
+            sleep(Duration.ms(0));
+        }
+    }
+
+    fn wants_to_eat(
+        self,
+        philosopher: i64,
+        pick_left_fork: Fn(),
+        pick_right_fork: Fn(),
+        eat: Fn(),
+        put_left_fork: Fn(),
+        put_right_fork: Fn(),
+    ) {
+        let left = philosopher;
+        let right = (philosopher + 4) % 5;
+        self.take(left.min(right));
+        self.take(left.max(right));
+        pick_left_fork();
+        pick_right_fork();
+        eat();
+        put_left_fork();
+        put_right_fork();
+        self.forks[left].store(false);
+        self.forks[right].store(false);
+    }
+}
+
+fn run5(n: i64, order: Vec[i64]) -> Vec[(i64, i64, i64)] {
+    let table = A5DiningPhilosophers.new();
+    let log: Mutex[Vec[(i64, i64, i64)]] = Mutex.new([]);
+    {
+        let group = TaskGroup.new();
+        for p in order.iter() {
+            group.spawn(|| {
+                for _ in 0..n {
+                    table.wants_to_eat(
+                        p,
+                        || {
+                            log.lock().value.push((p, 1, 1));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            log.lock().value.push((p, 2, 1));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            log.lock().value.push((p, 0, 3));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            sleep(Duration.ms(0));
+                            log.lock().value.push((p, 1, 2));
+                        },
+                        || {
+                            sleep(Duration.ms(0));
+                            log.lock().value.push((p, 2, 2));
+                        },
+                    );
+                }
+            });
+        }
+    }
+    log.lock().value.clone()
+}
+
+// ---- arm 6: channel -----------------------------------------------------
+sync struct A6DiningPhilosophers {
+    put_down: Vec[Sender[i64]],
+    pick_up: Vec[Receiver[i64]],
+}
+
+impl A6DiningPhilosophers {
+    fn new() -> A6DiningPhilosophers {
+        let mut put_down = Vec.new();
+        let mut pick_up = Vec.new();
+        for f in 0..5 {
+            let (tx, rx) = channel(1);
+            let _ = tx.send(f);
+            put_down.push(tx);
+            pick_up.push(rx);
+        }
+        A6DiningPhilosophers { put_down, pick_up }
+    }
+
+    fn wants_to_eat(
+        self,
+        philosopher: i64,
+        pick_left_fork: Fn(),
+        pick_right_fork: Fn(),
+        eat: Fn(),
+        put_left_fork: Fn(),
+        put_right_fork: Fn(),
+    ) {
+        let left = philosopher;
+        let right = (philosopher + 4) % 5;
+        let first = self.pick_up[left.min(right)].recv().unwrap();
+        let second = self.pick_up[left.max(right)].recv().unwrap();
+        pick_left_fork();
+        pick_right_fork();
+        eat();
+        put_left_fork();
+        put_right_fork();
+        let _ = self.put_down[first].send(first);
+        let _ = self.put_down[second].send(second);
+    }
+}
+
+fn run6(n: i64, order: Vec[i64]) -> Vec[(i64, i64, i64)] {
+    let table = A6DiningPhilosophers.new();
+    let log: Mutex[Vec[(i64, i64, i64)]] = Mutex.new([]);
+    {
+        let group = TaskGroup.new();
+        for p in order.iter() {
+            group.spawn(|| {
+                for _ in 0..n {
+                    table.wants_to_eat(
+                        p,
+                        || {
+                            log.lock().value.push((p, 1, 1));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            log.lock().value.push((p, 2, 1));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            log.lock().value.push((p, 0, 3));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            sleep(Duration.ms(0));
+                            log.lock().value.push((p, 1, 2));
+                        },
+                        || {
+                            sleep(Duration.ms(0));
+                            log.lock().value.push((p, 2, 2));
+                        },
+                    );
+                }
+            });
+        }
+    }
+    log.lock().value.clone()
+}
+
+// ---- arm 7: backoff -----------------------------------------------------
+sync struct A7DiningPhilosophers {
+    forks: Vec[Mutex[i64]],
+}
+
+impl A7DiningPhilosophers {
+    fn new() -> A7DiningPhilosophers {
+        A7DiningPhilosophers { forks: (0..5).map(|_| Mutex.new(0)).collect() }
+    }
+
+    fn wants_to_eat(
+        self,
+        philosopher: i64,
+        pick_left_fork: Fn(),
+        pick_right_fork: Fn(),
+        eat: Fn(),
+        put_left_fork: Fn(),
+        put_right_fork: Fn(),
+    ) {
+        let left = philosopher;
+        let right = (philosopher + 4) % 5;
+        loop {
+            let _left = self.forks[left].lock();
+            if let Some(_right) = self.forks[right].try_lock() {
+                pick_left_fork();
+                pick_right_fork();
+                eat();
+                put_left_fork();
+                put_right_fork();
+                return;
+            }
+            drop(_left);
+            sleep(Duration.ms(0));
+        }
+    }
+}
+
+fn run7(n: i64, order: Vec[i64]) -> Vec[(i64, i64, i64)] {
+    let table = A7DiningPhilosophers.new();
+    let log: Mutex[Vec[(i64, i64, i64)]] = Mutex.new([]);
+    {
+        let group = TaskGroup.new();
+        for p in order.iter() {
+            group.spawn(|| {
+                for _ in 0..n {
+                    table.wants_to_eat(
+                        p,
+                        || {
+                            log.lock().value.push((p, 1, 1));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            log.lock().value.push((p, 2, 1));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            log.lock().value.push((p, 0, 3));
+                            sleep(Duration.ms(0));
+                        },
+                        || {
+                            sleep(Duration.ms(0));
+                            log.lock().value.push((p, 1, 2));
+                        },
+                        || {
+                            sleep(Duration.ms(0));
+                            log.lock().value.push((p, 2, 2));
+                        },
+                    );
+                }
+            });
+        }
+    }
+    log.lock().value.clone()
+}
+
+
+// ---- the statement read literally -----------------------------------------
+
+// Replays the log on five forks: a fork is picked up only when it lies on
+// the table, put down only by whoever holds it, and a philosopher eats only
+// holding both their forks (philosopher `p`'s left fork is fork `p`, the
+// right fork `(p + 4) % 5`).
+fn literal(log: Vec[(i64, i64, i64)]) -> bool {
+    let mut holder = Vec.filled(5, -1);
+    for (p, fork, op) in log.iter() {
+        let f = if fork == 1 { p } else { (p + 4) % 5 };
+        if op == 1 {
+            if holder[f] != -1 {
+                return false;
+            }
+            holder[f] = p;
+        } else if op == 2 {
+            if holder[f] != p {
+                return false;
+            }
+            holder[f] = -1;
+        } else if holder[p] != p or holder[(p + 4) % 5] != p {
+            return false;
+        }
+    }
+    true
+}
+
+// Every philosopher's own calls, in order, come in meals of five: both
+// forks picked up, the meal, both forks put down.
+fn in_meals(log: Vec[(i64, i64, i64)]) -> bool {
+    for p in 0..5 {
+        let mine: Vec[(i64, i64)] = log.iter().filter(|e| e.0 == p).map(|e| (e.1, e.2)).collect();
+        if mine.len() % 5 != 0 {
+            return false;
+        }
+        for m in 0..mine.len() / 5 {
+            let meal = mine[m * 5..m * 5 + 5].to_vec();
+            let picks = meal[0].1 == 1 and meal[1].1 == 1 and meal[0].0 + meal[1].0 == 3;
+            let puts = meal[3].1 == 2 and meal[4].1 == 2 and meal[3].0 + meal[4].0 == 3;
+            if not picks or meal[2] != (0, 3) or not puts {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+// How many times each philosopher eats.
+fn meals(log: Vec[(i64, i64, i64)]) -> Vec[i64] {
+    let mut count = Vec.filled(5, 0);
+    for (p, _, op) in log.iter() {
+        if op == 3 {
+            count[p] += 1;
+        }
+    }
+    count
+}
+
+// Every fork back on the table at the end: as many puts as picks of each.
+fn all_down(log: Vec[(i64, i64, i64)]) -> bool {
+    let mut held = Vec.filled(5, 0);
+    for (p, fork, op) in log.iter() {
+        let f = if fork == 1 { p } else { (p + 4) % 5 };
+        if op == 1 {
+            held[f] += 1;
+        } else if op == 2 {
+            held[f] -= 1;
+        }
+    }
+    held.iter().all(|h| h == 0)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(n: i64, order: Vec[i64]) -> Vec[Vec[(i64, i64, i64)]] {
+    [run0(n, order), run1(n, order), run2(n, order), run3(n, order), run4(n, order), run5(n, order), run6(n, order), run7(n, order)]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["the statement read literally", "25 n calls", "each philosopher's calls in meals of five", "every philosopher eats n times", "every fork back on the table", "the tasks started in reverse, the statement read literally"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut calls = 0;
+    let mut seed = 1226;
+    for _ in 0..300 {
+        let n = next_random(mut seed) % 60 + 1;
+        let mut order = [0, 1, 2, 3, 4];
+        for i in (1..5).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            order.swap(i, j);
+        }
+        let got = arms(n, order);
+        let reversed = arms(n, order.iter().rev().collect());
+        for a in 0..got.len() {
+            let log = got[a].clone();
+            calls += log.len();
+            let held = [
+                literal(log),
+                log.len() == 25 * n,
+                in_meals(log),
+                meals(log).iter().all(|m| m == n),
+                all_down(log),
+                literal(reversed[a]),
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {a}: n = {n}, order {order}");
+                    }
+                }
+            }
+        }
+    }
+    for p in 0..6 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let total = fails.iter().sum();
+    println(f"300 problems: {calls} calls, {checks} checks over 8 arms: {total} failures");
+}

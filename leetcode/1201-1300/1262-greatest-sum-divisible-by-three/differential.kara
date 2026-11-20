@@ -1,0 +1,223 @@
+// LeetCode #1262: the differential -- the six arms against the statement
+// read literally and five more properties, on 2000 random lists.
+
+// arm 0: max_sum_div_three.kara
+fn a0_max_sum_div_three(nums: Vec[i64]) -> i64 {
+    // -1 marks a remainder no sum has reached yet.
+    let mut best: Array[i64, 3] = [0, -1, -1];
+    for x in nums.iter() {
+        let before = best;
+        for r in 0..3 {
+            if before[r] >= 0 {
+                let sum = before[r] + x;
+                if sum > best[sum % 3] {
+                    best[sum % 3] = sum;
+                }
+            }
+        }
+    }
+    best[0]
+}
+
+// arm 1: max_sum_div_three_greedy.kara
+fn a1_max_sum_div_three(nums: Vec[i64]) -> i64 {
+    // The smallest and second smallest number with remainder 1, and with
+    // remainder 2, or `None` while there are fewer.
+    let mut ones: (Option[i64], Option[i64]) = (None, None);
+    let mut twos: (Option[i64], Option[i64]) = (None, None);
+    let mut total = 0;
+    for x in nums.iter() {
+        total += x;
+        let pair = match x % 3 {
+            1 => mut ref ones,
+            2 => mut ref twos,
+            _ => continue,
+        };
+        match pair {
+            (None, _) => pair.0 = Some(x),
+            (Some(a), _) if x < a => {
+                pair.1 = pair.0;
+                pair.0 = Some(x);
+            }
+            (Some(_), None) => pair.1 = Some(x),
+            (Some(_), Some(b)) if x < b => pair.1 = Some(x),
+            _ => {}
+        }
+    }
+    let (one, two) = match total % 3 {
+        0 => return total,
+        1 => (ones, twos),
+        _ => (twos, ones),
+    };
+    // One number with the total's remainder, or two with the other.
+    let single = one.0;
+    let double = match two {
+        (Some(a), Some(b)) => Some(a + b),
+        _ => None,
+    };
+    match (single, double) {
+        (Some(a), Some(b)) => total - a.min(b),
+        (Some(a), None) => total - a,
+        (None, Some(b)) => total - b,
+        (None, None) => 0,
+    }
+}
+
+// arm 2: max_sum_div_three_sorted.kara
+fn a2_max_sum_div_three(nums: Vec[i64]) -> i64 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let total: i64 = sorted.iter().sum();
+    let r = total % 3;
+    if r == 0 {
+        return total;
+    }
+    let same: Vec[i64] = sorted.iter().filter(|x| x % 3 == r).take(1).collect();
+    let other: Vec[i64] = sorted.iter().filter(|x| x % 3 == 3 - r).take(2).collect();
+    let mut cost = total;
+    if same.len() == 1 {
+        cost = same[0];
+    }
+    if other.len() == 2 {
+        cost = cost.min(other[0] + other[1]);
+    }
+    total - cost
+}
+
+// arm 3: max_sum_div_three_table.kara
+fn a3_max_sum_div_three(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut table: Vec[Vec[Option[i64]]] = Vec.filled(n + 1, Vec.filled(3, None));
+    table[0][0] = Some(0);
+    for i in 0..n {
+        for r in 0..3 {
+            let skip = table[i][r];
+            let take = table[i][(r + 3 - nums[i] % 3) % 3].map(|s| s + nums[i]);
+            table[i + 1][r] = match (skip, take) {
+                (Some(a), Some(b)) => Some(a.max(b)),
+                (a, None) => a,
+                (None, b) => b,
+            };
+        }
+    }
+    table[n][0].unwrap_or(0)
+}
+
+// arm 4: max_sum_div_three_fold.kara
+fn a4_max_sum_div_three(nums: Vec[i64]) -> i64 {
+    // `i64.MIN` stands for a remainder no sum has reached, and `grow`
+    // keeps it there.
+    let grow = |s: i64, x: i64| if s == i64.MIN { i64.MIN } else { s + x };
+    let (zero, _, _) = nums.iter().fold((0, i64.MIN, i64.MIN), |(a, b, c), x| match x % 3 {
+        0 => (grow(a, x), grow(b, x), grow(c, x)),
+        1 => (a.max(grow(c, x)), b.max(grow(a, x)), c.max(grow(b, x))),
+        _ => (a.max(grow(b, x)), b.max(grow(c, x)), c.max(grow(a, x))),
+    });
+    zero
+}
+
+// arm 5: max_sum_div_three_solution.kara
+impl A5Solution {
+    pub fn max_sum_div_three(nums: Vec[i32]) -> i32 {
+        let mut dp = [0, i32.MIN, i32.MIN];
+        for x in nums.iter() {
+            let mut next = dp.clone();
+            for r in 0..3 {
+                if dp[r] != i32.MIN {
+                    let s = dp[r] + x;
+                    let k = (s % 3) as usize;
+                    next[k] = next[k].max(s);
+                }
+            }
+            dp = next;
+        }
+        dp[0]
+    }
+}
+
+struct A5Solution {}
+
+fn a5_max_sum_div_three(nums: Vec[i64]) -> i64 {
+    A5Solution.max_sum_div_three(nums.iter().map(|x| x as i32).collect())
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_nums(n: i64, top: i64, seed: mut ref i64) -> Vec[i64] {
+    (0..n).map(|_| next_random(mut seed) % top + 1).collect()
+}
+
+fn ask(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => a0_max_sum_div_three(nums),
+        1 => a1_max_sum_div_three(nums),
+        2 => a2_max_sum_div_three(nums),
+        3 => a3_max_sum_div_three(nums),
+        4 => a4_max_sum_div_three(nums),
+        _ => a5_max_sum_div_three(nums),
+    }
+}
+
+// The statement read literally: the greatest sum divisible by three over
+// every choice of the numbers, each of the `2^n` subsets summed.
+fn literal(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut best = 0;
+    for mask in 0..(1 << n) {
+        let mut sum = 0;
+        for i in 0..n {
+            if (mask >> i) & 1 == 1 {
+                sum += nums[i];
+            }
+        }
+        if sum % 3 == 0 and sum > best {
+            best = sum;
+        }
+    }
+    best
+}
+
+fn main() {
+    let names = ["the statement read literally: the best of every subset's sum divisible by three", "a multiple of three, at most the total", "the numbers reversed, the same answer", "a multiple of three added, the answer grown by it", "a number added, the answer no smaller", "the ★ arm's answer"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 12620;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let nums = random_nums(n, 30, mut seed);
+        let want = literal(nums);
+        check = (check * 131 + want) % 1000000007;
+        let total: i64 = nums.iter().sum();
+        let reversed: Vec[i64] = nums.iter().rev().cloned().collect();
+        let three = (next_random(mut seed) % 10 + 1) * 3;
+        let mut with_three = nums.clone();
+        with_three.insert(next_random(mut seed) % (n + 1), three);
+        let mut with_one = nums.clone();
+        with_one.push(next_random(mut seed) % 30 + 1);
+        let star = ask(0, nums);
+        for arm in 0..6 {
+            let got = ask(arm, nums);
+            let held = [got == want, got % 3 == 0 and got >= 0 and got <= total, ask(arm, reversed) == got, ask(arm, with_three) == got + three, ask(arm, with_one) >= got, got == star];
+            for q in 0..6 {
+                checks += 1;
+                if not held[q] {
+                    fails[q] += 1;
+                    if fails[q] <= 2 {
+                        println(f"P{q + 1} ({names[q]}) fails on arm {arm}: {nums}");
+                    }
+                }
+            }
+        }
+    }
+    let total: i64 = fails.iter().sum();
+    for q in 0..6 {
+        if fails[q] > 0 {
+            print(f"P{q + 1}: {fails[q]} failures ");
+        }
+    }
+    println(f"2000 lists: checksum {check}, {checks} checks over 6 arms: {total} failures");
+}

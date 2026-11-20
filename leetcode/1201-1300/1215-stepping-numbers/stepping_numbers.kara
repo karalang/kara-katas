@@ -1,0 +1,78 @@
+// LeetCode #1215: Stepping Numbers -- the ★ arm: a breadth-first search
+// from the digits 1 to 9, each number followed by itself with one more
+// digit, its last digit one less or one more. A level holds the numbers of
+// one length in rising order, since their parents rise and each gives the
+// lesser child first, so the numbers come out sorted and the search stops
+// at the first one past `high`. 0 is its own case. O(answer + 9 * 2^d).
+
+fn count_stepping_numbers(low: i64, high: i64) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    if low == 0 {
+        out.push(0);
+    }
+    let mut queue: Vec[i64] = (1..10).collect();
+    let mut head = 0;
+    while head < queue.len() {
+        let n = queue[head];
+        head += 1;
+        if n > high {
+            break;
+        }
+        if n >= low {
+            out.push(n);
+        }
+        let last = n % 10;
+        if last > 0 {
+            queue.push(n * 10 + last - 1);
+        }
+        if last < 9 {
+            queue.push(n * 10 + last + 1);
+        }
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn fold(check: i64, answer: Vec[i64]) -> i64 {
+    let mut c = check;
+    for v in answer.iter() {
+        c = (c * 131 + v % 1000000007) % 1000000007;
+    }
+    (c * 131 + answer.len()) % 1000000007
+}
+
+fn main() {
+    let cases: Vec[(i64, i64)] = [(0, 21), (10, 15), (0, 0), (1, 9), (9, 10), (100, 120), (2000000000, 2000000000), (1234567898, 2000000000)];
+    for (low, high) in cases.iter() {
+        println(f"[{low}, {high}]: {count_stepping_numbers(low, high)}");
+    }
+    let mut seed = 1215;
+    let mut found = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let low = next_random(mut seed) % 100000;
+        let high = low + next_random(mut seed) % 5000;
+        let answer = count_stepping_numbers(low, high);
+        found += answer.len();
+        check = fold(check, answer);
+    }
+    println(f"1000 small ranges: {found} found, checksum {check}");
+    // The constraints' top: the whole range, and its upper half.
+    let all = count_stepping_numbers(0, 2000000000);
+    println(f"[0, 2000000000]: {all.len()} found, checksum {fold(0, all)}, the last {all[all.len() - 1]}");
+    let upper = count_stepping_numbers(1000000000, 2000000000);
+    println(f"[1000000000, 2000000000]: {upper.len()} found, the first {upper[0]}");
+    let mut wide = 0;
+    for _ in 0..20 {
+        let low = (next_random(mut seed) * 32768 + next_random(mut seed)) % 2000000001;
+        let high = low + (next_random(mut seed) * 32768 + next_random(mut seed)) % (2000000001 - low);
+        wide = fold(wide, count_stepping_numbers(low, high));
+    }
+    println(f"20 random ranges up to 2000000000: checksum {wide}");
+}

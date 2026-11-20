@@ -1,0 +1,56 @@
+// LeetCode #1215 bench: the ★ arm (a breadth-first search from the digits
+// 1 to 9, each number followed by itself with one more digit, stopping at
+// the first number past `high`) on 2000 random ranges inside the
+// constraints' 0 to 2 * 10^9, drawn once; then 20 rounds over the ranges,
+// each answer's length and last number folded into a checksum.
+
+fn count_stepping_numbers(low: i64, high: i64) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    if low == 0 {
+        out.push(0);
+    }
+    let mut queue: Vec[i64] = (1..10).collect();
+    let mut head = 0;
+    while head < queue.len() {
+        let n = queue[head];
+        head += 1;
+        if n > high {
+            break;
+        }
+        if n >= low {
+            out.push(n);
+        }
+        let last = n % 10;
+        if last > 0 {
+            queue.push(n * 10 + last - 1);
+        }
+        if last < 9 {
+            queue.push(n * 10 + last + 1);
+        }
+    }
+    out
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1215;
+    let mut ranges: Vec[(i64, i64)] = Vec.new();
+    for _ in 0..2000 {
+        let low = (next_random(mut seed) * 32768 + next_random(mut seed)) % 2000000001;
+        let high = low + (next_random(mut seed) * 32768 + next_random(mut seed)) % (2000000001 - low);
+        ranges.push((low, high));
+    }
+    let mut check = 0;
+    for round in 0..20 {
+        for (low, high) in ranges.iter() {
+            let answer = count_stepping_numbers(low, high);
+            let last = if answer.len() > 0 { answer[answer.len() - 1] } else { -1 };
+            check = (check * 131 + answer.len() + last % 1000003 + round) % 1000000007;
+        }
+    }
+    println(f"20 rounds over 2000 ranges: checksum {check}");
+}

@@ -1,0 +1,147 @@
+// LeetCode #1279: Traffic Light Controlled Intersection -- the ★ arm: the
+// road whose light is green in a `Mutex`, held while a car turns its
+// light green if it must and crosses. Only one car is ever inside, so no
+// two roads cross together, and a car turns the light only when it is red.
+
+import std.sync.{Mutex, TaskGroup};
+import std.time.{Duration, sleep};
+
+sync struct TrafficLight {
+    // 1 for road A, 2 for road B
+    green: Mutex[i64],
+}
+
+impl TrafficLight {
+    fn new() -> TrafficLight {
+        TrafficLight { green: Mutex.new(1) }
+    }
+
+    fn car_arrived(self, car_id: i64, road_id: i64, direction: i64, turn_green: Fn(), cross_car: Fn()) {
+        let g = self.green.lock();
+        if *g.value != road_id {
+            turn_green();
+            *g.value = road_id;
+        }
+        cross_car();
+    }
+}
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// LeetCode's run: a task for each car, started in `order`, all sharing one
+// `TrafficLight`, each calling `car_arrived` with callbacks that log what
+// happens: (0, road) the light turned green on a road, (1, car) a car
+// entering the intersection and (2, car) leaving it. A car yields the
+// processor while it is inside, so that cars interleave on every backend.
+fn run(cars: Vec[i64], directions: Vec[i64], order: Vec[i64]) -> Vec[(i64, i64)] {
+    let light = TrafficLight.new();
+    let log: Mutex[Vec[(i64, i64)]] = Mutex.new([]);
+    {
+        let group = TaskGroup.new();
+        for i in order.iter() {
+            let car = cars[i];
+            let direction = directions[i];
+            let road = if direction <= 2 { 1 } else { 2 };
+            group.spawn(|| {
+                light.car_arrived(
+                    car,
+                    road,
+                    direction,
+                    || log.lock().value.push((0, road)),
+                    || {
+                        log.lock().value.push((1, car));
+                        sleep(Duration.ms(0));
+                        log.lock().value.push((2, car));
+                    },
+                );
+            });
+        }
+    }
+    log.lock().value.clone()
+}
+
+// The statement read literally: the light starts green on road A (1); it
+// turns green only on a road where it is red; a car enters only on its
+// road's green and never while a car of the other road is inside; and
+// every car enters once and leaves once.
+fn judge(cars: Vec[i64], directions: Vec[i64], log: Vec[(i64, i64)]) -> bool {
+    let mut green = 1;
+    let mut inside: Array[i64, 3] = [0, 0, 0];
+    let mut state: Vec[i64] = Vec.filled(cars.len(), 0);
+    for (kind, x) in log.iter() {
+        if kind == 0 {
+            if x == green {
+                return false;
+            }
+            green = x;
+            continue;
+        }
+        let i = match cars.iter().position(|c| c == x) {
+            Some(i) => i,
+            None => return false,
+        };
+        let road = if directions[i] <= 2 { 1 } else { 2 };
+        if kind == 1 {
+            if state[i] != 0 or road != green or inside[3 - road] > 0 {
+                return false;
+            }
+            inside[road] += 1;
+            state[i] = 1;
+        } else {
+            if state[i] != 1 {
+                return false;
+            }
+            inside[road] -= 1;
+            state[i] = 2;
+        }
+    }
+    state.iter().all(|s| s == 2)
+}
+
+// The cars in order of arrival, those arriving together in a random order.
+fn arrival_order(times: Vec[i64], seed: mut ref i64) -> Vec[i64] {
+    let mut order: Vec[(i64, i64, i64)] = (0..times.len()).map(|i| (times[i], next_random(mut seed), i)).collect();
+    order.sort();
+    order.iter().map(|(_, _, i)| i).collect()
+}
+
+fn main() {
+    let mut seed = 1279;
+    // LeetCode's examples, judged: any order a deadlock-free light allows
+    // is accepted
+    let a = run([1, 3, 5, 2, 4], [2, 1, 2, 4, 3], arrival_order([10, 20, 30, 40, 50], mut seed));
+    let b = run([1, 2, 3, 4, 5], [2, 4, 3, 3, 1], arrival_order([10, 20, 30, 40, 40], mut seed));
+    let ok_a = judge([1, 3, 5, 2, 4], [2, 1, 2, 4, 3], a);
+    let ok_b = judge([1, 2, 3, 4, 5], [2, 4, 3, 3, 1], b);
+    println(f"examples: {a.iter().filter(|(k, _)| k == 2).count()} and {b.iter().filter(|(k, _)| k == 2).count()} cars crossed, valid {ok_a} {ok_b}");
+    // 1000 random problems of 1 to 20 cars, arrival times 0 to 9
+    let mut cars_seen = 0;
+    let mut valid = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 20 + 1;
+        let cars: Vec[i64] = (1..(n + 1)).collect();
+        let directions: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 4 + 1).collect();
+        let mut times: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 10).collect();
+        times.sort();
+        let log = run(cars, directions, arrival_order(times, mut seed));
+        cars_seen += log.iter().filter(|(k, _)| k == 2).count();
+        if judge(cars, directions, log) {
+            valid += 1;
+        }
+    }
+    println(f"1000 random problems: {cars_seen} cars crossed, {valid} valid");
+    // the constraints' top: 20 cars all on road A, all on road B, and
+    // alternating, all arriving together
+    let cars: Vec[i64] = (1..21).collect();
+    let mut verdicts: Vec[bool] = Vec.new();
+    for pattern in 0..3 {
+        let directions: Vec[i64] = (0..20).map(|i| if pattern == 0 { i % 2 + 1 } else if pattern == 1 { i % 2 + 3 } else { i % 4 + 1 }).collect();
+        let log = run(cars, directions, arrival_order(Vec.filled(20, 0), mut seed));
+        verdicts.push(judge(cars, directions, log));
+    }
+    println(f"20 cars on road A, on road B and on both: valid {verdicts[0]} {verdicts[1]} {verdicts[2]}");
+}

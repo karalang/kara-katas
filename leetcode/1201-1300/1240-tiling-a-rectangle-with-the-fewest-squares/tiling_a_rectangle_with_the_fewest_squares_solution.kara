@@ -1,0 +1,83 @@
+// LeetCode #1240: Tiling a Rectangle with the Fewest Squares -- a Rust
+// solution as LeetCode's Rust users write it: the skyline search over a
+// `vec![0; m as usize]` of heights, the lowest column found against
+// `i32::MAX`, the run of columns measured in `usize` with `as i32` casts,
+// and the sizes tried by `(1..=(end - pos)).rev()`, carried to Kāra by
+// `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn tiling_rectangle(n: i32, m: i32) -> i32 {
+        let mut res = n * m;
+        let mut h = Vec.filled(m, 0);
+        Solution.dfs(mut h, n, 0, mut res);
+        res
+    }
+
+    fn dfs(h: mut ref Vec[i32], n: i32, cnt: i32, res: mut ref i32) {
+        if cnt >= *res {
+            return;
+        }
+        let mut pos = 0;
+        let mut min_h = i32.MAX;
+        for i in 0..h.len() {
+            if h[i] < min_h {
+                min_h = h[i];
+                pos = i;
+            }
+        }
+        if min_h == n {
+            *res = cnt;
+            return;
+        }
+        let mut end = pos;
+        while end < h.len() and h[end] == min_h and (end - pos + 1) as i32 + min_h <= n {
+            end += 1;
+        }
+        for j in (1..=(end - pos)).rev() {
+            for k in pos..pos + j {
+                h[k] += j as i32;
+            }
+            Solution.dfs(mut h, n, cnt + 1, mut res);
+            for k in pos..pos + j {
+                h[k] -= j as i32;
+            }
+        }
+    }
+}
+
+fn tiling_rectangle(n: i64, m: i64) -> i64 {
+    Solution.tiling_rectangle(n as i32, m as i32)
+}
+
+
+// ---- test harness ---------------------------------------------------------
+
+fn row(n: i64) -> String {
+    let answers: Vec[String] = (1..=13).map(|m| f"{tiling_rectangle(n, m)}").collect();
+    answers.join(" ")
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{tiling_rectangle(2, 3)}");
+    println(f"{tiling_rectangle(5, 8)}");
+    println(f"{tiling_rectangle(11, 13)}");
+    // the smallest, the largest square, and the longest strip
+    println(f"{tiling_rectangle(1, 1)} {tiling_rectangle(13, 13)} {tiling_rectangle(1, 13)} {tiling_rectangle(13, 1)}");
+    // two rows of the table: 11 x 1..13 and 13 x 1..13
+    println(f"11 x 1..13: {row(11)}");
+    println(f"13 x 1..13: {row(13)}");
+    // every rectangle up to 13 x 13
+    let mut check = 0;
+    let mut total = 0;
+    for n in 1..=13 {
+        for m in 1..=13 {
+            let t = tiling_rectangle(n, m);
+            check = (check * 131 + t) % 1000000007;
+            total += t;
+        }
+    }
+    println(f"169 rectangles: checksum {check}, total {total}");
+}

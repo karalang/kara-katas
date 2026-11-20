@@ -1,0 +1,53 @@
+// LeetCode #1207 bench: the ★ arm (each value's count in a `Map`, and the
+// counts put in a `Set`) on 2000 arrays of 1000 values, the constraints'
+// most, drawn once: each from 1 to 12 distinct values spread over
+// -1000..=1000, with weights so that both answers come; then 10 rounds
+// over the arrays, how many answer true folded into a checksum.
+
+fn unique_occurrences(arr: Vec[i64]) -> bool {
+    let mut counts: Map[i64, i64] = Map.new();
+    for v in arr.iter() {
+        *counts.entry(v).or_insert(0) += 1;
+    }
+    let distinct: Set[i64] = counts.values().collect();
+    distinct.len() == counts.len()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1207;
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..2000 {
+        let k = next_random(mut seed) % 12 + 1;
+        let values: Vec[i64] = (0..k).map(|_| next_random(mut seed) % 2001 - 1000).collect();
+        // value j drawn with weight j + 1, so the counts tend to differ
+        let total = k * (k + 1) / 2;
+        let arr: Vec[i64] = (0..1000)
+            .map(|_| {
+                let mut r = next_random(mut seed) % total;
+                let mut j = 0;
+                while r > j {
+                    r -= j + 1;
+                    j += 1;
+                }
+                values[j]
+            })
+            .collect();
+        arrays.push(arr);
+    }
+    let mut check = 0;
+    for round in 0..10 {
+        let mut yes = 0;
+        for arr in arrays.iter() {
+            if unique_occurrences(arr) {
+                yes += 1;
+            }
+        }
+        check = (check * 131 + yes + round) % 1000000007;
+    }
+    println(f"10 rounds over 2000 arrays of 1000 values: checksum {check}");
+}

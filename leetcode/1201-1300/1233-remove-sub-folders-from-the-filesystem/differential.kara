@@ -1,0 +1,268 @@
+// LeetCode #1233: Remove Sub-Folders from the Filesystem -- the arms
+// against the statement read literally and five more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_remove_subfolders(folder: Vec[String]) -> Vec[String] {
+    let mut sorted = folder.clone();
+    sorted.sort();
+    let mut kept: Vec[String] = Vec.new();
+    for f in sorted.iter() {
+        if kept.is_empty() or not f.starts_with(f"{kept[kept.len() - 1]}/") {
+            kept.push(f.clone());
+        }
+    }
+    kept
+}
+
+// ---- arm 1: prefixes ----------------------------------------------------
+fn a1_remove_subfolders(folder: Vec[String]) -> Vec[String] {
+    let all: Set[String] = folder.iter().cloned().collect();
+    let mut kept: Vec[String] = Vec.new();
+    for f in folder.iter() {
+        let mut inside = false;
+        for (i, c) in f.char_indices() {
+            if i > 0 and c == '/' and all.contains(f[0..i].to_string()) {
+                inside = true;
+                break;
+            }
+        }
+        if not inside {
+            kept.push(f.clone());
+        }
+    }
+    kept
+}
+
+// ---- arm 2: trie --------------------------------------------------------
+struct Node {
+    children: Map[String, i64],
+    end: bool,
+}
+
+fn a2_remove_subfolders(folder: Vec[String]) -> Vec[String] {
+    let mut nodes: Vec[Node] = [Node { children: Map.new(), end: false }];
+    for f in folder.iter() {
+        let mut at = 0;
+        for name in f.split("/").skip(1) {
+            at = match nodes[at].children.get(name) {
+                Some(next) => *next,
+                None => {
+                    let next = nodes.len();
+                    nodes.push(Node { children: Map.new(), end: false });
+                    nodes[at].children.insert(name.to_string(), next);
+                    next
+                }
+            };
+        }
+        nodes[at].end = true;
+    }
+    let mut kept: Vec[String] = Vec.new();
+    for f in folder.iter() {
+        let names: Vec[String] = f.split("/").skip(1).map(|p| p.to_string()).collect();
+        let mut at = 0;
+        let mut inside = false;
+        for (i, name) in names.iter().enumerate() {
+            at = *nodes[at].children.get(name).unwrap();
+            if nodes[at].end and i < names.len() - 1 {
+                inside = true;
+                break;
+            }
+        }
+        if not inside {
+            kept.push(f.clone());
+        }
+    }
+    kept
+}
+
+// ---- arm 3: parts -------------------------------------------------------
+fn a3_remove_subfolders(folder: Vec[String]) -> Vec[String] {
+    let mut paths: Vec[Vec[String]] = folder.iter().map(|f| f.split("/").skip(1).map(|p| p.to_string()).collect()).collect();
+    paths.sort();
+    let mut kept: Vec[Vec[String]] = Vec.new();
+    for p in paths.iter() {
+        let inside = match kept.last() {
+            Some(last) => last.len() < p.len() and p[0..last.len()] == last[0..],
+            None => false,
+        };
+        if not inside {
+            kept.push(p.clone());
+        }
+    }
+    kept.iter().map(|p| f"/{p.join("/")}").collect()
+}
+
+// ---- arm 4: sorted ------------------------------------------------------
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn remove_subfolders(folder: own Vec[String]) -> Vec[String] {
+        let mut folder = folder;
+        folder.sort();
+        let mut ans: Vec[String] = Vec.new();
+        for f in folder.into_iter() {
+            if let Some(last) = ans.last() {
+                if f.starts_with(f"{last}/") {
+                    continue;
+                }
+            }
+            ans.push(f);
+        }
+        ans
+    }
+}
+
+fn a4_remove_subfolders(folder: Vec[String]) -> Vec[String] {
+    A4Solution.remove_subfolders(folder.clone())
+}
+
+// ---- arm 5: hashset -----------------------------------------------------
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn remove_subfolders(folder: Vec[String]) -> Vec[String] {
+        let set: Set[Str] = folder.iter().map(|s| s.as_str()).collect();
+        folder
+            .iter()
+            .filter(|f| {
+                not f.char_indices()
+                    .skip(1)
+                    .any(|(i, c)| c == '/' and set.contains(f[..i]))
+            })
+            .cloned()
+            .collect()
+    }
+}
+
+fn a5_remove_subfolders(folder: Vec[String]) -> Vec[String] {
+    A5Solution.remove_subfolders(folder)
+}
+
+
+// ---- the statement read literally -----------------------------------------
+
+// A folder is removed when it lies within another: it begins with that
+// folder's name and a `/`. Every pair tested; what is left, sorted.
+fn literal(list: Vec[String]) -> Vec[String] {
+    let mut kept: Vec[String] = Vec.new();
+    for f in list.iter() {
+        let mut within = false;
+        for g in list.iter() {
+            if f.starts_with(f"{g}/") {
+                within = true;
+            }
+        }
+        if not within {
+            kept.push(f.clone());
+        }
+    }
+    kept.sort();
+    kept
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn sorted(kept: own Vec[String]) -> Vec[String] {
+    let mut all = kept;
+    all.sort();
+    all
+}
+
+fn arms(list: Vec[String]) -> Vec[Vec[String]] {
+    [sorted(a0_remove_subfolders(list)), sorted(a1_remove_subfolders(list)), sorted(a2_remove_subfolders(list)), sorted(a3_remove_subfolders(list)), sorted(a4_remove_subfolders(list)), sorted(a5_remove_subfolders(list))]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// Up to `count` distinct folders, each 1 to `depth` names drawn from "a",
+// "b", "ab" and "ba", so that names share prefixes.
+fn folders(count: i64, depth: i64, seed: mut ref i64) -> Vec[String] {
+    let names = ["a", "b", "ab", "ba"];
+    let mut seen: Set[String] = Set.new();
+    let mut all: Vec[String] = Vec.new();
+    for _ in 0..count {
+        let d = next_random(mut seed) % depth + 1;
+        let mut f = "".to_string();
+        for _ in 0..d {
+            f = f"{f}/{names[next_random(mut seed) % 4]}";
+        }
+        if not seen.contains(f) {
+            seen.insert(f.clone());
+            all.push(f);
+        }
+    }
+    all
+}
+
+fn main() {
+    let names = ["the statement read literally", "every folder kept is given, none twice", "the folders in reverse give the same", "no folder kept lies within another kept", "every folder given is kept or lies within one kept", "the ★ arm's answer"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1233;
+    for c in 0..2000 {
+        let (count, depth) = match c % 3 {
+            0 => (next_random(mut seed) % 10 + 1, 3),
+            1 => (next_random(mut seed) % 50 + 11, 4),
+            _ => (next_random(mut seed) % 540 + 61, 6),
+        };
+        let list = folders(count, depth, mut seed);
+        let given: Set[String] = list.iter().cloned().collect();
+        let want = if list.len() <= 60 { literal(list) } else { [] };
+        let got = arms(list);
+        let reversed = arms(list.iter().rev().cloned().collect());
+        for a in 0..6 {
+            let v = ref got[a];
+            let distinct: Set[String] = v.iter().cloned().collect();
+            let mut nested = false;
+            for f in v.iter() {
+                for g in v.iter() {
+                    if f.starts_with(f"{g}/") {
+                        nested = true;
+                    }
+                }
+            }
+            let mut covered = true;
+            for f in list.iter() {
+                if not v.iter().any(|g| f == g or f.starts_with(f"{g}/")) {
+                    covered = false;
+                }
+            }
+            let held = [
+                list.len() > 60 or v == want,
+                distinct.len() == v.len() and v.iter().all(|f| given.contains(f)),
+                reversed[a] == v,
+                not nested,
+                covered,
+                v == got[0],
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {a}: {list.len()} folders -> {v.len()} kept");
+                    }
+                }
+            }
+        }
+        for f in got[0].iter() {
+            for ch in f.chars() {
+                check = (check * 131 + ch as i64) % 1000000007;
+            }
+            check = (check * 131 + 7) % 1000000007;
+        }
+        check = (check * 131 + 9) % 1000000007;
+    }
+    for p in 0..6 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let failures = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over {6} arms: {failures} failures");
+}

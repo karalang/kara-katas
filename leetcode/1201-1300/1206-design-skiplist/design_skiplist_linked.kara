@@ -1,0 +1,181 @@
+// LeetCode #1206: Design Skiplist -- linked: each node a `shared struct`,
+// reference-counted, its forward links an `Option[Node]` per level it
+// stands on; the head stands on all 16. A new node's height is the number
+// of trailing one bits of how many adds came before it, plus one, up to
+// 16, so every second node stands on level 2, every fourth on level 3 and
+// so on, with no generator. Expected O(log n) while the adds come in no
+// particular order.
+
+const LEVELS: i64 = 16;
+
+shared struct Node {
+    value: i64,
+    mut next: Vec[Option[Node]],
+}
+
+struct Skiplist {
+    head: Node,
+    adds: i64,
+}
+
+impl Skiplist {
+    fn new() -> Skiplist {
+        Skiplist { head: Node { value: 0, next: Vec.filled(LEVELS, None) }, adds: 0 }
+    }
+
+    // The last node on each level whose value is below `target`.
+    fn path(self, target: i64) -> Vec[Node] {
+        let mut path = Vec.new();
+        let mut x = self.head.clone();
+        for level in (0..LEVELS).rev() {
+            loop {
+                let step = match x.next[level].clone() {
+                    Some(n) if n.value < target => n,
+                    _ => break,
+                };
+                x = step;
+            }
+            path.push(x.clone());
+        }
+        path.reverse();
+        path
+    }
+
+    fn search(self, target: i64) -> bool {
+        match self.path(target)[0].next[0].clone() {
+            Some(n) => n.value == target,
+            None => false,
+        }
+    }
+
+    fn add(mut ref self, num: i64) {
+        let path = self.path(num);
+        let mut h = 1;
+        let mut k = self.adds;
+        self.adds += 1;
+        while h < LEVELS and k % 2 == 1 {
+            k /= 2;
+            h += 1;
+        }
+        let node = Node { value: num, next: (0..h).map(|level| path[level].next[level].clone()).collect() };
+        for level in 0..h {
+            path[level].next[level] = Some(node.clone());
+        }
+    }
+
+    fn erase(mut ref self, num: i64) -> bool {
+        let path = self.path(num);
+        let Some(at) = path[0].next[0].clone() else {
+            return false;
+        };
+        if at.value != num {
+            return false;
+        }
+        for level in 0..at.next.len() {
+            let here = match path[level].next[level].clone() {
+                Some(n) => n.ref_eq(at),
+                None => false,
+            };
+            if here {
+                path[level].next[level] = at.next[level].clone();
+            }
+        }
+        true
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random calls, a third each of search, add and erase, on values
+// below `top`, as `i32`, the type LeetCode gives; every answer folded into a checksum, with how many searches
+// and erases found their value.
+fn run(seed: mut ref i64, count: i64, top: i64) -> String {
+    let mut list = Skiplist.new();
+    let mut found = 0;
+    let mut erased = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let op = next_random(mut seed) % 3;
+        let v = ((next_random(mut seed) * 32768 + next_random(mut seed)) % top) as i32;
+        let answer = if op == 0 {
+            let hit = list.search(v);
+            if hit {
+                found += 1;
+            }
+            hit
+        } else if op == 1 {
+            list.add(v);
+            true
+        } else {
+            let hit = list.erase(v);
+            if hit {
+                erased += 1;
+            }
+            hit
+        };
+        check = (check * 131 + op * 2 + if answer { 1 } else { 0 }) % 1000000007;
+    }
+    f"{found} found, {erased} erased, checksum {check}"
+}
+
+fn main() {
+    let mut list = Skiplist.new();
+    list.add(1);
+    list.add(2);
+    list.add(3);
+    println(f"search(0): {list.search(0)}");
+    list.add(4);
+    println(f"search(1): {list.search(1)}");
+    println(f"erase(0): {list.erase(0)}");
+    println(f"erase(1): {list.erase(1)}");
+    println(f"search(1): {list.search(1)}");
+    // Duplicates: three 5s erased one at a time.
+    let mut dup = Skiplist.new();
+    for _ in 0..3 {
+        dup.add(5);
+    }
+    dup.add(0);
+    dup.add(20000);
+    let mut gone = Vec.new();
+    for _ in 0..4 {
+        gone.push(dup.erase(5));
+    }
+    println(f"three 5s erased four times: {gone}, search(5): {dup.search(5)}, search(0): {dup.search(0)}, search(20000): {dup.search(20000)}");
+    // Empty: nothing to find or erase, and an add and erase leave it empty.
+    let mut empty = Skiplist.new();
+    let before = empty.search(7);
+    empty.add(7);
+    let erased = empty.erase(7);
+    println(f"empty: search(7) {before}, add and erase(7) {erased}, search(7) {empty.search(7)}, erase(7) {empty.erase(7)}");
+    // Rising then falling: 0..1000 added, every even one erased.
+    let mut stairs = Skiplist.new();
+    for v in 0..1000 {
+        stairs.add(v as i32);
+    }
+    for v in (0..1000).rev() {
+        if v % 2 == 0 {
+            stairs.erase(v as i32);
+        }
+    }
+    let left = (0..1000).filter(|v| stairs.search(v as i32)).count();
+    println(f"0..1000 added, the even ones erased: {left} left, search(999) {stairs.search(999)}, search(998) {stairs.search(998)}");
+    let mut seed = 1206;
+    let mut lines = Vec.new();
+    for _ in 0..100 {
+        lines.push(run(mut seed, 100, 10));
+    }
+    let mut check = 0;
+    for l in lines.iter() {
+        for b in l.bytes().iter() {
+            check = (check * 131 + (b as i64)) % 1000000007;
+        }
+    }
+    println(f"100 runs of 100 calls on values below 10: checksum {check}");
+    println(f"50000 calls on values below 20001: {run(mut seed, 50000, 20001)}");
+    println(f"50000 calls on values below 100: {run(mut seed, 50000, 100)}");
+}

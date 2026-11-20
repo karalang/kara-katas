@@ -1,0 +1,195 @@
+// LeetCode #1217: Minimum Cost to Move Chips to The Same Position -- the six arms
+// against the statement read literally and six more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_min_cost_to_move_chips(position: Vec[i64]) -> i64 {
+    let mut odd = 0;
+    let mut even = 0;
+    for p in position.iter() {
+        if p % 2 == 1 {
+            odd += 1;
+        } else {
+            even += 1;
+        }
+    }
+    min(odd, even)
+}
+
+// ---- arm 1: targets -----------------------------------------------------
+fn a1_min_cost_to_move_chips(position: Vec[i64]) -> i64 {
+    let mut best = position.len();
+    for target in position.iter() {
+        let mut cost = 0;
+        for p in position.iter() {
+            cost += (p - target).abs() % 2;
+        }
+        best = min(best, cost);
+    }
+    best
+}
+
+// ---- arm 2: lowbit ------------------------------------------------------
+fn a2_min_cost_to_move_chips(position: Vec[i64]) -> i64 {
+    let odd: i64 = position.iter().map(|p| p & 1).sum();
+    min(odd, position.len() - odd)
+}
+
+// ---- arm 3: halves ------------------------------------------------------
+fn a3_min_cost_to_move_chips(position: Vec[i64]) -> i64 {
+    let mut chips = position.clone();
+    chips.sort_by_key(|p| p % 2);
+    let mut lo = 0;
+    let mut hi = chips.len();
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if chips[mid] % 2 == 0 {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    min(lo, chips.len() - lo)
+}
+
+// ---- arm 4: filter ------------------------------------------------------
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn min_cost_to_move_chips(position: Vec[i32]) -> i32 {
+        let even = position.iter().filter(|p| p % 2 == 0).count();
+        let odd = position.len() - even;
+        even.min(odd) as i32
+    }
+}
+
+fn a4_min_cost_to_move_chips(position: Vec[i64]) -> i64 {
+    A4Solution.min_cost_to_move_chips(position.iter().map(|p| p as i32).collect())
+}
+
+// ---- arm 5: fold --------------------------------------------------------
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn min_cost_to_move_chips(position: Vec[i32]) -> i32 {
+        let (odd, even) = position
+            .iter()
+            .fold((0i32, 0i32), |(o, e), p| if p & 1 == 1 { (o + 1, e) } else { (o, e + 1) });
+        min(odd, even)
+    }
+}
+
+fn a5_min_cost_to_move_chips(position: Vec[i64]) -> i64 {
+    A5Solution.min_cost_to_move_chips(position.iter().map(|p| p as i32).collect())
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// The cheapest way for one chip from `from` to `to`, found by a search
+// over the positions from `low` to `high` (wide enough to hold every
+// useful path), each step one either way at cost 1 or two either way for
+// nothing: a 0-1 breadth-first search over a deque.
+fn cheapest(from: i64, to: i64, low: i64, high: i64) -> i64 {
+    let width = high - low + 1;
+    let mut cost: Vec[i64] = Vec.filled(width, -1);
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    queue.push_back((from, 0));
+    while let Some((at, c)) = queue.pop_front() {
+        if cost[at - low] >= 0 {
+            continue;
+        }
+        cost[at - low] = c;
+        for (step, price) in [(2, 0), (-2, 0), (1, 1), (-1, 1)] {
+            let next = at + step;
+            if next >= low and next <= high and cost[next - low] < 0 {
+                if price == 0 {
+                    queue.push_front((next, c));
+                } else {
+                    queue.push_back((next, c + 1));
+                }
+            }
+        }
+    }
+    cost[to - low]
+}
+
+// Every place from the least position to the greatest tried as the
+// meeting place, every chip moved there as cheaply as it can be.
+fn literal(position: Vec[i64]) -> i64 {
+    let low = position.iter().min().unwrap();
+    let high = position.iter().max().unwrap();
+    let mut best = -1;
+    for target in low..=high {
+        let mut total = 0;
+        for p in position.iter() {
+            total += cheapest(p, target, low - 2, high + 2);
+        }
+        if best < 0 or total < best {
+            best = total;
+        }
+    }
+    best
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(position: Vec[i64]) -> Vec[i64] {
+    [a0_min_cost_to_move_chips(position), a1_min_cost_to_move_chips(position), a2_min_cost_to_move_chips(position), a3_min_cost_to_move_chips(position), a4_min_cost_to_move_chips(position), a5_min_cost_to_move_chips(position)]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["the statement read literally", "the chips in reverse order give the same", "every chip two further gives the same", "every chip one further gives the same", "a chip added where one stands costs the same or one more", "no more than half the chips pay", "the ★ arm's answer"];
+    let mut fails = Vec.filled(7, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1217;
+    for _ in 0..2000 {
+        // 1 to 12 chips at positions from 1 to 1, 2, .. or 9
+        let n = next_random(mut seed) % 12 + 1;
+        let top = next_random(mut seed) % 9 + 1;
+        let position: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top + 1).collect();
+        let copied = position[next_random(mut seed) % n];
+        let want = literal(position);
+        let got = arms(position);
+        let reversed = arms(position.iter().rev().collect());
+        let two = arms(position.iter().map(|p| p + 2).collect());
+        let one = arms(position.iter().map(|p| p + 1).collect());
+        let mut grown_chips = position.clone();
+        grown_chips.push(copied);
+        let grown = arms(grown_chips);
+        for a in 0..6 {
+            let v = got[a];
+            let held = [
+                v == want,
+                reversed[a] == v,
+                two[a] == v,
+                one[a] == v,
+                grown[a] == v or grown[a] == v + 1,
+                v >= 0 and 2 * v <= n,
+                v == got[0],
+            ];
+            for p in 0..7 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {a}: {position} -> {v}");
+                    }
+                }
+            }
+        }
+        check = (check * 131 + want + 1) % 1000000007;
+    }
+    for p in 0..7 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let total = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+}

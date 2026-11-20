@@ -1,0 +1,83 @@
+// LeetCode #1201: Ugly Number III -- the ★ arm: a binary search on the
+// answer. The numbers up to x divisible by a, b or c are counted by
+// inclusion and exclusion over the least common multiples, and the answer
+// is the least x whose count reaches n.
+
+fn gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+fn lcm(a: i64, b: i64) -> i64 {
+    a / gcd(a, b) * b
+}
+
+fn nth_ugly_number(n: i64, a: i64, b: i64, c: i64) -> i64 {
+    let ab = lcm(a, b);
+    let bc = lcm(b, c);
+    let ac = lcm(a, c);
+    let abc = lcm(ab, c);
+    let count = |x: i64| x / a + x / b + x / c - x / ab - x / bc - x / ac + x / abc;
+    let mut low = 1;
+    let mut high = n * a.min(b).min(c);
+    while low < high {
+        let mid = low + (high - low) / 2;
+        if count(mid) >= n {
+            high = mid;
+        } else {
+            low = mid + 1;
+        }
+    }
+    low
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let cases = [
+        (3, 2, 3, 5),
+        (4, 2, 3, 4),
+        (5, 2, 11, 13),
+        (1000000000, 2, 217983653, 336916467),
+        (1, 1, 1, 1),
+        (1000000000, 1, 1, 1),
+        (1000000000, 2, 2, 2),
+        (5, 2, 4, 8),
+        (2, 1000000, 1000000, 1000000),
+        (2, 999999937, 999999929, 1),
+        (7, 6, 10, 15),
+    ];
+    for (n, a, b, c) in cases.iter() {
+        println(f"n = {n}, a = {a}, b = {b}, c = {c}: {nth_ugly_number(n, a, b, c)}");
+    }
+    let mut seed = 1201;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let a = next_random(mut seed) % 30 + 1;
+        let b = next_random(mut seed) % 30 + 1;
+        let c = next_random(mut seed) % 30 + 1;
+        let n = next_random(mut seed) % 200 + 1;
+        let v = nth_ugly_number(n, a, b, c);
+        total += v;
+        check = (check * 131 + v) % 1000000007;
+    }
+    println(f"1000 small cases: total {total}, checksum {check}");
+    total = 0;
+    check = 0;
+    for _ in 0..1000 {
+        let a = (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000 + 1;
+        let b = (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000 + 1;
+        let c = (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000 + 1;
+        let most = 2000000000 / a.min(b).min(c);
+        let n = (next_random(mut seed) * 32768 + next_random(mut seed)) % most.min(1000000000) + 1;
+        let v = nth_ugly_number(n, a, b, c);
+        total += v;
+        check = (check * 131 + v) % 1000000007;
+    }
+    println(f"1000 large cases: total {total}, checksum {check}");
+}

@@ -1,0 +1,50 @@
+// LeetCode #1277 bench, in Kāra: the ★ arm (dynamic programming over the
+// sides of the largest squares) on 40 random 300-by-300 matrices, half,
+// four fifths, nineteen twentieths and 99 in 100 ones, drawn once; 50
+// rounds, every count folded into a checksum.
+
+fn count_squares(matrix: Vec[Vec[i64]]) -> i64 {
+    let m = matrix.len();
+    let n = matrix[0].len();
+    let mut side: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, 0));
+    let mut total = 0;
+    for i in 0..m {
+        for j in 0..n {
+            if matrix[i][j] == 1 {
+                side[i][j] = if i == 0 or j == 0 {
+                    1
+                } else {
+                    side[i - 1][j].min(side[i][j - 1]).min(side[i - 1][j - 1]) + 1
+                };
+                total += side[i][j];
+            }
+        }
+    }
+    total
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1277;
+    let percents = [50, 80, 95, 99];
+    let mut matrices: Vec[Vec[Vec[i64]]] = Vec.new();
+    for k in 0..40 {
+        let mut matrix: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..300 {
+            let row: Vec[i64] = (0..300).map(|_| if next_random(mut seed) % 100 < percents[k % 4] { 1 } else { 0 }).collect();
+            matrix.push(row);
+        }
+        matrices.push(matrix);
+    }
+    let mut check = 0;
+    for round in 0..50 {
+        for matrix in matrices.iter() {
+            check = (check * 131 + count_squares(matrix) + round) % 1000000007;
+        }
+    }
+    println(f"50 rounds of 40 matrices of 300 by 300: checksum {check}");
+}

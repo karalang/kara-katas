@@ -1,0 +1,131 @@
+// LeetCode #1242: Web Crawler Multithreaded -- a task per page and one
+// channel back: every url to fetch is a task in a `TaskGroup`, which sends
+// the page's links back on a clone of one `Sender`; the calling task
+// receives them, starts a task for each new url of the start's hostname,
+// and stops when no page is still out.
+
+import std.sync.{TaskGroup};
+
+// The judge's interface: the urls a page links to. A call may block, so
+// the crawl fetches pages on several tasks at once.
+trait HtmlParser {
+    fn get_urls(self, url: String) -> Vec[String];
+}
+
+fn hostname(url: String) -> String {
+    url.strip_prefix("http://").unwrap().split("/").next().unwrap().to_string()
+}
+
+fn crawl(start_url: String, parser: dyn HtmlParser + CrossTask) -> Vec[String] {
+    let host = hostname(start_url);
+    let mut seen: Set[String] = Set.new();
+    seen.insert(start_url.clone());
+    let (tx, rx) = channel(16);
+    let group = TaskGroup.new();
+    let first = tx.clone();
+    group.spawn(|| first.send(parser.get_urls(start_url)));
+    let mut pending = 1;
+    while pending > 0 {
+        let links = rx.recv().unwrap();
+        pending -= 1;
+        for next in links.into_iter() {
+            if hostname(next) == host and seen.insert(next.clone()) {
+                let back = tx.clone();
+                group.spawn(|| back.send(parser.get_urls(next)));
+                pending += 1;
+            }
+        }
+    }
+    seen.into_iter().collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+// A web of pages: each url's links.
+struct Site {
+    links: Map[String, Vec[String]],
+}
+
+impl HtmlParser for Site {
+    fn get_urls(self, url: String) -> Vec[String] {
+        self.links.get(url).cloned().unwrap_or(Vec.new())
+    }
+}
+
+fn site(urls: Vec[String], edges: Vec[(i64, i64)]) -> Site {
+    let mut links: Map[String, Vec[String]] = Map.new();
+    for url in urls.iter() {
+        links.insert(url.clone(), Vec.new());
+    }
+    for (from, to) in edges {
+        links.get_mut(urls[from]).unwrap().push(urls[to].clone());
+    }
+    Site { links: links }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` distinct urls on `hosts` hostnames, with up to three path segments,
+// and `m` random links.
+fn random_site(n: i64, hosts: i64, m: i64, seed: mut ref i64) -> (Vec[String], Vec[(i64, i64)]) {
+    let names = ["news.yahoo.com", "news.google.com", "yahoo.com", "a.b", "a.b.c", "x-1.org"];
+    let mut urls: Vec[String] = Vec.new();
+    let mut have: Set[String] = Set.new();
+    while urls.len() < n {
+        let mut url = f"http://{names[next_random(mut seed) % hosts]}";
+        for _ in 0..next_random(mut seed) % 4 {
+            url.push('/');
+            url.push_str(["news", "us", "topics", "a", "b"][next_random(mut seed) % 5]);
+            if next_random(mut seed) % 2 == 0 {
+                url.push_str(f"{next_random(mut seed) % 10}");
+            }
+        }
+        if next_random(mut seed) % 4 == 0 {
+            url.push('/');
+        }
+        if have.insert(url.clone()) {
+            urls.push(url);
+        }
+    }
+    let edges = (0..m).map(|_| (next_random(mut seed) % n, next_random(mut seed) % n)).collect();
+    (urls, edges)
+}
+
+fn crawled(start: String, web: Site) -> Vec[String] {
+    let mut got = crawl(start, web);
+    got.sort();
+    got
+}
+
+fn main() {
+    // LeetCode's two examples
+    let urls: Vec[String] = ["http://news.yahoo.com", "http://news.yahoo.com/news", "http://news.yahoo.com/news/topics/", "http://news.google.com", "http://news.yahoo.com/us"].into_iter().map(|u| u.to_string()).collect();
+    println(f"{crawled(urls[2], site(urls, [(2, 0), (2, 1), (3, 2), (3, 1), (0, 4)]))}");
+    println(f"{crawled(urls[3], site(urls, [(0, 2), (2, 1), (3, 2), (3, 1), (3, 0)]))}");
+    // 1000 random webs of 1 to 30 urls on 1 to 6 hostnames
+    let mut seed = 1242;
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 30 + 1;
+        let hosts = next_random(mut seed) % 6 + 1;
+        let (urls, edges) = random_site(n, hosts, next_random(mut seed) % (3 * n), mut seed);
+        let got = crawled(urls[next_random(mut seed) % n], site(urls, edges));
+        total += got.len();
+        for url in got.iter() {
+            for b in url.bytes() {
+                check = (check * 131 + b) % 1000000007;
+            }
+        }
+    }
+    println(f"1000 random webs: {total} urls crawled, checksum {check}");
+    // the constraints' top, 1000 urls on one hostname: a chain, and 2500 random links
+    let chain: Vec[String] = (0..1000).map(|i| f"http://kara.dev/page/{i}").collect();
+    let chained = crawled(chain[0], site(chain, (0..999).map(|i| (i, i + 1)).collect()));
+    let (urls, edges) = random_site(1000, 1, 2500, mut seed);
+    let wide = crawled(urls[0], site(urls, edges));
+    println(f"1000 urls: {chained.len()} along a chain, {wide.len()} of a random web");
+}

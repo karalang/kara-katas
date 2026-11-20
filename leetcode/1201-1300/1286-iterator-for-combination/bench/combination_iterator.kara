@@ -1,0 +1,52 @@
+// LeetCode #1286 bench: the ★ arm (the masks with k bits, from the largest
+// down) over every length of the 15 letters "abcdefghijklmno", 1000 rounds,
+// every combination folded into a checksum.
+
+struct CombinationIterator {
+    chars: Vec[char],
+    k: i64,
+    mask: i64,
+}
+
+impl CombinationIterator {
+    fn new(characters: String, combination_length: i64) -> CombinationIterator {
+        let n = characters.len();
+        // the largest mask with k bits: the first k letters
+        let mask = ((1 << combination_length) - 1) << (n - combination_length);
+        CombinationIterator { chars: characters.chars().collect(), k: combination_length, mask }
+    }
+
+    fn next(mut ref self) -> String {
+        let n = self.chars.len();
+        let mut out = "";
+        for i in 0..n {
+            if (self.mask >> (n - 1 - i)) & 1 == 1 {
+                out.push(self.chars[i]);
+            }
+        }
+        self.mask -= 1;
+        while self.mask > 0 and self.mask.count_ones() != self.k {
+            self.mask -= 1;
+        }
+        out
+    }
+
+    fn has_next(self) -> bool {
+        self.mask > 0
+    }
+}
+
+fn main() {
+    let mut check = 0;
+    for round in 0..1000 {
+        for k in 1..16 {
+            let mut it = CombinationIterator.new("abcdefghijklmno", k);
+            while it.has_next() {
+                for b in it.next().bytes().iter() {
+                    check = (check * 131 + *b + round) % 1000000007;
+                }
+            }
+        }
+    }
+    println(f"1000 rounds of every length of 15 letters: checksum {check}");
+}

@@ -1,0 +1,174 @@
+// LeetCode #1228: Missing Number In Arithmetic Progression -- the arms
+// against the statement read literally and five more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_missing_number(arr: Vec[i64]) -> i64 {
+    let n = arr.len();
+    let step = (arr[n - 1] - arr[0]) / n;
+    let mut lo = 0;
+    let mut hi = n - 1;
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if arr[mid] == arr[0] + mid * step {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    arr[0] + lo * step
+}
+
+// ---- arm 1: sum ---------------------------------------------------------
+fn a1_missing_number(arr: Vec[i64]) -> i64 {
+    let n = arr.len();
+    let whole = (arr[0] + arr[n - 1]) * (n + 1) / 2;
+    whole - arr.iter().sum()
+}
+
+// ---- arm 2: scan --------------------------------------------------------
+fn a2_missing_number(arr: Vec[i64]) -> i64 {
+    let step = (arr[arr.len() - 1] - arr[0]) / arr.len();
+    for i in 0..arr.len() - 1 {
+        if arr[i + 1] - arr[i] != step {
+            return arr[i] + step;
+        }
+    }
+    arr[0]
+}
+
+// ---- arm 3: gaps --------------------------------------------------------
+fn a3_missing_number(arr: Vec[i64]) -> i64 {
+    let gaps: Vec[i64] = arr.windows(2).into_iter().map(|w| w[1] - w[0]).collect();
+    let step = if gaps[0].abs() <= gaps[1].abs() { gaps[0] } else { gaps[1] };
+    match gaps.iter().position(|g| g != step) {
+        Some(i) => arr[i] + step,
+        None => arr[0],
+    }
+}
+
+// ---- arm 4: search ------------------------------------------------------
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn missing_number(arr: Vec[i32]) -> i32 {
+        let n = arr.len();
+        let d = (arr[n - 1] - arr[0]) / n as i32;
+        let mut (lo, hi) = (0, n - 1);
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            if arr[mid] == arr[0] + mid as i32 * d {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        arr[0] + lo as i32 * d
+    }
+}
+
+fn a4_missing_number(arr: Vec[i64]) -> i64 {
+    A4Solution.missing_number(arr.iter().map(|v| v as i32).collect())
+}
+
+// ---- arm 5: windows -----------------------------------------------------
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn missing_number(arr: Vec[i32]) -> i32 {
+        let d = (arr[arr.len() - 1] - arr[0]) / arr.len() as i32;
+        arr.windows(2).into_iter()
+            .find(|w| w[1] - w[0] != d)
+            .map(|w| w[0] + d)
+            .unwrap_or(arr[0])
+    }
+}
+
+fn a5_missing_number(arr: Vec[i64]) -> i64 {
+    A5Solution.missing_number(arr.iter().map(|v| v as i32).collect())
+}
+
+
+// ---- the statement read literally -----------------------------------------
+
+// Whether `x`, put back between two of the array's values, makes an
+// arithmetic progression with the array's first and last values kept at
+// its ends.
+fn fits(arr: Vec[i64], x: i64) -> bool {
+    for i in 1..arr.len() {
+        let mut whole = arr[0..i].to_vec();
+        whole.push(x);
+        whole.extend(arr[i..].to_vec());
+        let step = whole[1] - whole[0];
+        if whole.windows(2).into_iter().all(|w| w[1] - w[0] == step) {
+            return true;
+        }
+    }
+    false
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(arr: Vec[i64]) -> Vec[i64] {
+    [a0_missing_number(arr), a1_missing_number(arr), a2_missing_number(arr), a3_missing_number(arr), a4_missing_number(arr), a5_missing_number(arr)]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["the value removed", "put back, an arithmetic progression with the same ends", "from the first value to the last", "the array reversed gives the same", "the array shifted gives the answer shifted", "the ★ arm's answer"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1228;
+    for c in 0..2000 {
+        let len = match c % 3 {
+            0 => next_random(mut seed) % 7 + 4,
+            1 => next_random(mut seed) % 90 + 11,
+            _ => next_random(mut seed) % 901 + 101,
+        };
+        let first = next_random(mut seed) % 100001;
+        let low = -(first / (len - 1));
+        let high = (100000 - first) / (len - 1);
+        let step = if c % 10 == 0 { 0 } else { low + next_random(mut seed) % (high - low + 1) };
+        let gone = next_random(mut seed) % (len - 2) + 1;
+        let arr: Vec[i64] = (0..len).filter(|i| i != gone).map(|i| first + i * step).collect();
+        let removed = first + gone * step;
+        let shift = next_random(mut seed) % 1000;
+        let got = arms(arr);
+        let reversed = arms(arr.iter().rev().collect());
+        let shifted = arms(arr.iter().map(|v| v + shift).collect());
+        let (low_end, high_end) = (arr[0].min(arr[len - 2]), arr[0].max(arr[len - 2]));
+        for a in 0..6 {
+            let v = got[a];
+            let held = [
+                v == removed,
+                len > 60 or fits(arr, v),
+                v >= low_end and v <= high_end,
+                reversed[a] == v,
+                shifted[a] == v + shift,
+                v == got[0],
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {a}: {len - 1} values, step {step} -> {v}");
+                    }
+                }
+            }
+        }
+        check = (check * 131 + removed) % 1000000007;
+    }
+    for p in 0..6 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let failures = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over {6} arms: {failures} failures");
+}

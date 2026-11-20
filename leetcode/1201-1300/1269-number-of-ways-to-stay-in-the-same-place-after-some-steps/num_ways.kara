@@ -1,0 +1,50 @@
+// LeetCode #1269: Number of Ways to Stay in the Same Place After Some Steps
+// -- the ★ arm: the ways to stand on each cell after each step, a row at a
+// time; a pointer more than half the steps away cannot come back, so only
+// the first `steps / 2 + 1` cells are kept. O(steps * min(steps, arrLen)).
+
+const MOD: i64 = 1000000007;
+
+fn num_ways(steps: i64, arr_len: i64) -> i64 {
+    let width = arr_len.min(steps / 2 + 1);
+    let mut ways = Vec.filled(width, 0);
+    ways[0] = 1;
+    for _ in 0..steps {
+        let mut next = Vec.filled(width, 0);
+        for i in 0..width {
+            let mut w = ways[i];
+            if i > 0 {
+                w += ways[i - 1];
+            }
+            if i + 1 < width {
+                w += ways[i + 1];
+            }
+            next[i] = w % MOD;
+        }
+        ways = next;
+    }
+    ways[0]
+}
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's examples
+    println(f"{num_ways(3, 2)} {num_ways(2, 4)} {num_ways(4, 2)} {num_ways(27, 7)}");
+    // 2000 random cases: 1 to 100 steps, an array of 1 to 60 cells or wider
+    // than the steps can reach
+    let mut seed = 1269;
+    let mut check = 0;
+    for case in 0..2000 {
+        let steps = next_random(mut seed) % 100 + 1;
+        let arr_len = if case % 4 == 0 { 1000000 } else { next_random(mut seed) % 60 + 1 };
+        check = (check * 131 + num_ways(steps, arr_len)) % 1000000007;
+    }
+    println(f"2000 random cases: checksum {check}");
+    // the constraints' top: 500 steps in the widest array, and in narrow ones
+    println(f"{num_ways(500, 1000000)} {num_ways(500, 1)} {num_ways(500, 2)} {num_ways(500, 3)} {num_ways(430, 148488)}");
+}

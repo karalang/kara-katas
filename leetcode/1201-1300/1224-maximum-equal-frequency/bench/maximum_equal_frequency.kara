@@ -1,0 +1,50 @@
+// LeetCode #1224 bench, the Kāra ★ arm: each number's count and how many
+// numbers have each count, over 10 random arrays of 10^5 numbers drawn
+// once, 5 passes; checksum of the answers.
+
+fn max_equal_freq(nums: Vec[i64]) -> i64 {
+    let top = nums.iter().max().unwrap();
+    let mut count = Vec.filled(top + 1, 0);
+    let mut with_count = Vec.filled(nums.len() + 1, 0);
+    let mut most = 0;
+    let mut best = 0;
+    for (k, x) in nums.iter().enumerate() {
+        with_count[count[x]] -= 1;
+        count[x] += 1;
+        with_count[count[x]] += 1;
+        most = most.max(count[x]);
+        let len = k + 1;
+        if most == 1
+            or with_count[most] * most + 1 == len
+            or (with_count[most - 1] + 1) * (most - 1) + 1 == len
+        {
+            best = len;
+        }
+    }
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1224;
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    for a in 0..10 {
+        // values from 1 to 2, 4, 8, .. 1024
+        let values = 2 << a;
+        arrays.push((0..100000).map(|_| next_random(mut seed) % values + 1).collect());
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..5 {
+        for nums in arrays.iter() {
+            let answer = max_equal_freq(nums);
+            total += answer;
+            check = (check * 131 + answer) % 1000000007;
+        }
+    }
+    println(f"10 arrays of 10^5 numbers, 5 passes: lengths total {total}, checksum {check}");
+}

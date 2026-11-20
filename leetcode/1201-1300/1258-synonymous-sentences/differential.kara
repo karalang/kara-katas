@@ -1,0 +1,440 @@
+// LeetCode #1258: the differential -- the five arms against the statement
+// read literally and five more properties, on 2000 random cases.
+
+// arm 0: synonymous_sentences.kara
+fn a0_find(parent: mut ref Map[String, String], word: Str) -> String {
+    let up = parent[word].clone();
+    if up == word {
+        return up;
+    }
+    let root = a0_find(mut parent, up);
+    parent.insert(word.to_string(), root.clone());
+    root
+}
+
+fn a0_build(choices: Vec[Vec[String]], at: i64, current: mut ref Vec[String], out: mut ref Vec[String]) {
+    if at == choices.len() {
+        out.push(current.join(" "));
+        return;
+    }
+    for word in choices[at].iter() {
+        current.push(word.clone());
+        a0_build(choices, at + 1, mut current, mut out);
+        current.pop();
+    }
+}
+
+fn a0_generate_sentences(synonyms: Vec[Vec[String]], text: Str) -> Vec[String] {
+    let mut parent: Map[String, String] = Map.new();
+    for pair in synonyms.iter() {
+        for word in pair.iter() {
+            if not parent.contains_key(word) {
+                parent.insert(word.clone(), word.clone());
+            }
+        }
+    }
+    for pair in synonyms.iter() {
+        let a = a0_find(mut parent, pair[0]);
+        let b = a0_find(mut parent, pair[1]);
+        if a != b {
+            parent.insert(a, b);
+        }
+    }
+    let words: Vec[String] = parent.keys().cloned().collect();
+    let mut groups: Map[String, Vec[String]] = Map.new();
+    for word in words.iter() {
+        let root = a0_find(mut parent, word);
+        groups.entry(root).or_insert_with(Vec.new).push(word.clone());
+    }
+    let mut choices: Vec[Vec[String]] = Vec.new();
+    for word in text.split(" ") {
+        if parent.contains_key(word) {
+            let mut group = groups[a0_find(mut parent, word)].clone();
+            group.sort();
+            choices.push(group);
+        } else {
+            choices.push([word.to_string()]);
+        }
+    }
+    let mut out = Vec.new();
+    let mut current = Vec.new();
+    a0_build(choices, 0, mut current, mut out);
+    out.sort();
+    out
+}
+
+// arm 1: synonymous_sentences_bfs.kara
+fn a1_generate_sentences(synonyms: Vec[Vec[String]], text: Str) -> Vec[String] {
+    let mut next_to: Map[String, Vec[String]] = Map.new();
+    for pair in synonyms.iter() {
+        next_to.entry(pair[0].clone()).or_insert_with(Vec.new).push(pair[1].clone());
+        next_to.entry(pair[1].clone()).or_insert_with(Vec.new).push(pair[0].clone());
+    }
+    let mut seen: Set[String] = Set.new();
+    let mut queue: VecDeque[String] = VecDeque.new();
+    seen.insert(text.to_string());
+    queue.push_back(text.to_string());
+    while let Some(sentence) = queue.pop_front() {
+        let words: Vec[Str] = sentence.split(" ").collect();
+        for i in 0..words.len() {
+            if let Some(others) = next_to.get(words[i]) {
+                for other in others.iter() {
+                    let mut changed: Vec[Str] = words.clone();
+                    changed[i] = other.as_str();
+                    let next = changed.join(" ");
+                    if not seen.contains(next) {
+                        seen.insert(next.clone());
+                        queue.push_back(next);
+                    }
+                }
+            }
+        }
+    }
+    let mut out: Vec[String] = seen.into_iter().collect();
+    out.sort();
+    out
+}
+
+// arm 2: synonymous_sentences_product.kara
+fn a2_synonyms_of(next_to: Map[String, Vec[String]], word: Str) -> Vec[String] {
+    let mut found = [word.to_string()];
+    let mut stack = [word.to_string()];
+    while let Some(at) = stack.pop() {
+        if let Some(others) = next_to.get(at) {
+            for other in others.iter() {
+                if not found.contains(other) {
+                    found.push(other.clone());
+                    stack.push(other.clone());
+                }
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
+fn a2_generate_sentences(synonyms: Vec[Vec[String]], text: Str) -> Vec[String] {
+    let mut next_to: Map[String, Vec[String]] = Map.new();
+    for pair in synonyms.iter() {
+        next_to.entry(pair[0].clone()).or_insert_with(Vec.new).push(pair[1].clone());
+        next_to.entry(pair[1].clone()).or_insert_with(Vec.new).push(pair[0].clone());
+    }
+    let mut sentences: Vec[String] = Vec.new();
+    for (i, word) in text.split(" ").enumerate() {
+        let choices = a2_synonyms_of(next_to, word);
+        if i == 0 {
+            sentences = choices;
+        } else {
+            let mut longer = Vec.new();
+            for sentence in sentences.iter() {
+                for choice in choices.iter() {
+                    longer.push(f"{sentence} {choice}");
+                }
+            }
+            sentences = longer;
+        }
+    }
+    sentences
+}
+
+// arm 3: synonymous_sentences_sorted.kara
+fn a3_closure(synonyms: Vec[Vec[String]], word: Str) -> SortedSet[String] {
+    let mut group: SortedSet[String] = SortedSet.new();
+    group.insert(word.to_string());
+    let mut grew = true;
+    while grew {
+        grew = false;
+        for pair in synonyms.iter() {
+            let a = group.contains(pair[0]);
+            let b = group.contains(pair[1]);
+            if a != b {
+                group.insert(pair[0].clone());
+                group.insert(pair[1].clone());
+                grew = true;
+            }
+        }
+    }
+    group
+}
+
+fn a3_grow(synonyms: Vec[Vec[String]], words: Vec[Str], at: i64, prefix: Str, out: mut ref SortedSet[String]) {
+    if at == words.len() {
+        out.insert(prefix.to_string());
+        return;
+    }
+    for word in a3_closure(synonyms, words[at]).iter() {
+        let next = if at == 0 { word.clone() } else { f"{prefix} {word}" };
+        a3_grow(synonyms, words, at + 1, next, mut out);
+    }
+}
+
+fn a3_generate_sentences(synonyms: Vec[Vec[String]], text: Str) -> Vec[String] {
+    let words: Vec[Str] = text.split(" ").collect();
+    let mut out: SortedSet[String] = SortedSet.new();
+    a3_grow(synonyms, words, 0, "", mut out);
+    out.into_iter().collect()
+}
+
+// arm 4: synonymous_sentences_solution.kara
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn generate_sentences(synonyms: Vec[Vec[String]], text: String) -> Vec[String] {
+        let mut graph: Map[String, Vec[String]] = Map.new();
+        for s in ref synonyms {
+            graph.entry(s[0].clone()).or_insert(Vec.new()).push(s[1].clone());
+            graph.entry(s[1].clone()).or_insert(Vec.new()).push(s[0].clone());
+        }
+        let words: Vec[String] = text.split(" ").map(|s| s.to_string()).collect();
+        let mut res = Vec.new();
+        let mut cur = Vec.new();
+        A4Solution.dfs(graph, words, 0, mut cur, mut res);
+        res.sort();
+        res
+    }
+
+    fn synonyms_of(graph: Map[String, Vec[String]], word: Str) -> Vec[String] {
+        let mut seen = Set.new();
+        let mut stack = [word.to_string()];
+        seen.insert(word.to_string());
+        while let Some(w) = stack.pop() {
+            if let Some(ns) = graph.get(w) {
+                for n in ns {
+                    if seen.insert(n.clone()) {
+                        stack.push(n.clone());
+                    }
+                }
+            }
+        }
+        let mut v: Vec[String] = seen.into_iter().collect();
+        v.sort();
+        v
+    }
+
+    fn dfs(graph: Map[String, Vec[String]], words: Vec[String], i: i64, cur: mut ref Vec[String], res: mut ref Vec[String]) {
+        if i == words.len() {
+            res.push(cur.join(" "));
+            return;
+        }
+        for w in A4Solution.synonyms_of(graph, words[i]).into_iter() {
+            cur.push(w);
+            A4Solution.dfs(graph, words, i + 1, mut cur, mut res);
+            cur.pop();
+        }
+    }
+}
+
+fn a4_generate_sentences(synonyms: Vec[Vec[String]], text: Str) -> Vec[String] {
+    A4Solution.generate_sentences(synonyms, text.to_string())
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A random word of 1 to 3 letters from the 6 starting at `first`.
+fn random_word(first: u8, seed: mut ref i64) -> String {
+    let mut word = String.new();
+    let len = next_random(mut seed) % 3 + 1;
+    for _ in 0..len {
+        word.push((first + (next_random(mut seed) % 6) as u8) as char);
+    }
+    word
+}
+
+// `count` different random words.
+fn random_words(count: i64, first: u8, seed: mut ref i64) -> Vec[String] {
+    let mut words: Vec[String] = Vec.new();
+    while words.len() < count {
+        let word = random_word(first, mut seed);
+        if not words.contains(word) {
+            words.push(word);
+        }
+    }
+    words
+}
+
+// Up to 10 random pairs of 8 words from `a` to `f`, and a text of 1 to 10
+// words, at most 4 of them from the pairs' words and the rest from `p` to
+// `u`.
+fn random_case(seed: mut ref i64) -> (Vec[Vec[String]], String) {
+    let pool = random_words(8, b'a', mut seed);
+    let plain = random_words(12, b'p', mut seed);
+    let mut synonyms: Vec[Vec[String]] = Vec.new();
+    for _ in 0..next_random(mut seed) % 11 {
+        let i = next_random(mut seed) % 8;
+        let j = (i + 1 + next_random(mut seed) % 7) % 8;
+        synonyms.push([pool[i].clone(), pool[j].clone()]);
+    }
+    let mut words: Vec[String] = Vec.new();
+    let mut from_pool = 0;
+    for _ in 0..next_random(mut seed) % 10 + 1 {
+        if from_pool < 4 and next_random(mut seed) % 3 == 0 {
+            words.push(pool[next_random(mut seed) % 8].clone());
+            from_pool += 1;
+        } else {
+            words.push(plain[next_random(mut seed) % 12].clone());
+        }
+    }
+    (synonyms, words.join(" "))
+}
+
+fn fold(check: i64, sentence: Str) -> i64 {
+    let mut check = check;
+    for b in sentence.bytes() {
+        check = (check * 131 + b) % 1000000007;
+    }
+    (check * 131 + 10) % 1000000007
+}
+
+// The statement read literally: two words are synonyms when a chain of
+// pairs joins them, a word being its own synonym; the sentences are every
+// text of the same length with each word replaced by one of its synonyms,
+// enumerated position by position as an odometer, sorted, and without
+// repeats.
+fn literal(synonyms: Vec[Vec[String]], text: Str) -> Vec[String] {
+    let words: Vec[String] = text.split(" ").map(|w| w.to_string()).collect();
+    let mut vocab: Vec[String] = Vec.new();
+    for w in words.iter() {
+        if not vocab.contains(w) {
+            vocab.push(w.clone());
+        }
+    }
+    for pair in synonyms.iter() {
+        for w in pair.iter() {
+            if not vocab.contains(w) {
+                vocab.push(w.clone());
+            }
+        }
+    }
+    let n = vocab.len();
+    let at = |w: Str| vocab.iter().position(|v| v == w).unwrap();
+    let mut same: Vec[Vec[bool]] = Vec.filled(n, Vec.filled(n, false));
+    for i in 0..n {
+        same[i][i] = true;
+    }
+    for pair in synonyms.iter() {
+        let a = at(pair[0]);
+        let b = at(pair[1]);
+        same[a][b] = true;
+        same[b][a] = true;
+    }
+    for k in 0..n {
+        for i in 0..n {
+            for j in 0..n {
+                if same[i][k] and same[k][j] {
+                    same[i][j] = true;
+                }
+            }
+        }
+    }
+    let choices: Vec[Vec[String]] = words
+        .iter()
+        .map(|w| {
+            let i = at(w);
+            (0..n).filter(|j| same[i][j]).map(|j| vocab[j].clone()).collect()
+        })
+        .collect();
+    let mut digit: Vec[i64] = Vec.filled(words.len(), 0);
+    let mut all: Vec[String] = Vec.new();
+    loop {
+        let sentence: Vec[String] = (0..words.len()).map(|p| choices[p][digit[p]].clone()).collect();
+        all.push(sentence.join(" "));
+        let mut p = words.len() - 1;
+        while p >= 0 and digit[p] == choices[p].len() - 1 {
+            digit[p] = 0;
+            p -= 1;
+        }
+        if p < 0 {
+            break;
+        }
+        digit[p] += 1;
+    }
+    all.sort();
+    all.dedup();
+    all
+}
+
+// Up to 6 random pairs of 5 words from `a` to `f`, and a text of 1 to 6
+// words, at most 3 of them from the pairs' words.
+fn small_case(seed: mut ref i64) -> (Vec[Vec[String]], String) {
+    let pool = random_words(5, b'a', mut seed);
+    let plain = random_words(6, b'p', mut seed);
+    let mut synonyms: Vec[Vec[String]] = Vec.new();
+    for _ in 0..next_random(mut seed) % 7 {
+        let i = next_random(mut seed) % 5;
+        let j = (i + 1 + next_random(mut seed) % 4) % 5;
+        synonyms.push([pool[i].clone(), pool[j].clone()]);
+    }
+    let mut words: Vec[String] = Vec.new();
+    let mut from_pool = 0;
+    for _ in 0..next_random(mut seed) % 6 + 1 {
+        if from_pool < 3 and next_random(mut seed) % 2 == 0 {
+            words.push(pool[next_random(mut seed) % 5].clone());
+            from_pool += 1;
+        } else {
+            words.push(plain[next_random(mut seed) % 6].clone());
+        }
+    }
+    (synonyms, words.join(" "))
+}
+
+fn arms(synonyms: Vec[Vec[String]], text: Str) -> Vec[Vec[String]] {
+    [
+        a0_generate_sentences(synonyms, text),
+        a1_generate_sentences(synonyms, text),
+        a2_generate_sentences(synonyms, text),
+        a3_generate_sentences(synonyms, text),
+        a4_generate_sentences(synonyms, text),
+    ]
+}
+
+fn prefixed(sentence: Str) -> String {
+    Vec[String].from_iter(sentence.split(" ").map(|w| "x" + w.to_string())).join(" ")
+}
+
+fn main() {
+    let names = ["the statement read literally", "sorted, without repeats, and holding the text", "each pair and the pairs' order reversed, the same sentences", "the last sentence as the text, the same sentences", "every word given a prefix, the same sentences with it", "the ★ arm's sentences"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 12580;
+    for _ in 0..2000 {
+        let (synonyms, text) = small_case(mut seed);
+        let want = literal(synonyms, text);
+        for sentence in want.iter() {
+            check = fold(check, sentence);
+        }
+        let got = arms(synonyms, text);
+        let flipped: Vec[Vec[String]] = synonyms.iter().rev().map(|p| [p[1].clone(), p[0].clone()]).collect();
+        let r = arms(flipped, text);
+        let renamed: Vec[Vec[String]] = synonyms.iter().map(|p| p.iter().map(|w| "x" + w).collect()).collect();
+        let p = arms(renamed, prefixed(text));
+        let last = |v: Vec[String]| if v.is_empty() { text.to_string() } else { v[v.len() - 1].clone() };
+        let again_star = arms(synonyms, last(got[0]));
+        for arm in 0..5 {
+            let mine = got[arm].clone();
+            let ordered = (1..mine.len()).all(|i| mine[i - 1] < mine[i]) and mine.contains(text.to_string());
+            let again = if last(mine) == last(got[0]) { again_star[arm].clone() } else { arms(synonyms, last(mine))[arm].clone() };
+            let moved: Vec[String] = mine.iter().map(|s| prefixed(s)).collect();
+            let held = [mine == want, ordered, r[arm] == mine, again == mine, p[arm] == moved, mine == got[0]];
+            for q in 0..6 {
+                checks += 1;
+                if not held[q] {
+                    fails[q] += 1;
+                    if fails[q] <= 2 {
+                        println(f"P{q + 1} ({names[q]}) fails on arm {arm}: {synonyms} {text}");
+                    }
+                }
+            }
+        }
+    }
+    let total: i64 = fails.iter().sum();
+    for q in 0..6 {
+        if fails[q] > 0 {
+            print(f"P{q + 1}: {fails[q]} failures ");
+        }
+    }
+    println(f"2000 cases: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

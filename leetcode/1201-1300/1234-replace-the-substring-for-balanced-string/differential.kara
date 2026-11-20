@@ -1,0 +1,345 @@
+// LeetCode #1234: Replace the Substring for Balanced String -- the arms
+// against the statement read literally and five more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_index(c: u8) -> i64 {
+    match c {
+        b'Q' => 0,
+        b'W' => 1,
+        b'E' => 2,
+        _ => 3,
+    }
+}
+
+fn a0_balanced_string(s: String) -> i64 {
+    let bytes = s.bytes();
+    let n = bytes.len();
+    let k = n / 4;
+    let mut outside = [0; 4];
+    for b in bytes.iter() {
+        outside[a0_index(b)] += 1;
+    }
+    if outside.iter().all(|c| c == k) {
+        return 0;
+    }
+    let mut best = n;
+    let mut left = 0;
+    for right in 0..n {
+        outside[a0_index(bytes[right])] -= 1;
+        while left <= right and outside.iter().all(|c| c <= k) {
+            best = best.min(right - left + 1);
+            outside[a0_index(bytes[left])] += 1;
+            left += 1;
+        }
+    }
+    best
+}
+
+// ---- arm 1: lengths -----------------------------------------------------
+fn a1_fits(counts: Array[i64, 4], k: i64) -> bool {
+    counts.iter().all(|c| c <= k)
+}
+
+fn a1_letter(c: char) -> i64 {
+    "QWER".find(c.to_string()).unwrap()
+}
+
+fn a1_balanced_string(s: String) -> i64 {
+    let letters: Vec[i64] = s.chars().map(|c| a1_letter(c)).collect();
+    let n = letters.len();
+    let k = n / 4;
+    let mut total = [0; 4];
+    for l in letters.iter() {
+        total[l] += 1;
+    }
+    let works = |m: i64| {
+        let mut outside = total;
+        for i in 0..m {
+            outside[letters[i]] -= 1;
+        }
+        if a1_fits(outside, k) {
+            return true;
+        }
+        for i in m..n {
+            outside[letters[i]] -= 1;
+            outside[letters[i - m]] += 1;
+            if a1_fits(outside, k) {
+                return true;
+            }
+        }
+        false
+    };
+    let mut lo = 0;
+    let mut hi = n;
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if works(mid) {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    lo
+}
+
+// ---- arm 2: prefix ------------------------------------------------------
+fn a2_balanced_string(s: String) -> i64 {
+    let n = s.len();
+    let k = n / 4;
+    let mut prefix: Vec[Array[i64, 4]] = [[0; 4]];
+    for c in s.chars() {
+        let mut next = prefix[prefix.len() - 1];
+        let i = match c {
+            'Q' => 0,
+            'W' => 1,
+            'E' => 2,
+            _ => 3,
+        };
+        next[i] += 1;
+        prefix.push(next);
+    }
+    let total = prefix[n];
+    let excess: Vec[i64] = (0..4).map(|i| (total[i] - k).max(0)).collect();
+    if excess.iter().all(|e| e == 0) {
+        return 0;
+    }
+    let mut best = n;
+    for start in 0..n {
+        let covers = |end: i64| (0..4).all(|i| prefix[end][i] - prefix[start][i] >= excess[i]);
+        if not covers(n) {
+            break;
+        }
+        let mut lo = start + 1;
+        let mut hi = n;
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            if covers(mid) {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        best = best.min(lo - start);
+    }
+    best
+}
+
+// ---- arm 3: counted -----------------------------------------------------
+fn a3_balanced_string(s: String) -> i64 {
+    let chars: Vec[char] = s.chars().collect();
+    let n = chars.len();
+    let k = n / 4;
+    let mut outside: Map[char, i64] = Map.new();
+    for c in "QWER".chars() {
+        outside.insert(c, 0);
+    }
+    for c in chars.iter() {
+        outside[c] += 1;
+    }
+    let fits = |m: Map[char, i64]| m.values().all(|v| v <= k);
+    if outside.values().all(|v| v == k) {
+        return 0;
+    }
+    let mut best = n;
+    let mut left = 0;
+    for right in 0..n {
+        outside[chars[right]] -= 1;
+        while left <= right and fits(outside) {
+            best = best.min(right - left + 1);
+            outside[chars[left]] += 1;
+            left += 1;
+        }
+    }
+    best
+}
+
+// ---- arm 4: bytes -------------------------------------------------------
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn balanced_string(s: String) -> i32 {
+        let s = s.bytes();
+        let n = s.len();
+        let k = n / 4;
+        let mut cnt = [0; 128];
+        for c in s {
+            cnt[c] += 1;
+        }
+        let ok = |cnt: ref Array[i64, 128]| b"QWER".iter().all(|c| cnt[c] <= k);
+        if ok(cnt) {
+            return 0;
+        }
+        let mut ans = n;
+        let mut i = 0;
+        for j in 0..n {
+            cnt[s[j]] -= 1;
+            while i <= j and ok(cnt) {
+                ans = ans.min(j - i + 1);
+                cnt[s[i]] += 1;
+                i += 1;
+            }
+        }
+        ans as i32
+    }
+}
+
+fn a4_balanced_string(s: String) -> i64 {
+    A4Solution.balanced_string(s)
+}
+
+// ---- arm 5: hashmap -----------------------------------------------------
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn balanced_string(s: String) -> i32 {
+        let chars: Vec[char] = s.chars().collect();
+        let n = chars.len() as i32;
+        let k = n / 4;
+        let mut count: Map[char, i32] = Map.new();
+        for c in ref chars {
+            *count.entry(c).or_insert(0) += 1;
+        }
+        let balanced = |count: ref Map[char, i32]| "QWER".chars().all(|c| *count.get(c).unwrap_or(0) <= k);
+        if balanced(count) {
+            return 0;
+        }
+        let mut res = n;
+        let mut left = 0;
+        for right in 0..chars.len() {
+            *count.get_mut(chars[right]).unwrap() -= 1;
+            while left <= right and balanced(count) {
+                res = res.min((right - left + 1) as i32);
+                *count.get_mut(chars[left]).unwrap() += 1;
+                left += 1;
+            }
+        }
+        res
+    }
+}
+
+fn a5_balanced_string(s: String) -> i64 {
+    A5Solution.balanced_string(s)
+}
+
+
+// ---- the statement read literally -----------------------------------------
+
+// The shortest window that some string of its length can replace to leave
+// every letter n / 4 times: each window, and each way to fill it, as how
+// many of each letter the filling holds, counts that sum to its length.
+fn literal(s: String) -> i64 {
+    let chars: Vec[char] = s.chars().collect();
+    let n = chars.len();
+    let k = n / 4;
+    let letters = ['Q', 'W', 'E', 'R'];
+    let mut best = n + 1;
+    for i in 0..=n {
+        for j in i..=n {
+            let len = j - i;
+            if len >= best {
+                continue;
+            }
+            let mut outside = [0; 4];
+            for p in 0..n {
+                if p < i or p >= j {
+                    for l in 0..4 {
+                        if chars[p] == letters[l] {
+                            outside[l] += 1;
+                        }
+                    }
+                }
+            }
+            for q in 0..=len {
+                for w in 0..=len - q {
+                    for e in 0..=len - q - w {
+                        let r = len - q - w - e;
+                        if outside[0] + q == k and outside[1] + w == k and outside[2] + e == k and outside[3] + r == k {
+                            best = len;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    best
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(s: String) -> Vec[i64] {
+    [a0_balanced_string(s), a1_balanced_string(s), a2_balanced_string(s), a3_balanced_string(s), a4_balanced_string(s), a5_balanced_string(s)]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` letters from "QWER", "Q" drawn `lean` times more often than the rest
+// so that some strings lean far from balanced.
+fn letters(n: i64, lean: i64, seed: mut ref i64) -> String {
+    let mut s = "".to_string();
+    for _ in 0..n {
+        let r = next_random(mut seed) % (4 + lean);
+        s.push(if r >= 4 or r == 0 { 'Q' } else if r == 1 { 'W' } else if r == 2 { 'E' } else { 'R' });
+    }
+    s
+}
+
+fn main() {
+    let names = ["the statement read literally", "from 0 to 3n / 4", "the string reversed gives the same", "the letters renamed give the same", "at least every letter's surplus", "the ★ arm's answer"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1234;
+    for c in 0..2000 {
+        let n = match c % 3 {
+            0 => (next_random(mut seed) % 3 + 1) * 4,
+            1 => (next_random(mut seed) % 22 + 4) * 4,
+            _ => (next_random(mut seed) % 225 + 26) * 4,
+        };
+        let s = letters(n, next_random(mut seed) % 6, mut seed);
+        let want = if n <= 12 { literal(s) } else { -1 };
+        let got = arms(s);
+        let reversed = arms(s.chars().rev().collect());
+        let renamed = arms(s.chars().map(|ch| match ch {
+            'Q' => 'W',
+            'W' => 'Q',
+            'E' => 'R',
+            _ => 'E',
+        }).collect());
+        let mut surplus = 0;
+        for l in "QWER".chars() {
+            surplus += (s.chars().filter(|ch| ch == l).count() - n / 4).max(0);
+        }
+        for a in 0..6 {
+            let v = got[a];
+            let held = [
+                n > 12 or v == want,
+                v >= 0 and v <= 3 * n / 4,
+                reversed[a] == v,
+                renamed[a] == v,
+                v >= surplus,
+                v == got[0],
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {a}: {s} -> {v}");
+                    }
+                }
+            }
+        }
+        check = (check * 131 + got[0]) % 1000000007;
+    }
+    for p in 0..6 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let failures = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over {6} arms: {failures} failures");
+}

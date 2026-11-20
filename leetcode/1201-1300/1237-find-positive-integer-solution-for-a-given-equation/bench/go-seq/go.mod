@@ -1,0 +1,3 @@
+module find_positive_integer_solution_for_a_given_equation
+
+go 1.21

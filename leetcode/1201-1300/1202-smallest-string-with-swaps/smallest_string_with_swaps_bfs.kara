@@ -1,0 +1,117 @@
+// LeetCode #1202: Smallest String With Swaps -- the pairs as an undirected
+// graph, each group found by a breadth-first search over a `VecDeque` and
+// marked with its group number; then one pass per letter count: the
+// letters of each group counted into 26 buckets, and each index, in order,
+// handed the least letter its group has left. O(n + m + 26 * groups).
+
+fn smallest_string_with_swaps(s: String, pairs: Vec[Vec[i64]]) -> String {
+    let bytes = s.bytes();
+    let n = bytes.len();
+    let mut adj: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for p in pairs.iter() {
+        adj[p[0]].push(p[1]);
+        adj[p[1]].push(p[0]);
+    }
+    let mut group = Vec.filled(n, -1);
+    let mut groups = 0;
+    for start in 0..n {
+        if group[start] >= 0 {
+            continue;
+        }
+        group[start] = groups;
+        let mut queue = VecDeque.new();
+        queue.push_back(start);
+        while let Some(v) = queue.pop_front() {
+            for w in adj[v].iter() {
+                if group[w] < 0 {
+                    group[w] = groups;
+                    queue.push_back(w);
+                }
+            }
+        }
+        groups += 1;
+    }
+    let mut counts: Vec[Array[i64, 26]] = Vec.filled(groups, [0; 26]);
+    for i in 0..n {
+        counts[group[i]][bytes[i] - b'a'] += 1;
+    }
+    let mut next = Vec.filled(groups, 0);
+    let mut out = String.with_capacity(n);
+    for i in 0..n {
+        let g = group[i];
+        while counts[g][next[g]] == 0 {
+            next[g] += 1;
+        }
+        counts[g][next[g]] -= 1;
+        out.push((b'a' + next[g]) as u8 as char);
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn digest(s: String) -> i64 {
+    let mut h = 0;
+    for b in s.bytes().iter() {
+        h = (h * 131 + (b as i64)) % 1000000007;
+    }
+    h
+}
+
+fn random_text(seed: mut ref i64, n: i64, letters: i64) -> String {
+    let mut out = String.with_capacity(n);
+    for _ in 0..n {
+        out.push((b'a' + next_random(mut seed) % letters) as u8 as char);
+    }
+    out
+}
+
+fn main() {
+    let cases: Vec[(String, Vec[Vec[i64]])] = [
+        ("dcab".to_string(), [[0, 3], [1, 2]]),
+        ("dcab".to_string(), [[0, 3], [1, 2], [0, 2]]),
+        ("cba".to_string(), [[0, 1], [1, 2]]),
+        ("zyx".to_string(), []),
+        ("q".to_string(), [[0, 0]]),
+        ("udyyek".to_string(), [[3, 3], [3, 0], [5, 1], [3, 1], [3, 4], [3, 5]]),
+        ("pwqlmqm".to_string(), [[5, 3], [3, 0], [5, 1], [1, 1], [1, 5], [3, 0], [0, 2]]),
+        ("abcd".to_string(), [[3, 0], [0, 3]]),
+    ];
+    for (s, pairs) in cases.iter() {
+        println(f"{s} {pairs}: {smallest_string_with_swaps(s, pairs)}");
+    }
+    let mut seed = 1202;
+    let mut changed = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let s = random_text(mut seed, n, 5);
+        let m = next_random(mut seed) % 9;
+        let mut pairs: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..m {
+            pairs.push([next_random(mut seed) % n, next_random(mut seed) % n]);
+        }
+        let t = smallest_string_with_swaps(s, pairs);
+        if t != s {
+            changed += 1;
+        }
+        check = (check * 131 + digest(t)) % 1000000007;
+    }
+    println(f"1000 random strings: {changed} changed, checksum {check}");
+    let n = 100000;
+    let s = random_text(mut seed, n, 26);
+    let mut pairs: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..n {
+        pairs.push([(next_random(mut seed) * 32768 + next_random(mut seed)) % n, (next_random(mut seed) * 32768 + next_random(mut seed)) % n]);
+    }
+    let t = smallest_string_with_swaps(s, pairs);
+    println(f"100000 letters, 100000 random pairs: digest {digest(t)}, starts {t.substring(0, 12)}");
+    let stride: Vec[Vec[i64]] = (0..n - 2).map(|i| [i, i + 2]).collect();
+    let t = smallest_string_with_swaps(s, stride);
+    println(f"100000 letters, each joined to the one two on: digest {digest(t)}, starts {t.substring(0, 12)}");
+}

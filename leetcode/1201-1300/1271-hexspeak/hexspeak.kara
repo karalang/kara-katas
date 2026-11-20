@@ -1,0 +1,79 @@
+// LeetCode #1271: Hexspeak -- the ★ arm: the number parsed, then its
+// hexadecimal digits taken from the lowest by `% 16`, each 0 written `O`,
+// 1 written `I` and 10 to 15 `A` to `F`, and any of 2 to 9 an error; the
+// letters, gathered last first, reversed. O(log n).
+
+fn to_hexspeak(num: Str) -> String {
+    let mut n = i64.parse(num).unwrap();
+    let mut letters: Vec[char] = Vec.new();
+    while n > 0 {
+        let d = n % 16;
+        if d == 0 {
+            letters.push('O');
+        } else if d == 1 {
+            letters.push('I');
+        } else if d >= 10 {
+            letters.push((b'A' + (d - 10) as u8) as char);
+        } else {
+            return "ERROR";
+        }
+        n /= 16;
+    }
+    letters.iter().rev().collect()
+}
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A number whose hexadecimal digits are drawn from `digits`, which must not
+// start with 0, written in decimal.
+fn spelled(len: i64, digits: Vec[i64], seed: mut ref i64) -> i64 {
+    let mut n = 0;
+    for i in 0..len {
+        let mut d = digits[next_random(mut seed) % digits.len()];
+        while i == 0 and d == 0 {
+            d = digits[next_random(mut seed) % digits.len()];
+        }
+        n = n * 16 + d;
+    }
+    n
+}
+
+fn fold(check: i64, s: Str) -> i64 {
+    let mut c = (check * 131 + s.len()) % 1000000007;
+    for b in s.bytes() {
+        c = (c * 131 + b) % 1000000007;
+    }
+    c
+}
+
+fn main() {
+    // LeetCode's examples, and the ends of the range
+    println(f"{to_hexspeak("257")} {to_hexspeak("3")} {to_hexspeak("1")} {to_hexspeak("1000000000000")} {to_hexspeak("747823223228")}");
+    // 3000 random numbers: a third anything up to 10^12, a third spelled in
+    // the eight letters, and a third in them with one other digit
+    let mut seed = 1271;
+    let mut valid = 0;
+    let mut check = 0;
+    let letters: Vec[i64] = [0, 1, 10, 11, 12, 13, 14, 15];
+    for case in 0..3000 {
+        let n = match case % 3 {
+            0 => (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000000 + 1,
+            1 => spelled(next_random(mut seed) % 10 + 1, letters, mut seed),
+            _ => {
+                let mut digits = letters.clone();
+                digits.push(next_random(mut seed) % 8 + 2);
+                spelled(next_random(mut seed) % 10 + 1, digits, mut seed)
+            }
+        };
+        let got = to_hexspeak(f"{n}");
+        if got != "ERROR" {
+            valid += 1;
+        }
+        check = fold(check, got);
+    }
+    println(f"3000 random numbers: {valid} valid, checksum {check}");
+}

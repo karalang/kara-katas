@@ -1,0 +1,207 @@
+// LeetCode #1259: the differential -- the five arms against the statement
+// read literally and five more properties, for 2 to 400 people.
+
+// arm 0: handshakes_that_dont_cross.kara
+fn a0_number_of_ways(num_people: i64) -> i64 {
+    let m = 1000000007;
+    let pairs = num_people / 2;
+    let mut ways = Vec.filled(pairs + 1, 0);
+    ways[0] = 1;
+    for k in 1..=pairs {
+        for left in 0..k {
+            ways[k] = (ways[k] + ways[left] * ways[k - 1 - left]) % m;
+        }
+    }
+    ways[pairs]
+}
+
+// arm 1: handshakes_that_dont_cross_memo.kara
+fn a1_ways(n: i64, memo: mut ref Map[i64, i64]) -> i64 {
+    if n == 0 {
+        return 1;
+    }
+    if let Some(known) = memo.get(n) {
+        return known;
+    }
+    let mut total = 0;
+    let mut partner = 1;
+    while partner < n {
+        let inside = partner - 1;
+        let outside = n - partner - 1;
+        total = (total + a1_ways(inside, mut memo) * a1_ways(outside, mut memo)) % 1000000007;
+        partner += 2;
+    }
+    memo.insert(n, total);
+    total
+}
+
+fn a1_number_of_ways(num_people: i64) -> i64 {
+    let mut memo: Map[i64, i64] = Map.new();
+    a1_ways(num_people, mut memo)
+}
+
+// arm 2: handshakes_that_dont_cross_formula.kara
+fn a2_power(base: i64, exp: i64, m: i64) -> i64 {
+    let mut result = 1;
+    let mut b = base % m;
+    let mut e = exp;
+    while e > 0 {
+        if e & 1 == 1 {
+            result = result * b % m;
+        }
+        b = b * b % m;
+        e >>= 1;
+    }
+    result
+}
+
+fn a2_number_of_ways(num_people: i64) -> i64 {
+    let m = 1000000007;
+    let k = num_people / 2;
+    let mut fact = 1;
+    let mut top = 1;
+    for i in 1..=2 * k {
+        fact = fact * i % m;
+        if i == k {
+            top = fact;
+        }
+    }
+    let k_plus_one = top * (k + 1) % m;
+    fact * a2_power(top * k_plus_one % m, m - 2, m) % m
+}
+
+// arm 3: handshakes_that_dont_cross_paths.kara
+fn a3_number_of_ways(num_people: i64) -> i64 {
+    let m = 1000000007;
+    let mut at_height: Vec[i64] = Vec.filled(num_people / 2 + 2, 0);
+    at_height[0] = 1;
+    for _ in 0..num_people {
+        let mut next = Vec.filled(at_height.len(), 0);
+        for h in 0..at_height.len() - 1 {
+            if at_height[h] != 0 {
+                next[h + 1] = (next[h + 1] + at_height[h]) % m;
+                if h > 0 {
+                    next[h - 1] = (next[h - 1] + at_height[h]) % m;
+                }
+            }
+        }
+        at_height = next;
+    }
+    at_height[0]
+}
+
+// arm 4: handshakes_that_dont_cross_solution.kara
+impl A4Solution {
+    pub fn number_of_ways(num_people: i32) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let n = (num_people / 2) as i64;
+        let mut dp = Vec.filled(n + 1, 0);
+        dp[0] = 1;
+        for i in 1..=n {
+            for j in 0..i {
+                dp[i] = (dp[i] + dp[j] * dp[i - 1 - j]) % MOD;
+            }
+        }
+        dp[n] as i32
+    }
+}
+
+struct A4Solution {}
+
+fn a4_number_of_ways(num_people: i64) -> i64 {
+    A4Solution.number_of_ways(num_people as i32)
+}
+
+// The statement read literally: every way to pair `n` people round a
+// table, person 0 with someone, the lowest unpaired person with someone
+// after, and so on, counted when no two handshakes cross: `a < c < b < d`
+// for handshakes `(a, b)` and `(c, d)`. Only for up to 12 people.
+fn count_pairings(partner: mut ref Vec[i64], n: i64) -> i64 {
+    let first = partner.iter().position(|p| p == -1);
+    match first {
+        None => {
+            for a in 0..n {
+                let b = partner[a];
+                for c in 0..n {
+                    let d = partner[c];
+                    if a < c and c < b and b < d {
+                        return 0;
+                    }
+                }
+            }
+            1
+        }
+        Some(a) => {
+            let mut total = 0;
+            for b in a + 1..n {
+                if partner[b] == -1 {
+                    partner[a] = b;
+                    partner[b] = a;
+                    total += count_pairings(mut partner, n);
+                    partner[a] = -1;
+                    partner[b] = -1;
+                }
+            }
+            total
+        }
+    }
+}
+
+fn literal(n: i64) -> i64 {
+    let mut partner = Vec.filled(n, -1);
+    count_pairings(mut partner, n)
+}
+
+fn arms(n: i64) -> Vec[i64] {
+    [a0_number_of_ways(n), a1_number_of_ways(n), a2_number_of_ways(n), a3_number_of_ways(n), a4_number_of_ways(n)]
+}
+
+fn main() {
+    let names = ["the statement read literally, up to 12 people", "the sum over person 0's partner, from the arm's own smaller answers", "(k + 1) times the count for k pairs is 2(2k - 1) times the count for k - 1", "the count is within 0 and 10^9 + 6", "the exact Catalan number, up to 36 people", "the ★ arm's count"];
+    let m = 1000000007;
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut got: Vec[Vec[i64]] = [[1, 1, 1, 1, 1]];
+    let mut exact = 1;
+    for k in 1..=200 {
+        let n = 2 * k;
+        got.push(arms(n));
+        if k <= 18 {
+            exact = exact * 2 * (2 * k - 1) / (k + 1);
+        }
+        let want = if n <= 12 { literal(n) } else { -1 };
+        check = (check * 131 + got[k][0]) % m;
+        for arm in 0..5 {
+            let w = got[k][arm];
+            let mut sum = 0;
+            for left in 0..k {
+                sum = (sum + got[left][arm] * got[k - 1 - left][arm]) % m;
+            }
+            let held = [
+                n > 12 or w == want,
+                w == sum,
+                (k + 1) * w % m == 2 * (2 * k - 1) % m * got[k - 1][arm] % m,
+                w >= 0 and w < m,
+                k > 18 or w == exact,
+                w == got[k][0],
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not held[q] {
+                    fails[q] += 1;
+                    if fails[q] <= 2 {
+                        println(f"P{q + 1} ({names[q]}) fails on arm {arm}: {n} people, {w}");
+                    }
+                }
+            }
+        }
+    }
+    let total: i64 = fails.iter().sum();
+    for q in 0..6 {
+        if fails[q] > 0 {
+            print(f"P{q + 1}: {fails[q]} failures ");
+        }
+    }
+    println(f"2 to 400 people: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

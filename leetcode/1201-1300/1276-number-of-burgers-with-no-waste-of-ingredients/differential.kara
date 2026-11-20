@@ -1,0 +1,203 @@
+// LeetCode #1276: the differential -- the five arms against the statement
+// read literally and five more properties, on 2000 random cases.
+
+// arm 0: num_of_burgers.kara
+fn a0_num_of_burgers(tomato_slices: i64, cheese_slices: i64) -> Vec[i64] {
+    if tomato_slices % 2 != 0 {
+        return Vec.new();
+    }
+    let jumbo = tomato_slices / 2 - cheese_slices;
+    let small = 2 * cheese_slices - tomato_slices / 2;
+    if jumbo < 0 or small < 0 {
+        return Vec.new();
+    }
+    [jumbo, small]
+}
+
+// arm 1: num_of_burgers_search.kara
+fn a1_num_of_burgers(tomato_slices: i64, cheese_slices: i64) -> Vec[i64] {
+    let used = |jumbo: i64| 4 * jumbo + 2 * (cheese_slices - jumbo);
+    let mut lo = 0;
+    let mut hi = cheese_slices;
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if used(mid) < tomato_slices {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    if used(lo) == tomato_slices {
+        [lo, cheese_slices - lo]
+    } else {
+        Vec.new()
+    }
+}
+
+// arm 2: num_of_burgers_cramer.kara
+struct A2System {
+    a: i64,
+    b: i64,
+    c: i64,
+    d: i64,
+}
+
+impl A2System {
+    // the whole x and y with a x + b y = e and c x + d y = f, if any
+    fn solve(self, e: i64, f: i64) -> Option[(i64, i64)] {
+        let det = self.a * self.d - self.b * self.c;
+        let dx = e * self.d - self.b * f;
+        let dy = self.a * f - e * self.c;
+        if det == 0 or dx % det != 0 or dy % det != 0 {
+            return None;
+        }
+        Some((dx / det, dy / det))
+    }
+}
+
+fn a2_num_of_burgers(tomato_slices: i64, cheese_slices: i64) -> Vec[i64] {
+    let burgers = A2System { a: 4, b: 2, c: 1, d: 1 };
+    match burgers.solve(tomato_slices, cheese_slices) {
+        Some((jumbo, small)) if jumbo >= 0 and small >= 0 => [jumbo, small],
+        _ => Vec.new(),
+    }
+}
+
+// arm 3: num_of_burgers_result.kara
+enum A3Waste {
+    OddTomatoes,
+    TooFewTomatoes,
+    TooManyTomatoes,
+}
+
+fn a3_swaps(tomato_slices: i64, cheese_slices: i64) -> Result[i64, A3Waste] {
+    let all_small = 2 * cheese_slices;
+    if tomato_slices < all_small {
+        return Err(A3Waste.TooFewTomatoes);
+    }
+    let extra = tomato_slices - all_small;
+    if extra % 2 != 0 {
+        return Err(A3Waste.OddTomatoes);
+    }
+    if extra / 2 > cheese_slices {
+        return Err(A3Waste.TooManyTomatoes);
+    }
+    Ok(extra / 2)
+}
+
+fn a3_burgers(tomato_slices: i64, cheese_slices: i64) -> Result[(i64, i64), A3Waste] {
+    let jumbo = a3_swaps(tomato_slices, cheese_slices)?;
+    Ok((jumbo, cheese_slices - jumbo))
+}
+
+fn a3_num_of_burgers(tomato_slices: i64, cheese_slices: i64) -> Vec[i64] {
+    match a3_burgers(tomato_slices, cheese_slices) {
+        Ok((jumbo, small)) => [jumbo, small],
+        Err(_) => Vec.new(),
+    }
+}
+
+// arm 4: num_of_burgers_solution.kara
+impl A4Solution {
+    pub fn num_of_burgers(tomato_slices: i32, cheese_slices: i32) -> Vec[i32] {
+        let x = tomato_slices - 2 * cheese_slices;
+        if x < 0 or x % 2 != 0 {
+            return Vec.new();
+        }
+        let jumbo = x / 2;
+        let small = cheese_slices - jumbo;
+        if small < 0 {
+            return Vec.new();
+        }
+        [jumbo, small]
+    }
+}
+
+struct A4Solution {}
+
+fn a4_num_of_burgers(tomato_slices: i64, cheese_slices: i64) -> Vec[i64] {
+    A4Solution.num_of_burgers(tomato_slices as i32, cheese_slices as i32).iter().map(|x| x as i64).collect()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// ---- the differential ------------------------------------------------------
+
+fn arm(k: i64, t: i64, c: i64) -> Vec[i64] {
+    match k {
+        0 => a0_num_of_burgers(t, c),
+        1 => a1_num_of_burgers(t, c),
+        2 => a2_num_of_burgers(t, c),
+        3 => a3_num_of_burgers(t, c),
+        _ => a4_num_of_burgers(t, c),
+    }
+}
+
+// The statement read literally: every count of jumbo and of small burgers
+// the tomato slices could make tried, and the one using every tomato and
+// every cheese slice the answer.
+fn literal(t: i64, c: i64) -> Vec[i64] {
+    for jumbo in 0..(t / 4 + 1) {
+        for small in 0..(t / 2 + 1) {
+            if 4 * jumbo + 2 * small == t and jumbo + small == c {
+                return [jumbo, small];
+            }
+        }
+    }
+    Vec.new()
+}
+
+fn main() {
+    let mut seed = 12760;
+    let mut fails: Array[i64, 6] = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for case in 0..2000 {
+        let (t, c) = if case % 3 == 0 {
+            let jumbo = next_random(mut seed) % 15;
+            let small = next_random(mut seed) % 15;
+            (4 * jumbo + 2 * small, jumbo + small)
+        } else {
+            (next_random(mut seed) % 81, next_random(mut seed) % 31)
+        };
+        let want = literal(t, c);
+        let star = arm(0, t, c);
+        check = (check * 131 + if star.len() == 2 { star[0] * 7 + star[1] } else { 1 }) % 1000000007;
+        for k in 0..5 {
+            let got = arm(k, t, c);
+            if got != want {
+                fails[0] += 1;
+            }
+            let fits = got.len() == 0 or (got.len() == 2 and got[0] >= 0 and got[1] >= 0 and 4 * got[0] + 2 * got[1] == t and got[0] + got[1] == c);
+            if not fits {
+                fails[1] += 1;
+            }
+            if got.len() == 2 {
+                if arm(k, t + 4, c + 1) != [got[0] + 1, got[1]] {
+                    fails[2] += 1;
+                }
+                if arm(k, t + 2, c + 1) != [got[0], got[1] + 1] {
+                    fails[3] += 1;
+                }
+                if arm(k, 2 * t, 2 * c) != [2 * got[0], 2 * got[1]] {
+                    fails[4] += 1;
+                }
+            }
+            if got != star {
+                fails[5] += 1;
+            }
+            checks += 6;
+        }
+    }
+    let mut total = 0;
+    for p in 0..6 {
+        if fails[p] > 0 {
+            print(f"P{p + 1}: {fails[p]} failures ");
+        }
+        total += fails[p];
+    }
+    println(f"2000 cases: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

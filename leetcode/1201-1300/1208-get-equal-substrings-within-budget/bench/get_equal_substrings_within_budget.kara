@@ -1,0 +1,59 @@
+// LeetCode #1208 bench: the ★ arm (a window over the letters, widened one
+// letter a step and shrunk from the left while it costs more than the
+// budget) on 16 pairs of strings of 100000 letters, the constraints' most,
+// drawn once, each pair close in some stretches and far in others; then 10
+// rounds over the pairs, each with the budgets 0, 1000, 100000 and
+// 1000000, every answer folded into a checksum.
+
+fn equal_substring(s: String, t: String, max_cost: i64) -> i64 {
+    let a = s.bytes();
+    let b = t.bytes();
+    let mut best = 0;
+    let mut cost = 0;
+    let mut left = 0;
+    for right in 0..a.len() {
+        cost += ((a[right] as i64) - (b[right] as i64)).abs();
+        while cost > max_cost {
+            cost -= ((a[left] as i64) - (b[left] as i64)).abs();
+            left += 1;
+        }
+        best = best.max(right - left + 1);
+    }
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1208;
+    let mut pairs: Vec[(String, String)] = Vec.new();
+    for _ in 0..16 {
+        let mut s = String.with_capacity(100000);
+        let mut t = String.with_capacity(100000);
+        // stretches of 1000 letters, each one close (t within 2 of s) or far
+        let mut spread = 2;
+        for i in 0..100000 {
+            if i % 1000 == 0 {
+                spread = if next_random(mut seed) % 2 == 0 { 2 } else { 25 };
+            }
+            let x = next_random(mut seed) % 26;
+            let y = (x + next_random(mut seed) % (spread + 1)) % 26;
+            s.push((b'a' + x) as u8 as char);
+            t.push((b'a' + y) as u8 as char);
+        }
+        pairs.push((s, t));
+    }
+    let budgets = [0, 1000, 100000, 1000000];
+    let mut check = 0;
+    for round in 0..10 {
+        for (s, t) in pairs.iter() {
+            for c in budgets.iter() {
+                check = (check * 131 + equal_substring(s, t, c) + round) % 1000000007;
+            }
+        }
+    }
+    println(f"10 rounds over 16 pairs of 100000 letters: checksum {check}");
+}

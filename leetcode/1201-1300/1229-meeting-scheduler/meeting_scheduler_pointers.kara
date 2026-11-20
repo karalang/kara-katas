@@ -1,0 +1,89 @@
+// LeetCode #1229: Meeting Scheduler -- a Rust solution as LeetCode's Rust
+// users write it: both lists sorted in place through `mut` parameters by
+// `sort_unstable_by_key(|s| s[0])`, then two pointers, `let (mut i, mut j)
+// = (0, 0)`, carried to Kāra by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_available_duration(slots1: own Vec[Vec[i32]], slots2: own Vec[Vec[i32]], duration: i32) -> Vec[i32] {
+        let mut slots1 = slots1;
+        let mut slots2 = slots2;
+        slots1.sort_by_key(|s| s[0]);
+        slots2.sort_by_key(|s| s[0]);
+        let mut (i, j) = (0, 0);
+        while i < slots1.len() and j < slots2.len() {
+            let start = slots1[i][0].max(slots2[j][0]);
+            let end = slots1[i][1].min(slots2[j][1]);
+            if end - start >= duration {
+                return [start, start + duration];
+            }
+            if slots1[i][1] < slots2[j][1] {
+                i += 1;
+            } else {
+                j += 1;
+            }
+        }
+        Vec.new()
+    }
+}
+
+fn min_available_duration(slots1: Vec[Vec[i64]], slots2: Vec[Vec[i64]], duration: i64) -> Vec[i64] {
+    let a: Vec[Vec[i32]] = slots1.iter().map(|s| s.iter().map(|v| v as i32).collect()).collect();
+    let b: Vec[Vec[i32]] = slots2.iter().map(|s| s.iter().map(|v| v as i32).collect()).collect();
+    Solution.min_available_duration(a, b, duration as i32).iter().map(|v| v as i64).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` slots that never touch, each up to `width` long with gaps of up
+// to `gap` between them, in a shuffled order.
+fn slots(seed: mut ref i64, count: i64, width: i64, gap: i64) -> Vec[Vec[i64]] {
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    let mut at = next_random(mut seed) % (gap + 1);
+    for _ in 0..count {
+        let end = at + next_random(mut seed) % width + 1;
+        out.push([at, end]);
+        at = end + next_random(mut seed) % gap + 1;
+    }
+    for i in (1..out.len()).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        out.swap(i, j);
+    }
+    out
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{min_available_duration([[10, 50], [60, 120], [140, 210]], [[0, 15], [60, 70]], 8)}");
+    println(f"{min_available_duration([[10, 50], [60, 120], [140, 210]], [[0, 15], [60, 70]], 12)}");
+    // a meeting that exactly fills a shared slot, and touching slots
+    println(f"{min_available_duration([[5, 9]], [[0, 9]], 4)}");
+    println(f"{min_available_duration([[0, 5]], [[5, 10]], 1)}");
+    // 1000 random pairs of schedules of 1 to 30 slots
+    let mut seed = 1229;
+    let mut check = 0;
+    let mut none = 0;
+    for _ in 0..1000 {
+        let a = slots(mut seed, next_random(mut seed) % 30 + 1, 40, 40);
+        let b = slots(mut seed, next_random(mut seed) % 30 + 1, 40, 40);
+        let duration = next_random(mut seed) % 20 + 1;
+        let answer = min_available_duration(a, b, duration);
+        if answer.is_empty() {
+            none += 1;
+            check = (check * 131 + 7) % 1000000007;
+        } else {
+            check = (check * 131 + answer[0] * 3 + answer[1]) % 1000000007;
+        }
+    }
+    println(f"1000 random pairs: checksum {check}, {none} with no time");
+    // the constraints' top: 10^4 slots each, up to 10^9
+    let a = slots(mut seed, 10000, 50000, 50000);
+    let b = slots(mut seed, 10000, 50000, 50000);
+    println(f"10^4 slots each: {min_available_duration(a, b, 30000)}, {min_available_duration(a, b, 49000)}, {min_available_duration(a, b, 1000000)}");
+}

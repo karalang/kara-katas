@@ -1,0 +1,383 @@
+// LeetCode #1284: the differential -- the five arms against the statement
+// read literally and five more properties, on every matrix of every shape.
+
+// arm 0: min_flips.kara
+fn a0_min_flips(mat: Vec[Vec[i64]]) -> i64 {
+    let rows = mat.len();
+    let cols = mat[0].len();
+    let cells = rows * cols;
+    let mut start = 0;
+    let mut flip: Vec[i64] = Vec.new();
+    for i in 0..rows {
+        for j in 0..cols {
+            if mat[i][j] == 1 {
+                start |= 1 << (i * cols + j);
+            }
+            let mut mask = 1 << (i * cols + j);
+            if i > 0 {
+                mask |= 1 << ((i - 1) * cols + j);
+            }
+            if i + 1 < rows {
+                mask |= 1 << ((i + 1) * cols + j);
+            }
+            if j > 0 {
+                mask |= 1 << (i * cols + j - 1);
+            }
+            if j + 1 < cols {
+                mask |= 1 << (i * cols + j + 1);
+            }
+            flip.push(mask);
+        }
+    }
+    let mut dist = Vec.filled(1 << cells, -1);
+    dist[start] = 0;
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    queue.push_back(start);
+    while let Some(state) = queue.pop_front() {
+        if state == 0 {
+            return dist[state];
+        }
+        for mask in flip.iter() {
+            let next = state ^ mask;
+            if dist[next] < 0 {
+                dist[next] = dist[state] + 1;
+                queue.push_back(next);
+            }
+        }
+    }
+    -1
+}
+
+// arm 1: min_flips_subsets.kara
+fn a1_min_flips(mat: Vec[Vec[i64]]) -> i64 {
+    let rows = mat.len();
+    let cols = mat[0].len();
+    let mut best = -1;
+    for chosen in 0..(1 << (rows * cols)) {
+        let mut grid: Vec[Vec[i64]] = mat.clone();
+        for cell in 0..(rows * cols) {
+            if (chosen >> cell) & 1 == 0 {
+                continue;
+            }
+            let (i, j) = (cell / cols, cell % cols);
+            for (di, dj) in [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)] {
+                let (r, c) = (i + di, j + dj);
+                if r >= 0 and r < rows and c >= 0 and c < cols {
+                    grid[r][c] ^= 1;
+                }
+            }
+        }
+        if grid.iter().all(|row| row.iter().all(|x| *x == 0)) {
+            let size = chosen.count_ones();
+            if best < 0 or size < best {
+                best = size;
+            }
+        }
+    }
+    best
+}
+
+// arm 2: min_flips_chase.kara
+fn a2_chase(mat: Vec[Vec[i64]], first: i64) -> Option[i64] {
+    let rows = mat.len();
+    let cols = mat[0].len();
+    let mut lit: Vec[Vec[bool]] = mat.iter().map(|row| row.iter().map(|x| *x == 1).collect()).collect();
+    let mut count = 0;
+    for i in 0..rows {
+        for j in 0..cols {
+            let press = if i == 0 { (first >> j) & 1 == 1 } else { lit[i - 1][j] };
+            if not press {
+                continue;
+            }
+            count += 1;
+            lit[i][j] = not lit[i][j];
+            if i > 0 {
+                lit[i - 1][j] = not lit[i - 1][j];
+            }
+            if i + 1 < rows {
+                lit[i + 1][j] = not lit[i + 1][j];
+            }
+            if j > 0 {
+                lit[i][j - 1] = not lit[i][j - 1];
+            }
+            if j + 1 < cols {
+                lit[i][j + 1] = not lit[i][j + 1];
+            }
+        }
+    }
+    if lit[rows - 1].iter().any(|x| *x) {
+        None
+    } else {
+        Some(count)
+    }
+}
+
+fn a2_min_flips(mat: Vec[Vec[i64]]) -> i64 {
+    let cols = mat[0].len();
+    (0..(1 << cols)).filter_map(|first| a2_chase(mat, first)).min().unwrap_or(-1)
+}
+
+// arm 3: min_flips_gauss.kara
+struct A3Equation {
+    unknowns: i64,
+    value: i64,
+}
+
+fn a3_min_flips(mat: Vec[Vec[i64]]) -> i64 {
+    let rows = mat.len();
+    let cols = mat[0].len();
+    let cells = rows * cols;
+    let mut system: Vec[A3Equation] = Vec.new();
+    for i in 0..rows {
+        for j in 0..cols {
+            let mut unknowns = 0;
+            for (r, c) in [(i, j), (i - 1, j), (i + 1, j), (i, j - 1), (i, j + 1)] {
+                if r >= 0 and r < rows and c >= 0 and c < cols {
+                    unknowns |= 1 << (r * cols + c);
+                }
+            }
+            system.push(A3Equation { unknowns, value: mat[i][j] });
+        }
+    }
+    // Forward elimination: one pivot equation per unknown that has one.
+    let mut pivot_of: Vec[i64] = Vec.filled(cells, -1);
+    let mut placed = 0;
+    for unknown in 0..cells {
+        let found = (placed..cells).find(|e| (system[e].unknowns >> unknown) & 1 == 1);
+        let Some(e) = found else {
+            continue;
+        };
+        system.swap(placed, e);
+        for other in 0..cells {
+            if other != placed and (system[other].unknowns >> unknown) & 1 == 1 {
+                system[other].unknowns ^= system[placed].unknowns;
+                system[other].value ^= system[placed].value;
+            }
+        }
+        pivot_of[unknown] = placed;
+        placed += 1;
+    }
+    // An equation left with no unknowns must ask for 0.
+    for e in placed..cells {
+        if system[e].value == 1 {
+            return -1;
+        }
+    }
+    let free: Vec[i64] = (0..cells).filter(|u| pivot_of[u] < 0).collect();
+    let mut best = cells + 1;
+    for setting in 0..(1 << free.len()) {
+        let mut x = 0;
+        for (k, u) in free.iter().enumerate() {
+            if (setting >> k) & 1 == 1 {
+                x |= 1 << u;
+            }
+        }
+        for u in 0..cells {
+            let e = pivot_of[u];
+            if e >= 0 {
+                let rest = system[e].unknowns & ~(1 << u) & x;
+                if (system[e].value ^ rest.count_ones() % 2) == 1 {
+                    x |= 1 << u;
+                }
+            }
+        }
+        best = best.min(x.count_ones());
+    }
+    best
+}
+
+// arm 4: min_flips_solution.kara
+impl A4Solution {
+    pub fn min_flips(mat: Vec[Vec[i32]]) -> i32 {
+        let m = mat.len();
+        let n = mat[0].len();
+        let mut start = 0;
+        for i in 0..m {
+            for j in 0..n {
+                if mat[i][j] == 1 {
+                    start |= 1 << (i * n + j);
+                }
+            }
+        }
+        let mut q = VecDeque.new();
+        let mut seen = Set.new();
+        q.push_back((start, 0));
+        seen.insert(start);
+        while let Some((s, d)) = q.pop_front() {
+            if s == 0 {
+                return d;
+            }
+            for i in 0..m {
+                for j in 0..n {
+                    let mut t = s;
+                    for (di, dj) in [(0, 0), (0, 1), (1, 0), (0, -1), (-1, 0)] {
+                        let (x, y) = (i as i32 + di, j as i32 + dj);
+                        if x >= 0 and y >= 0 and (x) < m and (y) < n {
+                            t ^= 1 << (x * n + y);
+                        }
+                    }
+                    if seen.insert(t) {
+                        q.push_back((t, d + 1));
+                    }
+                }
+            }
+        }
+        -1
+    }
+}
+
+struct A4Solution {}
+
+fn a4_min_flips(mat: Vec[Vec[i64]]) -> i64 {
+    let small: Vec[Vec[i32]] = mat.iter().map(|row| row.iter().map(|x| *x as i32).collect()).collect();
+    A4Solution.min_flips(small)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// ---- the differential ------------------------------------------------------
+
+fn arm(k: i64, mat: Vec[Vec[i64]]) -> i64 {
+    match k {
+        0 => a0_min_flips(mat),
+        1 => a1_min_flips(mat),
+        2 => a2_min_flips(mat),
+        3 => a3_min_flips(mat),
+        _ => a4_min_flips(mat),
+    }
+}
+
+fn matrix(rows: i64, cols: i64, bits: i64) -> Vec[Vec[i64]] {
+    let mut mat: Vec[Vec[i64]] = Vec.new();
+    for i in 0..rows {
+        let mut row: Vec[i64] = Vec.new();
+        for j in 0..cols {
+            row.push((bits >> (i * cols + j)) & 1);
+        }
+        mat.push(row);
+    }
+    mat
+}
+
+// One step: the cell and its four neighbours, those inside, flipped.
+fn step(mat: Vec[Vec[i64]], i: i64, j: i64) -> Vec[Vec[i64]] {
+    let mut out = mat.clone();
+    for (r, c) in [(i, j), (i - 1, j), (i + 1, j), (i, j - 1), (i, j + 1)] {
+        if r >= 0 and r < mat.len() and c >= 0 and c < mat[0].len() {
+            out[r][c] = 1 - out[r][c];
+        }
+    }
+    out
+}
+
+// A matrix as a number, its cells as bits row by row from the lowest.
+fn bits_of(mat: Vec[Vec[i64]]) -> i64 {
+    let mut bits = 0;
+    let mut place = 1;
+    for row in mat.iter() {
+        for x in row.iter() {
+            bits += x * place;
+            place *= 2;
+        }
+    }
+    bits
+}
+
+// The statement read literally: the matrices reachable in exactly k steps,
+// for k = 0, 1, 2, ..., until one is the zero matrix. A step taken twice
+// undoes itself, so the matrices k + 2 steps away include those k away;
+// once they are no more, no number of steps will reach zero. Each step's
+// change is found by taking it on the zero matrix.
+fn literal(mat: Vec[Vec[i64]]) -> i64 {
+    let rows = mat.len();
+    let cols = mat[0].len();
+    let mut changes: Vec[i64] = Vec.new();
+    for i in 0..rows {
+        for j in 0..cols {
+            changes.push(bits_of(step(matrix(rows, cols, 0), i, j)));
+        }
+    }
+    let mut sizes: Vec[i64] = Vec.new();
+    let mut level: Set[i64] = Set.new();
+    level.insert(bits_of(mat));
+    let mut k = 0;
+    loop {
+        if level.contains(0) {
+            return k;
+        }
+        if k >= 2 and sizes[k - 2] == level.len() {
+            return -1;
+        }
+        sizes.push(level.len());
+        let mut next: Set[i64] = Set.new();
+        for m in level.iter() {
+            for c in changes.iter() {
+                next.insert(m ^ c);
+            }
+        }
+        level = next;
+        k += 1;
+    }
+}
+
+fn main() {
+    let mut seed = 12840;
+    let mut fails: Array[i64, 6] = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for rows in 1..4 {
+        for cols in 1..4 {
+            for bits in 0..(1 << (rows * cols)) {
+                let mat = matrix(rows, cols, bits);
+                let want = literal(mat);
+                let mut transposed: Vec[Vec[i64]] = Vec.new();
+                for j in 0..cols {
+                    transposed.push((0..rows).map(|i| mat[i][j]).collect());
+                }
+                let mirrored: Vec[Vec[i64]] = mat.iter().rev().cloned().collect();
+                let i = next_random(mut seed) % rows;
+                let j = next_random(mut seed) % cols;
+                let stepped = step(mat, i, j);
+                let other = matrix(rows, cols, next_random(mut seed) % (1 << (rows * cols)));
+                let mut both = mat.clone();
+                for r in 0..rows {
+                    for c in 0..cols {
+                        both[r][c] ^= other[r][c];
+                    }
+                }
+                let star = arm(0, mat);
+                check = (check * 131 + star + 2) % 1000000007;
+                for a in 0..5 {
+                    let got = arm(a, mat);
+                    let near = arm(a, stepped);
+                    let (x, y, xy) = (got, arm(a, other), arm(a, both));
+                    let held = [
+                        got == want,
+                        arm(a, transposed) == got,
+                        arm(a, mirrored) == got,
+                        (got < 0) == (near < 0) and (got < 0 or (got - near).abs() <= 1),
+                        x < 0 or y < 0 or (xy >= 0 and xy <= x + y),
+                        got == star,
+                    ];
+                    for p in 0..6 {
+                        checks += 1;
+                        if not held[p] {
+                            fails[p] += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let mut total = 0;
+    for p in 0..6 {
+        if fails[p] > 0 {
+            print(f"P{p + 1}: {fails[p]} failures ");
+        }
+        total += fails[p];
+    }
+    println(f"682 matrices: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

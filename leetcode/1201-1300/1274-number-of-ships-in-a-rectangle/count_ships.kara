@@ -1,0 +1,111 @@
+// LeetCode #1274: Number of Ships in a Rectangle -- the ★ arm: divide and
+// conquer by quarters; a rectangle with no ship counts none, a single
+// point with one counts one, and any other is cut at its middle both ways
+// and its quarters counted. Empty quarters are asked about once each.
+
+fn count_ships(sea: dyn Sea, top_right: Vec[i64], bottom_left: Vec[i64]) -> i64 {
+    if bottom_left[0] > top_right[0] or bottom_left[1] > top_right[1] {
+        return 0;
+    }
+    if not sea.has_ships(top_right, bottom_left) {
+        return 0;
+    }
+    if top_right == bottom_left {
+        return 1;
+    }
+    let mx = (top_right[0] + bottom_left[0]) / 2;
+    let my = (top_right[1] + bottom_left[1]) / 2;
+    count_ships(sea, [mx, my], bottom_left)
+        + count_ships(sea, [top_right[0], my], [mx + 1, bottom_left[1]])
+        + count_ships(sea, [mx, top_right[1]], [bottom_left[0], my + 1])
+        + count_ships(sea, top_right, [mx + 1, my + 1])
+}
+// ---- test harness ---------------------------------------------------------
+
+// The judge's interface: whether any ship lies in the rectangle from
+// `bottom_left` to `top_right`, both corners included.
+trait Sea {
+    fn has_ships(self, top_right: Vec[i64], bottom_left: Vec[i64]) -> bool;
+}
+
+shared struct Tally {
+    calls: i64,
+}
+
+// The harness's sea: its ships, and a count of the questions asked.
+struct Ocean {
+    ships: Vec[(i64, i64)],
+    tally: Tally,
+}
+
+impl Sea for Ocean {
+    fn has_ships(self, top_right: Vec[i64], bottom_left: Vec[i64]) -> bool {
+        self.tally.calls += 1;
+        self.ships.iter().any(|(x, y)| bottom_left[0] <= x and x <= top_right[0] and bottom_left[1] <= y and y <= top_right[1])
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// Up to `inside` ships in the rectangle and up to `outside` more anywhere
+// in the sea, never two on a point.
+fn random_ships(top_right: Vec[i64], bottom_left: Vec[i64], inside: i64, outside: i64, seed: mut ref i64) -> Vec[(i64, i64)] {
+    let mut ships: Vec[(i64, i64)] = Vec.new();
+    let w = top_right[0] - bottom_left[0] + 1;
+    let h = top_right[1] - bottom_left[1] + 1;
+    for _ in 0..inside {
+        let p = (bottom_left[0] + next_random(mut seed) % w, bottom_left[1] + next_random(mut seed) % h);
+        if not ships.contains(p) {
+            ships.push(p);
+        }
+    }
+    for _ in 0..outside {
+        let p = (next_random(mut seed) % 1001, next_random(mut seed) % 1001);
+        let inside_it = bottom_left[0] <= p.0 and p.0 <= top_right[0] and bottom_left[1] <= p.1 and p.1 <= top_right[1];
+        if not inside_it and not ships.contains(p) {
+            ships.push(p);
+        }
+    }
+    ships
+}
+
+// The count, and whether it took at most the judge's 400 questions.
+fn run(ships: own Vec[(i64, i64)], top_right: Vec[i64], bottom_left: Vec[i64]) -> (i64, bool) {
+    let tally = Tally { calls: 0 };
+    let sea = Ocean { ships: ships, tally: tally };
+    let n = count_ships(sea, top_right, bottom_left);
+    (n, tally.calls <= 400)
+}
+
+fn main() {
+    // LeetCode's examples
+    println(f"{run([(1, 1), (2, 2), (3, 3), (5, 5)], [4, 4], [0, 0])} {run([(1, 1), (2, 2), (3, 3)], [1000, 1000], [0, 0])}");
+    // 1000 random rectangles in the sea with up to 10 ships in each
+    let mut seed = 1274;
+    let mut found = 0;
+    let mut within = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let x0 = next_random(mut seed) % 1001;
+        let y0 = next_random(mut seed) % 1001;
+        let x1 = x0 + next_random(mut seed) % (1001 - x0);
+        let y1 = y0 + next_random(mut seed) % (1001 - y0);
+        let ships = random_ships([x1, y1], [x0, y0], next_random(mut seed) % 11, 10, mut seed);
+        let (n, ok) = run(ships, [x1, y1], [x0, y0]);
+        found += n;
+        if ok {
+            within += 1;
+        }
+        check = (check * 131 + n) % 1000000007;
+    }
+    println(f"1000 random rectangles: {found} ships, {within} within 400 questions, checksum {check}");
+    // the constraints' top: ten ships spread over the whole sea, ten in a
+    // corner, and ten on one line
+    let spread: Vec[(i64, i64)] = (0..10).map(|i| (i * 111, 1000 - i * 97)).collect();
+    let corner: Vec[(i64, i64)] = (0..10).map(|i| (1000 - i % 4, 1000 - i / 4)).collect();
+    let line: Vec[(i64, i64)] = (0..10).map(|i| (i * 100 + 37, 500)).collect();
+    println(f"{run(spread, [1000, 1000], [0, 0])} {run(corner, [1000, 1000], [0, 0])} {run(line, [1000, 1000], [0, 0])}");
+}

@@ -1,0 +1,95 @@
+// LeetCode #1275: Find Winner on a Tic Tac Toe Game -- by an enum: the
+// board nine `Option[Player]`s, the eight lines as triples of squares,
+// and the winner the first line whose three squares `match` one player,
+// found by `find_map`.
+
+#[derive(Copy, Clone)]
+enum Player {
+    A,
+    B,
+}
+
+fn tictactoe(moves: Vec[Vec[i64]]) -> String {
+    let mut board: Vec[Option[Player]] = Vec.new();
+    for _ in 0..9 {
+        board.push(None);
+    }
+    for (i, m) in moves.iter().enumerate() {
+        board[m[0] * 3 + m[1]] = Some(if i % 2 == 0 { Player.A } else { Player.B });
+    }
+    let lines: Array[(i64, i64, i64), 8] = [(0, 1, 2), (3, 4, 5), (6, 7, 8), (0, 3, 6), (1, 4, 7), (2, 5, 8), (0, 4, 8), (2, 4, 6)];
+    let winner = lines.iter().find_map(|(a, b, c)| match (board[a], board[b], board[c]) {
+        (Some(Player.A), Some(Player.A), Some(Player.A)) => Some("A"),
+        (Some(Player.B), Some(Player.B), Some(Player.B)) => Some("B"),
+        _ => None,
+    });
+    match winner {
+        Some(w) => w.to_string(),
+        None => if moves.len() == 9 { "Draw" } else { "Pending" },
+    }
+}
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// Every game that can be played, move by move: each position asked about,
+// and the game carried on from it while the answer is "Pending". The
+// tally counts A, B, Draw and Pending in that order.
+fn walk(moves: mut ref Vec[Vec[i64]], tally: mut ref Array[i64, 4], check: mut ref i64) {
+    for square in 0..9 {
+        let (r, c) = (square / 3, square % 3);
+        if moves.iter().any(|m| m[0] == r and m[1] == c) {
+            continue;
+        }
+        moves.push([r, c]);
+        let answer = tictactoe(moves);
+        let k = if answer == "A" { 0 } else if answer == "B" { 1 } else if answer == "Draw" { 2 } else { 3 };
+        tally[k] += 1;
+        *check = (*check * 7 + k) % 1000000007;
+        if k == 3 {
+            walk(mut moves, mut tally, mut check);
+        }
+        moves.pop();
+    }
+}
+
+fn main() {
+    // LeetCode's examples
+    let a = tictactoe([[0, 0], [2, 0], [1, 1], [2, 1], [2, 2]]);
+    let b = tictactoe([[0, 0], [1, 1], [0, 1], [0, 2], [1, 0], [2, 0]]);
+    let d = tictactoe([[0, 0], [1, 1], [2, 0], [1, 0], [1, 2], [2, 1], [0, 1], [0, 2], [2, 2]]);
+    println(f"{a} {b} {d}");
+    // every game, each of its positions once
+    let mut moves: Vec[Vec[i64]] = Vec.new();
+    let mut tally: Array[i64, 4] = [0, 0, 0, 0];
+    let mut check = 0;
+    walk(mut moves, mut tally, mut check);
+    println(f"{tally[0] + tally[1] + tally[2] + tally[3]} positions: A {tally[0]}, B {tally[1]}, Draw {tally[2]}, Pending {tally[3]}, checksum {check}");
+    // 3000 random games, each cut short at a random move
+    let mut seed = 1275;
+    let mut check = 0;
+    let mut tally: Array[i64, 4] = [0, 0, 0, 0];
+    for _ in 0..3000 {
+        let mut order: Vec[i64] = (0..9).collect();
+        for i in (1..9).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            order.swap(i, j);
+        }
+        let mut moves: Vec[Vec[i64]] = Vec.new();
+        let stop = 1 + next_random(mut seed) % 9;
+        for square in order.iter() {
+            moves.push([square / 3, square % 3]);
+            if moves.len() == stop or tictactoe(moves) != "Pending" {
+                break;
+            }
+        }
+        let answer = tictactoe(moves);
+        let k = if answer == "A" { 0 } else if answer == "B" { 1 } else if answer == "Draw" { 2 } else { 3 };
+        tally[k] += 1;
+        check = (check * 131 + k * 10 + moves.len()) % 1000000007;
+    }
+    println(f"3000 random games: A {tally[0]}, B {tally[1]}, Draw {tally[2]}, Pending {tally[3]}, checksum {check}");
+}

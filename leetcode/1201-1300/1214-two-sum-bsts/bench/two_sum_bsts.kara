@@ -1,0 +1,89 @@
+// LeetCode #1214 bench: the ★ arm (each tree's values read in order, then
+// two pointers, one climbing the first list and one coming down the
+// second) on 16 pairs of balanced search trees of 5000 nodes each, the
+// constraints' most, with distinct values up to 10^9, built once; then 10
+// rounds over the pairs, each with four targets, two of them sums a pair
+// holds, every answer folded into a checksum.
+
+fn in_order(node: Option[TreeNode], out: mut ref Vec[i32]) {
+    if let Some(n) = node {
+        in_order(n.left, mut out);
+        out.push(n.val);
+        in_order(n.right, mut out);
+    }
+}
+
+fn two_sum_bsts(root1: Option[TreeNode], root2: Option[TreeNode], target: i32) -> bool {
+    let mut a: Vec[i32] = Vec.new();
+    let mut b: Vec[i32] = Vec.new();
+    in_order(root1, mut a);
+    in_order(root2, mut b);
+    let mut i = 0;
+    let mut j = b.len() - 1;
+    while i < a.len() and j >= 0 {
+        let sum = a[i] + b[j];
+        if sum == target {
+            return true;
+        }
+        if sum < target {
+            i += 1;
+        } else {
+            j -= 1;
+        }
+    }
+    false
+}
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn balanced(sorted: Vec[i32], low: i64, high: i64) -> Option[TreeNode] {
+    if low >= high {
+        return None;
+    }
+    let mid = (low + high) / 2;
+    Some(TreeNode { val: sorted[mid], left: balanced(sorted, low, mid), right: balanced(sorted, mid + 1, high) })
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn big(seed: mut ref i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % 2000000001 - 1000000000
+}
+
+fn distinct_values(seed: mut ref i64, n: i64) -> Vec[i32] {
+    let mut seen: SortedSet[i64] = SortedSet.new();
+    while seen.len() < n {
+        seen.insert(big(mut seed));
+    }
+    seen.iter().map(|v| v as i32).collect()
+}
+
+fn main() {
+    let mut seed = 1214;
+    let mut pairs: Vec[(Option[TreeNode], Option[TreeNode], Vec[i32])] = Vec.new();
+    for _ in 0..16 {
+        let a = distinct_values(mut seed, 5000);
+        let b = distinct_values(mut seed, 5000);
+        let i = next_random(mut seed) % 5000;
+        let j = next_random(mut seed) % 5000;
+        let targets: Vec[i32] = [a[i] + b[j], a[j] + b[i], big(mut seed) as i32, big(mut seed) as i32];
+        pairs.push((balanced(a, 0, 5000), balanced(b, 0, 5000), targets));
+    }
+    let mut check = 0;
+    for round in 0..10 {
+        for (t1, t2, targets) in pairs.iter() {
+            for t in targets.iter() {
+                let answer = if two_sum_bsts(t1, t2, t) { 2 } else { 1 };
+                check = (check * 131 + answer + round) % 1000000007;
+            }
+        }
+    }
+    println(f"10 rounds over 16 pairs of 5000-node trees: checksum {check}");
+}

@@ -1,0 +1,54 @@
+// LeetCode #1228: Missing Number In Arithmetic Progression -- by the sum:
+// the full progression of n + 1 values from the first to the last sums to
+// (first + last) (n + 1) / 2, and the missing value is what the array
+// falls short of it. O(n).
+
+fn missing_number(arr: Vec[i64]) -> i64 {
+    let n = arr.len();
+    let whole = (arr[0] + arr[n - 1]) * (n + 1) / 2;
+    whole - arr.iter().sum()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// An arithmetic progression of `len` values within 0 to 10^5, and the
+// array with its value at `gone` removed.
+fn progression(seed: mut ref i64, len: i64) -> (Vec[i64], i64) {
+    let first = next_random(mut seed) % 100001;
+    let low = -(first / (len - 1));
+    let high = (100000 - first) / (len - 1);
+    let step = low + next_random(mut seed) % (high - low + 1);
+    let gone = next_random(mut seed) % (len - 2) + 1;
+    let arr: Vec[i64] = (0..len).filter(|i| i != gone).map(|i| first + i * step).collect();
+    (arr, first + gone * step)
+}
+
+fn main() {
+    // LeetCode's two examples, and a progression of one value
+    println(f"{missing_number([5, 7, 11, 13])}");
+    println(f"{missing_number([15, 13, 12])}");
+    println(f"{missing_number([7, 7, 7])}");
+    // 1000 random progressions of 4 to 1001 values, one interior value
+    // removed
+    let mut seed = 1228;
+    let mut check = 0;
+    let mut right = 0;
+    for _ in 0..1000 {
+        let len = next_random(mut seed) % 998 + 4;
+        let (arr, removed) = progression(mut seed, len);
+        let answer = missing_number(arr);
+        check = (check * 131 + answer) % 1000000007;
+        if answer == removed {
+            right += 1;
+        }
+    }
+    println(f"1000 random progressions: checksum {check}, {right} right");
+    // the constraints' top: 1000 values, 0 to 99900 by 100 less 50000
+    let big: Vec[i64] = (0..1000).map(|i| i * 100).filter(|v| v != 50000).collect();
+    println(f"1000 values: {missing_number(big)}");
+}

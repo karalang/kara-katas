@@ -1,0 +1,70 @@
+// LeetCode #1224: Maximum Equal Frequency -- forward, with how many numbers
+// have each count in a `SortedMap`: a prefix works when its least and
+// greatest counts are equal and 1 or held by one number, or are 1 held by
+// one number and one other count, or two neighbours whose greater is held
+// by one number. O(n log n).
+
+fn max_equal_freq(nums: Vec[i64]) -> i64 {
+    let mut count: Map[i64, i64] = Map.new();
+    let mut with_count: SortedMap[i64, i64] = SortedMap.new();
+    let mut best = 0;
+    for (k, x) in nums.iter().enumerate() {
+        let c = count.get(x) ?? 0;
+        if c > 0 {
+            with_count[c] -= 1;
+            if with_count[c] == 0 {
+                with_count.remove(c);
+            }
+        }
+        count[x] = c + 1;
+        with_count[c + 1] = (with_count.get(c + 1) ?? 0) + 1;
+        let (low, low_many) = with_count.first().unwrap();
+        let (high, high_many) = with_count.last().unwrap();
+        let works = if low == high {
+            low == 1 or low_many == 1
+        } else {
+            with_count.len() == 2 and ((low == 1 and low_many == 1) or (high == low + 1 and high_many == 1))
+        };
+        if works {
+            best = k + 1;
+        }
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    println(f"{max_equal_freq([2, 2, 1, 1, 5, 3, 3, 5])}");
+    println(f"{max_equal_freq([1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5])}");
+    println(f"{max_equal_freq([1, 1])}");
+    println(f"{max_equal_freq([1, 2, 3, 4, 5, 6, 7, 8, 9])}");
+    let mut seed = 1224;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 30 + 2;
+        let values = next_random(mut seed) % 6 + 1;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % values + 1).collect();
+        let answer = max_equal_freq(nums);
+        total += answer;
+        check = (check * 131 + answer) % 1000000007;
+    }
+    println(f"1000 random arrays of 2 to 31 numbers: lengths total {total}, checksum {check}");
+    // The constraints' top: 10^5 numbers up to 10^5.
+    let rising: Vec[i64] = (1..=100000).collect();
+    let mut blocks: Vec[i64] = Vec.new();
+    for v in 1..=316 {
+        for _ in 0..316 {
+            blocks.push(v);
+        }
+    }
+    blocks.push(317);
+    let wide: Vec[i64] = (0..100000).map(|_| next_random(mut seed) % 100000 + 1).collect();
+    println(f"10^5 numbers: all different {max_equal_freq(rising)}, 316 blocks of 316 and one more {max_equal_freq(blocks)}, random {max_equal_freq(wide)}");
+}

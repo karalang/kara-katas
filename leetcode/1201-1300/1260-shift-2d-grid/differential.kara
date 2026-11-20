@@ -1,0 +1,192 @@
+// LeetCode #1260: the differential -- the five arms against the statement
+// read literally and five more properties, on 2000 random grids.
+
+// arm 0: shift_2d_grid.kara
+fn a0_shift_grid(grid: Vec[Vec[i64]], k: i64) -> Vec[Vec[i64]] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let total = m * n;
+    let mut shifted = Vec.filled(m, Vec.filled(n, 0));
+    for i in 0..m {
+        for j in 0..n {
+            let to = (i * n + j + k) % total;
+            shifted[to / n][to % n] = grid[i][j];
+        }
+    }
+    shifted
+}
+
+// arm 1: shift_2d_grid_rotate.kara
+fn a1_shift_grid(grid: Vec[Vec[i64]], k: i64) -> Vec[Vec[i64]] {
+    let n = grid[0].len();
+    let mut flat: Vec[i64] = grid.iter().flat_map(|v| v.iter()).cloned().collect();
+    let len = flat.len();
+    flat.rotate_right(k % len);
+    flat.chunks(n).into_iter().map(|row| row.to_vec()).collect()
+}
+
+// arm 2: shift_2d_grid_steps.kara
+fn a2_shift_grid(grid: own Vec[Vec[i64]], k: i64) -> Vec[Vec[i64]] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut grid = grid;
+    for _ in 0..k % (m * n) {
+        let mut carry = grid[m - 1][n - 1];
+        for i in 0..m {
+            for j in 0..n {
+                let held = grid[i][j];
+                grid[i][j] = carry;
+                carry = held;
+            }
+        }
+    }
+    grid
+}
+
+// arm 3: shift_2d_grid_reverse.kara
+fn a3_reverse_range(v: mut ref Vec[i64], lo: i64, hi: i64) {
+    let mut a = lo;
+    let mut b = hi - 1;
+    while a < b {
+        v.swap(a, b);
+        a += 1;
+        b -= 1;
+    }
+}
+
+fn a3_shift_grid(grid: Vec[Vec[i64]], k: i64) -> Vec[Vec[i64]] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut flat: Vec[i64] = Vec.new();
+    for row in grid.iter() {
+        flat.extend(row.iter().cloned());
+    }
+    let total = m * n;
+    let k = k % total;
+    a3_reverse_range(mut flat, 0, total);
+    a3_reverse_range(mut flat, 0, k);
+    a3_reverse_range(mut flat, k, total);
+    (0..m).map(|i| flat[i * n..(i + 1) * n].to_vec()).collect()
+}
+
+// arm 4: shift_2d_grid_solution.kara
+impl A4Solution {
+    pub fn shift_grid(grid: Vec[Vec[i32]], k: i32) -> Vec[Vec[i32]] {
+        let m = grid.len();
+        let n = grid[0].len();
+        let total = m * n;
+        let k = k % total;
+        let mut res = Vec.filled(m, Vec.filled(n, 0));
+        for i in 0..m {
+            for j in 0..n {
+                let idx = (i * n + j + k) % total;
+                res[idx / n][idx % n] = grid[i][j];
+            }
+        }
+        res
+    }
+}
+
+struct A4Solution {}
+
+fn a4_shift_grid(grid: Vec[Vec[i64]], k: i64) -> Vec[Vec[i64]] {
+    let narrow: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|x| x as i32).collect()).collect();
+    A4Solution.shift_grid(narrow, k as i32).iter().map(|row| row.iter().map(|x| x as i64).collect()).collect()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn fold(check: i64, grid: Vec[Vec[i64]]) -> i64 {
+    let mut check = check;
+    for row in grid.iter() {
+        for x in row.iter() {
+            check = (check * 131 + x + 1000) % 1000000007;
+        }
+        check = (check * 131 + 7) % 1000000007;
+    }
+    check
+}
+
+// The statement read literally: `k` times, a new grid in which the value
+// at `grid[i][j]` moves to `grid[i][j + 1]`, the one at `grid[i][n - 1]`
+// to `grid[i + 1][0]`, and the one at `grid[m - 1][n - 1]` to `grid[0][0]`.
+fn literal(grid: Vec[Vec[i64]], k: i64) -> Vec[Vec[i64]] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut g = grid.clone();
+    for _ in 0..k {
+        let mut next = Vec.filled(m, Vec.filled(n, 0));
+        for i in 0..m {
+            for j in 0..n - 1 {
+                next[i][j + 1] = g[i][j];
+            }
+            if i < m - 1 {
+                next[i + 1][0] = g[i][n - 1];
+            }
+        }
+        next[0][0] = g[m - 1][n - 1];
+        g = next;
+    }
+    g
+}
+
+fn arms(grid: Vec[Vec[i64]], k: i64) -> Vec[Vec[Vec[i64]]] {
+    [
+        a0_shift_grid(grid, k),
+        a1_shift_grid(grid, k),
+        a2_shift_grid(grid.clone(), k),
+        a3_shift_grid(grid, k),
+        a4_shift_grid(grid, k),
+    ]
+}
+
+fn sorted_values(grid: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut all: Vec[i64] = grid.iter().flat_map(|r| r.iter()).cloned().collect();
+    all.sort();
+    all
+}
+
+fn main() {
+    let names = ["the statement read literally", "shifted on by the rest of m * n, the grid back", "shifted by k + m * n, the same grid", "the same values", "shifted by a then by k - a, the same grid", "the ★ arm's grid"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 12600;
+    for _ in 0..2000 {
+        let m = next_random(mut seed) % 6 + 1;
+        let n = next_random(mut seed) % 6 + 1;
+        let k = next_random(mut seed) % 101;
+        let a = next_random(mut seed) % (k + 1);
+        let grid: Vec[Vec[i64]] = (0..m).map(|_| (0..n).map(|_| next_random(mut seed) % 10).collect()).collect();
+        let total = m * n;
+        let want = literal(grid, k);
+        check = fold(check, want);
+        let got = arms(grid, k);
+        let wrapped = arms(grid, k + total);
+        let first = arms(grid, a);
+        for arm in 0..5 {
+            let back = arms(got[arm], total - k % total)[arm].clone();
+            let split = arms(first[arm], k - a)[arm].clone();
+            let held = [got[arm] == want, back == grid, wrapped[arm] == got[arm], sorted_values(got[arm]) == sorted_values(grid), split == got[arm], got[arm] == got[0]];
+            for q in 0..6 {
+                checks += 1;
+                if not held[q] {
+                    fails[q] += 1;
+                    if fails[q] <= 2 {
+                        println(f"P{q + 1} ({names[q]}) fails on arm {arm}: k {k} in {grid}");
+                    }
+                }
+            }
+        }
+    }
+    let total: i64 = fails.iter().sum();
+    for q in 0..6 {
+        if fails[q] > 0 {
+            print(f"P{q + 1}: {fails[q]} failures ");
+        }
+    }
+    println(f"2000 grids: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

@@ -1,0 +1,3 @@
+module tiling_a_rectangle_with_the_fewest_squares
+
+go 1.21

@@ -1,0 +1,249 @@
+// LeetCode #1267: the differential -- the five arms against the statement
+// read literally and five more properties, on 2000 random grids.
+
+// arm 0: count_servers.kara
+fn a0_count_servers(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut rows = Vec.filled(m, 0);
+    let mut cols = Vec.filled(n, 0);
+    for r in 0..m {
+        for c in 0..n {
+            if grid[r][c] == 1 {
+                rows[r] += 1;
+                cols[c] += 1;
+            }
+        }
+    }
+    let mut count = 0;
+    for r in 0..m {
+        for c in 0..n {
+            if grid[r][c] == 1 and (rows[r] > 1 or cols[c] > 1) {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+// arm 1: count_servers_scan.kara
+fn a1_count_servers(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut count = 0;
+    for r in 0..m {
+        for c in 0..n {
+            if grid[r][c] == 0 {
+                continue;
+            }
+            let in_row = (0..n).any(|k| k != c and grid[r][k] == 1);
+            let in_col = (0..m).any(|k| k != r and grid[k][c] == 1);
+            if in_row or in_col {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+// arm 2: count_servers_union.kara
+fn a2_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut root = x;
+    while parent[root] != root {
+        root = parent[root];
+    }
+    let mut at = x;
+    while parent[at] != root {
+        let up = parent[at];
+        parent[at] = root;
+        at = up;
+    }
+    root
+}
+
+fn a2_count_servers(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    // rows are 0..m and columns m..m + n
+    let mut parent: Vec[i64] = (0..m + n).collect();
+    for r in 0..m {
+        for c in 0..n {
+            if grid[r][c] == 1 {
+                let a = a2_find(mut parent, r);
+                let b = a2_find(mut parent, m + c);
+                parent[a] = b;
+            }
+        }
+    }
+    let mut servers = Vec.filled(m + n, 0);
+    for r in 0..m {
+        for c in 0..n {
+            if grid[r][c] == 1 {
+                servers[a2_find(mut parent, r)] += 1;
+            }
+        }
+    }
+    let mut count = 0;
+    for s in servers.iter() {
+        if s > 1 {
+            count += s;
+        }
+    }
+    count
+}
+
+// arm 3: count_servers_lists.kara
+fn a3_count_servers(grid: Vec[Vec[i64]]) -> i64 {
+    let n = grid[0].len();
+    let cols = grid.iter().fold(Vec.filled(n, 0), |acc, row| {
+        let mut acc = acc;
+        for c in 0..n {
+            acc[c] += row[c];
+        }
+        acc
+    });
+    grid.iter()
+        .map(|row| {
+            let at: Vec[i64] = (0..n).filter(|c| row[c] == 1).collect();
+            match at.len() {
+                0 => 0,
+                1 => if cols[at[0]] > 1 { 1 } else { 0 },
+                k => k,
+            }
+        })
+        .sum()
+}
+
+// arm 4: count_servers_solution.kara
+impl A4Solution {
+    pub fn count_servers(grid: Vec[Vec[i32]]) -> i32 {
+        let m = grid.len();
+        let n = grid[0].len();
+        let mut rows = Vec.filled(m, 0);
+        let mut cols = Vec.filled(n, 0);
+        for (i, row) in grid.iter().enumerate() {
+            for (j, cell) in row.iter().enumerate() {
+                if cell == 1 {
+                    rows[i] += 1;
+                    cols[j] += 1;
+                }
+            }
+        }
+        let mut ans = 0;
+        for i in 0..m {
+            for j in 0..n {
+                if grid[i][j] == 1 and (rows[i] > 1 or cols[j] > 1) {
+                    ans += 1;
+                }
+            }
+        }
+        ans
+    }
+}
+
+struct A4Solution {}
+
+fn a4_count_servers(grid: Vec[Vec[i64]]) -> i64 {
+    A4Solution.count_servers(grid.iter().map(|r| r.iter().map(|x| x as i32).collect()).collect())
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// An `m` by `n` grid, each cell a server one time in `odds`.
+// ---- the differential ------------------------------------------------------
+
+fn arm(k: i64, grid: Vec[Vec[i64]]) -> i64 {
+    match k {
+        0 => a0_count_servers(grid),
+        1 => a1_count_servers(grid),
+        2 => a2_count_servers(grid),
+        3 => a3_count_servers(grid),
+        _ => a4_count_servers(grid),
+    }
+}
+
+// The statement read literally: every server listed, and a server counted
+// when some other server shares its row or its column.
+fn literal(grid: Vec[Vec[i64]]) -> i64 {
+    let mut servers: Vec[(i64, i64)] = Vec.new();
+    for r in 0..grid.len() {
+        for c in 0..grid[r].len() {
+            if grid[r][c] == 1 {
+                servers.push((r, c));
+            }
+        }
+    }
+    let mut count = 0;
+    for i in 0..servers.len() {
+        let mut talks = false;
+        for j in 0..servers.len() {
+            if i != j and (servers[i].0 == servers[j].0 or servers[i].1 == servers[j].1) {
+                talks = true;
+            }
+        }
+        if talks {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn main() {
+    let mut seed = 1267;
+    let mut fails: Array[i64, 6] = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let m = next_random(mut seed) % 7 + 1;
+        let n = next_random(mut seed) % 7 + 1;
+        let odds = next_random(mut seed) % 5 + 2;
+        let grid: Vec[Vec[i64]] = (0..m).map(|_| (0..n).map(|_| if next_random(mut seed) % odds == 0 { 1 } else { 0 }).collect()).collect();
+        let want = literal(grid);
+        let transposed: Vec[Vec[i64]] = (0..n).map(|c| (0..m).map(|r| grid[r][c]).collect()).collect();
+        let turned: Vec[Vec[i64]] = grid.iter().rev().map(|row| row.iter().rev().collect()).collect();
+        let mut wider: Vec[Vec[i64]] = grid.iter().map(|row| {
+            let mut r = row.clone();
+            r.push(0);
+            r
+        }).collect();
+        wider.push(Vec.filled(n + 1, 0));
+        let (ar, ac) = (next_random(mut seed) % m, next_random(mut seed) % n);
+        let mut more = grid.clone();
+        more[ar][ac] = 1;
+        let star = arm(0, grid);
+        check = (check * 131 + star) % 1000000007;
+        for k in 0..5 {
+            let got = arm(k, grid);
+            if got != want {
+                fails[0] += 1;
+            }
+            if arm(k, transposed) != got {
+                fails[1] += 1;
+            }
+            if arm(k, turned) != got {
+                fails[2] += 1;
+            }
+            if arm(k, wider) != got {
+                fails[3] += 1;
+            }
+            if arm(k, more) < got {
+                fails[4] += 1;
+            }
+            if got != star {
+                fails[5] += 1;
+            }
+            checks += 6;
+        }
+    }
+    let mut total = 0;
+    for p in 0..6 {
+        if fails[p] > 0 {
+            print(f"P{p + 1}: {fails[p]} failures ");
+        }
+        total += fails[p];
+    }
+    println(f"2000 grids: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

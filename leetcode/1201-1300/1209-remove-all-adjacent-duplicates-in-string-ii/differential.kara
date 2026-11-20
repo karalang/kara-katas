@@ -1,0 +1,293 @@
+// LeetCode #1209: Remove All Adjacent Duplicates in String II -- the six arms
+// against the statement read literally and six more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_remove_duplicates(s: String, k: i64) -> String {
+    let mut runs: Vec[(char, i64)] = Vec.new();
+    for c in s.chars() {
+        let top = runs.len() - 1;
+        if top >= 0 and runs[top].0 == c {
+            runs[top].1 += 1;
+            if runs[top].1 == k {
+                runs.pop();
+            }
+        } else {
+            runs.push((c, 1));
+        }
+    }
+    let mut out = String.with_capacity(s.len());
+    for (c, n) in runs.iter() {
+        for _ in 0..n {
+            out.push(c);
+        }
+    }
+    out
+}
+
+// ---- arm 1: inplace -----------------------------------------------------
+fn a1_remove_duplicates(s: String, k: i64) -> String {
+    let mut b = s.bytes().to_vec();
+    let n = b.len();
+    let mut count = Vec.filled(n, 0);
+    let mut j = 0;
+    for i in 0..n {
+        b[j] = b[i];
+        count[j] = if j > 0 and b[j - 1] == b[j] { count[j - 1] + 1 } else { 1 };
+        if count[j] == k {
+            j -= k;
+        }
+        j += 1;
+    }
+    b.truncate(j);
+    String.from_utf8(b).unwrap()
+}
+
+// ---- arm 2: runs --------------------------------------------------------
+fn a2_unlink(prev: mut ref Vec[i64], next: mut ref Vec[i64], at: i64) {
+    let p = prev[at];
+    let q = next[at];
+    next[p] = q;
+    prev[q] = p;
+}
+
+fn a2_remove_duplicates(s: String, k: i64) -> String {
+    // node 0 stands before the runs; run r is node r + 1
+    let mut letter: Vec[char] = [' '];
+    let mut len: Vec[i64] = [0];
+    for c in s.chars() {
+        let m = letter.len();
+        if m > 1 and letter[m - 1] == c {
+            len[m - 1] += 1;
+        } else {
+            letter.push(c);
+            len.push(1);
+        }
+    }
+    let m = letter.len();
+    let mut prev: Vec[i64] = (0..m + 1).map(|i| i - 1).collect();
+    let mut next: Vec[i64] = (0..m + 1).map(|i| i + 1).collect();
+    for r in 1..m {
+        let mut at = r;
+        len[at] = len[at] % k;
+        let p = prev[at];
+        if p > 0 and letter[p] == letter[at] {
+            len[p] = (len[p] + len[at]) % k;
+            a2_unlink(mut prev, mut next, at);
+            at = p;
+        }
+        if len[at] == 0 {
+            a2_unlink(mut prev, mut next, at);
+        }
+    }
+    let mut out = String.with_capacity(s.len());
+    let mut at = next[0];
+    while at < m {
+        for _ in 0..len[at] {
+            out.push(letter[at]);
+        }
+        at = next[at];
+    }
+    out
+}
+
+// ---- arm 3: text --------------------------------------------------------
+fn a3_remove_duplicates(s: String, k: i64) -> String {
+    let mut out = String.with_capacity(s.len());
+    let mut streak: Vec[i64] = Vec.new();
+    for c in s.chars() {
+        let run = if out.ends_with(c.to_string()) { streak[streak.len() - 1] + 1 } else { 1 };
+        out.push(c);
+        streak.push(run);
+        if run == k {
+            out.truncate(out.len() - k);
+            streak.truncate(streak.len() - k);
+        }
+    }
+    out
+}
+
+// ---- arm 4: stack -------------------------------------------------------
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn remove_duplicates(s: String, k: i32) -> String {
+        let k = k as i64;
+        let mut stack: Vec[(char, i64)] = Vec.new();
+        for c in s.chars() {
+            if stack.len() > 0 and stack[stack.len() - 1].0 == c {
+                stack[stack.len() - 1].1 += 1;
+                if stack[stack.len() - 1].1 == k {
+                    stack.pop();
+                }
+            } else { stack.push((c, 1)); }
+        }
+        let pieces: Vec[String] = stack.into_iter().map(|(c, n)| c.to_string().repeat(n)).collect();
+        pieces.join("")
+    }
+}
+
+fn a4_remove_duplicates(s: String, k: i64) -> String {
+    A4Solution.remove_duplicates(s, k as i32)
+}
+
+// ---- arm 5: repeat ------------------------------------------------------
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn remove_duplicates(s: String, k: i32) -> String {
+        let mut st: Vec[(u8, i32)] = Vec.new();
+        for b in s.bytes() {
+            if st.len() > 0 {
+                if st[st.len() - 1].0 == b {
+                    st[st.len() - 1].1 += 1;
+                    if st[st.len() - 1].1 == k {
+                        st.pop();
+                    }
+                    continue;
+                }
+            }
+            st.push((b, 1));
+        }
+        st.iter().flat_map(|(c, n)| repeat(c as char).take(n)).collect()
+    }
+}
+
+fn a5_remove_duplicates(s: String, k: i64) -> String {
+    A5Solution.remove_duplicates(s, k as i32)
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// The first run of `k` equal letters found, removed, and the search begun
+// again from the start, until there is none.
+fn literal(s: String, k: i64) -> String {
+    let mut cs: Vec[char] = s.chars().collect();
+    let mut found = true;
+    while found {
+        found = false;
+        let mut i = 0;
+        while i + k <= cs.len() {
+            let mut j = i + 1;
+            while j < i + k and cs[j] == cs[i] {
+                j += 1;
+            }
+            if j == i + k {
+                let mut rest: Vec[char] = cs[0..i].to_vec();
+                rest.extend_from_slice(cs[i + k..cs.len()]);
+                cs = rest;
+                found = true;
+                break;
+            }
+            i += 1;
+        }
+    }
+    cs.iter().collect()
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(s: String, k: i64) -> Vec[String] {
+    [a0_remove_duplicates(s, k), a1_remove_duplicates(s, k), a2_remove_duplicates(s, k), a3_remove_duplicates(s, k), a4_remove_duplicates(s, k), a5_remove_duplicates(s, k)]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_text(seed: mut ref i64, n: i64, letters: i64) -> String {
+    let mut out = String.with_capacity(n);
+    for _ in 0..n {
+        out.push((b'a' + next_random(mut seed) % letters) as u8 as char);
+    }
+    out
+}
+
+fn reversed(s: String) -> String {
+    s.chars().rev().collect()
+}
+
+// every letter one later, z to a
+fn shifted(s: String) -> String {
+    String.from_utf8(s.bytes().iter().map(|b| b'a' + (b - b'a' + 1) % 26).collect()).unwrap()
+}
+
+// no `k` equal letters in a row
+fn settled(s: String, k: i64) -> bool {
+    let cs: Vec[char] = s.chars().collect();
+    let mut run = 0;
+    for i in 0..cs.len() {
+        run = if i > 0 and cs[i] == cs[i - 1] { run + 1 } else { 1 };
+        if run >= k {
+            return false;
+        }
+    }
+    true
+}
+
+fn digest(s: String) -> i64 {
+    let mut h = 0;
+    for b in s.bytes().iter() {
+        h = (h * 131 + (b as i64)) % 1000000007;
+    }
+    h
+}
+
+fn main() {
+    let names = ["the statement read literally", "no k equal letters in a row, and shorter by a multiple of k", "s reversed gives the answer reversed", "the answer given again comes back unchanged", "k copies of a letter put in anywhere give the same", "every letter one later gives every letter one later", "the ★ arm's answer"];
+    let mut fails = Vec.filled(7, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1209;
+    for _ in 0..2000 {
+        // 1 to 16 letters from the first 2 or 3, k from 2 to 4
+        let n = next_random(mut seed) % 16 + 1;
+        let letters = next_random(mut seed) % 2 + 2;
+        let k = next_random(mut seed) % 3 + 2;
+        let s = random_text(mut seed, n, letters);
+        let at = next_random(mut seed) % (n + 1);
+        let letter = (b'a' + next_random(mut seed) % letters) as u8 as char;
+        let mut grown = String.with_capacity(n + k);
+        grown.push_str(s[0..at]);
+        for _ in 0..k {
+            grown.push(letter);
+        }
+        grown.push_str(s[at..n]);
+        let got = arms(s, k);
+        let want = literal(s, k);
+        let back = arms(reversed(s), k);
+        let up = arms(shifted(s), k);
+        let more = arms(grown, k);
+        for a in 0..6 {
+            let v = ref got[a];
+            let again = arms(v, k);
+            let held = [
+                v == want,
+                settled(v, k) and (n - v.len()) % k == 0,
+                back[a] == reversed(v),
+                again[a] == v,
+                more[a] == v,
+                up[a] == shifted(v),
+                v == got[0],
+            ];
+            for p in 0..7 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {a}: {s} {k} -> \"{v}\"");
+                    }
+                }
+            }
+        }
+        check = (check * 131 + digest(want) + want.len()) % 1000000007;
+    }
+    for p in 0..7 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let total = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+}

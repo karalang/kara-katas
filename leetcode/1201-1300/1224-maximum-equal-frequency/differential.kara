@@ -1,0 +1,273 @@
+// LeetCode #1224: Maximum Equal Frequency -- the six arms against the
+// statement read literally and five more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_max_equal_freq(nums: Vec[i64]) -> i64 {
+    let top = nums.iter().max().unwrap();
+    let mut count = Vec.filled(top + 1, 0);
+    let mut with_count = Vec.filled(nums.len() + 1, 0);
+    let mut most = 0;
+    let mut best = 0;
+    for (k, x) in nums.iter().enumerate() {
+        with_count[count[x]] -= 1;
+        count[x] += 1;
+        with_count[count[x]] += 1;
+        most = most.max(count[x]);
+        let len = k + 1;
+        if most == 1
+            or with_count[most] * most + 1 == len
+            or (with_count[most - 1] + 1) * (most - 1) + 1 == len
+        {
+            best = len;
+        }
+    }
+    best
+}
+
+// ---- arm 1: maps --------------------------------------------------------
+fn a1_max_equal_freq(nums: Vec[i64]) -> i64 {
+    let mut count: Map[i64, i64] = Map.new();
+    let mut with_count: Map[i64, i64] = Map.new();
+    let mut best = 0;
+    for (k, x) in nums.iter().enumerate() {
+        let before = *count.get(x).unwrap_or(0);
+        if before > 0 {
+            with_count[before] -= 1;
+            if with_count[before] == 0 {
+                with_count.remove(before);
+            }
+        }
+        count[x] = before + 1;
+        with_count[before + 1] = with_count.get(before + 1).unwrap_or(0) + 1;
+        let mut counts: Vec[i64] = with_count.keys().collect();
+        counts.sort();
+        let works = match counts.len() {
+            1 => counts[0] == 1 or with_count[counts[0]] == 1,
+            2 => {
+                let (low, high) = (counts[0], counts[1]);
+                (low == 1 and with_count[low] == 1) or (high == low + 1 and with_count[high] == 1)
+            }
+            _ => false,
+        };
+        if works {
+            best = k + 1;
+        }
+    }
+    best
+}
+
+// ---- arm 2: ordered -----------------------------------------------------
+fn a2_max_equal_freq(nums: Vec[i64]) -> i64 {
+    let mut count: Map[i64, i64] = Map.new();
+    let mut with_count: SortedMap[i64, i64] = SortedMap.new();
+    let mut best = 0;
+    for (k, x) in nums.iter().enumerate() {
+        let c = count.get(x) ?? 0;
+        if c > 0 {
+            with_count[c] -= 1;
+            if with_count[c] == 0 {
+                with_count.remove(c);
+            }
+        }
+        count[x] = c + 1;
+        with_count[c + 1] = (with_count.get(c + 1) ?? 0) + 1;
+        let (low, low_many) = with_count.first().unwrap();
+        let (high, high_many) = with_count.last().unwrap();
+        let works = if low == high {
+            low == 1 or low_many == 1
+        } else {
+            with_count.len() == 2 and ((low == 1 and low_many == 1) or (high == low + 1 and high_many == 1))
+        };
+        if works {
+            best = k + 1;
+        }
+    }
+    best
+}
+
+// ---- arm 3: backwards ---------------------------------------------------
+fn a3_max_equal_freq(nums: Vec[i64]) -> i64 {
+    let mut count: Map[i64, i64] = Map.new();
+    for x in nums.iter() {
+        count[x] = count.get(x).unwrap_or(0) + 1;
+    }
+    let mut with_count: SortedMap[i64, i64] = SortedMap.new();
+    for (_, c) in count.iter() {
+        with_count[c] = with_count.get(c).unwrap_or(0) + 1;
+    }
+    let mut len = nums.len();
+    while len > 0 {
+        let (low, low_many) = with_count.first().unwrap();
+        let (high, high_many) = with_count.last().unwrap();
+        let works = if low == high {
+            low == 1 or low_many == 1
+        } else if with_count.len() == 2 {
+            (low == 1 and low_many == 1) or (high == low + 1 and high_many == 1)
+        } else {
+            false
+        };
+        if works {
+            return len;
+        }
+        // take nums[len - 1] off
+        let x = nums[len - 1];
+        let c = count[x];
+        with_count[c] -= 1;
+        if with_count[c] == 0 {
+            with_count.remove(c);
+        }
+        count[x] = c - 1;
+        if c > 1 {
+            with_count[c - 1] = with_count.get(c - 1).unwrap_or(0) + 1;
+        }
+        len -= 1;
+    }
+    0
+}
+
+// ---- arm 4: counts ------------------------------------------------------
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn max_equal_freq(nums: Vec[i32]) -> i32 {
+        let mut cnt = Vec.filled(100001, 0);
+        let mut freq = Vec.filled(100002, 0);
+        let mut max_f: i64 = 0;
+        let mut ans = 0;
+        for (i, x) in nums.iter().enumerate() {
+            let x = x as i64;
+            if cnt[x] > 0 {
+                freq[cnt[x]] -= 1;
+            }
+            cnt[x] += 1;
+            freq[cnt[x]] += 1;
+            max_f = max_f.max(cnt[x]);
+            let len = i + 1;
+            if max_f == 1 or freq[max_f] * max_f + 1 == len or (freq[max_f - 1] + 1) * (max_f - 1) + 1 == len {
+                ans = len;
+            }
+        }
+        ans as i32
+    }
+}
+
+fn a4_max_equal_freq(nums: Vec[i64]) -> i64 {
+    A4Solution.max_equal_freq(nums.iter().map(|v| v as i32).collect())
+}
+
+// ---- arm 5: hashed ------------------------------------------------------
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn max_equal_freq(nums: Vec[i32]) -> i32 {
+        let mut count: Map[i32, i32] = Map.new();
+        let mut freq: Map[i32, i32] = Map.new();
+        let mut max_f: i32 = 0;
+        let mut ans = 0;
+        for (i, x) in nums.iter().enumerate() {
+            let c = count.entry(x).or_insert(0);
+            if *c > 0 {
+                *freq.entry(*c).or_insert(0) -= 1;
+            }
+            *c += 1;
+            let c = *c;
+            *freq.entry(c).or_insert(0) += 1;
+            max_f = max_f.max(c);
+            let len = i as i32 + 1;
+            let at = |k: i32| *freq.get(k).unwrap_or(0);
+            if max_f == 1 or at(max_f) * max_f + 1 == len or (at(max_f - 1) + 1) * (max_f - 1) + 1 == len {
+                ans = len;
+            }
+        }
+        ans
+    }
+}
+
+fn a5_max_equal_freq(nums: Vec[i64]) -> i64 {
+    A5Solution.max_equal_freq(nums.iter().map(|v| v as i32).collect())
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// Every prefix, and every element of it taken out, kept when the numbers
+// left all appear the same number of times (or none are left); the longest
+// prefix kept.
+fn literal(nums: Vec[i64]) -> i64 {
+    let mut best = 0;
+    for len in 1..=nums.len() {
+        for out in 0..len {
+            let mut count: SortedMap[i64, i64] = SortedMap.new();
+            for k in 0..len {
+                if k != out {
+                    count[nums[k]] = count.get(nums[k]).unwrap_or(0) + 1;
+                }
+            }
+            let counts: Vec[i64] = count.values().collect();
+            if counts.iter().all(|c| c == counts[0]) {
+                best = len;
+            }
+        }
+    }
+    best
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(nums: Vec[i64]) -> Vec[i64] {
+    [a0_max_equal_freq(nums), a1_max_equal_freq(nums), a2_max_equal_freq(nums), a3_max_equal_freq(nums), a4_max_equal_freq(nums), a5_max_equal_freq(nums)]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["the statement read literally", "from 2 to the array's length", "the numbers renamed give the same", "a longer array never has a shorter answer", "the answer's prefix works whole", "the ★ arm's answer"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1224;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 19 + 2;
+        let values = next_random(mut seed) % 6 + 1;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % values + 1).collect();
+        let extra: Vec[i64] = (0..next_random(mut seed) % 5 + 1).map(|_| next_random(mut seed) % values + 1).collect();
+        let want = literal(nums);
+        let got = arms(nums);
+        let renamed = arms(nums.iter().map(|x| 100001 - x * 997).collect());
+        let mut longer = nums.clone();
+        longer.extend(extra);
+        let more = arms(longer);
+        for a in 0..6 {
+            let v = got[a];
+            let whole = if v >= 2 and v <= n { arms(nums[0..v].to_vec())[a] } else { -1 };
+            let held = [
+                v == want,
+                v >= 2 and v <= n,
+                renamed[a] == v,
+                more[a] >= v,
+                whole == v,
+                v == got[0],
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {a}: {nums} -> {v}");
+                    }
+                }
+            }
+        }
+        check = (check * 131 + want) % 1000000007;
+    }
+    for p in 0..6 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let total = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+}

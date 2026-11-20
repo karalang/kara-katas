@@ -1,0 +1,149 @@
+// LeetCode #1214: Two Sum BSTs -- search: every node of the second tree
+// looks for `target - value` down the first tree, going left or right at
+// each node as a binary search tree allows. O(n2 * h1).
+
+fn holds(node: Option[TreeNode], want: i32) -> bool {
+    let mut at = node;
+    while let Some(n) = at {
+        if n.val == want {
+            return true;
+        }
+        at = if want < n.val { n.left } else { n.right };
+    }
+    false
+}
+
+fn two_sum_bsts(root1: Option[TreeNode], root2: Option[TreeNode], target: i32) -> bool {
+    let mut stack: Vec[TreeNode] = Vec.new();
+    if let Some(r) = root2 {
+        stack.push(r);
+    }
+    while let Some(n) = stack.pop() {
+        if holds(root1, target - n.val) {
+            return true;
+        }
+        if let Some(l) = n.left {
+            stack.push(l);
+        }
+        if let Some(r) = n.right {
+            stack.push(r);
+        }
+    }
+    false
+}
+
+// ---- test harness ---------------------------------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+// the values put in one by one, as LeetCode's level-order lists of these
+// examples, which hold no gaps, describe the same trees
+fn bst(values: Vec[i32]) -> Option[TreeNode] {
+    let mut root: Option[TreeNode] = None;
+    for v in values.iter() {
+        let node = TreeNode { val: v, left: None, right: None };
+        let Some(r) = root else {
+            root = Some(node);
+            continue;
+        };
+        let mut at = r;
+        loop {
+            if v < at.val {
+                let Some(l) = at.left else {
+                    at.left = Some(node);
+                    break;
+                };
+                at = l;
+            } else {
+                let Some(x) = at.right else {
+                    at.right = Some(node);
+                    break;
+                };
+                at = x;
+            }
+        }
+    }
+    root
+}
+
+// a balanced tree over rising values
+fn balanced(sorted: Vec[i32], low: i64, high: i64) -> Option[TreeNode] {
+    if low >= high {
+        return None;
+    }
+    let mid = (low + high) / 2;
+    Some(TreeNode { val: sorted[mid], left: balanced(sorted, low, mid), right: balanced(sorted, mid + 1, high) })
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` distinct values from -range to range, rising
+fn distinct_values(seed: mut ref i64, n: i64, range: i64) -> Vec[i32] {
+    let mut seen: SortedSet[i64] = SortedSet.new();
+    while seen.len() < n {
+        let v = (next_random(mut seed) * 32768 + next_random(mut seed)) % (2 * range + 1) - range;
+        seen.insert(v);
+    }
+    seen.iter().map(|v| v as i32).collect()
+}
+
+fn main() {
+    let cases: Vec[(Vec[i32], Vec[i32], i32)] = [
+        ([2, 1, 4], [1, 0, 3], 5),
+        ([0, -10, 10], [5, 1, 7, 0, 2], 18),
+        ([1], [1], 2),
+        ([1], [1], 3),
+        ([-1000000000], [1000000000], 0),
+        ([1000000000], [1000000000, -1000000000], 1000000000),
+        ([5, 3, 8, 1, 4], [6, 2, 9], 17),
+        ([5, 3, 8, 1, 4], [6, 2, 9], 16),
+    ];
+    for (a, b, t) in cases.iter() {
+        println(f"{a} {b} {t}: {two_sum_bsts(bst(a), bst(b), t)}");
+    }
+    let mut seed = 1214;
+    let mut yes = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n1 = next_random(mut seed) % 8 + 1;
+        let n2 = next_random(mut seed) % 8 + 1;
+        let a: Vec[i32] = (0..n1).map(|_| (next_random(mut seed) % 21 - 10) as i32).collect();
+        let b: Vec[i32] = (0..n2).map(|_| (next_random(mut seed) % 21 - 10) as i32).collect();
+        let t = (next_random(mut seed) % 41 - 20) as i32;
+        let answer = two_sum_bsts(bst(a), bst(b), t);
+        if answer {
+            yes += 1;
+        }
+        check = (check * 131 + if answer { 2 } else { 1 }) % 1000000007;
+    }
+    println(f"1000 small cases: {yes} true, checksum {check}");
+    // The constraints' top: 5000 nodes in each tree, values up to 10^9.
+    let a = distinct_values(mut seed, 5000, 1000000000);
+    let b = distinct_values(mut seed, 5000, 1000000000);
+    let t1 = balanced(a, 0, 5000);
+    let t2 = balanced(b, 0, 5000);
+    let hit = a[1234] + b[4321];
+    println(f"5000 and 5000 nodes, a sum they hold: {two_sum_bsts(t1, t2, hit)}");
+    let mut misses = 0;
+    for _ in 0..20 {
+        let t = ((next_random(mut seed) * 32768 + next_random(mut seed)) % 2000000001 - 1000000000) as i32;
+        if not two_sum_bsts(t1, t2, t) {
+            misses += 1;
+        }
+    }
+    println(f"5000 and 5000 nodes, 20 random targets: {misses} not found");
+    // two chains of 5000, every node the right child of the one before in
+    // the first and the left child in the second
+    let rising: Vec[i32] = (0..5000).map(|i| (i * 2) as i32).collect();
+    let falling: Vec[i32] = (0..5000).map(|i| (-1 - i * 2) as i32).collect();
+    let c1 = bst(rising);
+    let c2 = bst(falling);
+    println(f"two chains of 5000, the two ends: {two_sum_bsts(c1, c2, 9998 - 1)}, an even target: {two_sum_bsts(c1, c2, 100)}");
+}

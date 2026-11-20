@@ -1,0 +1,126 @@
+// LeetCode #1268: Search Suggestions System -- by a trie: the products
+// inserted in sorted order, each node keeping the first three products
+// that pass through it, so a prefix's suggestions are its node's list.
+// O(n log n + total letters).
+
+struct TrieNode {
+    next: Vec[Option[i64]],
+    best: Vec[String],
+}
+
+fn suggested_products(products: Vec[String], search_word: String) -> Vec[Vec[String]] {
+    let mut sorted = products.clone();
+    sorted.sort();
+    let mut nodes: Vec[TrieNode] = [TrieNode { next: Vec.filled(26, None), best: Vec.new() }];
+    for p in sorted.iter() {
+        let mut at = 0;
+        for b in p.bytes() {
+            let k = (b - b'a') as i64;
+            at = match nodes[at].next[k] {
+                Some(child) => child,
+                None => {
+                    nodes.push(TrieNode { next: Vec.filled(26, None), best: Vec.new() });
+                    let child = nodes.len() - 1;
+                    nodes[at].next[k] = Some(child);
+                    child
+                }
+            };
+            if nodes[at].best.len() < 3 {
+                nodes[at].best.push(p.clone());
+            }
+        }
+    }
+    let mut out: Vec[Vec[String]] = Vec.new();
+    let mut at: Option[i64] = Some(0);
+    for b in search_word.bytes() {
+        at = match at {
+            Some(node) => nodes[node].next[b - b'a'],
+            None => None,
+        };
+        out.push(match at {
+            Some(node) => nodes[node].best.clone(),
+            None => Vec.new(),
+        });
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn words(list: Vec[Str]) -> Vec[String] {
+    list.iter().map(|w| w.to_string()).collect()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A word of 1 to `longest` letters from the first `letters` of the alphabet.
+fn random_word(longest: i64, letters: i64, seed: mut ref i64) -> String {
+    let len = next_random(mut seed) % longest + 1;
+    let mut w = String.new();
+    for _ in 0..len {
+        w.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+    }
+    w
+}
+
+// `n` different words.
+fn random_products(n: i64, longest: i64, letters: i64, seed: mut ref i64) -> Vec[String] {
+    let mut seen: SortedSet[String] = SortedSet.new();
+    let mut out: Vec[String] = Vec.new();
+    while out.len() < n {
+        let w = random_word(longest, letters, mut seed);
+        if seen.insert(w.clone()) {
+            out.push(w);
+        }
+    }
+    out
+}
+
+fn fold(check: i64, lists: Vec[Vec[String]]) -> i64 {
+    let mut c = check;
+    for list in lists.iter() {
+        c = (c * 131 + list.len()) % 1000000007;
+        for w in list.iter() {
+            for b in w.bytes() {
+                c = (c * 131 + b) % 1000000007;
+            }
+        }
+    }
+    c
+}
+
+fn main() {
+    // LeetCode's examples
+    println(f"{suggested_products(words(["mobile", "mouse", "moneypot", "monitor", "mousepad"]), "mouse")}");
+    println(f"{suggested_products(words(["havana"]), "havana")}");
+    println(f"{suggested_products(words(["bags", "baggage", "banner", "box", "cloths"]), "bags")}");
+    // 1000 random searches among 1 to 40 words of 1 to 6 letters from 2 to 4
+    let mut seed = 1268;
+    let mut shown = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 40 + 1;
+        let letters = next_random(mut seed) % 3 + 2;
+        let products = random_products(n, 6, letters, mut seed);
+        let search = random_word(7, letters, mut seed);
+        let got = suggested_products(products, search);
+        for list in got.iter() {
+            shown += list.len();
+        }
+        check = fold(check, got);
+    }
+    println(f"1000 random searches: {shown} suggestions, checksum {check}");
+    // the constraints' top: 1000 words of up to 20 letters, and a search of
+    // 1000 letters that starts with one of them
+    let products = random_products(1000, 20, 3, mut seed);
+    let mut search = products[0].clone();
+    while search.len() < 1000 {
+        search.push((b'a' + (next_random(mut seed) % 3) as u8) as char);
+    }
+    let got = suggested_products(products, search);
+    let lens: Vec[i64] = got.iter().take(12).map(|l| l.len()).collect();
+    println(f"{got.len()} lists, the first sizes {lens}, checksum {fold(0, got)}");
+}

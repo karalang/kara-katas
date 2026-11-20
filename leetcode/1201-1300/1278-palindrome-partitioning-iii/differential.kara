@@ -1,0 +1,272 @@
+// LeetCode #1278: the differential -- the five arms against the statement
+// read literally and five more properties, on 2000 random strings.
+
+// arm 0: palindrome_partition.kara
+fn a0_palindrome_partition(s: Str, k: i64) -> i64 {
+    let c: Vec[char] = s.chars().collect();
+    let n = c.len();
+    let mut cost: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, 0));
+    for len in 2..(n + 1) {
+        for i in 0..(n - len + 1) {
+            let j = i + len - 1;
+            let inner = if len > 2 { cost[i + 1][j - 1] } else { 0 };
+            cost[i][j] = inner + if c[i] != c[j] { 1 } else { 0 };
+        }
+    }
+    let unreachable = n + 1;
+    let mut best: Vec[Vec[i64]] = Vec.filled(k + 1, Vec.filled(n + 1, unreachable));
+    best[0][0] = 0;
+    for p in 1..(k + 1) {
+        for j in p..(n + 1) {
+            for i in (p - 1)..j {
+                let through = best[p - 1][i] + cost[i][j - 1];
+                if through < best[p][j] {
+                    best[p][j] = through;
+                }
+            }
+        }
+    }
+    best[k][n]
+}
+
+// arm 1: palindrome_partition_memo.kara
+fn a1_changes(c: Vec[char], from: i64, to: i64) -> i64 {
+    let mut i = from;
+    let mut j = to - 1;
+    let mut count = 0;
+    while i < j {
+        if c[i] != c[j] {
+            count += 1;
+        }
+        i += 1;
+        j -= 1;
+    }
+    count
+}
+
+fn a1_fewest(c: Vec[char], start: i64, parts: i64, memo: mut ref Map[(i64, i64), i64]) -> i64 {
+    let n = c.len();
+    if parts == 1 {
+        return a1_changes(c, start, n);
+    }
+    if let Some(known) = memo.get((start, parts)) {
+        return known;
+    }
+    let mut best = n;
+    // the first piece leaves at least one letter for each piece after it
+    for end in (start + 1)..(n - parts + 2) {
+        best = best.min(a1_changes(c, start, end) + a1_fewest(c, end, parts - 1, mut memo));
+    }
+    memo.insert((start, parts), best);
+    best
+}
+
+fn a1_palindrome_partition(s: Str, k: i64) -> i64 {
+    let c: Vec[char] = s.chars().collect();
+    let mut memo: Map[(i64, i64), i64] = Map.new();
+    a1_fewest(c, 0, k, mut memo)
+}
+
+// arm 2: palindrome_partition_centres.kara
+fn a2_palindrome_partition(s: Str, k: i64) -> i64 {
+    let c: Vec[char] = s.chars().collect();
+    let n = c.len();
+    let mut cost: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, 0));
+    for centre in 0..(2 * n - 1) {
+        let mut i = centre / 2;
+        let mut j = i + centre % 2;
+        let mut count = 0;
+        while i >= 0 and j < n {
+            if c[i] != c[j] {
+                count += 1;
+            }
+            cost[i][j] = count;
+            i -= 1;
+            j += 1;
+        }
+    }
+    // row[j]: the fewest changes for the first j letters in the pieces so far
+    let mut row: Vec[i64] = (0..(n + 1)).map(|j| if j == 0 { 0 } else { cost[0][j - 1] }).collect();
+    row[0] = n + 1;
+    for p in 2..(k + 1) {
+        let mut next: Vec[i64] = Vec.filled(n + 1, n + 1);
+        for j in p..(n + 1) {
+            next[j] = ((p - 1)..j).map(|i| row[i] + cost[i][j - 1]).min().unwrap();
+        }
+        row = next;
+    }
+    row[n]
+}
+
+// arm 3: palindrome_partition_bytes.kara
+fn a3_palindrome_partition(s: Str, k: i64) -> i64 {
+    let b = s.bytes();
+    let n = b.len();
+    let width = n + 1;
+    let none = i64.MAX;
+    let mut best: Vec[i64] = Vec.filled((k + 1) * width, none);
+    best[0] = 0;
+    for p in 0..k {
+        for i in p..n {
+            let here = best[p * width + i];
+            if here == none {
+                continue;
+            }
+            for j in (i + 1)..(n + 1) {
+                // s[i..j]: its changes, the pairs mirrored around its middle
+                let mut mismatched = 0;
+                let mut lo = i;
+                let mut hi = j - 1;
+                while lo < hi {
+                    if b[lo] != b[hi] {
+                        mismatched += 1;
+                    }
+                    lo += 1;
+                    hi -= 1;
+                }
+                let at = (p + 1) * width + j;
+                best[at] = best[at].min(here + mismatched);
+            }
+        }
+    }
+    best[k * width + n]
+}
+
+// arm 4: palindrome_partition_solution.kara
+impl A4Solution {
+    pub fn palindrome_partition(s: String, k: i32) -> i32 {
+        let s = s.bytes();
+        let n = s.len();
+        let k = k as i64;
+        let mut cost = Vec.filled(n, Vec.filled(n, 0i32));
+        for i in (0..n).rev() {
+            for j in i + 1..n {
+                cost[i][j] = cost[i + 1][j - 1] + if s[i] != s[j] { 1 } else { 0 };
+            }
+        }
+        let mut dp = Vec.filled(n + 1, Vec.filled(k + 1, i32.MAX / 2));
+        dp[0][0] = 0;
+        for i in 1..=n {
+            for p in 1..=k.min(i) {
+                for j in p - 1..i {
+                    dp[i][p] = dp[i][p].min(dp[j][p - 1] + cost[j][i - 1]);
+                }
+            }
+        }
+        dp[n][k]
+    }
+}
+
+struct A4Solution {}
+
+fn a4_palindrome_partition(s: Str, k: i64) -> i64 {
+    A4Solution.palindrome_partition(s.to_string(), k as i32)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A string of `n` letters from the first `letters` of the alphabet.
+fn random_text(n: i64, letters: i64, seed: mut ref i64) -> String {
+    let alphabet = "abcdefghijklmnopqrstuvwxyz";
+    let mut s = String.new();
+    for _ in 0..n {
+        let i = next_random(mut seed) % letters;
+        s.push_str(alphabet[i..i + 1]);
+    }
+    s
+}
+
+// ---- the differential ------------------------------------------------------
+
+fn arm(k: i64, s: Str, pieces: i64) -> i64 {
+    match k {
+        0 => a0_palindrome_partition(s, pieces),
+        1 => a1_palindrome_partition(s, pieces),
+        2 => a2_palindrome_partition(s, pieces),
+        3 => a3_palindrome_partition(s, pieces),
+        _ => a4_palindrome_partition(s, pieces),
+    }
+}
+
+// The statement read literally: every way of cutting the string into k
+// non-empty pieces, each gap between letters cut or not; a piece made a
+// palindrome by changing one letter of each pair that differs from its
+// mirror; the fewest changes over all the cuttings.
+fn literal(s: Str, k: i64) -> i64 {
+    let c: Vec[char] = s.chars().collect();
+    let n = c.len();
+    let mut best = n;
+    for cuts in 0..(1 << (n - 1)) {
+        let mut pieces: Vec[Vec[char]] = [Vec.new()];
+        for i in 0..n {
+            if i > 0 and (cuts >> (i - 1)) & 1 == 1 {
+                pieces.push(Vec.new());
+            }
+            let last = pieces.len() - 1;
+            pieces[last].push(c[i]);
+        }
+        if pieces.len() != k {
+            continue;
+        }
+        let mut changes = 0;
+        for piece in pieces.iter() {
+            let mirrored: Vec[char] = piece.iter().rev().collect();
+            let differ = (0..piece.len()).filter(|i| piece[i] != mirrored[i]).count();
+            changes += differ / 2;
+        }
+        best = best.min(changes);
+    }
+    best
+}
+
+fn main() {
+    let mut seed = 12780;
+    let mut fails: Array[i64, 6] = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 9 + 1;
+        let s = random_text(n, next_random(mut seed) % 2 + 2, mut seed);
+        let k = next_random(mut seed) % n + 1;
+        let want = literal(s, k);
+        let reversed: String = s.chars().rev().collect();
+        // the letters renamed: a to c, b to a, c to b
+        let renamed: String = s.chars().map(|x| if x == 'a' { 'c' } else if x == 'b' { 'a' } else { 'b' }).collect();
+        let longer = s.to_string() + random_text(1, 3, mut seed);
+        let star = arm(0, s, k);
+        check = (check * 131 + star) % 1000000007;
+        for a in 0..5 {
+            let got = arm(a, s, k);
+            if got != want {
+                fails[0] += 1;
+            }
+            if got < 0 or got > (n - k + 1) / 2 {
+                fails[1] += 1;
+            }
+            if arm(a, reversed, k) != got {
+                fails[2] += 1;
+            }
+            if arm(a, renamed, k) != got {
+                fails[3] += 1;
+            }
+            if arm(a, longer, k + 1) > got {
+                fails[4] += 1;
+            }
+            if got != star {
+                fails[5] += 1;
+            }
+            checks += 6;
+        }
+    }
+    let mut total = 0;
+    for p in 0..6 {
+        if fails[p] > 0 {
+            print(f"P{p + 1}: {fails[p]} failures ");
+        }
+        total += fails[p];
+    }
+    println(f"2000 strings: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

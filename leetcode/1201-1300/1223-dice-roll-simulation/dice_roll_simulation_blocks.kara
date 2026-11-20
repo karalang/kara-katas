@@ -1,0 +1,47 @@
+// LeetCode #1223: Dice Roll Simulation -- a sequence is a string of
+// blocks, each a face rolled 1 to roll_max times, no two neighbours the
+// same face: the sequences of i rolls whose last block is face j are, over
+// that block's length k, the sequences of i - k rolls not ending in j.
+// O(n * 6 * 15).
+
+fn die_simulator(n: i64, roll_max: Vec[i64]) -> i64 {
+    let modulus = 1_000_000_007;
+    let mut last_block = Vec.filled(n + 1, [0; 6]);
+    let mut total = Vec.filled(n + 1, 0);
+    total[0] = 1;
+    for i in 1..=n {
+        for j in 0..6 {
+            let mut sum = 0;
+            for k in 1..=roll_max[j].min(i) {
+                sum = (sum + total[i - k] - last_block[i - k][j] + modulus) % modulus;
+            }
+            last_block[i][j] = sum;
+            total[i] = (total[i] + sum) % modulus;
+        }
+    }
+    total[n]
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    println(f"{die_simulator(2, [1, 1, 2, 2, 2, 3])}");
+    println(f"{die_simulator(2, [1, 1, 1, 1, 1, 1])}");
+    println(f"{die_simulator(3, [1, 1, 1, 2, 2, 3])}");
+    println(f"{die_simulator(1, [1, 1, 1, 1, 1, 1])}");
+    let mut seed = 1223;
+    let mut check = 0;
+    for _ in 0..300 {
+        let n = next_random(mut seed) % 60 + 1;
+        let roll_max: Vec[i64] = (0..6).map(|_| next_random(mut seed) % 15 + 1).collect();
+        check = (check * 131 + die_simulator(n, roll_max)) % 1000000007;
+    }
+    println(f"300 random cases with n up to 60: checksum {check}");
+    let wide: Vec[i64] = (0..6).map(|_| next_random(mut seed) % 15 + 1).collect();
+    println(f"n = 5000: no face twice {die_simulator(5000, [1, 1, 1, 1, 1, 1])}, up to 15 {die_simulator(5000, [15, 15, 15, 15, 15, 15])}, {wide}: {die_simulator(5000, wide)}");
+}

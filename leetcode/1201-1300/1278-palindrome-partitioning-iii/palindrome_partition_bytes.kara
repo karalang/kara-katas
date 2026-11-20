@@ -1,0 +1,80 @@
+// LeetCode #1278: Palindrome Partitioning III -- over bytes: the string
+// read as `as_bytes`, a substring's changes counted where it is needed,
+// and the answers for (pieces, length) in one flat `Vec` indexed by
+// p * (n + 1) + j, filled forward: each reached prefix extended by every
+// next piece.
+
+fn palindrome_partition(s: Str, k: i64) -> i64 {
+    let b = s.bytes();
+    let n = b.len();
+    let width = n + 1;
+    let none = i64.MAX;
+    let mut best: Vec[i64] = Vec.filled((k + 1) * width, none);
+    best[0] = 0;
+    for p in 0..k {
+        for i in p..n {
+            let here = best[p * width + i];
+            if here == none {
+                continue;
+            }
+            for j in (i + 1)..(n + 1) {
+                // s[i..j]: its changes, the pairs mirrored around its middle
+                let mut mismatched = 0;
+                let mut lo = i;
+                let mut hi = j - 1;
+                while lo < hi {
+                    if b[lo] != b[hi] {
+                        mismatched += 1;
+                    }
+                    lo += 1;
+                    hi -= 1;
+                }
+                let at = (p + 1) * width + j;
+                best[at] = best[at].min(here + mismatched);
+            }
+        }
+    }
+    best[k * width + n]
+}
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A string of `n` letters from the first `letters` of the alphabet.
+fn random_text(n: i64, letters: i64, seed: mut ref i64) -> String {
+    let alphabet = "abcdefghijklmnopqrstuvwxyz";
+    let mut s = String.new();
+    for _ in 0..n {
+        let i = next_random(mut seed) % letters;
+        s.push_str(alphabet[i..i + 1]);
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's examples
+    println(f"{palindrome_partition("abc", 2)} {palindrome_partition("aabbc", 3)} {palindrome_partition("leetcode", 8)}");
+    // 2000 random strings of 1 to 30 letters from 2 to 4, cut into 1 to
+    // all of them
+    let mut seed = 1278;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 30 + 1;
+        let s = random_text(n, next_random(mut seed) % 3 + 2, mut seed);
+        let k = next_random(mut seed) % n + 1;
+        let got = palindrome_partition(s, k);
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random strings: {total} changes, checksum {check}");
+    // the constraints' top: 100 letters, the same one, two alternating,
+    // and at random from all 26, cut into 1, 7 and 100
+    let same = "a".repeat(100);
+    let alternating = "ab".repeat(50);
+    let wide = random_text(100, 26, mut seed);
+    println(f"{palindrome_partition(same, 1)} {palindrome_partition(alternating, 1)} {palindrome_partition(alternating, 2)} {palindrome_partition(wide, 1)} {palindrome_partition(wide, 7)} {palindrome_partition(wide, 100)}");
+}

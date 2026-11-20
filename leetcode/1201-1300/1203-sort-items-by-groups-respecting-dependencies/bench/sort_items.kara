@@ -1,0 +1,114 @@
+// LeetCode #1203 bench: the ★ arm (each item in no group given one of its
+// own, then Kahn's algorithm over the groups and over the items) on four
+// instances at the constraints' top, 30000 items, drawn once: every tenth
+// in no group and the nine after it in a group of their own (3000 groups),
+// each item after up to three of the items before it; the same with up to
+// six; every item in no group, up to three; and the first with the last
+// item and the first each made to follow the other, which has no answer.
+// Then 10 rounds over the four, each answer folded into a checksum.
+
+fn topo_sort(nodes: i64, edges: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut indegree = Vec.filled(nodes, 0);
+    for out in edges.iter() {
+        for v in out.iter() {
+            indegree[v] += 1;
+        }
+    }
+    let mut order: Vec[i64] = (0..nodes).filter(|v| indegree[v] == 0).collect();
+    let mut head = 0;
+    while head < order.len() {
+        let u = order[head];
+        head += 1;
+        for v in edges[u].iter() {
+            indegree[v] -= 1;
+            if indegree[v] == 0 {
+                order.push(v);
+            }
+        }
+    }
+    if order.len() == nodes { order } else { Vec.new() }
+}
+
+fn sort_items(n: i64, m: i64, group: Vec[i64], before_items: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut group = group.clone();
+    let mut groups = m;
+    for i in 0..n {
+        if group[i] < 0 {
+            group[i] = groups;
+            groups += 1;
+        }
+    }
+    let mut item_edges: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    let mut group_edges: Vec[Vec[i64]] = Vec.filled(groups, Vec.new());
+    for i in 0..n {
+        for b in before_items[i].iter() {
+            item_edges[b].push(i);
+            if group[b] != group[i] {
+                group_edges[group[b]].push(group[i]);
+            }
+        }
+    }
+    let items = topo_sort(n, item_edges);
+    let ranks = topo_sort(groups, group_edges);
+    if items.is_empty() or ranks.is_empty() {
+        return Vec.new();
+    }
+    let mut members: Vec[Vec[i64]] = Vec.filled(groups, Vec.new());
+    for i in items.iter() {
+        members[group[i]].push(i);
+    }
+    let mut out = Vec.new();
+    for g in ranks.iter() {
+        out.extend_from_slice(members[g]);
+    }
+    out
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn dependencies(seed: mut ref i64, n: i64, most: i64) -> Vec[Vec[i64]] {
+    let mut before_items: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for i in 1..n {
+        for _ in 0..next_random(mut seed) % (most + 1) {
+            let b = (next_random(mut seed) * 32768 + next_random(mut seed)) % i;
+            if not before_items[i].contains(b) {
+                before_items[i].push(b);
+            }
+        }
+    }
+    before_items
+}
+
+fn main() {
+    let n = 30000;
+    let m = 3000;
+    let mut seed = 1203;
+    let runs: Vec[i64] = (0..n).map(|i| if i % 10 == 0 { -1 } else { i / 10 }).collect();
+    let loose = dependencies(mut seed, n, 3);
+    let dense = dependencies(mut seed, n, 6);
+    let mut cycle = loose.clone();
+    cycle[0].push(n - 1);
+    if not cycle[n - 1].contains(0) {
+        cycle[n - 1].push(0);
+    }
+    let instances = [
+        (runs.clone(), loose),
+        (runs.clone(), dense),
+        (Vec.filled(n, -1), dependencies(mut seed, n, 3)),
+        (runs, cycle),
+    ];
+    let mut check = 0;
+    for _ in 0..10 {
+        for (group, before_items) in instances.iter() {
+            let order = sort_items(n, m, group, before_items);
+            check = (check * 131 + order.len()) % 1000000007;
+            for i in order.iter() {
+                check = (check * 131 + i + 1) % 1000000007;
+            }
+        }
+    }
+    println(f"10 rounds over 4 instances of 30000 items: checksum {check}");
+}

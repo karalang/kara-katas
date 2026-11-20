@@ -1,0 +1,280 @@
+// LeetCode #1223: Dice Roll Simulation -- the six arms against the
+// statement read literally and five more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_die_simulator(n: i64, roll_max: Vec[i64]) -> i64 {
+    let modulus = 1_000_000_007;
+    // count[f][r - 1]: sequences ending in face f rolled r times in a row
+    let mut count = Vec.filled(6, Vec.filled(15, 0));
+    for f in 0..6 {
+        count[f][0] = 1;
+    }
+    for _ in 1..n {
+        let mut next = Vec.filled(6, Vec.filled(15, 0));
+        for f in 0..6 {
+            for r in 0..roll_max[f] {
+                let c = count[f][r];
+                if c == 0 {
+                    continue;
+                }
+                for g in 0..6 {
+                    if g != f {
+                        next[g][0] = (next[g][0] + c) % modulus;
+                    } else if r + 1 < roll_max[f] {
+                        next[f][r + 1] = (next[f][r + 1] + c) % modulus;
+                    }
+                }
+            }
+        }
+        count = next;
+    }
+    let mut total = 0;
+    for f in 0..6 {
+        for r in 0..15 {
+            total = (total + count[f][r]) % modulus;
+        }
+    }
+    total
+}
+
+// ---- arm 1: subtract ----------------------------------------------------
+fn a1_die_simulator(n: i64, roll_max: Vec[i64]) -> i64 {
+    let modulus = 1_000_000_007;
+    // ending[i][j]: sequences of i rolls ending in j; total[i]: all of them,
+    // with total[0] = 1, the empty sequence
+    let mut ending = Vec.filled(n + 1, Vec.filled(6, 0));
+    let mut total = Vec.filled(n + 1, 0);
+    total[0] = 1;
+    for i in 1..=n {
+        for j in 0..6 {
+            let mut ways = total[i - 1];
+            let k = i - roll_max[j] - 1;
+            if k >= 0 {
+                ways = (ways - (total[k] - ending[k][j]) + 2 * modulus) % modulus;
+            }
+            ending[i][j] = ways;
+            total[i] = (total[i] + ways) % modulus;
+        }
+    }
+    total[n]
+}
+
+// ---- arm 2: memo --------------------------------------------------------
+fn a2_ways(left: i64, last: i64, run: i64, roll_max: Vec[i64], memo: mut ref Map[(i64, i64, i64), i64]) -> i64 {
+    if left == 0 {
+        return 1;
+    }
+    if let Some(known) = memo.get((left, last, run)) {
+        return known;
+    }
+    let mut total = 0;
+    for face in 0..6 {
+        if face != last {
+            total = (total + a2_ways(left - 1, face, 1, roll_max, mut memo)) % 1_000_000_007;
+        } else if run < roll_max[face] {
+            total = (total + a2_ways(left - 1, face, run + 1, roll_max, mut memo)) % 1_000_000_007;
+        }
+    }
+    memo.insert((left, last, run), total);
+    total
+}
+
+fn a2_die_simulator(n: i64, roll_max: Vec[i64]) -> i64 {
+    let mut memo: Map[(i64, i64, i64), i64] = Map.new();
+    let mut total = 0;
+    for face in 0..6 {
+        total = (total + a2_ways(n - 1, face, 1, roll_max, mut memo)) % 1_000_000_007;
+    }
+    total
+}
+
+// ---- arm 3: blocks ------------------------------------------------------
+fn a3_die_simulator(n: i64, roll_max: Vec[i64]) -> i64 {
+    let modulus = 1_000_000_007;
+    let mut last_block = Vec.filled(n + 1, [0; 6]);
+    let mut total = Vec.filled(n + 1, 0);
+    total[0] = 1;
+    for i in 1..=n {
+        for j in 0..6 {
+            let mut sum = 0;
+            for k in 1..=roll_max[j].min(i) {
+                sum = (sum + total[i - k] - last_block[i - k][j] + modulus) % modulus;
+            }
+            last_block[i][j] = sum;
+            total[i] = (total[i] + sum) % modulus;
+        }
+    }
+    total[n]
+}
+
+// ---- arm 4: cube --------------------------------------------------------
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn die_simulator(n: i32, roll_max: Vec[i32]) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let n = n as i64;
+        let mut dp = Vec.filled(n + 1, Vec.filled(6, Vec.filled(16, 0)));
+        for j in 0..6 {
+            dp[1][j][1] = 1;
+        }
+        for i in 2..=n {
+            for j in 0..6 {
+                for k in 1..=roll_max[j] as i64 {
+                    let v = dp[i - 1][j][k];
+                    if v == 0 {
+                        continue;
+                    }
+                    for t in 0..6 {
+                        if t != j {
+                            dp[i][t][1] = (dp[i][t][1] + v) % MOD;
+                        } else if k + 1 <= roll_max[j] {
+                            dp[i][j][k + 1] = (dp[i][j][k + 1] + v) % MOD;
+                        }
+                    }
+                }
+            }
+        }
+        let mut ans = 0;
+        for j in 0..6 {
+            for k in 1..=15 {
+                ans = (ans + dp[n][j][k]) % MOD;
+            }
+        }
+        ans as i32
+    }
+}
+
+fn a4_die_simulator(n: i64, roll_max: Vec[i64]) -> i64 {
+    A4Solution.die_simulator(n as i32, roll_max.iter().map(|v| v as i32).collect())
+}
+
+// ---- arm 5: sums --------------------------------------------------------
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn die_simulator(n: i32, roll_max: Vec[i32]) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let n = n as i64;
+        let mut dp = Vec.filled(n + 1, [0; 6]);
+        let mut sum = Vec.filled(n + 1, 0);
+        sum[0] = 1;
+        for i in 1..=n {
+            for j in 0..6 {
+                dp[i][j] = sum[i - 1];
+                let m = roll_max[j] as i64;
+                if i > m {
+                    let k = i - m - 1;
+                    dp[i][j] = (dp[i][j] - (sum[k] - dp[k][j]) % MOD + 2 * MOD) % MOD;
+                }
+                sum[i] = (sum[i] + dp[i][j]) % MOD;
+            }
+        }
+        sum[n] as i32
+    }
+}
+
+fn a5_die_simulator(n: i64, roll_max: Vec[i64]) -> i64 {
+    A5Solution.die_simulator(n as i32, roll_max.iter().map(|v| v as i32).collect())
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// Every sequence of n rolls, as the n digits of a number in base 6, kept
+// when no face comes up more than its limit times in a row.
+fn literal(n: i64, roll_max: Vec[i64]) -> i64 {
+    let mut total = 1;
+    for _ in 0..n {
+        total *= 6;
+    }
+    let mut kept = 0;
+    for code in 0..total {
+        let mut rest = code;
+        let mut last = -1;
+        let mut run = 0;
+        let mut good = true;
+        for _ in 0..n {
+            let face = rest % 6;
+            rest /= 6;
+            run = if face == last { run + 1 } else { 1 };
+            last = face;
+            if run > roll_max[face] {
+                good = false;
+            }
+        }
+        if good {
+            kept += 1;
+        }
+    }
+    kept
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(n: i64, roll_max: Vec[i64]) -> Vec[i64] {
+    [a0_die_simulator(n, roll_max), a1_die_simulator(n, roll_max), a2_die_simulator(n, roll_max), a3_die_simulator(n, roll_max), a4_die_simulator(n, roll_max), a5_die_simulator(n, roll_max)]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["the statement read literally", "with every limit 15, 6^n (n up to 15)", "from 0 to 10^9 + 6", "the limits reversed give the same", "a limit raised by one never lowers the count (n up to 11)", "the ★ arm's answer"];
+    let modulus = 1_000_000_007;
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1223;
+    for case in 0..2000 {
+        // a third with n from 1 to 5, a third from 6 to 40, a third from 41 to 120
+        let n = match case % 3 {
+            0 => next_random(mut seed) % 5 + 1,
+            1 => next_random(mut seed) % 35 + 6,
+            _ => next_random(mut seed) % 80 + 41,
+        };
+        let roll_max: Vec[i64] = (0..6).map(|_| next_random(mut seed) % 15 + 1).collect();
+        let face = next_random(mut seed) % 6;
+        let got = arms(n, roll_max);
+        let free = arms(n, [15, 15, 15, 15, 15, 15]);
+        let reversed = arms(n, roll_max.iter().rev().collect());
+        let mut raised = roll_max.clone();
+        raised[face] = (raised[face] + 1).min(15);
+        let more = arms(n, raised);
+        let want = if n <= 5 { literal(n, roll_max) } else { -1 };
+        let mut power = 1;
+        for _ in 0..n {
+            power = power * 6 % modulus;
+        }
+        for a in 0..6 {
+            let v = got[a];
+            let held = [
+                n > 5 or v == want,
+                n > 15 or free[a] == power,
+                v >= 0 and v < modulus,
+                reversed[a] == v,
+                n > 11 or more[a] >= v,
+                v == got[0],
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {a}: n = {n}, {roll_max} -> {v}");
+                    }
+                }
+            }
+        }
+        check = (check * 131 + got[0]) % 1000000007;
+    }
+    for p in 0..6 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let total = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+}

@@ -1,0 +1,315 @@
+// LeetCode #1215: Stepping Numbers -- the six arms
+// against the statement read literally and six more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_count_stepping_numbers(low: i64, high: i64) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    if low == 0 {
+        out.push(0);
+    }
+    let mut queue: Vec[i64] = (1..10).collect();
+    let mut head = 0;
+    while head < queue.len() {
+        let n = queue[head];
+        head += 1;
+        if n > high {
+            break;
+        }
+        if n >= low {
+            out.push(n);
+        }
+        let last = n % 10;
+        if last > 0 {
+            queue.push(n * 10 + last - 1);
+        }
+        if last < 9 {
+            queue.push(n * 10 + last + 1);
+        }
+    }
+    out
+}
+
+// ---- arm 1: dfs ---------------------------------------------------------
+fn a1_grow(n: i64, low: i64, high: i64, out: mut ref Vec[i64]) {
+    if n > high {
+        return;
+    }
+    if n >= low {
+        out.push(n);
+    }
+    let last = n % 10;
+    if n == 0 {
+        return;
+    }
+    if last > 0 {
+        a1_grow(n * 10 + last - 1, low, high, mut out);
+    }
+    if last < 9 {
+        a1_grow(n * 10 + last + 1, low, high, mut out);
+    }
+}
+
+fn a1_count_stepping_numbers(low: i64, high: i64) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    for d in 0..10 {
+        a1_grow(d, low, high, mut out);
+    }
+    out.sort();
+    out
+}
+
+// ---- arm 2: table -------------------------------------------------------
+fn a2_all_stepping() -> Vec[i64] {
+    let mut table: Vec[i64] = (0..10).collect();
+    let mut level: Vec[i64] = (1..10).collect();
+    for _ in 1..10 {
+        let mut next: Vec[i64] = Vec.new();
+        for n in level.iter() {
+            let last = n % 10;
+            if last > 0 {
+                next.push(n * 10 + last - 1);
+            }
+            if last < 9 {
+                next.push(n * 10 + last + 1);
+            }
+        }
+        table.extend(next.iter());
+        level = next;
+    }
+    table
+}
+
+// the first place in `table` whose number is at least `v`
+fn a2_first_at_least(table: Vec[i64], v: i64) -> i64 {
+    let mut lo = 0;
+    let mut hi = table.len();
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if table[mid] < v {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    lo
+}
+
+fn a2_count_stepping_numbers(low: i64, high: i64) -> Vec[i64] {
+    let table = a2_all_stepping();
+    let from = a2_first_at_least(table, low);
+    let to = a2_first_at_least(table, high + 1);
+    table[from..to].to_vec()
+}
+
+// ---- arm 3: digits ------------------------------------------------------
+fn a3_count_stepping_numbers(low: i64, high: i64) -> Vec[i64] {
+    let digits = "0123456789";
+    let mut out: Vec[i64] = Vec.new();
+    let mut level: Vec[String] = Vec.new();
+    for c in digits.chars() {
+        level.push(c.to_string());
+    }
+    let mut length = 1;
+    let longest = high.to_string().len();
+    while length <= longest {
+        for s in level.iter() {
+            let n = i64.parse(s).unwrap();
+            if n >= low and n <= high {
+                out.push(n);
+            }
+        }
+        let mut next: Vec[String] = Vec.new();
+        for s in level.iter() {
+            if s == "0" {
+                continue;
+            }
+            let last = s.bytes()[s.len() - 1] as i64 - 48;
+            if last > 0 {
+                next.push(f"{s}{last - 1}");
+            }
+            if last < 9 {
+                next.push(f"{s}{last + 1}");
+            }
+        }
+        level = next;
+        length += 1;
+    }
+    out
+}
+
+// ---- arm 4: queue -------------------------------------------------------
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn count_stepping_numbers(low: i32, high: i32) -> Vec[i32] {
+        let (low, high) = (low as i64, high as i64);
+        let mut res = Vec.new();
+        if low == 0 {
+            res.push(0);
+        }
+        let mut q: VecDeque[i64] = (1..=9).collect();
+        while let Some(num) = q.pop_front() {
+            if num > high {
+                continue;
+            }
+            if num >= low {
+                res.push(num as i32);
+            }
+            let last = num % 10;
+            if last > 0 {
+                q.push_back(num * 10 + last - 1);
+            }
+            if last < 9 {
+                q.push_back(num * 10 + last + 1);
+            }
+        }
+        res
+    }
+}
+
+fn a4_count_stepping_numbers(low: i64, high: i64) -> Vec[i64] {
+    A4Solution.count_stepping_numbers(low as i32, high as i32).iter().map(|v| v as i64).collect()
+}
+
+// ---- arm 5: nested ------------------------------------------------------
+struct A5Solution {}
+
+fn a5_dfs(num: i64, low: i64, high: i64, res: mut ref Vec[i32]) {
+    if num > high {
+        return;
+    }
+    if num >= low {
+        res.push(num as i32);
+    }
+    if num == 0 {
+        return;
+    }
+    let last = num % 10;
+    if last > 0 {
+        a5_dfs(num * 10 + last - 1, low, high, mut res);
+    }
+    if last < 9 {
+        a5_dfs(num * 10 + last + 1, low, high, mut res);
+    }
+}
+
+impl A5Solution {
+    pub fn count_stepping_numbers(low: i32, high: i32) -> Vec[i32] {
+        let mut res = Vec.new();
+        for d in 0..=9 {
+            a5_dfs(d, low, high, mut res);
+        }
+        res.sort();
+        res
+    }
+}
+
+fn a5_count_stepping_numbers(low: i64, high: i64) -> Vec[i64] {
+    A5Solution.count_stepping_numbers(low as i32, high as i32).iter().map(|v| v as i64).collect()
+}
+
+// ---- the statement read literally -----------------------------------------
+
+fn stepping(n: i64) -> bool {
+    let mut rest = n;
+    while rest >= 10 {
+        let step = rest % 10 - rest / 10 % 10;
+        if step != 1 and step != -1 {
+            return false;
+        }
+        rest /= 10;
+    }
+    true
+}
+
+// Every number from `low` to `high`, each one's digits looked at in turn.
+fn literal(low: i64, high: i64) -> Vec[i64] {
+    (low..=high).filter(|n| stepping(n)).collect()
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(low: i64, high: i64) -> Vec[Vec[i64]] {
+    [a0_count_stepping_numbers(low, high), a1_count_stepping_numbers(low, high), a2_count_stepping_numbers(low, high), a3_count_stepping_numbers(low, high), a4_count_stepping_numbers(low, high), a5_count_stepping_numbers(low, high)]
+}
+
+fn reversed(n: i64) -> i64 {
+    let mut rest = n;
+    let mut out = 0;
+    while rest > 0 {
+        out = out * 10 + rest % 10;
+        rest /= 10;
+    }
+    out
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["the statement read literally", "rising, every number stepping and in range", "the range split in two gives the two answers one after the other", "the range one wider at each end holds the answer and at most two more", "every number's digits reversed make a stepping number", "the range from 0 to high, cut at low, gives the same", "the ★ arm's answer"];
+    let top = 2000000000;
+    let mut fails = Vec.filled(7, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1215;
+    for _ in 0..2000 {
+        // a range of up to 300 numbers, starting below 100, below 100000,
+        // or anywhere up to the top
+        let scale = [100, 100000, top - 299][next_random(mut seed) % 3];
+        let low = (next_random(mut seed) * 32768 + next_random(mut seed)) % scale;
+        let high = low + next_random(mut seed) % 300;
+        let mid = low + next_random(mut seed) % (high - low + 1);
+        let want = literal(low, high);
+        let got = arms(low, high);
+        let first = arms(low, mid);
+        let second = arms(mid + 1, high);
+        let wider = arms(if low > 0 { low - 1 } else { 0 }, if high < top { high + 1 } else { top });
+        let from_zero = arms(0, high);
+        for k in 0..6 {
+            let v = ref got[k];
+            let mut joined = first[k].clone();
+            joined.extend(second[k].iter());
+            let mut ordered = true;
+            for i in 0..v.len() {
+                if not stepping(v[i]) or v[i] < low or v[i] > high or (i > 0 and v[i - 1] >= v[i]) {
+                    ordered = false;
+                }
+            }
+            let held_wider = v.iter().all(|n| wider[k].contains(n)) and wider[k].len() <= v.len() + 2;
+            let cut: Vec[i64] = from_zero[k].iter().filter(|n| n >= low).collect();
+            let held = [
+                v == want,
+                ordered,
+                joined == v,
+                held_wider,
+                v.iter().all(|n| stepping(reversed(n))),
+                cut == v,
+                v == got[0],
+            ];
+            for p in 0..7 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {k}: [{low}, {high}] -> {v}");
+                    }
+                }
+            }
+        }
+        for n in want.iter() {
+            check = (check * 131 + n % 1000000007) % 1000000007;
+        }
+        check = (check * 131 + want.len()) % 1000000007;
+    }
+    for p in 0..7 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let total = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+}

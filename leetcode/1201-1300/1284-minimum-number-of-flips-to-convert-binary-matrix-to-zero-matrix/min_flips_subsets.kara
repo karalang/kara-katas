@@ -1,0 +1,72 @@
+// LeetCode #1284: Minimum Number of Flips to Convert Binary Matrix to Zero
+// Matrix -- by subsets: flips commute and a cell flipped twice is not
+// flipped, so an answer is a set of cells. Every set is tried, and the
+// smallest whose flips together clear the matrix is kept. O(2^(mn) mn)
+
+fn min_flips(mat: Vec[Vec[i64]]) -> i64 {
+    let rows = mat.len();
+    let cols = mat[0].len();
+    let mut best = -1;
+    for chosen in 0..(1 << (rows * cols)) {
+        let mut grid: Vec[Vec[i64]] = mat.clone();
+        for cell in 0..(rows * cols) {
+            if (chosen >> cell) & 1 == 0 {
+                continue;
+            }
+            let (i, j) = (cell / cols, cell % cols);
+            for (di, dj) in [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)] {
+                let (r, c) = (i + di, j + dj);
+                if r >= 0 and r < rows and c >= 0 and c < cols {
+                    grid[r][c] ^= 1;
+                }
+            }
+        }
+        if grid.iter().all(|row| row.iter().all(|x| *x == 0)) {
+            let size = chosen.count_ones();
+            if best < 0 or size < best {
+                best = size;
+            }
+        }
+    }
+    best
+}
+// ---- test harness ---------------------------------------------------------
+
+// The matrix of `rows` by `cols` whose cells are the bits of `bits`, row by
+// row from the lowest bit.
+fn matrix(rows: i64, cols: i64, bits: i64) -> Vec[Vec[i64]] {
+    let mut mat: Vec[Vec[i64]] = Vec.new();
+    for i in 0..rows {
+        let mut row: Vec[i64] = Vec.new();
+        for j in 0..cols {
+            row.push((bits >> (i * cols + j)) & 1);
+        }
+        mat.push(row);
+    }
+    mat
+}
+
+fn main() {
+    // LeetCode's examples
+    println(f"{min_flips([[0, 0], [0, 1]])} {min_flips([[0]])} {min_flips([[1, 0, 0], [1, 0, 0]])}");
+    // every matrix of every shape the constraints allow, 1 by 1 to 3 by 3
+    let mut check = 0;
+    for rows in 1..4 {
+        for cols in 1..4 {
+            let mut solvable = 0;
+            let mut flips = 0;
+            let mut most = 0;
+            for bits in 0..(1 << (rows * cols)) {
+                let f = min_flips(matrix(rows, cols, bits));
+                check = (check * 131 + f + 2) % 1000000007;
+                if f >= 0 {
+                    solvable += 1;
+                    flips += f;
+                    most = most.max(f);
+                }
+            }
+            println(f"{rows} by {cols}: {solvable} of {1 << (rows * cols)} solvable, {flips} flips, at most {most}");
+        }
+    }
+    println(f"checksum {check}");
+}

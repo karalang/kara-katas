@@ -1,0 +1,141 @@
+// LeetCode #1282: Group the People Given the Group Size They Belong To --
+// by labels, in two passes: the first gives every person a group number,
+// the open group of their size or a new one, closing a group once it is
+// full; the second files every person under their number. O(n)
+
+fn group_the_people(group_sizes: Vec[i64]) -> Vec[Vec[i64]] {
+    let n = group_sizes.len();
+    let mut open: Vec[Option[i64]] = Vec.filled(n + 1, None);
+    let mut members: Vec[i64] = Vec.new();
+    let mut label: Vec[i64] = Vec.filled(n, 0);
+    for person in 0..n {
+        let size = group_sizes[person];
+        let id = match open[size] {
+            Some(id) => id,
+            None => {
+                members.push(0);
+                open[size] = Some(members.len() - 1);
+                members.len() - 1
+            }
+        };
+        label[person] = id;
+        members[id] += 1;
+        if members[id] == size {
+            open[size] = None;
+        }
+    }
+    let mut groups: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..members.len() {
+        groups.push(Vec.new());
+    }
+    for person in 0..n {
+        groups[label[person]].push(person);
+    }
+    groups
+}
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// Any grouping is accepted, so the harness compares one form of it: each
+// group sorted, and the groups ordered by their first person.
+fn canonical(groups: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    for g in groups.iter() {
+        let mut c = g.clone();
+        c.sort();
+        out.push(c);
+    }
+    out.sort_by_key(|g| g[0]);
+    out
+}
+
+// Every person in exactly one group, of the size they were given.
+fn valid(sizes: Vec[i64], groups: Vec[Vec[i64]]) -> bool {
+    let n = sizes.len();
+    let mut seen = Vec.filled(n, false);
+    for g in groups.iter() {
+        for p in g.iter() {
+            if *p < 0 or *p >= n or seen[*p] or sizes[*p] != g.len() {
+                return false;
+            }
+            seen[*p] = true;
+        }
+    }
+    seen.iter().all(|s| *s)
+}
+
+fn show(groups: Vec[Vec[i64]]) -> String {
+    let mut out = "[";
+    for (k, g) in groups.iter().enumerate() {
+        if k > 0 {
+            out.push_str(",");
+        }
+        out.push_str("[");
+        for (j, p) in g.iter().enumerate() {
+            if j > 0 {
+                out.push_str(",");
+            }
+            out.push_str(f"{p}");
+        }
+        out.push_str("]");
+    }
+    out.push_str("]");
+    out
+}
+
+// A random problem: groups of random sizes, mostly up to 8 so that a size
+// repeats, then the people shuffled.
+fn problem(seed: mut ref i64, most: i64) -> Vec[i64] {
+    let n = next_random(mut *seed) % most + 1;
+    let mut sizes: Vec[i64] = Vec.new();
+    while sizes.len() < n {
+        let left = n - sizes.len();
+        let cap = if next_random(mut *seed) % 4 == 0 { left } else { left.min(8) };
+        let s = next_random(mut *seed) % cap + 1;
+        for _ in 0..s {
+            sizes.push(s);
+        }
+    }
+    let mut i = n - 1;
+    while i > 0 {
+        let j = next_random(mut *seed) % (i + 1);
+        sizes.swap(i, j);
+        i -= 1;
+    }
+    sizes
+}
+
+fn main() {
+    // LeetCode's examples, everyone alone, and everyone together
+    let examples: Vec[Vec[i64]] = [[3, 3, 3, 3, 3, 1, 3], [2, 1, 3, 3, 3, 2], [1, 1, 1], [4, 4, 4, 4]];
+    for sizes in examples.iter() {
+        let groups = group_the_people(sizes);
+        println(f"{show(canonical(groups))} {valid(sizes, groups)}");
+    }
+    // 1000 random problems of up to 500 people
+    let mut seed = 1282;
+    let mut people = 0;
+    let mut count = 0;
+    let mut ok = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let sizes = problem(mut seed, 500);
+        people += sizes.len();
+        let groups = group_the_people(sizes);
+        count += groups.len();
+        if valid(sizes, groups) {
+            ok += 1;
+        }
+        for g in canonical(groups).iter() {
+            for p in g.iter() {
+                check = (check * 131 + p + 1) % 1000000007;
+            }
+            check = (check * 131 + 7) % 1000000007;
+        }
+    }
+    println(f"1000 random problems: {people} people in {count} groups, {ok} valid, checksum {check}");
+}

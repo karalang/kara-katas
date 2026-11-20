@@ -1,0 +1,125 @@
+// LeetCode #1233: Remove Sub-Folders from the Filesystem -- a trie of the
+// folders' names, each node's children in a `Map[String, i64]` from name
+// to node and a mark where a folder ends. A folder is kept when the walk
+// down its names meets no mark before its own end. O(n · L).
+
+struct Node {
+    children: Map[String, i64],
+    end: bool,
+}
+
+fn remove_subfolders(folder: Vec[String]) -> Vec[String] {
+    let mut nodes: Vec[Node] = [Node { children: Map.new(), end: false }];
+    for f in folder.iter() {
+        let mut at = 0;
+        for name in f.split("/").skip(1) {
+            at = match nodes[at].children.get(name) {
+                Some(next) => *next,
+                None => {
+                    let next = nodes.len();
+                    nodes.push(Node { children: Map.new(), end: false });
+                    nodes[at].children.insert(name.to_string(), next);
+                    next
+                }
+            };
+        }
+        nodes[at].end = true;
+    }
+    let mut kept: Vec[String] = Vec.new();
+    for f in folder.iter() {
+        let names: Vec[String] = f.split("/").skip(1).map(|p| p.to_string()).collect();
+        let mut at = 0;
+        let mut inside = false;
+        for (i, name) in names.iter().enumerate() {
+            at = *nodes[at].children.get(name).unwrap();
+            if nodes[at].end and i < names.len() - 1 {
+                inside = true;
+                break;
+            }
+        }
+        if not inside {
+            kept.push(f.clone());
+        }
+    }
+    kept
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// The folders kept, sorted, since the statement allows any order.
+fn sorted(kept: own Vec[String]) -> Vec[String] {
+    let mut all = kept;
+    all.sort();
+    all
+}
+
+// Up to `count` distinct folders from `seed`, each 1 to `depth` names drawn
+// from "a", "b", "ab" and "ba", so that names share prefixes.
+fn folders(count: i64, depth: i64, seed: mut ref i64) -> Vec[String] {
+    let names = ["a", "b", "ab", "ba"];
+    let mut seen: Set[String] = Set.new();
+    let mut all: Vec[String] = Vec.new();
+    for _ in 0..count {
+        let d = next_random(mut seed) % depth + 1;
+        let mut f = "";
+        for _ in 0..d {
+            f = f"{f}/{names[next_random(mut seed) % 4]}";
+        }
+        if not seen.contains(f) {
+            seen.insert(f.clone());
+            all.push(f);
+        }
+    }
+    all
+}
+
+fn main() {
+    // LeetCode's three examples, and one folder
+    println(f"{sorted(remove_subfolders(["/a", "/a/b", "/c/d", "/c/d/e", "/c/f"]))}");
+    println(f"{sorted(remove_subfolders(["/a", "/a/b/c", "/a/b/d"]))}");
+    println(f"{sorted(remove_subfolders(["/a/b/c", "/a/b/ca", "/a/b/d"]))}");
+    println(f"{sorted(remove_subfolders(["/x"]))}");
+    // 1000 random lists of up to 30 folders, up to 4 deep
+    let mut seed = 1233;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let count = next_random(mut seed) % 30 + 1;
+        let kept = sorted(remove_subfolders(folders(count, 4, mut seed)));
+        total += kept.len();
+        for f in kept.iter() {
+            for c in f.chars() {
+                check = (check * 131 + c as i64) % 1000000007;
+            }
+            check = (check * 131 + 7) % 1000000007;
+        }
+        check = (check * 131 + 9) % 1000000007;
+    }
+    println(f"1000 random lists: {total} kept, checksum {check}");
+    // the constraints' top: 4 · 10^4 folders of 1 to 4 names, the first of
+    // four letters and the rest of two, from "a" to "h"
+    let letters = ["a", "b", "c", "d", "e", "f", "g", "h"];
+    let mut seen: Set[String] = Set.new();
+    let mut many: Vec[String] = Vec.new();
+    while many.len() < 40000 {
+        let d = next_random(mut seed) % 4 + 1;
+        let mut f = "";
+        for level in 0..d {
+            f = f"{f}/";
+            for _ in 0..if level == 0 { 4 } else { 2 } {
+                f = f"{f}{letters[next_random(mut seed) % 8]}";
+            }
+        }
+        if not seen.contains(f) {
+            seen.insert(f.clone());
+            many.push(f);
+        }
+    }
+    let kept = sorted(remove_subfolders(many));
+    println(f"40000 folders: {kept.len()} kept, the first {kept[0]} and the last {kept[kept.len() - 1]}");
+}

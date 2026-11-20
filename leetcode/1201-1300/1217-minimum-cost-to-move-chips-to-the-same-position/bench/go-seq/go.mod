@@ -1,0 +1,3 @@
+module minimum_cost_to_move_chips_to_the_same_position
+
+go 1.21

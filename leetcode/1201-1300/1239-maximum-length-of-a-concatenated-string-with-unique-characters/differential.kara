@@ -1,0 +1,249 @@
+// LeetCode #1239: Maximum Length of a Concatenated String with Unique Characters -- the arms
+// against the statement read literally and five more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_mask_of(word: String) -> Option[i64] {
+    let mut mask = 0;
+    for b in word.bytes() {
+        let bit = 1 << (b - 97);
+        if mask & bit != 0 {
+            return None;
+        }
+        mask |= bit;
+    }
+    Some(mask)
+}
+
+fn a0_search(masks: Vec[i64], at: i64, taken: i64) -> i64 {
+    if at == masks.len() {
+        return taken.count_ones();
+    }
+    let mut best = a0_search(masks, at + 1, taken);
+    if taken & masks[at] == 0 {
+        best = best.max(a0_search(masks, at + 1, taken | masks[at]));
+    }
+    best
+}
+
+fn a0_max_length(arr: Vec[String]) -> i64 {
+    let masks: Vec[i64] = arr.iter().filter_map(|w| a0_mask_of(w)).collect();
+    a0_search(masks, 0, 0)
+}
+
+// ---- arm 1: grow --------------------------------------------------------
+fn a1_max_length(arr: Vec[String]) -> i64 {
+    let mut sets = [0];
+    let mut best = 0;
+    for word in arr.iter() {
+        let mut mask = 0;
+        let mut unique = true;
+        for c in word.chars() {
+            let bit = 1 << (c as i64 - 'a' as i64);
+            if mask & bit != 0 {
+                unique = false;
+            }
+            mask |= bit;
+        }
+        if not unique {
+            continue;
+        }
+        let known = sets.len();
+        for k in 0..known {
+            if sets[k] & mask == 0 {
+                let joined = sets[k] | mask;
+                sets.push(joined);
+                best = best.max(joined.count_ones());
+            }
+        }
+    }
+    best
+}
+
+// ---- arm 2: subsets -----------------------------------------------------
+fn a2_max_length(arr: Vec[String]) -> i64 {
+    let n = arr.len();
+    let letters: Vec[i64] = arr.iter().map(|w| w.chars().fold(0, |m, c| m | (1 << (c as i64 - 97)))).collect();
+    let mut best = 0;
+    for subset in 0..(1 << n) {
+        let mut union = 0;
+        let mut total = 0;
+        for k in 0..n {
+            if (subset >> k) & 1 == 1 {
+                union |= letters[k];
+                total += arr[k].len();
+            }
+        }
+        if union.count_ones() == total {
+            best = best.max(total);
+        }
+    }
+    best
+}
+
+// ---- arm 3: concat ------------------------------------------------------
+fn a3_has_unique_letters(s: String) -> bool {
+    let letters: SortedSet[char] = s.chars().collect();
+    letters.len() == s.len()
+}
+
+fn a3_extend(arr: Vec[String], from: i64, built: String) -> i64 {
+    if not a3_has_unique_letters(built) {
+        return 0;
+    }
+    let mut best = built.len();
+    for k in from..arr.len() {
+        best = best.max(a3_extend(arr, k + 1, f"{built}{arr[k]}"));
+    }
+    best
+}
+
+fn a3_max_length(arr: Vec[String]) -> i64 {
+    a3_extend(arr, 0, "")
+}
+
+// ---- arm 4: masks -------------------------------------------------------
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn max_length(arr: Vec[String]) -> i32 {
+        let mut masks = [0u32];
+        let mut best: i32 = 0;
+        for s in arr.iter() {
+            let mut m = 0u32;
+            let mut ok = true;
+            for b in s.bytes() {
+                let bit: u32 = 1 << (b - b'a');
+                if m & bit != 0 {
+                    ok = false;
+                    break;
+                }
+                m |= bit;
+            }
+            if not ok {
+                continue;
+            }
+            for i in 0..masks.len() {
+                let x = masks[i];
+                if x & m == 0 {
+                    masks.push(x | m);
+                    best = best.max((x | m).count_ones() as i32);
+                }
+            }
+        }
+        best
+    }
+}
+
+fn a4_max_length(arr: Vec[String]) -> i64 {
+    A4Solution.max_length(arr)
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// Whether no character of `s` appears twice in it.
+fn unique(s: String) -> bool {
+    let cs: Vec[char] = s.chars().collect();
+    for i in 0..cs.len() {
+        for j in i + 1..cs.len() {
+            if cs[i] == cs[j] {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+// Every subsequence of `arr`, concatenated in order, kept when its
+// characters are unique; the longest. For up to 10 words.
+fn literal(arr: Vec[String]) -> i64 {
+    let n = arr.len();
+    let mut best = 0;
+    for pick in 0..(1 << n) {
+        let mut s = String.new();
+        for k in 0..n {
+            if (pick >> k) & 1 == 1 {
+                s.push_str(arr[k]);
+            }
+        }
+        if unique(s) {
+            best = best.max(s.len());
+        }
+    }
+    best
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(arr: Vec[String]) -> Vec[i64] {
+    [a0_max_length(arr), a1_max_length(arr), a2_max_length(arr), a3_max_length(arr), a4_max_length(arr)]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["the statement read literally", "from 0 to the letters there are", "the words listed backwards", "every letter renamed (a for z, b for y, ..)", "a word with a repeated letter added", "the ★ arm's answer"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1239;
+    for c in 0..2000 {
+        let count = match c % 3 {
+            0 => next_random(mut seed) % 6 + 1,
+            1 => next_random(mut seed) % 4 + 7,
+            _ => next_random(mut seed) % 6 + 11,
+        };
+        let alphabet = next_random(mut seed) % 19 + 8;
+        let mut arr = Vec.new();
+        for _ in 0..count {
+            let len = next_random(mut seed) % 6 + 1;
+            let mut w = String.new();
+            for _ in 0..len {
+                w.push((b'a' + (next_random(mut seed) % alphabet) as u8) as char);
+            }
+            arr.push(w);
+        }
+        let want = if count <= 10 { literal(arr) } else { -1 };
+        let got = arms(arr);
+        let mut back = arr.clone();
+        back.reverse();
+        let backwards = arms(back);
+        let renamed_words: Vec[String] = arr.iter().map(|w| w.bytes().iter().map(|b| (b'z' - (b - b'a')) as char).collect()).collect();
+        let renamed = arms(renamed_words);
+        let mut more = arr.clone();
+        more.push("qq");
+        let added = arms(more);
+        let letters: i64 = arr.iter().map(|w| w.len()).sum();
+        for arm in 0..5 {
+            let v = got[arm];
+            let held = [
+                want < 0 or v == want,
+                v >= 0 and v <= letters.min(alphabet),
+                backwards[arm] == v,
+                renamed[arm] == v,
+                added[arm] == v,
+                v == got[0],
+            ];
+            for t in 0..6 {
+                checks += 1;
+                if not held[t] {
+                    fails[t] += 1;
+                    if fails[t] <= 2 {
+                        println(f"P{t + 1} ({names[t]}) fails on arm {arm}: {arr} -> {v}");
+                    }
+                }
+            }
+        }
+        check = (check * 131 + got[0]) % 1000000007;
+    }
+    for t in 0..6 {
+        if fails[t] > 0 {
+            println(f"P{t + 1}: {fails[t]} failures");
+        }
+    }
+    let failures = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over {5} arms: {failures} failures");
+}

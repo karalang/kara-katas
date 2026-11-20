@@ -1,0 +1,247 @@
+// LeetCode #1216: Valid Palindrome III -- the six arms
+// against the statement read literally and six more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_is_valid_palindrome(s: String, k: i64) -> bool {
+    let b = s.bytes();
+    let n = b.len();
+    let mut row: Vec[i64] = Vec.filled(n, 0);
+    for i in (0..n).rev() {
+        row[i] = 1;
+        let mut diagonal = 0;
+        for j in i + 1..n {
+            let below = row[j];
+            row[j] = if b[i] == b[j] { diagonal + 2 } else { max(row[j], row[j - 1]) };
+            diagonal = below;
+        }
+    }
+    n - row[n - 1] <= k
+}
+
+// ---- arm 1: table -------------------------------------------------------
+fn a1_is_valid_palindrome(s: String, k: i64) -> bool {
+    let cs: Vec[char] = s.chars().collect();
+    let n = cs.len();
+    let mut fewest: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, 0));
+    for span in 2..=n {
+        for i in 0..=n - span {
+            let j = i + span - 1;
+            fewest[i][j] = if cs[i] == cs[j] {
+                if span == 2 { 0 } else { fewest[i + 1][j - 1] }
+            } else {
+                1 + min(fewest[i + 1][j], fewest[i][j - 1])
+            };
+        }
+    }
+    fewest[0][n - 1] <= k
+}
+
+// ---- arm 2: common ------------------------------------------------------
+fn a2_is_valid_palindrome(s: String, k: i64) -> bool {
+    let a: Vec[char] = s.chars().collect();
+    let r: Vec[char] = s.chars().rev().collect();
+    let n = a.len();
+    let mut prev: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut cur: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 1..=n {
+        for j in 1..=n {
+            cur[j] = if a[i - 1] == r[j - 1] { prev[j - 1] + 1 } else { max(prev[j], cur[j - 1]) };
+        }
+        swap(mut prev, mut cur);
+    }
+    n - prev[n] <= k
+}
+
+// ---- arm 3: budget ------------------------------------------------------
+fn a3_fewest(cs: Vec[char], i: i64, j: i64, budget: i64, known: mut ref Map[(i64, i64), (i64, bool)]) -> i64 {
+    let mut a = i;
+    let mut b = j;
+    while a < b and cs[a] == cs[b] {
+        a += 1;
+        b -= 1;
+    }
+    if a >= b {
+        return 0;
+    }
+    if let Some((f, exact)) = known.get((a, b)) {
+        if exact or f > budget {
+            return f;
+        }
+    }
+    if budget == 0 {
+        known.insert((a, b), (1, false));
+        return 1;
+    }
+    let left = a3_fewest(cs, a + 1, b, budget - 1, mut known);
+    let right = if left == 0 { 0 } else { a3_fewest(cs, a, b - 1, budget - 1, mut known) };
+    let f = 1 + min(left, right);
+    known.insert((a, b), (f, f <= budget));
+    f
+}
+
+fn a3_is_valid_palindrome(s: String, k: i64) -> bool {
+    let cs: Vec[char] = s.chars().collect();
+    let mut known: Map[(i64, i64), (i64, bool)] = Map.new();
+    a3_fewest(cs, 0, cs.len() - 1, k, mut known) <= k
+}
+
+// ---- arm 4: grid --------------------------------------------------------
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn is_valid_palindrome(s: String, k: i32) -> bool {
+        let s = s.bytes();
+        let n = s.len();
+        let mut dp = Vec.filled(n, Vec.filled(n, 0));
+        for i in (0..n).rev() {
+            dp[i][i] = 1;
+            for j in i + 1..n {
+                if s[i] == s[j] {
+                    dp[i][j] = dp[i + 1][j - 1] + 2;
+                } else {
+                    dp[i][j] = dp[i + 1][j].max(dp[i][j - 1]);
+                }
+            }
+        }
+        (n as i32 - dp[0][n - 1]) <= k
+    }
+}
+
+fn a4_is_valid_palindrome(s: String, k: i64) -> bool {
+    A4Solution.is_valid_palindrome(s, k as i32)
+}
+
+// ---- arm 5: rows --------------------------------------------------------
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn is_valid_palindrome(s: String, k: i32) -> bool {
+        let a: Vec[u8] = s.bytes().iter().collect();
+        let b: Vec[u8] = s.bytes().iter().rev().collect();
+        let n = a.len();
+        let mut prev = Vec.filled(n + 1, 0);
+        let mut curr = Vec.filled(n + 1, 0);
+        for i in 1..=n {
+            for j in 1..=n {
+                curr[j] = if a[i - 1] == b[j - 1] {
+                    prev[j - 1] + 1
+                } else {
+                    prev[j].max(curr[j - 1])
+                };
+            }
+            swap(mut prev, mut curr);
+        }
+        n - prev[n] <= k
+    }
+}
+
+fn a5_is_valid_palindrome(s: String, k: i64) -> bool {
+    A5Solution.is_valid_palindrome(s, k as i32)
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// Every way to remove at most `k` letters, each left string read both ways.
+fn literal(s: String, k: i64) -> bool {
+    let cs: Vec[char] = s.chars().collect();
+    let n = cs.len();
+    for keep in 0..(1 << n) {
+        let mut kept: Vec[char] = Vec.new();
+        for i in 0..n {
+            if (keep >> i) & 1 == 1 {
+                kept.push(cs[i]);
+            }
+        }
+        if n - kept.len() > k {
+            continue;
+        }
+        let mut same = true;
+        for i in 0..kept.len() / 2 {
+            if kept[i] != kept[kept.len() - 1 - i] {
+                same = false;
+            }
+        }
+        if same {
+            return true;
+        }
+    }
+    false
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(s: String, k: i64) -> Vec[bool] {
+    [a0_is_valid_palindrome(s, k), a1_is_valid_palindrome(s, k), a2_is_valid_palindrome(s, k), a3_is_valid_palindrome(s, k), a4_is_valid_palindrome(s, k), a5_is_valid_palindrome(s, k)]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_text(seed: mut ref i64, n: i64, letters: i64) -> String {
+    let mut out = String.with_capacity(n);
+    for _ in 0..n {
+        out.push((b'a' + next_random(mut seed) % letters) as u8 as char);
+    }
+    out
+}
+
+// `a` and `b` exchanged, every other letter kept
+fn renamed(s: String) -> String {
+    s.chars().map(|c| if c == 'a' { 'b' } else if c == 'b' { 'a' } else { c }).collect()
+}
+
+fn main() {
+    let names = ["the statement read literally", "the string reversed gives the same", "true at k stays true at k + 1", "one letter put at both ends gives the same", "a and b exchanged give the same", "a letter put at the end, with k one more, keeps a true answer true", "the ★ arm's answer"];
+    let mut fails = Vec.filled(7, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1216;
+    for _ in 0..2000 {
+        // 1 to 12 letters from the first 5 to 7, k from 1 to n / 3 + 1
+        let n = next_random(mut seed) % 12 + 1;
+        let letters = next_random(mut seed) % 3 + 5;
+        let s = random_text(mut seed, n, letters);
+        let k = next_random(mut seed) % (n / 3 + 1) + 1;
+        let extra = (b'a' + next_random(mut seed) % letters) as u8 as char;
+        let want = literal(s, k);
+        let got = arms(s, k);
+        let backwards: String = s.chars().rev().collect();
+        let reversed = arms(backwards, k);
+        let more = arms(s, k + 1);
+        let wrapped = arms(f"{extra}{s}{extra}", k);
+        let swapped = arms(renamed(s), k);
+        let longer = arms(f"{s}{extra}", k + 1);
+        for a in 0..6 {
+            let v = got[a];
+            let held = [
+                v == want,
+                reversed[a] == v,
+                not v or more[a],
+                wrapped[a] == v,
+                swapped[a] == v,
+                not v or longer[a],
+                v == got[0],
+            ];
+            for p in 0..7 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {a}: {s} {k} -> {v}");
+                    }
+                }
+            }
+        }
+        check = (check * 131 + if want { 2 } else { 1 }) % 1000000007;
+    }
+    for p in 0..7 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let total = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+}

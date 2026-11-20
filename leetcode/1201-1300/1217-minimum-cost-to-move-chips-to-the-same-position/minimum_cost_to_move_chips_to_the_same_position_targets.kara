@@ -1,0 +1,53 @@
+// LeetCode #1217: Minimum Cost to Move Chips to The Same Position -- every
+// chip's position tried as the meeting place: a chip pays its distance
+// modulo 2 to get there, the free moves of two taking it the rest of the
+// way, and the cheapest meeting place wins. Some chip's position is always
+// among the best, since only the parity of the place matters. O(n^2).
+
+fn min_cost_to_move_chips(position: Vec[i64]) -> i64 {
+    let mut best = position.len();
+    for target in position.iter() {
+        let mut cost = 0;
+        for p in position.iter() {
+            cost += (p - target).abs() % 2;
+        }
+        best = min(best, cost);
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let cases: Vec[Vec[i64]] = [[1, 2, 3], [2, 2, 2, 3, 3], [1, 1000000000], [1], [5, 5, 5], [1, 2], [4, 1, 6, 3, 8, 5]];
+    for position in cases.iter() {
+        println(f"{position}: {min_cost_to_move_chips(position)}");
+    }
+    let mut seed = 1217;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 10 + 1;
+        let top = next_random(mut seed) % 10 + 1;
+        let position: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top + 1).collect();
+        let answer = min_cost_to_move_chips(position);
+        total += answer;
+        check = (check * 131 + answer + 1) % 1000000007;
+    }
+    println(f"1000 small cases: costs total {total}, checksum {check}");
+    // The constraints' top: 100 chips, positions up to 10^9.
+    let big: Vec[i64] = (0..100).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000 + 1).collect();
+    println(f"100 random chips up to 10^9: {min_cost_to_move_chips(big)}");
+    let same: Vec[i64] = (0..100).map(|_| 1000000000).collect();
+    println(f"100 chips at 10^9: {min_cost_to_move_chips(same)}");
+    let alternate: Vec[i64] = (1..=100).collect();
+    println(f"1 to 100: {min_cost_to_move_chips(alternate)}");
+    let mut lone: Vec[i64] = (0..99).map(|i| 2 * i + 1).collect();
+    lone.push(1000000000);
+    println(f"99 odd chips and one at 10^9: {min_cost_to_move_chips(lone)}");
+}

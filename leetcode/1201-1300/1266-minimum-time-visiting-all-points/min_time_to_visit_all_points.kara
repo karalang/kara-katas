@@ -1,0 +1,44 @@
+// LeetCode #1266: Minimum Time Visiting All Points -- the ★ arm: a
+// diagonal step closes a unit of both gaps at once, so going from one
+// point to the next takes the larger of the two gaps, and the time is the
+// sum over each pair of neighbours, read by `windows(2)`. O(n).
+
+fn min_time_to_visit_all_points(points: Vec[Vec[i64]]) -> i64 {
+    points
+        .windows(2)
+        .into_iter()
+        .map(|w| (w[1][0] - w[0][0]).abs().max((w[1][1] - w[0][1]).abs()))
+        .sum()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_points(n: i64, top: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    (0..n).map(|_| [next_random(mut seed) % (2 * top + 1) - top, next_random(mut seed) % (2 * top + 1) - top]).collect()
+}
+
+fn main() {
+    // LeetCode's examples
+    println(f"{min_time_to_visit_all_points([[1, 1], [3, 4], [-1, 0]])} {min_time_to_visit_all_points([[3, 2], [-2, 2]])}");
+    // 2000 random walks of 1 to 100 points, half within 5 of the origin
+    let mut seed = 1266;
+    let mut total = 0;
+    let mut check = 0;
+    for case in 0..2000 {
+        let n = next_random(mut seed) % 100 + 1;
+        let top = if case % 2 == 0 { 5 } else { 1000 };
+        let t = min_time_to_visit_all_points(random_points(n, top, mut seed));
+        total += t;
+        check = (check * 131 + t) % 1000000007;
+    }
+    println(f"2000 random walks: {total} seconds, checksum {check}");
+    // the constraints' top: 100 points from corner to corner, and on a line
+    let corners: Vec[Vec[i64]] = (0..100).map(|i| if i % 2 == 0 { [-1000, -1000] } else { [1000, 1000] }).collect();
+    let line: Vec[Vec[i64]] = (0..100).map(|i| [i * 20 - 1000, 7]).collect();
+    println(f"{min_time_to_visit_all_points(corners)} {min_time_to_visit_all_points(line)}");
+}

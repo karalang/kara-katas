@@ -1,0 +1,237 @@
+// LeetCode #1213: Intersection of Three Sorted Arrays -- the six arms
+// against the statement read literally and six more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_arrays_intersection(arr1: Vec[i64], arr2: Vec[i64], arr3: Vec[i64]) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    let mut (i, j, k) = (0, 0, 0);
+    while i < arr1.len() and j < arr2.len() and k < arr3.len() {
+        let (a, b, c) = (arr1[i], arr2[j], arr3[k]);
+        if a == b and b == c {
+            out.push(a);
+            i += 1;
+            j += 1;
+            k += 1;
+        } else {
+            let least = a.min(b).min(c);
+            if a == least {
+                i += 1;
+            }
+            if b == least {
+                j += 1;
+            }
+            if c == least {
+                k += 1;
+            }
+        }
+    }
+    out
+}
+
+// ---- arm 1: table -------------------------------------------------------
+fn a1_arrays_intersection(arr1: Vec[i64], arr2: Vec[i64], arr3: Vec[i64]) -> Vec[i64] {
+    let mut count: Array[i64, 2001] = [0; 2001];
+    for arr in [arr1, arr2, arr3].iter() {
+        for v in arr.iter() {
+            count[v] += 1;
+        }
+    }
+    (1..=2000).filter(|v| count[v] == 3).collect()
+}
+
+// ---- arm 2: sets --------------------------------------------------------
+fn a2_arrays_intersection(arr1: Vec[i64], arr2: Vec[i64], arr3: Vec[i64]) -> Vec[i64] {
+    let second: Set[i64] = arr2.iter().collect();
+    let third: Set[i64] = arr3.iter().collect();
+    arr1.iter().filter(|v| second.contains(v) and third.contains(v)).collect()
+}
+
+// ---- arm 3: halving -----------------------------------------------------
+fn a3_lower_bound(arr: Vec[i64], from: i64, v: i64) -> i64 {
+    let mut low = from;
+    let mut high = arr.len();
+    while low < high {
+        let mid = (low + high) / 2;
+        if arr[mid] < v {
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
+    }
+    low
+}
+
+fn a3_arrays_intersection(arr1: Vec[i64], arr2: Vec[i64], arr3: Vec[i64]) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    let mut j = 0;
+    let mut k = 0;
+    for v in arr1.iter() {
+        j = a3_lower_bound(arr2, j, v);
+        k = a3_lower_bound(arr3, k, v);
+        if j == arr2.len() or k == arr3.len() {
+            break;
+        }
+        if arr2[j] == v and arr3[k] == v {
+            out.push(v);
+        }
+    }
+    out
+}
+
+// ---- arm 4: counts ------------------------------------------------------
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn arrays_intersection(arr1: Vec[i32], arr2: Vec[i32], arr3: Vec[i32]) -> Vec[i32] {
+        let mut cnt: Map[i32, i32] = Map.new();
+        for x in arr1.iter().chain(arr2.iter()).chain(arr3.iter()) {
+            *cnt.entry(x).or_insert(0) += 1;
+        }
+        let mut res: Vec[i32] = cnt.into_iter().filter(|(_, c)| c == 3).map(|(x, _)| x).collect();
+        res.sort();
+        res
+    }
+}
+
+fn a4_arrays_intersection(arr1: Vec[i64], arr2: Vec[i64], arr3: Vec[i64]) -> Vec[i64] {
+    let a: Vec[i32] = arr1.iter().map(|x| x as i32).collect();
+    let b: Vec[i32] = arr2.iter().map(|x| x as i32).collect();
+    let c: Vec[i32] = arr3.iter().map(|x| x as i32).collect();
+    A4Solution.arrays_intersection(a, b, c).iter().map(|x| x as i64).collect()
+}
+
+// ---- arm 5: ordering ----------------------------------------------------
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn arrays_intersection(arr1: Vec[i32], arr2: Vec[i32], arr3: Vec[i32]) -> Vec[i32] {
+        let mut (i, j, k) = (0, 0, 0);
+        let mut ans = Vec.new();
+        while i < arr1.len() and j < arr2.len() and k < arr3.len() {
+            match (arr1[i].cmp(arr2[j]), arr2[j].cmp(arr3[k])) {
+                (Ordering.Equal, Ordering.Equal) => {
+                    ans.push(arr1[i]);
+                    i += 1;
+                    j += 1;
+                    k += 1;
+                }
+                (Ordering.Less, _) => i += 1,
+                (_, Ordering.Less) => j += 1,
+                _ => k += 1,
+            }
+        }
+        ans
+    }
+}
+
+fn a5_arrays_intersection(arr1: Vec[i64], arr2: Vec[i64], arr3: Vec[i64]) -> Vec[i64] {
+    let a: Vec[i32] = arr1.iter().map(|x| x as i32).collect();
+    let b: Vec[i32] = arr2.iter().map(|x| x as i32).collect();
+    let c: Vec[i32] = arr3.iter().map(|x| x as i32).collect();
+    A5Solution.arrays_intersection(a, b, c).iter().map(|x| x as i64).collect()
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// Every value of the first array looked for in the other two, one by
+// one, and the values found in both sorted.
+fn literal(arr1: Vec[i64], arr2: Vec[i64], arr3: Vec[i64]) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    for v in arr1.iter() {
+        if arr2.contains(v) and arr3.contains(v) {
+            out.push(v);
+        }
+    }
+    out.sort();
+    out
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(a: Vec[i64], b: Vec[i64], c: Vec[i64]) -> Vec[Vec[i64]] {
+    [a0_arrays_intersection(a, b, c), a1_arrays_intersection(a, b, c), a2_arrays_intersection(a, b, c), a3_arrays_intersection(a, b, c), a4_arrays_intersection(a, b, c), a5_arrays_intersection(a, b, c)]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_sorted(seed: mut ref i64, top: i64, percent: i64) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    for v in 1..=top {
+        if next_random(mut seed) % 100 < percent {
+            out.push(v);
+        }
+    }
+    if out.is_empty() {
+        out.push(next_random(mut seed) % top + 1);
+    }
+    out
+}
+
+fn with(v: Vec[i64], x: i64) -> Vec[i64] {
+    let mut out = v.clone();
+    if not out.contains(x) {
+        out.push(x);
+        out.sort();
+    }
+    out
+}
+
+fn main() {
+    let names = ["the statement read literally", "rising, and every value in all three arrays", "the arrays in another order give the same", "a value put in all three is in the answer, with the rest", "every value one more gives every value one more", "the answer given as the first array comes back unchanged", "the ★ arm's answer"];
+    let mut fails = Vec.filled(7, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1213;
+    for _ in 0..2000 {
+        // values from 1 to 1..12, each array keeping each with its own chance
+        let top = next_random(mut seed) % 12 + 1;
+        let a = random_sorted(mut seed, top, next_random(mut seed) % 100);
+        let b = random_sorted(mut seed, top, next_random(mut seed) % 100);
+        let c = random_sorted(mut seed, top, next_random(mut seed) % 100);
+        let x = next_random(mut seed) % (top + 2) + 1;
+        let got = arms(a, b, c);
+        let want = literal(a, b, c);
+        let turned = arms(b, c, a);
+        let added = arms(with(a, x), with(b, x), with(c, x));
+        let up = arms(a.iter().map(|v| v + 1).collect(), b.iter().map(|v| v + 1).collect(), c.iter().map(|v| v + 1).collect());
+        for k in 0..6 {
+            let v = ref got[k];
+            let again = arms(v, b, c);
+            let rising = (1..v.len()).all(|i| v[i - 1] < v[i]);
+            let shifted: Vec[i64] = v.iter().map(|y| y + 1).collect();
+            let held = [
+                v == want,
+                rising and v.iter().all(|y| a.contains(y) and b.contains(y) and c.contains(y)),
+                turned[k] == v,
+                added[k] == with(v, x),
+                up[k] == shifted,
+                v.is_empty() or again[k] == v,
+                v == got[0],
+            ];
+            for p in 0..7 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {k}: {a} {b} {c} -> {v}");
+                    }
+                }
+            }
+        }
+        for y in want.iter() {
+            check = (check * 131 + y) % 1000000007;
+        }
+        check = (check * 131 + want.len()) % 1000000007;
+    }
+    for p in 0..7 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let total = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+}

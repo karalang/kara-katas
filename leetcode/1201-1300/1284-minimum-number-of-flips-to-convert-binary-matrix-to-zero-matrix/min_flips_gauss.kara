@@ -1,0 +1,114 @@
+// LeetCode #1284: Minimum Number of Flips to Convert Binary Matrix to Zero
+// Matrix -- by linear algebra over GF(2): which cells to flip is a vector
+// x with A x = b, where row c of A marks the flips that reach cell c and b
+// is the matrix. Gaussian elimination finds the pivots; every setting of
+// the free unknowns gives one solution, and the lightest is the answer.
+// O((mn)^2 + 2^free mn)
+
+struct Equation {
+    unknowns: i64,
+    value: i64,
+}
+
+fn min_flips(mat: Vec[Vec[i64]]) -> i64 {
+    let rows = mat.len();
+    let cols = mat[0].len();
+    let cells = rows * cols;
+    let mut system: Vec[Equation] = Vec.new();
+    for i in 0..rows {
+        for j in 0..cols {
+            let mut unknowns = 0;
+            for (r, c) in [(i, j), (i - 1, j), (i + 1, j), (i, j - 1), (i, j + 1)] {
+                if r >= 0 and r < rows and c >= 0 and c < cols {
+                    unknowns |= 1 << (r * cols + c);
+                }
+            }
+            system.push(Equation { unknowns, value: mat[i][j] });
+        }
+    }
+    // Forward elimination: one pivot equation per unknown that has one.
+    let mut pivot_of: Vec[i64] = Vec.filled(cells, -1);
+    let mut placed = 0;
+    for unknown in 0..cells {
+        let found = (placed..cells).find(|e| (system[e].unknowns >> unknown) & 1 == 1);
+        let Some(e) = found else {
+            continue;
+        };
+        system.swap(placed, e);
+        for other in 0..cells {
+            if other != placed and (system[other].unknowns >> unknown) & 1 == 1 {
+                system[other].unknowns ^= system[placed].unknowns;
+                system[other].value ^= system[placed].value;
+            }
+        }
+        pivot_of[unknown] = placed;
+        placed += 1;
+    }
+    // An equation left with no unknowns must ask for 0.
+    for e in placed..cells {
+        if system[e].value == 1 {
+            return -1;
+        }
+    }
+    let free: Vec[i64] = (0..cells).filter(|u| pivot_of[u] < 0).collect();
+    let mut best = cells + 1;
+    for setting in 0..(1 << free.len()) {
+        let mut x = 0;
+        for (k, u) in free.iter().enumerate() {
+            if (setting >> k) & 1 == 1 {
+                x |= 1 << u;
+            }
+        }
+        for u in 0..cells {
+            let e = pivot_of[u];
+            if e >= 0 {
+                let rest = system[e].unknowns & ~(1 << u) & x;
+                if (system[e].value ^ rest.count_ones() % 2) == 1 {
+                    x |= 1 << u;
+                }
+            }
+        }
+        best = best.min(x.count_ones());
+    }
+    best
+}
+// ---- test harness ---------------------------------------------------------
+
+// The matrix of `rows` by `cols` whose cells are the bits of `bits`, row by
+// row from the lowest bit.
+fn matrix(rows: i64, cols: i64, bits: i64) -> Vec[Vec[i64]] {
+    let mut mat: Vec[Vec[i64]] = Vec.new();
+    for i in 0..rows {
+        let mut row: Vec[i64] = Vec.new();
+        for j in 0..cols {
+            row.push((bits >> (i * cols + j)) & 1);
+        }
+        mat.push(row);
+    }
+    mat
+}
+
+fn main() {
+    // LeetCode's examples
+    println(f"{min_flips([[0, 0], [0, 1]])} {min_flips([[0]])} {min_flips([[1, 0, 0], [1, 0, 0]])}");
+    // every matrix of every shape the constraints allow, 1 by 1 to 3 by 3
+    let mut check = 0;
+    for rows in 1..4 {
+        for cols in 1..4 {
+            let mut solvable = 0;
+            let mut flips = 0;
+            let mut most = 0;
+            for bits in 0..(1 << (rows * cols)) {
+                let f = min_flips(matrix(rows, cols, bits));
+                check = (check * 131 + f + 2) % 1000000007;
+                if f >= 0 {
+                    solvable += 1;
+                    flips += f;
+                    most = most.max(f);
+                }
+            }
+            println(f"{rows} by {cols}: {solvable} of {1 << (rows * cols)} solvable, {flips} flips, at most {most}");
+        }
+    }
+    println(f"checksum {check}");
+}

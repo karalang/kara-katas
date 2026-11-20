@@ -1,0 +1,413 @@
+// LeetCode #1286: the differential -- the five arms against the statement
+// read literally and five more properties, on 400 random problems.
+
+// arm 0: combination_iterator.kara
+struct A0CombinationIterator {
+    chars: Vec[char],
+    k: i64,
+    mask: i64,
+}
+
+impl A0CombinationIterator {
+    fn new(characters: String, combination_length: i64) -> A0CombinationIterator {
+        let n = characters.len();
+        // the largest mask with k bits: the first k letters
+        let mask = ((1 << combination_length) - 1) << (n - combination_length);
+        A0CombinationIterator { chars: characters.chars().collect(), k: combination_length, mask }
+    }
+
+    fn next(mut ref self) -> String {
+        let n = self.chars.len();
+        let mut out = "";
+        for i in 0..n {
+            if (self.mask >> (n - 1 - i)) & 1 == 1 {
+                out.push(self.chars[i]);
+            }
+        }
+        self.mask -= 1;
+        while self.mask > 0 and self.mask.count_ones() != self.k {
+            self.mask -= 1;
+        }
+        out
+    }
+
+    fn has_next(self) -> bool {
+        self.mask > 0
+    }
+}
+
+fn a0_make(characters: String, k: i64) -> A0CombinationIterator {
+    A0CombinationIterator.new(characters, k)
+}
+
+// arm 1: combination_iterator_listed.kara
+struct A1CombinationIterator {
+    all: Vec[String],
+    at: i64,
+}
+
+fn a1_extend(chars: Vec[char], k: i64, from: i64, picked: mut ref String, all: mut ref Vec[String]) {
+    if picked.len() == k {
+        all.push(picked.clone());
+        return;
+    }
+    for i in from..chars.len() {
+        picked.push(chars[i]);
+        a1_extend(chars, k, i + 1, mut picked, mut all);
+        picked.pop();
+    }
+}
+
+impl A1CombinationIterator {
+    fn new(characters: String, combination_length: i64) -> A1CombinationIterator {
+        let chars: Vec[char] = characters.chars().collect();
+        let mut all: Vec[String] = Vec.new();
+        let mut picked = "";
+        a1_extend(chars, combination_length, 0, mut picked, mut all);
+        A1CombinationIterator { all, at: 0 }
+    }
+
+    fn next(mut ref self) -> String {
+        self.at += 1;
+        self.all[self.at - 1].clone()
+    }
+
+    fn has_next(self) -> bool {
+        self.at < self.all.len()
+    }
+}
+
+fn a1_make(characters: String, k: i64) -> A1CombinationIterator {
+    A1CombinationIterator.new(characters, k)
+}
+
+// arm 2: combination_iterator_indices.kara
+struct A2CombinationIterator {
+    chars: Vec[char],
+    picks: Vec[i64],
+    done: bool,
+}
+
+impl A2CombinationIterator {
+    fn new(characters: String, combination_length: i64) -> A2CombinationIterator {
+        A2CombinationIterator {
+            chars: characters.chars().collect(),
+            picks: (0..combination_length).collect(),
+            done: false,
+        }
+    }
+
+    fn next(mut ref self) -> String {
+        let out: String = self.picks.iter().map(|p| self.chars[*p]).collect();
+        let n = self.chars.len();
+        let k = self.picks.len();
+        // the rightmost position that is not yet as far right as it can go
+        let mut i = k - 1;
+        while i >= 0 and self.picks[i] == n - k + i {
+            i -= 1;
+        }
+        if i < 0 {
+            self.done = true;
+        } else {
+            self.picks[i] += 1;
+            for j in (i + 1)..k {
+                self.picks[j] = self.picks[j - 1] + 1;
+            }
+        }
+        out
+    }
+
+    fn has_next(self) -> bool {
+        not self.done
+    }
+}
+
+fn a2_make(characters: String, k: i64) -> A2CombinationIterator {
+    A2CombinationIterator.new(characters, k)
+}
+
+// arm 3: combination_iterator_successor.kara
+struct A3CombinationIterator {
+    characters: String,
+    upcoming: Option[String],
+}
+
+fn a3_successor(characters: Str, current: Str) -> Option[String] {
+    let n = characters.len();
+    let k = current.len();
+    let mut i = k - 1;
+    while i >= 0 {
+        let at = characters.find(current[i..i + 1]).unwrap();
+        if at + 1 <= n - (k - i) {
+            let mut out = current[0..i].to_string();
+            out.push_str(characters[at + 1..at + 1 + (k - i)]);
+            return Some(out);
+        }
+        i -= 1;
+    }
+    None
+}
+
+impl A3CombinationIterator {
+    fn new(characters: own String, combination_length: i64) -> A3CombinationIterator {
+        let first = characters[0..combination_length].to_string();
+        A3CombinationIterator { characters, upcoming: Some(first) }
+    }
+
+    fn next(mut ref self) -> String {
+        let current = self.upcoming.take().unwrap();
+        self.upcoming = a3_successor(self.characters, current);
+        current
+    }
+
+    fn has_next(self) -> bool {
+        self.upcoming.is_some()
+    }
+}
+
+fn a3_make(characters: own String, k: i64) -> A3CombinationIterator {
+    A3CombinationIterator.new(characters, k)
+}
+
+// arm 4: combination_iterator_solution.kara
+struct A4CombinationIterator {
+    combos: Vec[String],
+}
+
+impl A4CombinationIterator {
+    fn new(characters: String, combination_length: i32) -> Self {
+        let chars: Vec[char] = characters.chars().collect();
+        let n = chars.len();
+        let k = combination_length as usize;
+        let mut combos = Vec.new();
+        for mask in (0..(1u32 << n)).rev() {
+            if mask.count_ones() as usize == k {
+                let s: String = (0..n)
+                    .filter(|i| mask & (1 << (n - 1 - i)) != 0)
+                    .map(|i| chars[i])
+                    .collect();
+                combos.push(s);
+            }
+        }
+        combos.reverse();
+        A4CombinationIterator { combos }
+    }
+
+    fn next(mut ref self) -> String {
+        self.combos.pop().unwrap()
+    }
+
+    fn has_next(self) -> bool {
+        not self.combos.is_empty()
+    }
+}
+
+fn a4_make(characters: String, k: i64) -> A4CombinationIterator {
+    A4CombinationIterator.new(characters, k as i32)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// ---- the differential ------------------------------------------------------
+
+fn collect0(chars: String, k: i64, seed: mut ref i64) -> Vec[String] {
+    let mut it = a0_make(chars, k);
+    let mut out: Vec[String] = Vec.new();
+    while it.has_next() {
+        if next_random(mut *seed) % 2 == 0 and not it.has_next() {
+            out.push("has_next changed its answer");
+        }
+        out.push(it.next());
+    }
+    out
+}
+
+fn collect1(chars: String, k: i64, seed: mut ref i64) -> Vec[String] {
+    let mut it = a1_make(chars, k);
+    let mut out: Vec[String] = Vec.new();
+    while it.has_next() {
+        if next_random(mut *seed) % 2 == 0 and not it.has_next() {
+            out.push("has_next changed its answer");
+        }
+        out.push(it.next());
+    }
+    out
+}
+
+fn collect2(chars: String, k: i64, seed: mut ref i64) -> Vec[String] {
+    let mut it = a2_make(chars, k);
+    let mut out: Vec[String] = Vec.new();
+    while it.has_next() {
+        if next_random(mut *seed) % 2 == 0 and not it.has_next() {
+            out.push("has_next changed its answer");
+        }
+        out.push(it.next());
+    }
+    out
+}
+
+fn collect3(chars: String, k: i64, seed: mut ref i64) -> Vec[String] {
+    let mut it = a3_make(chars.clone(), k);
+    let mut out: Vec[String] = Vec.new();
+    while it.has_next() {
+        if next_random(mut *seed) % 2 == 0 and not it.has_next() {
+            out.push("has_next changed its answer");
+        }
+        out.push(it.next());
+    }
+    out
+}
+
+fn collect4(chars: String, k: i64, seed: mut ref i64) -> Vec[String] {
+    let mut it = a4_make(chars, k);
+    let mut out: Vec[String] = Vec.new();
+    while it.has_next() {
+        if next_random(mut *seed) % 2 == 0 and not it.has_next() {
+            out.push("has_next changed its answer");
+        }
+        out.push(it.next());
+    }
+    out
+}
+
+fn arm(a: i64, chars: String, k: i64, seed: mut ref i64) -> Vec[String] {
+    match a {
+        0 => collect0(chars, k, mut *seed),
+        1 => collect1(chars, k, mut *seed),
+        2 => collect2(chars, k, mut *seed),
+        3 => collect3(chars, k, mut *seed),
+        _ => collect4(chars, k, mut *seed),
+    }
+}
+
+// The statement read literally: every string of k of the letters, in
+// lexicographic order, the letters taken in turn like an odometer's
+// digits; a combination is one whose letters strictly increase.
+fn literal(chars: String, k: i64) -> Vec[String] {
+    let letters: Vec[char] = chars.chars().collect();
+    let n = letters.len();
+    let mut digits: Vec[i64] = Vec.filled(k, 0);
+    let mut out: Vec[String] = Vec.new();
+    loop {
+        let mut increasing = true;
+        for i in 1..k {
+            if letters[digits[i]] <= letters[digits[i - 1]] {
+                increasing = false;
+            }
+        }
+        if increasing {
+            out.push(digits.iter().map(|d| letters[*d]).collect());
+        }
+        let mut i = k - 1;
+        while i >= 0 and digits[i] == n - 1 {
+            digits[i] = 0;
+            i -= 1;
+        }
+        if i < 0 {
+            return out;
+        }
+        digits[i] += 1;
+    }
+}
+
+fn choose(n: i64, k: i64) -> i64 {
+    let mut c = 1;
+    for i in 0..k {
+        c = c * (n - i) / (i + 1);
+    }
+    c
+}
+
+fn letters(seed: mut ref i64, n: i64) -> String {
+    let alphabet = "abcdefghijklmnopqrstuvwxyz";
+    let mut out = "";
+    let mut left = n;
+    for (i, c) in alphabet.chars().enumerate() {
+        if left > 0 and next_random(mut *seed) % (26 - i) < left {
+            out.push(c);
+            left -= 1;
+        }
+    }
+    out
+}
+
+// The letters of `chars` that `s` leaves out.
+fn complement(chars: String, s: String) -> String {
+    chars.chars().filter(|c| not s.contains(c.to_string())).collect()
+}
+
+fn main() {
+    let mut seed = 12860;
+    let mut fails: Array[i64, 6] = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for _ in 0..400 {
+        let n = next_random(mut seed) % 8 + 1;
+        let k = next_random(mut seed) % n + 1;
+        let chars = letters(mut seed, n);
+        let other = letters(mut seed, n);
+        let want = literal(chars, k);
+        let star = arm(0, chars, k, mut seed);
+        for s in star.iter() {
+            for b in s.bytes().iter() {
+                check = (check * 131 + *b) % 1000000007;
+            }
+            check = (check * 131 + 7) % 1000000007;
+        }
+        for a in 0..5 {
+            let got = arm(a, chars, k, mut seed);
+            let mut ordered = true;
+            for (i, s) in got.iter().enumerate() {
+                let cs: Vec[char] = s.chars().collect();
+                if cs.len() != k or cs.iter().any(|c| not chars.contains(c.to_string())) {
+                    ordered = false;
+                }
+                for j in 1..cs.len() {
+                    if cs[j] <= cs[j - 1] {
+                        ordered = false;
+                    }
+                }
+                if i > 0 and got[i - 1] >= *s {
+                    ordered = false;
+                }
+            }
+            // the complements of the length n - k list, last first
+            let mut mirrored = true;
+            if k < n {
+                let rest = arm(a, chars, n - k, mut seed);
+                let back: Vec[String] = rest.iter().rev().map(|s| complement(chars, s)).collect();
+                mirrored = back == got;
+            }
+            // the same list over other letters, renamed position by position
+            let renamed: Vec[String] = arm(a, other, k, mut seed)
+                .iter()
+                .map(|s| s.chars().map(|c| chars.chars().nth(other.find(c.to_string()).unwrap()).unwrap()).collect())
+                .collect();
+            let held = [
+                got == want,
+                got.len() == choose(n, k),
+                ordered,
+                mirrored,
+                renamed == got,
+                got == star,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                }
+            }
+        }
+    }
+    let mut total = 0;
+    for p in 0..6 {
+        if fails[p] > 0 {
+            print(f"P{p + 1}: {fails[p]} failures ");
+        }
+        total += fails[p];
+    }
+    println(f"400 problems: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

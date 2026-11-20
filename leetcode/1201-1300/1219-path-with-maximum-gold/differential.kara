@@ -1,0 +1,384 @@
+// LeetCode #1219: Path with Maximum Gold -- the arms
+// against the statement read literally and six more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_collect(grid: mut ref Vec[Vec[i64]], r: i64, c: i64) -> i64 {
+    if r < 0 or c < 0 or r >= grid.len() or c >= grid[0].len() or grid[r][c] == 0 {
+        return 0;
+    }
+    let gold = grid[r][c];
+    grid[r][c] = 0;
+    let mut best = 0;
+    for (dr, dc) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+        best = max(best, a0_collect(mut grid, r + dr, c + dc));
+    }
+    grid[r][c] = gold;
+    gold + best
+}
+
+fn a0_get_maximum_gold(grid: Vec[Vec[i64]]) -> i64 {
+    let mut g = grid.clone();
+    let mut best = 0;
+    for r in 0..g.len() {
+        for c in 0..g[0].len() {
+            if g[r][c] > 0 {
+                best = max(best, a0_collect(mut g, r, c));
+            }
+        }
+    }
+    best
+}
+
+// ---- arm 1: mask --------------------------------------------------------
+fn a1_extend(at: i64, held: i64, gold: Vec[i64], next: Vec[Vec[i64]]) -> i64 {
+    let mut best = 0;
+    for to in next[at].iter() {
+        if (held >> to) & 1 == 0 {
+            best = max(best, a1_extend(to, held | (1 << to), gold, next));
+        }
+    }
+    gold[at] + best
+}
+
+fn a1_get_maximum_gold(grid: Vec[Vec[i64]]) -> i64 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut number: Vec[Vec[i64]] = Vec.filled(rows, Vec.filled(cols, -1));
+    let mut gold: Vec[i64] = Vec.new();
+    for r in 0..rows {
+        for c in 0..cols {
+            if grid[r][c] > 0 {
+                number[r][c] = gold.len();
+                gold.push(grid[r][c]);
+            }
+        }
+    }
+    let mut next: Vec[Vec[i64]] = Vec.filled(gold.len(), Vec.new());
+    for r in 0..rows {
+        for c in 0..cols {
+            let at = number[r][c];
+            if at < 0 {
+                continue;
+            }
+            if r + 1 < rows and number[r + 1][c] >= 0 {
+                next[at].push(number[r + 1][c]);
+                next[number[r + 1][c]].push(at);
+            }
+            if c + 1 < cols and number[r][c + 1] >= 0 {
+                next[at].push(number[r][c + 1]);
+                next[number[r][c + 1]].push(at);
+            }
+        }
+    }
+    let mut best = 0;
+    for start in 0..gold.len() {
+        best = max(best, a1_extend(start, 1 << start, gold, next));
+    }
+    best
+}
+
+// ---- arm 2: stack -------------------------------------------------------
+struct Path {
+    r: i64,
+    c: i64,
+    held: Set[(i64, i64)],
+    taken: i64,
+}
+
+fn a2_get_maximum_gold(grid: Vec[Vec[i64]]) -> i64 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut stack: Vec[Path] = Vec.new();
+    for r in 0..rows {
+        for c in 0..cols {
+            if grid[r][c] > 0 {
+                let mut held: Set[(i64, i64)] = Set.new();
+                held.insert((r, c));
+                stack.push(Path { r: r, c: c, held: held, taken: grid[r][c] });
+            }
+        }
+    }
+    let mut best = 0;
+    while let Some(path) = stack.pop() {
+        best = max(best, path.taken);
+        for (dr, dc) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+            let r = path.r + dr;
+            let c = path.c + dc;
+            if r >= 0 and c >= 0 and r < rows and c < cols and grid[r][c] > 0 and not path.held.contains((r, c)) {
+                let mut held = path.held.clone();
+                held.insert((r, c));
+                stack.push(Path { r: r, c: c, held: held, taken: path.taken + grid[r][c] });
+            }
+        }
+    }
+    best
+}
+
+// ---- arm 3: corners -----------------------------------------------------
+fn a3_collect(grid: mut ref Vec[Vec[i64]], r: i64, c: i64) -> i64 {
+    if r < 0 or c < 0 or r >= grid.len() or c >= grid[0].len() or grid[r][c] == 0 {
+        return 0;
+    }
+    let gold = grid[r][c];
+    grid[r][c] = 0;
+    let mut best = 0;
+    for (dr, dc) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+        best = max(best, a3_collect(mut grid, r + dr, c + dc));
+    }
+    grid[r][c] = gold;
+    gold + best
+}
+
+fn a3_golden(grid: Vec[Vec[i64]], r: i64, c: i64) -> bool {
+    r >= 0 and c >= 0 and r < grid.len() and c < grid[0].len() and grid[r][c] > 0
+}
+
+fn a3_get_maximum_gold(grid: Vec[Vec[i64]]) -> i64 {
+    let mut g = grid.clone();
+    let mut starts: Vec[(i64, i64)] = Vec.new();
+    for r in 0..g.len() {
+        for c in 0..g[0].len() {
+            if g[r][c] > 0 {
+                let mut around = 0;
+                for (dr, dc) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                    if a3_golden(g, r + dr, c + dc) {
+                        around += 1;
+                    }
+                }
+                if around <= 2 {
+                    starts.push((r, c));
+                }
+            }
+        }
+    }
+    let mut best = 0;
+    for (r, c) in starts.iter() {
+        best = max(best, a3_collect(mut g, r, c));
+    }
+    best
+}
+
+// ---- arm 4: grid --------------------------------------------------------
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn get_maximum_gold(grid: own Vec[Vec[i32]]) -> i32 {
+        let mut grid = grid;
+        let (m, n) = (grid.len(), grid[0].len());
+        let mut ans: i32 = 0;
+        for i in 0..m {
+            for j in 0..n {
+                if grid[i][j] != 0 {
+                    ans = ans.max(A4Solution.dfs(mut grid, i, j));
+                }
+            }
+        }
+        ans
+    }
+
+    fn dfs(grid: mut ref Vec[Vec[i32]], i: i64, j: i64) -> i32 {
+        let gold = grid[i][j];
+        grid[i][j] = 0;
+        let mut best: i32 = 0;
+        if i > 0 and grid[i - 1][j] != 0 {
+            best = best.max(A4Solution.dfs(mut grid, i - 1, j));
+        }
+        if i + 1 < grid.len() and grid[i + 1][j] != 0 {
+            best = best.max(A4Solution.dfs(mut grid, i + 1, j));
+        }
+        if j > 0 and grid[i][j - 1] != 0 {
+            best = best.max(A4Solution.dfs(mut grid, i, j - 1));
+        }
+        if j + 1 < grid[0].len() and grid[i][j + 1] != 0 {
+            best = best.max(A4Solution.dfs(mut grid, i, j + 1));
+        }
+        grid[i][j] = gold;
+        gold + best
+    }
+}
+
+fn a4_get_maximum_gold(grid: Vec[Vec[i64]]) -> i64 {
+    A4Solution.get_maximum_gold(grid.iter().map(|row| row.iter().map(|v| v as i32).collect()).collect())
+}
+
+// ---- arm 5: visited -----------------------------------------------------
+struct A5Solution {}
+
+const DIRS: Array[(i64, i64), 4] = [(-1, 0), (1, 0), (0, -1), (0, 1)];
+
+impl A5Solution {
+    pub fn get_maximum_gold(grid: Vec[Vec[i32]]) -> i32 {
+        let mut visited = Set.new();
+        let mut ans: i32 = 0;
+        for i in 0..grid.len() {
+            for j in 0..grid[i].len() {
+                if grid[i][j] > 0 {
+                    visited.insert((i, j));
+                    ans = ans.max(A5Solution.walk(grid, i, j, mut visited));
+                    visited.remove((i, j));
+                }
+            }
+        }
+        ans
+    }
+
+    fn walk(grid: Slice[Vec[i32]], i: i64, j: i64, visited: mut ref Set[(i64, i64)]) -> i32 {
+        let mut best: i32 = 0;
+        for (di, dj) in DIRS {
+            let (Some(ni), Some(nj)) = (i.checked_add(di).filter(|v| v >= 0), j.checked_add(dj).filter(|v| v >= 0)) else {
+                continue;
+            };
+            if let Some(g) = grid.get(ni).and_then(|row| row.get(nj)).cloned() {
+                if g > 0 and visited.insert((ni, nj)) {
+                    best = best.max(A5Solution.walk(grid, ni, nj, mut visited));
+                    visited.remove((ni, nj));
+                }
+            }
+        }
+        grid[i][j] + best
+    }
+}
+
+fn a5_get_maximum_gold(grid: Vec[Vec[i64]]) -> i64 {
+    A5Solution.get_maximum_gold(grid.iter().map(|row| row.iter().map(|v| v as i32).collect()).collect())
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// Every set of gold cells, as a mask over the gold cells numbered in
+// reading order, that some walk visits each exactly once: `walks[set]`
+// holds the cells such a walk can end at, built up from the one-cell sets
+// by adding a neighbour of the end. The most gold in a set that has one.
+fn literal(grid: Vec[Vec[i64]]) -> i64 {
+    let mut cells: Vec[(i64, i64)] = Vec.new();
+    for r in 0..grid.len() {
+        for c in 0..grid[0].len() {
+            if grid[r][c] > 0 {
+                cells.push((r, c));
+            }
+        }
+    }
+    let k = cells.len();
+    let mut walks: Vec[i64] = Vec.filled(1 << k, 0);
+    let mut best = 0;
+    for set in 1..(1 << k) {
+        for end in 0..k {
+            if (set >> end) & 1 == 0 {
+                continue;
+            }
+            let rest = set ^ (1 << end);
+            let mut ends_here = rest == 0;
+            for before in 0..k {
+                if (rest >> before) & 1 == 1 and (walks[rest] >> before) & 1 == 1 {
+                    let (r1, c1) = cells[before];
+                    let (r2, c2) = cells[end];
+                    if (r1 - r2).abs() + (c1 - c2).abs() == 1 {
+                        ends_here = true;
+                    }
+                }
+            }
+            if ends_here {
+                walks[set] = walks[set] | (1 << end);
+            }
+        }
+        if walks[set] != 0 {
+            let mut gold = 0;
+            for i in 0..k {
+                if (set >> i) & 1 == 1 {
+                    let (r, c) = cells[i];
+                    gold += grid[r][c];
+                }
+            }
+            best = max(best, gold);
+        }
+    }
+    best
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(grid: Vec[Vec[i64]]) -> Vec[i64] {
+    [a0_get_maximum_gold(grid), a1_get_maximum_gold(grid), a2_get_maximum_gold(grid), a3_get_maximum_gold(grid), a4_get_maximum_gold(grid), a5_get_maximum_gold(grid)]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["the statement read literally", "the grid transposed gives the same", "every row reversed gives the same", "every cell's gold doubled doubles the answer", "a cell's gold taken away never raises the answer", "between the richest cell and all the gold", "the ★ arm's answer"];
+    let count = arms([[1]]).len();
+    let mut fails = Vec.filled(7, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1219;
+    for _ in 0..2000 {
+        // at most 10 cells: 1 to 3 rows, as many columns as keep it to 10,
+        // each cell empty one time in three, else 1 to 20 gold
+        let rows = next_random(mut seed) % 3 + 1;
+        let cols = next_random(mut seed) % (10 / rows) + 1;
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        let mut richest = 0;
+        let mut all = 0;
+        for _ in 0..rows {
+            let mut row: Vec[i64] = Vec.new();
+            for _ in 0..cols {
+                let v = next_random(mut seed) % 30;
+                let gold = if v < 10 { 0 } else { v - 9 };
+                richest = max(richest, gold);
+                all += gold;
+                row.push(gold);
+            }
+            grid.push(row);
+        }
+        let taken_r = next_random(mut seed) % rows;
+        let taken_c = next_random(mut seed) % cols;
+        let want = literal(grid);
+        let got = arms(grid);
+        let mut flipped: Vec[Vec[i64]] = Vec.new();
+        for c in 0..cols {
+            let mut column: Vec[i64] = Vec.new();
+            for r in 0..rows {
+                column.push(grid[r][c]);
+            }
+            flipped.push(column);
+        }
+        let transposed = arms(flipped);
+        let mirrored = arms(grid.iter().map(|row| row.iter().rev().collect()).collect());
+        let doubled = arms(grid.iter().map(|row| row.iter().map(|v| 2 * v).collect()).collect());
+        let mut poorer_grid = grid.clone();
+        poorer_grid[taken_r][taken_c] = 0;
+        let poorer = arms(poorer_grid);
+        for a in 0..count {
+            let v = got[a];
+            let held = [
+                v == want,
+                transposed[a] == v,
+                mirrored[a] == v,
+                doubled[a] == 2 * v,
+                poorer[a] <= v,
+                v >= richest and v <= all,
+                v == got[0],
+            ];
+            for p in 0..7 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {a}: {grid} -> {v}");
+                    }
+                }
+            }
+        }
+        check = (check * 131 + want) % 1000000007;
+    }
+    for p in 0..7 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let total = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over {count} arms: {total} failures");
+}

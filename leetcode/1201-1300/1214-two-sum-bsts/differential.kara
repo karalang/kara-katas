@@ -1,0 +1,344 @@
+// LeetCode #1214: Two Sum BSTs -- the six arms
+// against the statement read literally and six more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_in_order(node: Option[TreeNode], out: mut ref Vec[i32]) {
+    if let Some(n) = node {
+        a0_in_order(n.left, mut out);
+        out.push(n.val);
+        a0_in_order(n.right, mut out);
+    }
+}
+
+fn a0_two_sum_bsts(root1: Option[TreeNode], root2: Option[TreeNode], target: i32) -> bool {
+    let mut a: Vec[i32] = Vec.new();
+    let mut b: Vec[i32] = Vec.new();
+    a0_in_order(root1, mut a);
+    a0_in_order(root2, mut b);
+    let mut i = 0;
+    let mut j = b.len() - 1;
+    while i < a.len() and j >= 0 {
+        let sum = a[i] + b[j];
+        if sum == target {
+            return true;
+        }
+        if sum < target {
+            i += 1;
+        } else {
+            j -= 1;
+        }
+    }
+    false
+}
+
+// ---- arm 1: set ---------------------------------------------------------
+fn a1_gather(node: Option[TreeNode], into: mut ref Set[i32]) {
+    if let Some(n) = node {
+        into.insert(n.val);
+        a1_gather(n.left, mut into);
+        a1_gather(n.right, mut into);
+    }
+}
+
+fn a1_any_pair(node: Option[TreeNode], first: Set[i32], target: i32) -> bool {
+    match node {
+        None => false,
+        Some(n) => first.contains(target - n.val) or a1_any_pair(n.left, first, target) or a1_any_pair(n.right, first, target),
+    }
+}
+
+fn a1_two_sum_bsts(root1: Option[TreeNode], root2: Option[TreeNode], target: i32) -> bool {
+    let mut first: Set[i32] = Set.new();
+    a1_gather(root1, mut first);
+    a1_any_pair(root2, first, target)
+}
+
+// ---- arm 2: search ------------------------------------------------------
+fn a2_holds(node: Option[TreeNode], want: i32) -> bool {
+    let mut at = node;
+    while let Some(n) = at {
+        if n.val == want {
+            return true;
+        }
+        at = if want < n.val { n.left } else { n.right };
+    }
+    false
+}
+
+fn a2_two_sum_bsts(root1: Option[TreeNode], root2: Option[TreeNode], target: i32) -> bool {
+    let mut stack: Vec[TreeNode] = Vec.new();
+    if let Some(r) = root2 {
+        stack.push(r);
+    }
+    while let Some(n) = stack.pop() {
+        if a2_holds(root1, target - n.val) {
+            return true;
+        }
+        if let Some(l) = n.left {
+            stack.push(l);
+        }
+        if let Some(r) = n.right {
+            stack.push(r);
+        }
+    }
+    false
+}
+
+// ---- arm 3: lazy --------------------------------------------------------
+struct Walk {
+    stack: Vec[TreeNode],
+    rising: bool,
+}
+
+impl Walk {
+    fn new(root: Option[TreeNode], rising: bool) -> Walk {
+        let mut w = Walk { stack: Vec.new(), rising: rising };
+        w.descend(root);
+        w
+    }
+
+    // the path from `node` toward the end the walk starts at
+    fn descend(mut ref self, node: Option[TreeNode]) {
+        let mut at = node;
+        while let Some(n) = at {
+            self.stack.push(n);
+            at = if self.rising { n.left } else { n.right };
+        }
+    }
+
+    fn peek(self) -> Option[i32] {
+        let k = self.stack.len();
+        if k == 0 { None } else { Some(self.stack[k - 1].val) }
+    }
+
+    fn advance(mut ref self) {
+        if let Some(n) = self.stack.pop() {
+            let next = if self.rising { n.right } else { n.left };
+            self.descend(next);
+        }
+    }
+}
+
+fn a3_two_sum_bsts(root1: Option[TreeNode], root2: Option[TreeNode], target: i32) -> bool {
+    let mut up = Walk.new(root1, true);
+    let mut down = Walk.new(root2, false);
+    while let (Some(a), Some(b)) = (up.peek(), down.peek()) {
+        let sum = a + b;
+        if sum == target {
+            return true;
+        }
+        if sum < target {
+            up.advance();
+        } else {
+            down.advance();
+        }
+    }
+    false
+}
+
+// ---- arm 4: hashset -----------------------------------------------------
+struct A4Solution {}
+
+fn a4_find(node: Option[TreeNode], set: Set[i32], target: i32) -> bool {
+    match node {
+        None => false,
+        Some(n) => {
+            set.contains(target - n.val) or a4_find(n.left, set, target) or a4_find(n.right, set, target)
+        }
+    }
+}
+
+fn a4_collect(node: Option[TreeNode], set: mut ref Set[i32]) {
+    if let Some(n) = node {
+        set.insert(n.val);
+        a4_collect(n.left, mut set);
+        a4_collect(n.right, mut set);
+    }
+}
+
+impl A4Solution {
+    pub fn two_sum_bsts(root1: Option[TreeNode], root2: Option[TreeNode], target: i32) -> bool {
+        let mut set = Set.new();
+        a4_collect(root1, mut set);
+        a4_find(root2, set, target)
+    }
+}
+
+fn a4_two_sum_bsts(root1: Option[TreeNode], root2: Option[TreeNode], target: i32) -> bool {
+    A4Solution.two_sum_bsts(root1, root2, target)
+}
+
+// ---- arm 5: stacks ------------------------------------------------------
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn two_sum_bsts(root1: Option[TreeNode], root2: Option[TreeNode], target: i32) -> bool {
+        let mut s1: Vec[TreeNode] = Vec.new();
+        let mut s2: Vec[TreeNode] = Vec.new();
+        let mut c1 = root1;
+        let mut c2 = root2;
+        loop {
+            while let Some(n) = c1 {
+                c1 = n.left.clone();
+                s1.push(n);
+            }
+            while let Some(n) = c2 {
+                c2 = n.right.clone();
+                s2.push(n);
+            }
+            if s1.is_empty() or s2.is_empty() {
+                return false;
+            }
+            let a = s1.last().unwrap().val;
+            let b = s2.last().unwrap().val;
+            if a + b == target {
+                return true;
+            } else if a + b < target {
+                c1 = s1.pop().unwrap().right.clone();
+            } else {
+                c2 = s2.pop().unwrap().left.clone();
+            }
+        }
+    }
+}
+
+fn a5_two_sum_bsts(root1: Option[TreeNode], root2: Option[TreeNode], target: i32) -> bool {
+    A5Solution.two_sum_bsts(root1, root2, target)
+}
+
+// ---- the statement read literally -----------------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn values(node: Option[TreeNode], out: mut ref Vec[i32]) {
+    if let Some(n) = node {
+        out.push(n.val);
+        values(n.left, mut out);
+        values(n.right, mut out);
+    }
+}
+
+// Every node of the first tree against every node of the second.
+fn literal(root1: Option[TreeNode], root2: Option[TreeNode], target: i32) -> bool {
+    let mut a: Vec[i32] = Vec.new();
+    let mut b: Vec[i32] = Vec.new();
+    values(root1, mut a);
+    values(root2, mut b);
+    for x in a.iter() {
+        for y in b.iter() {
+            if x + y == target {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(root1: Option[TreeNode], root2: Option[TreeNode], target: i32) -> Vec[bool] {
+    [a0_two_sum_bsts(root1, root2, target), a1_two_sum_bsts(root1, root2, target), a2_two_sum_bsts(root1, root2, target), a3_two_sum_bsts(root1, root2, target), a4_two_sum_bsts(root1, root2, target), a5_two_sum_bsts(root1, root2, target)]
+}
+
+fn bst(values: Vec[i32]) -> Option[TreeNode] {
+    let mut root: Option[TreeNode] = None;
+    for v in values.iter() {
+        let node = TreeNode { val: v, left: None, right: None };
+        let Some(r) = root else {
+            root = Some(node);
+            continue;
+        };
+        let mut at = r;
+        loop {
+            if v < at.val {
+                let Some(l) = at.left else {
+                    at.left = Some(node);
+                    break;
+                };
+                at = l;
+            } else {
+                let Some(x) = at.right else {
+                    at.right = Some(node);
+                    break;
+                };
+                at = x;
+            }
+        }
+    }
+    root
+}
+
+// every value negated and the two sides swapped, still a search tree
+fn mirrored(node: Option[TreeNode]) -> Option[TreeNode] {
+    match node {
+        None => None,
+        Some(n) => Some(TreeNode { val: -n.val, left: mirrored(n.right), right: mirrored(n.left) }),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["the statement read literally", "the trees swapped give the same", "the first tree's values and the target one more give the same", "both trees mirrored and negated, with the target negated, give the same", "a sum of a node from each is found", "a node added to the first tree keeps a true answer true", "the ★ arm's answer"];
+    let mut fails = Vec.filled(7, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1214;
+    for _ in 0..2000 {
+        // 1 to 7 nodes each, distinct or not, values from -8 to 8
+        let n1 = next_random(mut seed) % 7 + 1;
+        let n2 = next_random(mut seed) % 7 + 1;
+        let a: Vec[i32] = (0..n1).map(|_| (next_random(mut seed) % 17 - 8) as i32).collect();
+        let b: Vec[i32] = (0..n2).map(|_| (next_random(mut seed) % 17 - 8) as i32).collect();
+        let t = (next_random(mut seed) % 33 - 16) as i32;
+        let hit = a[next_random(mut seed) % n1] + b[next_random(mut seed) % n2];
+        let extra = (next_random(mut seed) % 17 - 8) as i32;
+        let (r1, r2) = (bst(a), bst(b));
+        let got = arms(r1, r2, t);
+        let want = literal(r1, r2, t);
+        let swapped = arms(r2, r1, t);
+        let raised = arms(bst(a.iter().map(|v| v + 1).collect()), r2, t + 1);
+        let negated = arms(mirrored(r1), mirrored(r2), -t);
+        let found = arms(r1, r2, hit);
+        let mut grown_values = a.clone();
+        grown_values.push(extra);
+        let grown = arms(bst(grown_values), r2, t);
+        for k in 0..6 {
+            let v = got[k];
+            let held = [
+                v == want,
+                swapped[k] == v,
+                raised[k] == v,
+                negated[k] == v,
+                found[k],
+                not v or grown[k],
+                v == got[0],
+            ];
+            for p in 0..7 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {k}: {a} {b} {t} -> {v}");
+                    }
+                }
+            }
+        }
+        check = (check * 131 + if want { 2 } else { 1 }) % 1000000007;
+    }
+    for p in 0..7 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let total = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+}

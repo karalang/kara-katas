@@ -1,0 +1,175 @@
+// LeetCode #1227: Airplane Seat Assignment Probability -- the arms against
+// the statement read literally and five more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_nth_person_gets_nth_seat(n: i64) -> f64 {
+    if n == 1 { 1.0 } else { 0.5 }
+}
+
+// ---- arm 1: sums --------------------------------------------------------
+fn a1_nth_person_gets_nth_seat(n: i64) -> f64 {
+    let mut f = 1.0;
+    let mut sum = 0.0;
+    for m in 2..=n {
+        f = (1.0 + sum) / m as f64;
+        sum += f;
+    }
+    f
+}
+
+// ---- arm 2: chain -------------------------------------------------------
+fn a2_nth_person_gets_nth_seat(n: i64) -> f64 {
+    // the chance a passenger before k was displaced and picked seat k
+    let mut reaching = 0.0;
+    let mut lost = 0.0;
+    for k in 1..n {
+        let displaced = if k == 1 { 1.0 } else { reaching };
+        let each = displaced / (n - k + 1) as f64;
+        lost += each;
+        reaching += each;
+    }
+    1.0 - lost
+}
+
+// ---- arm 3: recur -------------------------------------------------------
+struct A3Solution {}
+
+impl A3Solution {
+    pub fn nth_person_gets_nth_seat(n: i32) -> f64 {
+        if n == 1 {
+            return 1.0;
+        }
+        1.0 / n as f64 + (n as f64 - 2.0) / n as f64 * A3Solution.nth_person_gets_nth_seat(n - 1)
+    }
+}
+
+fn a3_nth_person_gets_nth_seat(n: i64) -> f64 {
+    A3Solution.nth_person_gets_nth_seat(n as i32)
+}
+
+// ---- arm 4: table -------------------------------------------------------
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn nth_person_gets_nth_seat(n: i32) -> f64 {
+        let n = n as i64;
+        let mut dp = Vec.filled(n + 1, 0.0);
+        dp[1] = 1.0;
+        let mut sum = 0.0;
+        for i in 2..=n {
+            dp[i] = (1.0 + sum) / i as f64;
+            sum += dp[i];
+        }
+        dp[n]
+    }
+}
+
+fn a4_nth_person_gets_nth_seat(n: i64) -> f64 {
+    A4Solution.nth_person_gets_nth_seat(n as i32)
+}
+
+
+// ---- the statement read literally -----------------------------------------
+
+// Boards the passengers in turn, with seats `taken` so far: the first, and
+// anyone whose seat is taken, tries every free seat, each with an equal
+// share of `weight`. Returns the weight of the boardings in which the last
+// passenger gets their own seat. Started with a weight of n!, every share
+// is a whole number, since the free seats counted at each choice are
+// distinct numbers no larger than n.
+fn boardings(n: i64, k: i64, taken: mut ref Vec[bool], weight: i64) -> i64 {
+    if k == n {
+        return if taken[n] { 0 } else { weight };
+    }
+    if k > 1 and not taken[k] {
+        taken[k] = true;
+        let won = boardings(n, k + 1, mut taken, weight);
+        taken[k] = false;
+        return won;
+    }
+    let free: Vec[i64] = (1..=n).filter(|s| not taken[s]).collect();
+    let mut won = 0;
+    for s in free.iter() {
+        taken[s] = true;
+        won += boardings(n, k + 1, mut taken, weight / free.len());
+        taken[s] = false;
+    }
+    won
+}
+
+fn literal(n: i64) -> f64 {
+    if n == 1 {
+        return 1.0;
+    }
+    let all = (1..=n).product();
+    let mut taken = Vec.filled(n + 1, false);
+    boardings(n, 1, mut taken, all) as f64 / all as f64
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(n: i64) -> Vec[f64] {
+    [a0_nth_person_gets_nth_seat(n), a1_nth_person_gets_nth_seat(n), a2_nth_person_gets_nth_seat(n), a3_nth_person_gets_nth_seat(n), a4_nth_person_gets_nth_seat(n)]
+}
+
+fn close(a: f64, b: f64) -> bool {
+    (a - b).abs() < 0.000000001
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["the statement read literally", "at least 1/n", "at most 1 - 1/n", "n f(n) = 1 + f(2) + ... + f(n - 1)", "the same for n and n + 1", "the ★ arm's answer"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut total = 0.0;
+    let mut seed = 1227;
+    for c in 0..1500 {
+        let n = match c % 3 {
+            0 => next_random(mut seed) % 8 + 1,
+            1 => next_random(mut seed) % 32 + 9,
+            _ => next_random(mut seed) % 2960 + 41,
+        };
+        let want = if n <= 8 { literal(n) } else { -1.0 };
+        let got = arms(n);
+        let next = arms(n + 1);
+        let smaller: Vec[Vec[f64]] = if n <= 40 { (2..n).map(|m| arms(m)).collect() } else { [] };
+        for a in 0..5 {
+            let v = got[a];
+            let recurrence = if n <= 40 and n >= 2 {
+                close(n as f64 * v, 1.0 + smaller.iter().map(|s| s[a]).sum())
+            } else {
+                true
+            };
+            let held = [
+                n > 8 or close(v, want),
+                v >= 1.0 / n as f64 - 0.000000001,
+                n == 1 or v <= 1.0 - 1.0 / n as f64 + 0.000000001,
+                recurrence,
+                n == 1 or close(next[a], v),
+                close(v, got[0]),
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {a}: n = {n} -> {v}");
+                    }
+                }
+            }
+        }
+        total += if n <= 8 { want } else { got[0] };
+    }
+    for p in 0..6 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let failures = fails.iter().sum();
+    println(f"1500 cases: total {total:.5}, {checks} checks over {5} arms: {failures} failures");
+}

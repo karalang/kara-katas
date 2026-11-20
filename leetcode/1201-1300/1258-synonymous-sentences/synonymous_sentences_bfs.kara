@@ -1,0 +1,138 @@
+// LeetCode #1258: Synonymous Sentences -- by breadth-first search over
+// sentences: from the text, every sentence one word's direct synonym
+// away is queued once, the sentences met kept in a `Set`, and at the
+// end listed and sorted.
+
+fn generate_sentences(synonyms: Vec[Vec[String]], text: Str) -> Vec[String] {
+    let mut next_to: Map[String, Vec[String]] = Map.new();
+    for pair in synonyms.iter() {
+        next_to.entry(pair[0].clone()).or_insert_with(Vec.new).push(pair[1].clone());
+        next_to.entry(pair[1].clone()).or_insert_with(Vec.new).push(pair[0].clone());
+    }
+    let mut seen: Set[String] = Set.new();
+    let mut queue: VecDeque[String] = VecDeque.new();
+    seen.insert(text.to_string());
+    queue.push_back(text.to_string());
+    while let Some(sentence) = queue.pop_front() {
+        let words: Vec[Str] = sentence.split(" ").collect();
+        for i in 0..words.len() {
+            if let Some(others) = next_to.get(words[i]) {
+                for other in others.iter() {
+                    let mut changed: Vec[Str] = words.clone();
+                    changed[i] = other.as_str();
+                    let next = changed.join(" ");
+                    if not seen.contains(next) {
+                        seen.insert(next.clone());
+                        queue.push_back(next);
+                    }
+                }
+            }
+        }
+    }
+    let mut out: Vec[String] = seen.into_iter().collect();
+    out.sort();
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A random word of 1 to 3 letters from the 6 starting at `first`.
+fn random_word(first: u8, seed: mut ref i64) -> String {
+    let mut word = String.new();
+    let len = next_random(mut seed) % 3 + 1;
+    for _ in 0..len {
+        word.push((first + (next_random(mut seed) % 6) as u8) as char);
+    }
+    word
+}
+
+// `count` different random words.
+fn random_words(count: i64, first: u8, seed: mut ref i64) -> Vec[String] {
+    let mut words: Vec[String] = Vec.new();
+    while words.len() < count {
+        let word = random_word(first, mut seed);
+        if not words.contains(word) {
+            words.push(word);
+        }
+    }
+    words
+}
+
+// Up to 10 random pairs of 8 words from `a` to `f`, and a text of 1 to 10
+// words, at most 4 of them from the pairs' words and the rest from `p` to
+// `u`.
+fn random_case(seed: mut ref i64) -> (Vec[Vec[String]], String) {
+    let pool = random_words(8, b'a', mut seed);
+    let plain = random_words(12, b'p', mut seed);
+    let mut synonyms: Vec[Vec[String]] = Vec.new();
+    for _ in 0..next_random(mut seed) % 11 {
+        let i = next_random(mut seed) % 8;
+        let j = (i + 1 + next_random(mut seed) % 7) % 8;
+        synonyms.push([pool[i].clone(), pool[j].clone()]);
+    }
+    let mut words: Vec[String] = Vec.new();
+    let mut from_pool = 0;
+    for _ in 0..next_random(mut seed) % 10 + 1 {
+        if from_pool < 4 and next_random(mut seed) % 3 == 0 {
+            words.push(pool[next_random(mut seed) % 8].clone());
+            from_pool += 1;
+        } else {
+            words.push(plain[next_random(mut seed) % 12].clone());
+        }
+    }
+    (synonyms, words.join(" "))
+}
+
+fn fold(check: i64, sentence: Str) -> i64 {
+    let mut check = check;
+    for b in sentence.bytes() {
+        check = (check * 131 + b) % 1000000007;
+    }
+    (check * 131 + 10) % 1000000007
+}
+
+fn pairs(list: Vec[Vec[Str]]) -> Vec[Vec[String]] {
+    list.iter().map(|pair| pair.iter().map(|w| w.to_string()).collect()).collect()
+}
+
+fn main() {
+    // LeetCode's two examples
+    let text = "I am happy today but was sad yesterday";
+    let first = generate_sentences(pairs([["happy", "joy"], ["sad", "sorrow"], ["joy", "cheerful"]]), text);
+    for sentence in first.iter() {
+        println(sentence);
+    }
+    let second = generate_sentences(pairs([["happy", "joy"], ["cheerful", "glad"]]), text);
+    println(f"{second.len()} sentences: {second.join(" / ")}");
+    // 400 random cases
+    let mut seed = 1258;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..400 {
+        let (synonyms, text) = random_case(mut seed);
+        let sentences = generate_sentences(synonyms, text);
+        total += sentences.len();
+        for sentence in sentences.iter() {
+            check = fold(check, sentence);
+        }
+    }
+    println(f"400 random cases: {total} sentences, checksum {check}");
+    // the constraints' top: 10 pairs, two groups of 6 words, and a text of
+    // 10 words, 4 of them in the groups
+    let mut top: Vec[Vec[String]] = Vec.new();
+    for i in 0..5 {
+        top.push([f"joy{i}", f"joy{i + 1}"]);
+        top.push([f"sad{5 - i}", f"sad{4 - i}"]);
+    }
+    let many = generate_sentences(top, "joy3 was not sad2 but joy0 and sad5 for days");
+    let mut check = 0;
+    for sentence in many.iter() {
+        check = fold(check, sentence);
+    }
+    println(f"{many.len()} sentences, checksum {check}, first {many[0]}, last {many[many.len() - 1]}");
+}

@@ -1,0 +1,257 @@
+// LeetCode #1220: Count Vowels Permutation -- the six arms
+// against the statement read literally and four more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_count_vowel_permutation(n: i64) -> i64 {
+    let modulus = 1_000_000_007;
+    let mut (a, e, i, o, u) = (1, 1, 1, 1, 1);
+    for _ in 1..n {
+        a, e, i, o, u = (e + i + u) % modulus, (a + i) % modulus, (e + o) % modulus, i, (i + o) % modulus;
+    }
+    (a + e + i + o + u) % modulus
+}
+
+// ---- arm 1: table -------------------------------------------------------
+fn a1_count_vowel_permutation(n: i64) -> i64 {
+    let modulus = 1_000_000_007;
+    // a, e, i, o, u as 0 to 4, and the vowels each may be followed by.
+    let follows: Vec[Vec[i64]] = [[1], [0, 2], [0, 1, 3, 4], [2, 4], [0]];
+    let mut table: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(5, 0));
+    table[0] = Vec.filled(5, 1);
+    for k in 1..n {
+        for v in 0..5 {
+            for w in follows[v].iter() {
+                table[k][w] = (table[k][w] + table[k - 1][v]) % modulus;
+            }
+        }
+    }
+    table[n - 1].iter().sum() % modulus
+}
+
+// ---- arm 2: matrix ------------------------------------------------------
+fn a2_multiply(x: Vec[Vec[i64]], y: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let modulus = 1_000_000_007;
+    let mut product = Vec.filled(5, Vec.filled(5, 0));
+    for r in 0..5 {
+        for c in 0..5 {
+            let mut sum = 0;
+            for k in 0..5 {
+                sum = (sum + x[r][k] * y[k][c]) % modulus;
+            }
+            product[r][c] = sum;
+        }
+    }
+    product
+}
+
+fn a2_count_vowel_permutation(n: i64) -> i64 {
+    let modulus = 1_000_000_007;
+    let mut step: Vec[Vec[i64]] = [
+        [0, 1, 0, 0, 0],
+        [1, 0, 1, 0, 0],
+        [1, 1, 0, 1, 1],
+        [0, 0, 1, 0, 1],
+        [1, 0, 0, 0, 0],
+    ];
+    let mut power: Vec[Vec[i64]] = (0..5).map(|r| (0..5).map(|c| if r == c { 1 } else { 0 }).collect()).collect();
+    let mut left = n - 1;
+    while left > 0 {
+        if left % 2 == 1 {
+            power = a2_multiply(power, step);
+        }
+        step = a2_multiply(step, step);
+        left /= 2;
+    }
+    let mut total = 0;
+    for row in power.iter() {
+        for x in row.iter() {
+            total = (total + x) % modulus;
+        }
+    }
+    total
+}
+
+// ---- arm 3: memo --------------------------------------------------------
+fn a3_ways(length: i64, first: char, memo: mut ref Map[(i64, char), i64]) -> i64 {
+    if length == 1 {
+        return 1;
+    }
+    if let Some(known) = memo.get((length, first)) {
+        return known;
+    }
+    let next = match first {
+        'a' => "e",
+        'e' => "ai",
+        'i' => "aeou",
+        'o' => "iu",
+        _ => "a",
+    };
+    let mut total = 0;
+    for c in next.chars() {
+        total = (total + a3_ways(length - 1, c, mut memo)) % 1_000_000_007;
+    }
+    memo.insert((length, first), total);
+    total
+}
+
+fn a3_count_vowel_permutation(n: i64) -> i64 {
+    let mut memo: Map[(i64, char), i64] = Map.new();
+    let mut total = 0;
+    for c in "aeiou".chars() {
+        total = (total + a3_ways(n, c, mut memo)) % 1_000_000_007;
+    }
+    total
+}
+
+// ---- arm 4: slices ------------------------------------------------------
+struct A4Solution {}
+
+const MOD: i64 = 1_000_000_007;
+
+impl A4Solution {
+    pub fn count_vowel_permutation(n: i32) -> i32 {
+        let follows: Array[Vec[usize], 5] = [[1], [0, 2], [0, 1, 3, 4], [2, 4], [0]];
+        let mut dp = [1; 5];
+        for _ in 1..n {
+            let mut next = [0; 5];
+            for (v, count) in dp.iter().enumerate() {
+                for w in follows[v] {
+                    next[w] = (next[w] + count) % MOD;
+                }
+            }
+            dp = next;
+        }
+        (dp.iter().sum() % MOD) as i32
+    }
+}
+
+fn a4_count_vowel_permutation(n: i64) -> i64 {
+    A4Solution.count_vowel_permutation(n as i32)
+}
+
+// ---- arm 5: chars -------------------------------------------------------
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn count_vowel_permutation(n: i32) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let before: Map[char, Str] =
+            [('a', "eiu"), ('e', "ai"), ('i', "eo"), ('o', "i"), ('u', "io")].into_iter().collect();
+        let mut counts: Map[char, i64] = "aeiou".chars().map(|c| (c, 1)).collect();
+        for _ in 1..n {
+            counts = "aeiou"
+                .chars()
+                .map(|c| (c, before[c].chars().map(|p| counts[p]).sum() % MOD))
+                .collect();
+        }
+        (counts.values().sum() % MOD) as i32
+    }
+}
+
+fn a5_count_vowel_permutation(n: i64) -> i64 {
+    A5Solution.count_vowel_permutation(n as i32)
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// Whether one vowel may follow another, each rule as the statement words it.
+fn may_follow(before: char, after: char) -> bool {
+    match before {
+        'a' => after == 'e',
+        'e' => after == 'a' or after == 'i',
+        'i' => after != 'i',
+        'o' => after == 'i' or after == 'u',
+        _ => after == 'a',
+    }
+}
+
+// Every string of n vowels, as the n digits of a number in base 5, kept when
+// every letter may follow the one before it; the count of those kept.
+fn literal(n: i64) -> i64 {
+    let vowels: Vec[char] = "aeiou".chars().collect();
+    let mut total = 1;
+    for _ in 0..n {
+        total *= 5;
+    }
+    let mut kept = 0;
+    for code in 0..total {
+        let mut word: Vec[char] = Vec.new();
+        let mut rest = code;
+        for _ in 0..n {
+            word.push(vowels[rest % 5]);
+            rest /= 5;
+        }
+        let mut good = true;
+        for k in 1..n {
+            if not may_follow(word[k - 1], word[k]) {
+                good = false;
+            }
+        }
+        if good {
+            kept += 1;
+        }
+    }
+    kept
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(n: i64) -> Vec[i64] {
+    [a0_count_vowel_permutation(n), a1_count_vowel_permutation(n), a2_count_vowel_permutation(n), a3_count_vowel_permutation(n), a4_count_vowel_permutation(n), a5_count_vowel_permutation(n)]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["the statement read literally", "c(n) = 3 c(n - 2) + c(n - 3) + c(n - 5), modulo 10^9 + 7", "from 0 to 10^9 + 6", "below the modulus, every string grows by one to four letters: c(n) <= c(n + 1) <= 4 c(n)", "the ★ arm's answer"];
+    let modulus = 1_000_000_007;
+    let literals: Vec[i64] = (0..8).map(|n| if n == 0 { 0 } else { literal(n) }).collect();
+    let mut fails = Vec.filled(5, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1220;
+    for case in 0..2000 {
+        // a third from 1 to 7, a third from 8 to 40, a third from 41 to 2000
+        let n = match case % 3 {
+            0 => next_random(mut seed) % 7 + 1,
+            1 => next_random(mut seed) % 33 + 8,
+            _ => next_random(mut seed) % 1960 + 41,
+        };
+        let got = arms(n);
+        let next = arms(n + 1);
+        // c(n - 2), c(n - 3) and c(n - 5), where n is past 5
+        let (two, three, five) = if n >= 6 { (arms(n - 2), arms(n - 3), arms(n - 5)) } else { (got.clone(), got.clone(), got.clone()) };
+        for a in 0..6 {
+            let v = got[a];
+            let held = [
+                n > 7 or v == literals[n],
+                n < 6 or v == (3 * two[a] + three[a] + five[a]) % modulus,
+                v >= 0 and v < modulus,
+                n > 29 or (next[a] >= v and next[a] <= 4 * v),
+                v == got[0],
+            ];
+            for p in 0..5 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {a}: n = {n} -> {v}");
+                    }
+                }
+            }
+        }
+        check = (check * 131 + got[0]) % 1000000007;
+    }
+    for p in 0..5 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let total = fails.iter().sum();
+    println(f"literal counts for n from 1 to 7: {literals[1]} {literals[2]} {literals[3]} {literals[4]} {literals[5]} {literals[6]} {literals[7]}");
+    println(f"2000 cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+}

@@ -1,0 +1,82 @@
+// LeetCode #1234: Replace the Substring for Balanced String -- prefix counts
+// of each letter; for each start, the shortest window from it is the
+// first end at which every letter's count inside reaches its excess over
+// n / 4, found by a binary search over the prefix counts. O(n log n).
+
+fn balanced_string(s: String) -> i64 {
+    let n = s.len();
+    let k = n / 4;
+    let mut prefix: Vec[Array[i64, 4]] = [[0; 4]];
+    for c in s.chars() {
+        let mut next = prefix[prefix.len() - 1];
+        let i = match c {
+            'Q' => 0,
+            'W' => 1,
+            'E' => 2,
+            _ => 3,
+        };
+        next[i] += 1;
+        prefix.push(next);
+    }
+    let total = prefix[n];
+    let excess: Vec[i64] = (0..4).map(|i| (total[i] - k).max(0)).collect();
+    if excess.iter().all(|e| e == 0) {
+        return 0;
+    }
+    let mut best = n;
+    for start in 0..n {
+        let covers = |end: i64| (0..4).all(|i| prefix[end][i] - prefix[start][i] >= excess[i]);
+        if not covers(n) {
+            break;
+        }
+        let mut lo = start + 1;
+        let mut hi = n;
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            if covers(mid) {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        best = best.min(lo - start);
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` letters from "QWER" from `seed`, each letter drawn with a weight so
+// that some strings lean far from balanced.
+fn letters(n: i64, lean: i64, seed: mut ref i64) -> String {
+    let mut s = "".to_string();
+    for _ in 0..n {
+        let r = next_random(mut seed) % (4 + lean);
+        s.push(if r >= 4 or r == 0 { 'Q' } else if r == 1 { 'W' } else if r == 2 { 'E' } else { 'R' });
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's three examples, and one letter only
+    println(f"{balanced_string("QWER")}");
+    println(f"{balanced_string("QQWE")}");
+    println(f"{balanced_string("QQQW")}");
+    println(f"{balanced_string("QQQQ")}");
+    // 1000 random strings of 4 to 40 letters
+    let mut seed = 1234;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n = (next_random(mut seed) % 10 + 1) * 4;
+        let s = letters(n, next_random(mut seed) % 5, mut seed);
+        check = (check * 131 + balanced_string(s)) % 1000000007;
+    }
+    println(f"1000 random strings: checksum {check}");
+    // the constraints' top, 10^5 letters: drawn evenly, leaning, and balanced
+    println(f"10^5 letters: {balanced_string(letters(100000, 0, mut seed))}, {balanced_string(letters(100000, 2, mut seed))}, {balanced_string("QWER".repeat(25000))}");
+}

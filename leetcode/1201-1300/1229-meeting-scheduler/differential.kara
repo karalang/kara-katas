@@ -1,0 +1,235 @@
+// LeetCode #1229: Meeting Scheduler -- the arms against the
+// statement read literally and five more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_min_available_duration(slots1: Vec[Vec[i64]], slots2: Vec[Vec[i64]], duration: i64) -> Vec[i64] {
+    let mut a = slots1.clone();
+    let mut b = slots2.clone();
+    a.sort();
+    b.sort();
+    let mut i = 0;
+    let mut j = 0;
+    while i < a.len() and j < b.len() {
+        let start = a[i][0].max(b[j][0]);
+        let end = a[i][1].min(b[j][1]);
+        if end - start >= duration {
+            return [start, start + duration];
+        }
+        if a[i][1] < b[j][1] {
+            i += 1;
+        } else {
+            j += 1;
+        }
+    }
+    []
+}
+
+// ---- arm 1: heap --------------------------------------------------------
+fn a1_min_available_duration(slots1: Vec[Vec[i64]], slots2: Vec[Vec[i64]], duration: i64) -> Vec[i64] {
+    let mut queue: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    for s in slots1.iter().chain(slots2.iter()) {
+        if s[1] - s[0] >= duration {
+            queue.push((s[0], s[1]));
+        }
+    }
+    let mut Some(prev) = queue.pop() else {
+        return [];
+    };
+    while let Some(next) = queue.pop() {
+        if prev.1 >= next.0 + duration {
+            return [next.0, next.0 + duration];
+        }
+        prev = next;
+    }
+    []
+}
+
+// ---- arm 2: merged ------------------------------------------------------
+fn a2_min_available_duration(slots1: Vec[Vec[i64]], slots2: Vec[Vec[i64]], duration: i64) -> Vec[i64] {
+    let mut all: Vec[(i64, i64, i64)] = Vec.new();
+    for s in slots1.iter() {
+        all.push((s[0], s[1], 0));
+    }
+    for s in slots2.iter() {
+        all.push((s[0], s[1], 1));
+    }
+    all.sort();
+    let mut reach = [-1, -1];
+    for (start, end, who) in all.iter() {
+        let other = reach[1 - who];
+        if other.min(end) - start >= duration {
+            return [start, start + duration];
+        }
+        reach[who] = reach[who].max(end);
+    }
+    []
+}
+
+// ---- arm 3: pointers ----------------------------------------------------
+struct A3Solution {}
+
+impl A3Solution {
+    pub fn min_available_duration(slots1: own Vec[Vec[i32]], slots2: own Vec[Vec[i32]], duration: i32) -> Vec[i32] {
+        let mut slots1 = slots1;
+        let mut slots2 = slots2;
+        slots1.sort_by_key(|s| s[0]);
+        slots2.sort_by_key(|s| s[0]);
+        let mut (i, j) = (0, 0);
+        while i < slots1.len() and j < slots2.len() {
+            let start = slots1[i][0].max(slots2[j][0]);
+            let end = slots1[i][1].min(slots2[j][1]);
+            if end - start >= duration {
+                return [start, start + duration];
+            }
+            if slots1[i][1] < slots2[j][1] {
+                i += 1;
+            } else {
+                j += 1;
+            }
+        }
+        Vec.new()
+    }
+}
+
+fn a3_min_available_duration(slots1: Vec[Vec[i64]], slots2: Vec[Vec[i64]], duration: i64) -> Vec[i64] {
+    let a: Vec[Vec[i32]] = slots1.iter().map(|s| s.iter().map(|v| v as i32).collect()).collect();
+    let b: Vec[Vec[i32]] = slots2.iter().map(|s| s.iter().map(|v| v as i32).collect()).collect();
+    A3Solution.min_available_duration(a, b, duration as i32).iter().map(|v| v as i64).collect()
+}
+
+// ---- arm 4: binheap -----------------------------------------------------
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn min_available_duration(slots1: Vec[Vec[i32]], slots2: Vec[Vec[i32]], duration: i32) -> Vec[i32] {
+        let mut heap = PriorityQueue.new();
+        for s in slots1.iter().chain(slots2.iter()) {
+            if s[1] - s[0] >= duration {
+                heap.push((s[0], s[1]));
+            }
+        }
+        while heap.len() > 1 {
+            let (_, end1) = heap.pop().unwrap();
+            let (start2, _) = *heap.peek().unwrap();
+            if end1 >= start2 + duration {
+                return [start2, start2 + duration];
+            }
+        }
+        Vec.new()
+    }
+}
+
+fn a4_min_available_duration(slots1: Vec[Vec[i64]], slots2: Vec[Vec[i64]], duration: i64) -> Vec[i64] {
+    let a: Vec[Vec[i32]] = slots1.iter().map(|s| s.iter().map(|v| v as i32).collect()).collect();
+    let b: Vec[Vec[i32]] = slots2.iter().map(|s| s.iter().map(|v| v as i32).collect()).collect();
+    A4Solution.min_available_duration(a, b, duration as i32).iter().map(|v| v as i64).collect()
+}
+
+
+// ---- the statement read literally -----------------------------------------
+
+// Every slot of the one against every slot of the other: the earliest
+// start at which both are free for `duration`.
+fn literal(slots1: Vec[Vec[i64]], slots2: Vec[Vec[i64]], duration: i64) -> Vec[i64] {
+    let mut best = -1;
+    for a in slots1.iter() {
+        for b in slots2.iter() {
+            let start = a[0].max(b[0]);
+            if a[1].min(b[1]) - start >= duration and (best == -1 or start < best) {
+                best = start;
+            }
+        }
+    }
+    if best == -1 { [] } else { [best, best + duration] }
+}
+
+// Whether [s, e] lies within one of the slots.
+fn within(slots: Vec[Vec[i64]], s: i64, e: i64) -> bool {
+    slots.iter().any(|x| x[0] <= s and e <= x[1])
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(slots1: Vec[Vec[i64]], slots2: Vec[Vec[i64]], duration: i64) -> Vec[Vec[i64]] {
+    [a0_min_available_duration(slots1, slots2, duration), a1_min_available_duration(slots1, slots2, duration), a2_min_available_duration(slots1, slots2, duration), a3_min_available_duration(slots1, slots2, duration), a4_min_available_duration(slots1, slots2, duration)]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn slots(seed: mut ref i64, count: i64, width: i64, gap: i64) -> Vec[Vec[i64]] {
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    let mut at = next_random(mut seed) % (gap + 1);
+    for _ in 0..count {
+        let end = at + next_random(mut seed) % width + 1;
+        out.push([at, end]);
+        at = end + next_random(mut seed) % gap + 1;
+    }
+    for i in (1..out.len()).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        out.swap(i, j);
+    }
+    out
+}
+
+fn shift(slots: Vec[Vec[i64]], by: i64) -> Vec[Vec[i64]] {
+    slots.iter().map(|s| [s[0] + by, s[1] + by]).collect()
+}
+
+fn main() {
+    let names = ["the statement read literally", "duration long, within a slot of each", "the two people swapped give the same", "every time shifted gives the answer shifted", "a meeting one shorter fits no later", "the ★ arm's answer"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1229;
+    for c in 0..2000 {
+        let (count, width, gap) = match c % 3 {
+            0 => (5, 10, 10),
+            1 => (50, 40, 40),
+            _ => (150, 400, 300),
+        };
+        let a = slots(mut seed, next_random(mut seed) % count + 1, width, gap);
+        let b = slots(mut seed, next_random(mut seed) % count + 1, width, gap);
+        let duration = next_random(mut seed) % width + 1;
+        let by = next_random(mut seed) % 1000;
+        let want = literal(a, b, duration);
+        let got = arms(a, b, duration);
+        let swapped = arms(b, a, duration);
+        let shifted = arms(shift(a, by), shift(b, by), duration);
+        let shorter = if duration > 1 { arms(a, b, duration - 1) } else { got.clone() };
+        for k in 0..5 {
+            let v = got[k].clone();
+            let fits = v.is_empty() or (v.len() == 2 and v[1] - v[0] == duration and within(a, v[0], v[1]) and within(b, v[0], v[1]));
+            let moved: Vec[i64] = v.iter().map(|x| x + by).collect();
+            let earlier = v.is_empty() or (not shorter[k].is_empty() and shorter[k][0] <= v[0]);
+            let held = [
+                v == want,
+                fits,
+                swapped[k] == v,
+                shifted[k] == moved,
+                earlier,
+                v == got[0],
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {k}: {a} {b} {duration} -> {v}");
+                    }
+                }
+            }
+        }
+        check = (check * 131 + if want.is_empty() { 7 } else { want[0] }) % 1000000007;
+    }
+    for p in 0..6 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let failures = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over {5} arms: {failures} failures");
+}

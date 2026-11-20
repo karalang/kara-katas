@@ -1,0 +1,73 @@
+// LeetCode #1208: Get Equal Substrings Within Budget -- a window that
+// never shrinks: each step takes one more letter on the right, and when
+// the window is over budget it drops one on the left, so its width only
+// grows when a wider window fits; the answer is its width at the end.
+// O(n), no maximum kept.
+
+fn equal_substring(s: String, t: String, max_cost: i64) -> i64 {
+    let costs: Vec[i64] = s.bytes().iter().zip(t.bytes().iter()).map(|(x, y)| ((x as i64) - (y as i64)).abs()).collect();
+    let mut budget = max_cost;
+    let mut left = 0;
+    for right in 0..costs.len() {
+        budget -= costs[right];
+        if budget < 0 {
+            budget += costs[left];
+            left += 1;
+        }
+    }
+    costs.len() - left
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_text(seed: mut ref i64, n: i64, letters: i64) -> String {
+    let mut out = String.with_capacity(n);
+    for _ in 0..n {
+        out.push((b'a' + next_random(mut seed) % letters) as u8 as char);
+    }
+    out
+}
+
+fn main() {
+    let cases: Vec[(String, String, i64)] = [
+        ("abcd", "bcdf", 3),
+        ("abcd", "cdef", 3),
+        ("abcd", "acde", 0),
+        ("a", "z", 25),
+        ("a", "z", 24),
+        ("krrgw", "zjxss", 19),
+        ("pxezla", "loewbi", 25),
+        ("abc", "abc", 0),
+        ("zzzz", "aaaa", 100),
+    ];
+    for (s, t, c) in cases.iter() {
+        println(f"{s} {t} {c}: {equal_substring(s, t, c)}");
+    }
+    let mut seed = 1208;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let letters = [2, 5, 26][next_random(mut seed) % 3];
+        let s = random_text(mut seed, n, letters);
+        let t = random_text(mut seed, n, letters);
+        let c = next_random(mut seed) % 40;
+        let answer = equal_substring(s, t, c);
+        total += answer;
+        check = (check * 131 + answer) % 1000000007;
+    }
+    println(f"1000 small cases: total {total}, checksum {check}");
+    // The constraints' top: 100000 letters and budgets 0, 1000, 10^6.
+    let s = random_text(mut seed, 100000, 26);
+    let t = random_text(mut seed, 100000, 26);
+    for c in [0, 1000, 1000000] {
+        println(f"100000 random letters, budget {c}: {equal_substring(s, t, c)}");
+    }
+    let flat = random_text(mut seed, 100000, 2);
+    println(f"100000 of a and b against themselves, budget 0: {equal_substring(flat, flat, 0)}");
+}

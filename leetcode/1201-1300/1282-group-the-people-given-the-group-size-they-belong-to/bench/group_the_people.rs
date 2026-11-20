@@ -1,0 +1,65 @@
+// LeetCode #1282 bench, in Rust: the ★ arm (one open group per size, handed
+// out when full) on 50 problems of 10000 people, built once, 500 rounds,
+// every group folded into a checksum.
+
+fn group_the_people(group_sizes: &[i64]) -> Vec<Vec<i64>> {
+    let n = group_sizes.len();
+    let mut open: Vec<Vec<i64>> = Vec::new();
+    for _ in 0..(n + 1) {
+        open.push(Vec::new());
+    }
+    let mut groups: Vec<Vec<i64>> = Vec::new();
+    for (person, &size) in group_sizes.iter().enumerate() {
+        let s = size as usize;
+        open[s].push(person as i64);
+        if open[s].len() == s {
+            groups.push(open[s].clone());
+            open[s].clear();
+        }
+    }
+    groups
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn problem(seed: &mut i64, n: i64) -> Vec<i64> {
+    let mut sizes: Vec<i64> = Vec::new();
+    while (sizes.len() as i64) < n {
+        let left = n - sizes.len() as i64;
+        let cap = if next_random(seed) % 4 == 0 { left.min(1000) } else { left.min(8) };
+        let s = next_random(seed) % cap + 1;
+        for _ in 0..s {
+            sizes.push(s);
+        }
+    }
+    let mut i = n - 1;
+    while i > 0 {
+        let j = next_random(seed) % (i + 1);
+        sizes.swap(i as usize, j as usize);
+        i -= 1;
+    }
+    sizes
+}
+
+fn main() {
+    let mut seed = 1282;
+    let mut problems: Vec<Vec<i64>> = Vec::new();
+    for _ in 0..50 {
+        problems.push(problem(&mut seed, 10000));
+    }
+    let mut check: i64 = 0;
+    for round in 0..500i64 {
+        for sizes in problems.iter() {
+            for g in group_the_people(sizes).iter() {
+                for &p in g.iter() {
+                    check = (check * 131 + p + round) % 1000000007;
+                }
+                check = (check * 131 + 7) % 1000000007;
+            }
+        }
+    }
+    println!("500 rounds of 50 problems of 10000 people: checksum {}", check);
+}

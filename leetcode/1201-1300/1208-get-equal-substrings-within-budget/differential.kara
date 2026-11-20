@@ -1,0 +1,243 @@
+// LeetCode #1208: Get Equal Substrings Within Budget -- the six arms against
+// the statement read literally and six more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_equal_substring(s: String, t: String, max_cost: i64) -> i64 {
+    let a = s.bytes();
+    let b = t.bytes();
+    let mut best = 0;
+    let mut cost = 0;
+    let mut left = 0;
+    for right in 0..a.len() {
+        cost += ((a[right] as i64) - (b[right] as i64)).abs();
+        while cost > max_cost {
+            cost -= ((a[left] as i64) - (b[left] as i64)).abs();
+            left += 1;
+        }
+        best = best.max(right - left + 1);
+    }
+    best
+}
+
+// ---- arm 1: prefix ------------------------------------------------------
+fn a1_equal_substring(s: String, t: String, max_cost: i64) -> i64 {
+    let a = s.bytes();
+    let b = t.bytes();
+    let n = a.len();
+    let mut sum = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        sum[i + 1] = sum[i] + ((a[i] as i64) - (b[i] as i64)).abs();
+    }
+    let mut best = 0;
+    for right in 1..=n {
+        // the least `left` with sum[right] - sum[left] <= max_cost
+        let mut low = 0;
+        let mut high = right;
+        while low < high {
+            let mid = (low + high) / 2;
+            if sum[right] - sum[mid] <= max_cost {
+                high = mid;
+            } else {
+                low = mid + 1;
+            }
+        }
+        best = best.max(right - low);
+    }
+    best
+}
+
+// ---- arm 2: slide -------------------------------------------------------
+fn a2_equal_substring(s: String, t: String, max_cost: i64) -> i64 {
+    let costs: Vec[i64] = s.bytes().iter().zip(t.bytes().iter()).map(|(x, y)| ((x as i64) - (y as i64)).abs()).collect();
+    let mut budget = max_cost;
+    let mut left = 0;
+    for right in 0..costs.len() {
+        budget -= costs[right];
+        if budget < 0 {
+            budget += costs[left];
+            left += 1;
+        }
+    }
+    costs.len() - left
+}
+
+// ---- arm 3: width -------------------------------------------------------
+fn a3_cheapest(costs: Vec[i64], w: i64) -> i64 {
+    let mut window = 0;
+    for i in 0..w {
+        window += costs[i];
+    }
+    let mut least = window;
+    for i in w..costs.len() {
+        window += costs[i] - costs[i - w];
+        least = least.min(window);
+    }
+    least
+}
+
+fn a3_equal_substring(s: String, t: String, max_cost: i64) -> i64 {
+    let a = s.bytes();
+    let b = t.bytes();
+    let costs: Vec[i64] = (0..a.len()).map(|i| ((a[i] as i64) - (b[i] as i64)).abs()).collect();
+    let mut low = 0;
+    let mut high = costs.len();
+    while low < high {
+        let mid = (low + high + 1) / 2;
+        if a3_cheapest(costs, mid) <= max_cost {
+            low = mid;
+        } else {
+            high = mid - 1;
+        }
+    }
+    low
+}
+
+// ---- arm 4: zip ---------------------------------------------------------
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn equal_substring(s: String, t: String, max_cost: i32) -> i32 {
+        let cost: Vec[i32] = s.bytes().iter().zip(t.bytes().iter()).map(|(a, b)| (a as i32 - b as i32).abs()).collect();
+        let mut (l, sum, ans) = (0, 0i32, 0);
+        for r in 0..cost.len() {
+            sum += cost[r];
+            while sum > max_cost {
+                sum -= cost[l];
+                l += 1;
+            }
+            ans = ans.max(r - l + 1);
+        }
+        ans as i32
+    }
+}
+
+fn a4_equal_substring(s: String, t: String, max_cost: i64) -> i64 {
+    A4Solution.equal_substring(s, t, max_cost as i32)
+}
+
+// ---- arm 5: bytes -------------------------------------------------------
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn equal_substring(s: String, t: String, max_cost: i32) -> i32 {
+        let (s, t) = (s.bytes(), t.bytes());
+        let mut budget = max_cost;
+        let mut start = 0;
+        for end in 0..s.len() {
+            budget -= (s[end] as i32 - t[end] as i32).abs();
+            if budget < 0 {
+                budget += (s[start] as i32 - t[start] as i32).abs();
+                start += 1;
+            }
+        }
+        (s.len() - start) as i32
+    }
+}
+
+fn a5_equal_substring(s: String, t: String, max_cost: i64) -> i64 {
+    A5Solution.equal_substring(s, t, max_cost as i32)
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// Every substring tried, its cost summed letter by letter, and the
+// longest within the budget.
+fn literal(s: String, t: String, max_cost: i64) -> i64 {
+    let a = s.bytes();
+    let b = t.bytes();
+    let mut best = 0;
+    for i in 0..a.len() {
+        for j in i..a.len() {
+            let mut cost = 0;
+            for k in i..=j {
+                cost += ((a[k] as i64) - (b[k] as i64)).abs();
+            }
+            if cost <= max_cost and j - i + 1 > best {
+                best = j - i + 1;
+            }
+        }
+    }
+    best
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn arms(s: String, t: String, c: i64) -> Vec[i64] {
+    [a0_equal_substring(s, t, c), a1_equal_substring(s, t, c), a2_equal_substring(s, t, c), a3_equal_substring(s, t, c), a4_equal_substring(s, t, c), a5_equal_substring(s, t, c)]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_text(seed: mut ref i64, n: i64, letters: i64) -> String {
+    let mut out = String.with_capacity(n);
+    for _ in 0..n {
+        out.push((b'a' + next_random(mut seed) % letters) as u8 as char);
+    }
+    out
+}
+
+fn reversed(s: String) -> String {
+    s.chars().rev().collect()
+}
+
+fn shifted(s: String) -> String {
+    String.from_utf8(s.bytes().iter().map(|b| b + 1).collect()).unwrap()
+}
+
+fn main() {
+    let names = ["the statement read literally", "s and t swapped give the same", "both reversed give the same", "a budget one more gives as long or longer", "at most the length, and at least 1 just when some letter's cost fits", "every letter of both one later gives the same", "the ★ arm's answer"];
+    let mut fails = Vec.filled(7, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1208;
+    for _ in 0..2000 {
+        // 1 to 10 letters from the first 2, 5 or 25; a budget below 30
+        let n = next_random(mut seed) % 10 + 1;
+        let letters = [2, 5, 25][next_random(mut seed) % 3];
+        let s = random_text(mut seed, n, letters);
+        let t = random_text(mut seed, n, letters);
+        let c = next_random(mut seed) % 30;
+        let got = arms(s, t, c);
+        let want = literal(s, t, c);
+        let swapped = arms(t, s, c);
+        let back = arms(reversed(s), reversed(t), c);
+        let more = arms(s, t, c + 1);
+        let up = arms(shifted(s), shifted(t), c);
+        let a = s.bytes();
+        let b = t.bytes();
+        let fits = (0..n).any(|i| ((a[i] as i64) - (b[i] as i64)).abs() <= c);
+        for k in 0..6 {
+            let v = got[k];
+            let held = [
+                v == want,
+                swapped[k] == v,
+                back[k] == v,
+                more[k] >= v,
+                v <= n and (v >= 1) == fits,
+                up[k] == v,
+                v == got[0],
+            ];
+            for p in 0..7 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {k}: {s} {t} {c} -> {v}");
+                    }
+                }
+            }
+        }
+        check = (check * 131 + want + 1) % 1000000007;
+    }
+    for p in 0..7 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let total = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+}

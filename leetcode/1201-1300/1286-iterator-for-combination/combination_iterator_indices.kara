@@ -1,0 +1,110 @@
+// LeetCode #1286: Iterator for Combination -- by an index array: the
+// combination is k increasing positions; the next one raises the
+// rightmost position that has room and sets every position after it to
+// follow on, as Python's `itertools.combinations` does. O(k) a call
+
+struct CombinationIterator {
+    chars: Vec[char],
+    picks: Vec[i64],
+    done: bool,
+}
+
+impl CombinationIterator {
+    fn new(characters: String, combination_length: i64) -> CombinationIterator {
+        CombinationIterator {
+            chars: characters.chars().collect(),
+            picks: (0..combination_length).collect(),
+            done: false,
+        }
+    }
+
+    fn next(mut ref self) -> String {
+        let out: String = self.picks.iter().map(|p| self.chars[*p]).collect();
+        let n = self.chars.len();
+        let k = self.picks.len();
+        // the rightmost position that is not yet as far right as it can go
+        let mut i = k - 1;
+        while i >= 0 and self.picks[i] == n - k + i {
+            i -= 1;
+        }
+        if i < 0 {
+            self.done = true;
+        } else {
+            self.picks[i] += 1;
+            for j in (i + 1)..k {
+                self.picks[j] = self.picks[j - 1] + 1;
+            }
+        }
+        out
+    }
+
+    fn has_next(self) -> bool {
+        not self.done
+    }
+}
+
+fn make(characters: String, k: i64) -> CombinationIterator {
+    CombinationIterator.new(characters, k)
+}
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` distinct letters, sorted: the letters of the alphabet kept or not by
+// chance until `n` are kept.
+fn letters(seed: mut ref i64, n: i64) -> String {
+    let alphabet = "abcdefghijklmnopqrstuvwxyz";
+    let mut out = "";
+    let mut left = n;
+    for (i, c) in alphabet.chars().enumerate() {
+        if left > 0 and next_random(mut *seed) % (26 - i) < left {
+            out.push(c);
+            left -= 1;
+        }
+    }
+    out
+}
+
+fn main() {
+    // LeetCode's example
+    let mut it = make("abc", 2);
+    let first = it.next();
+    let a = it.has_next();
+    let second = it.next();
+    let b = it.has_next();
+    let third = it.next();
+    let c = it.has_next();
+    println(f"{first} {a} {second} {b} {third} {c}");
+    // every length k of every set of n letters, n up to 15; the calls to
+    // has_next repeated at random, as a caller may
+    let mut seed = 1286;
+    let mut check = 0;
+    for n in 1..16 {
+        let mut count = 0;
+        let mut last = "";
+        for k in 1..(n + 1) {
+            let chars = letters(mut seed, n);
+            let mut it = make(chars, k);
+            while it.has_next() {
+                if next_random(mut seed) % 3 == 0 {
+                    let again = it.has_next();
+                    if not again {
+                        println("has_next changed its answer");
+                    }
+                }
+                let s = it.next();
+                count += 1;
+                for b in s.bytes().iter() {
+                    check = (check * 131 + *b) % 1000000007;
+                }
+                check = (check * 131 + 7) % 1000000007;
+                last = s;
+            }
+        }
+        println(f"{n} letters: {count} combinations, the last {last}");
+    }
+    println(f"checksum {check}");
+}

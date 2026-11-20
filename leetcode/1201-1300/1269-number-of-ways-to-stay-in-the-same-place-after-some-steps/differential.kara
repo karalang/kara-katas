@@ -1,0 +1,254 @@
+// LeetCode #1269: the differential -- the six arms against the statement
+// read literally and five more properties, on 2000 random cases.
+
+// arm 0: num_ways.kara
+const A0MOD: i64 = 1000000007;
+
+fn a0_num_ways(steps: i64, arr_len: i64) -> i64 {
+    let width = arr_len.min(steps / 2 + 1);
+    let mut ways = Vec.filled(width, 0);
+    ways[0] = 1;
+    for _ in 0..steps {
+        let mut next = Vec.filled(width, 0);
+        for i in 0..width {
+            let mut w = ways[i];
+            if i > 0 {
+                w += ways[i - 1];
+            }
+            if i + 1 < width {
+                w += ways[i + 1];
+            }
+            next[i] = w % A0MOD;
+        }
+        ways = next;
+    }
+    ways[0]
+}
+
+// arm 1: num_ways_memo.kara
+const A1MOD: i64 = 1000000007;
+
+fn a1_ways_home(at: i64, left: i64, arr_len: i64, memo: mut ref Vec[Vec[i64]]) -> i64 {
+    if at < 0 or at >= arr_len or at > left {
+        return 0;
+    }
+    if left == 0 {
+        return 1;
+    }
+    if memo[left][at] >= 0 {
+        return memo[left][at];
+    }
+    let ways = (a1_ways_home(at, left - 1, arr_len, mut memo)
+        + a1_ways_home(at - 1, left - 1, arr_len, mut memo)
+        + a1_ways_home(at + 1, left - 1, arr_len, mut memo))
+        % A1MOD;
+    memo[left][at] = ways;
+    ways
+}
+
+fn a1_num_ways(steps: i64, arr_len: i64) -> i64 {
+    let width = arr_len.min(steps + 1);
+    let mut memo: Vec[Vec[i64]] = (0..steps + 1).map(|_| Vec.filled(width, -1)).collect();
+    a1_ways_home(0, steps, arr_len, mut memo)
+}
+
+// arm 2: num_ways_fold.kara
+fn a2_num_ways(steps: i64, arr_len: i64) -> i64 {
+    let width = arr_len.min(steps / 2 + 1);
+    let start: Vec[i64] = (0..width).map(|i| if i == 0 { 1 } else { 0 }).collect();
+    let end = (0..steps).fold(start, |ways, _| {
+        (0..width)
+            .map(|i| {
+                let left = if i > 0 { ways[i - 1] } else { 0 };
+                let right = if i + 1 < width { ways[i + 1] } else { 0 };
+                (left + ways[i] + right) % 1000000007
+            })
+            .collect()
+    });
+    end[0]
+}
+
+// arm 3: num_ways_matrix.kara
+const A3MOD: i64 = 1000000007;
+
+fn a3_multiply(a: Vec[Vec[i64]], b: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let n = a.len();
+    let mut c: Vec[Vec[i64]] = (0..n).map(|_| Vec.filled(n, 0)).collect();
+    for i in 0..n {
+        for k in 0..n {
+            if a[i][k] == 0 {
+                continue;
+            }
+            for j in 0..n {
+                c[i][j] = (c[i][j] + a[i][k] * b[k][j]) % A3MOD;
+            }
+        }
+    }
+    c
+}
+
+fn a3_num_ways(steps: i64, arr_len: i64) -> i64 {
+    let w = arr_len.min(steps / 2 + 1);
+    let mut step: Vec[Vec[i64]] = (0..w).map(|i| (0..w).map(|j| if (i - j).abs() <= 1 { 1 } else { 0 }).collect()).collect();
+    let mut power: Vec[Vec[i64]] = (0..w).map(|i| (0..w).map(|j| if i == j { 1 } else { 0 }).collect()).collect();
+    let mut e = steps;
+    while e > 0 {
+        if e % 2 == 1 {
+            power = a3_multiply(power, step);
+        }
+        step = a3_multiply(step, step);
+        e /= 2;
+    }
+    power[0][0]
+}
+
+// arm 4: num_ways_map.kara
+struct A4Walker {
+    arr_len: i64,
+    memo: Map[(i64, i64), i64],
+}
+
+impl A4Walker {
+    fn ways_home(mut ref self, at: i64, left: i64) -> i64 {
+        if at < 0 or at >= self.arr_len or at > left {
+            return 0;
+        }
+        if left == 0 {
+            return 1;
+        }
+        if let Some(w) = self.memo.get((at, left)) {
+            return w;
+        }
+        let mut ways = 0;
+        for next in [at - 1, at, at + 1] {
+            ways = (ways + self.ways_home(next, left - 1)) % 1000000007;
+        }
+        self.memo.insert((at, left), ways);
+        ways
+    }
+}
+
+fn a4_num_ways(steps: i64, arr_len: i64) -> i64 {
+    let mut walker = A4Walker { arr_len: arr_len, memo: Map.new() };
+    walker.ways_home(0, steps)
+}
+
+// arm 5: num_ways_solution.kara
+impl A5Solution {
+    pub fn num_ways(steps: i32, arr_len: i32) -> i32 {
+        const A5MOD: i64 = 1_000_000_007;
+        let max_pos = min(arr_len as i64, (steps / 2 + 1) as i64);
+        let mut dp = Vec.filled(max_pos + 2, 0);
+        dp[1] = 1;
+        for _ in 0..steps {
+            let mut next = Vec.filled(max_pos + 2, 0);
+            for i in 1..=max_pos {
+                next[i] = (dp[i - 1] + dp[i] + dp[i + 1]) % A5MOD;
+            }
+            dp = next;
+        }
+        dp[1] as i32
+    }
+}
+
+struct A5Solution {}
+
+fn a5_num_ways(steps: i64, arr_len: i64) -> i64 {
+    A5Solution.num_ways(steps as i32, arr_len as i32)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// ---- the differential ------------------------------------------------------
+
+fn arm(k: i64, steps: i64, arr_len: i64) -> i64 {
+    match k {
+        0 => a0_num_ways(steps, arr_len),
+        1 => a1_num_ways(steps, arr_len),
+        2 => a2_num_ways(steps, arr_len),
+        3 => a3_num_ways(steps, arr_len),
+        4 => a4_num_ways(steps, arr_len),
+        _ => a5_num_ways(steps, arr_len),
+    }
+}
+
+// The statement read literally: every sequence of `steps` moves, each left,
+// right or stay, counted when the pointer never leaves the array and ends at
+// index 0.
+fn literal(at: i64, left: i64, arr_len: i64) -> i64 {
+    if at < 0 or at >= arr_len {
+        return 0;
+    }
+    if left == 0 {
+        return if at == 0 { 1 } else { 0 };
+    }
+    literal(at - 1, left - 1, arr_len) + literal(at, left - 1, arr_len) + literal(at + 1, left - 1, arr_len)
+}
+
+// The Motzkin numbers mod 1e9+7, by M(n) = M(n-1) + sum M(k) M(n-2-k): the
+// walks of n moves up, down or level that never go below where they start
+// and end there.
+fn motzkin(n: i64) -> i64 {
+    let mut m: Vec[i64] = [1, 1];
+    for k in 2..n + 1 {
+        let mut v = m[k - 1];
+        for j in 0..k - 1 {
+            v = (v + m[j] * m[k - 2 - j]) % 1000000007;
+        }
+        m.push(v);
+    }
+    m[n]
+}
+
+fn main() {
+    let mut seed = 1269;
+    let mut fails: Array[i64, 6] = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let steps = next_random(mut seed) % 10 + 1;
+        let arr_len = next_random(mut seed) % 8 + 1;
+        let want = literal(0, steps, arr_len);
+        let long = next_random(mut seed) % 60 + 1;
+        let wide = long / 2 + 1 + next_random(mut seed) % 5;
+        let star = arm(0, steps, arr_len);
+        check = (check * 131 + star) % 1000000007;
+        for k in 0..6 {
+            let got = arm(k, steps, arr_len);
+            if got != want {
+                fails[0] += 1;
+            }
+            // a cell more is never fewer ways
+            if arm(k, steps, arr_len + 1) < got {
+                fails[1] += 1;
+            }
+            // one cell: only staying
+            if arm(k, steps, 1) != 1 {
+                fails[2] += 1;
+            }
+            // cells past half the steps change nothing
+            if arm(k, long, wide) != arm(k, long, 1000000) {
+                fails[3] += 1;
+            }
+            // with room enough, the walks are Motzkin paths
+            if arm(k, long, long + 1) != motzkin(long) {
+                fails[4] += 1;
+            }
+            if got != star {
+                fails[5] += 1;
+            }
+            checks += 6;
+        }
+    }
+    let mut total = 0;
+    for p in 0..6 {
+        if fails[p] > 0 {
+            print(f"P{p + 1}: {fails[p]} failures ");
+        }
+        total += fails[p];
+    }
+    println(f"2000 cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+}

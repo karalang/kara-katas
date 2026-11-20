@@ -1,0 +1,400 @@
+// LeetCode #1279: the differential -- the five arms against the statement
+// read literally and five more properties, on 300 random problems.
+
+import std.sync.{Atomic, Mutex, Receiver, Sender, TaskGroup, channel};
+import std.time.{Duration, sleep};
+
+// arm 0: traffic_light.kara
+sync struct A0TrafficLight {
+    // 1 for road A, 2 for road B
+    green: Mutex[i64],
+}
+
+impl A0TrafficLight {
+    fn new() -> A0TrafficLight {
+        A0TrafficLight { green: Mutex.new(1) }
+    }
+
+    fn car_arrived(self, car_id: i64, road_id: i64, direction: i64, turn_green: Fn(), cross_car: Fn()) {
+        let g = self.green.lock();
+        if *g.value != road_id {
+            turn_green();
+            *g.value = road_id;
+        }
+        cross_car();
+    }
+}
+
+fn run0(cars: Vec[i64], directions: Vec[i64], order: Vec[i64]) -> Vec[(i64, i64)] {
+    let light = A0TrafficLight.new();
+    let log: Mutex[Vec[(i64, i64)]] = Mutex.new([]);
+    {
+        let group = TaskGroup.new();
+        for i in order.iter() {
+            let car = cars[i];
+            let direction = directions[i];
+            let road = if direction <= 2 { 1 } else { 2 };
+            group.spawn(|| {
+                light.car_arrived(
+                    car,
+                    road,
+                    direction,
+                    || log.lock().value.push((0, road)),
+                    || {
+                        log.lock().value.push((1, car));
+                        sleep(Duration.ms(0));
+                        log.lock().value.push((2, car));
+                    },
+                );
+            });
+        }
+    }
+    log.lock().value.clone()
+}
+
+// arm 1: traffic_light_switch.kara
+sync struct A1TrafficLight {
+    intersection: Semaphore,
+    green: Atomic[i64],
+    // cars inside on road A and on road B
+    inside: Vec[Mutex[i64]],
+}
+
+impl A1TrafficLight {
+    fn new() -> A1TrafficLight {
+        A1TrafficLight { intersection: Semaphore.new(1), green: Atomic.new(1), inside: [Mutex.new(0), Mutex.new(0)] }
+    }
+
+    fn car_arrived(self, car_id: i64, road_id: i64, direction: i64, turn_green: Fn(), cross_car: Fn()) {
+        let road = road_id - 1;
+        {
+            let count = self.inside[road].lock();
+            if *count.value == 0 {
+                self.intersection.acquire(3600000).expect("the intersection is never held that long");
+                if self.green.load() != road_id {
+                    turn_green();
+                    self.green.store(road_id);
+                }
+            }
+            *count.value += 1;
+        }
+        cross_car();
+        let count = self.inside[road].lock();
+        *count.value -= 1;
+        if *count.value == 0 {
+            self.intersection.release();
+        }
+    }
+}
+
+fn run1(cars: Vec[i64], directions: Vec[i64], order: Vec[i64]) -> Vec[(i64, i64)] {
+    let light = A1TrafficLight.new();
+    let log: Mutex[Vec[(i64, i64)]] = Mutex.new([]);
+    {
+        let group = TaskGroup.new();
+        for i in order.iter() {
+            let car = cars[i];
+            let direction = directions[i];
+            let road = if direction <= 2 { 1 } else { 2 };
+            group.spawn(|| {
+                light.car_arrived(
+                    car,
+                    road,
+                    direction,
+                    || log.lock().value.push((0, road)),
+                    || {
+                        log.lock().value.push((1, car));
+                        sleep(Duration.ms(0));
+                        log.lock().value.push((2, car));
+                    },
+                );
+            });
+        }
+    }
+    log.lock().value.clone()
+}
+
+// arm 2: traffic_light_channel.kara
+sync struct A2TrafficLight {
+    give: Sender[i64],
+    take: Receiver[i64],
+}
+
+impl A2TrafficLight {
+    fn new() -> A2TrafficLight {
+        let (give, take) = channel(1);
+        give.send(1).expect("an empty channel takes the first token");
+        A2TrafficLight { give: give, take: take }
+    }
+
+    fn car_arrived(self, car_id: i64, road_id: i64, direction: i64, turn_green: Fn(), cross_car: Fn()) {
+        let green = self.take.recv().expect("the token is always sent back");
+        if green != road_id {
+            turn_green();
+        }
+        cross_car();
+        self.give.send(road_id).expect("the receiver lives as long as the light");
+    }
+}
+
+fn run2(cars: Vec[i64], directions: Vec[i64], order: Vec[i64]) -> Vec[(i64, i64)] {
+    let light = A2TrafficLight.new();
+    let log: Mutex[Vec[(i64, i64)]] = Mutex.new([]);
+    {
+        let group = TaskGroup.new();
+        for i in order.iter() {
+            let car = cars[i];
+            let direction = directions[i];
+            let road = if direction <= 2 { 1 } else { 2 };
+            group.spawn(|| {
+                light.car_arrived(
+                    car,
+                    road,
+                    direction,
+                    || log.lock().value.push((0, road)),
+                    || {
+                        log.lock().value.push((1, car));
+                        sleep(Duration.ms(0));
+                        log.lock().value.push((2, car));
+                    },
+                );
+            });
+        }
+    }
+    log.lock().value.clone()
+}
+
+// arm 3: traffic_light_spin.kara
+sync struct A3TrafficLight {
+    busy: Atomic[bool],
+    green: Atomic[i64],
+}
+
+impl A3TrafficLight {
+    fn new() -> A3TrafficLight {
+        A3TrafficLight { busy: Atomic.new(false), green: Atomic.new(1) }
+    }
+
+    fn car_arrived(self, car_id: i64, road_id: i64, direction: i64, turn_green: Fn(), cross_car: Fn()) {
+        while self.busy.compare_exchange(false, true).is_err() {
+            sleep(Duration.ms(0));
+        }
+        if self.green.swap(road_id) != road_id {
+            turn_green();
+        }
+        cross_car();
+        self.busy.store(false);
+    }
+}
+
+fn run3(cars: Vec[i64], directions: Vec[i64], order: Vec[i64]) -> Vec[(i64, i64)] {
+    let light = A3TrafficLight.new();
+    let log: Mutex[Vec[(i64, i64)]] = Mutex.new([]);
+    {
+        let group = TaskGroup.new();
+        for i in order.iter() {
+            let car = cars[i];
+            let direction = directions[i];
+            let road = if direction <= 2 { 1 } else { 2 };
+            group.spawn(|| {
+                light.car_arrived(
+                    car,
+                    road,
+                    direction,
+                    || log.lock().value.push((0, road)),
+                    || {
+                        log.lock().value.push((1, car));
+                        sleep(Duration.ms(0));
+                        log.lock().value.push((2, car));
+                    },
+                );
+            });
+        }
+    }
+    log.lock().value.clone()
+}
+
+// arm 4: traffic_light_queue.kara
+sync struct A4TrafficLight {
+    next_ticket: Atomic[i64],
+    // the ticket being served, and the road whose light is green
+    serving: Mutex[(i64, i64)],
+}
+
+impl A4TrafficLight {
+    fn new() -> A4TrafficLight {
+        A4TrafficLight { next_ticket: Atomic.new(0), serving: Mutex.new((0, 1)) }
+    }
+
+    fn car_arrived(self, car_id: i64, road_id: i64, direction: i64, turn_green: Fn(), cross_car: Fn()) {
+        let ticket = self.next_ticket.fetch_add(1);
+        loop {
+            let s = self.serving.lock();
+            if s.value.0 == ticket {
+                if s.value.1 != road_id {
+                    turn_green();
+                    s.value.1 = road_id;
+                }
+                cross_car();
+                s.value.0 += 1;
+                return;
+            }
+            drop(s);
+            sleep(Duration.ms(0));
+        }
+    }
+}
+
+fn run4(cars: Vec[i64], directions: Vec[i64], order: Vec[i64]) -> Vec[(i64, i64)] {
+    let light = A4TrafficLight.new();
+    let log: Mutex[Vec[(i64, i64)]] = Mutex.new([]);
+    {
+        let group = TaskGroup.new();
+        for i in order.iter() {
+            let car = cars[i];
+            let direction = directions[i];
+            let road = if direction <= 2 { 1 } else { 2 };
+            group.spawn(|| {
+                light.car_arrived(
+                    car,
+                    road,
+                    direction,
+                    || log.lock().value.push((0, road)),
+                    || {
+                        log.lock().value.push((1, car));
+                        sleep(Duration.ms(0));
+                        log.lock().value.push((2, car));
+                    },
+                );
+            });
+        }
+    }
+    log.lock().value.clone()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// The statement read literally: the light starts green on road A (1); it
+// turns green only on a road where it is red; a car enters only on its
+// road's green and never while a car of the other road is inside; and
+// every car enters once and leaves once.
+fn judge(cars: Vec[i64], directions: Vec[i64], log: Vec[(i64, i64)]) -> bool {
+    let mut green = 1;
+    let mut inside: Array[i64, 3] = [0, 0, 0];
+    let mut state: Vec[i64] = Vec.filled(cars.len(), 0);
+    for (kind, x) in log.iter() {
+        if kind == 0 {
+            if x == green {
+                return false;
+            }
+            green = x;
+            continue;
+        }
+        let i = match cars.iter().position(|c| c == x) {
+            Some(i) => i,
+            None => return false,
+        };
+        let road = if directions[i] <= 2 { 1 } else { 2 };
+        if kind == 1 {
+            if state[i] != 0 or road != green or inside[3 - road] > 0 {
+                return false;
+            }
+            inside[road] += 1;
+            state[i] = 1;
+        } else {
+            if state[i] != 1 {
+                return false;
+            }
+            inside[road] -= 1;
+            state[i] = 2;
+        }
+    }
+    state.iter().all(|s| s == 2)
+}
+
+// The cars in order of arrival, those arriving together in a random order.
+fn arrival_order(times: Vec[i64], seed: mut ref i64) -> Vec[i64] {
+    let mut order: Vec[(i64, i64, i64)] = (0..times.len()).map(|i| (times[i], next_random(mut seed), i)).collect();
+    order.sort();
+    order.iter().map(|(_, _, i)| i).collect()
+}
+
+// ---- the differential ------------------------------------------------------
+
+fn arm(k: i64, cars: Vec[i64], directions: Vec[i64], order: Vec[i64]) -> Vec[(i64, i64)] {
+    match k {
+        0 => run0(cars, directions, order),
+        1 => run1(cars, directions, order),
+        2 => run2(cars, directions, order),
+        3 => run3(cars, directions, order),
+        _ => run4(cars, directions, order),
+    }
+}
+
+// Every light change followed by a car of that road entering before the
+// next change.
+fn changes_used(cars: Vec[i64], directions: Vec[i64], log: Vec[(i64, i64)]) -> bool {
+    let mut waiting = 0;
+    for (kind, x) in log.iter() {
+        if kind == 0 {
+            if waiting != 0 {
+                return false;
+            }
+            waiting = x;
+        } else if kind == 1 and waiting != 0 {
+            let i = cars.iter().position(|c| c == x).unwrap();
+            if (if directions[i] <= 2 { 1 } else { 2 }) == waiting {
+                waiting = 0;
+            }
+        }
+    }
+    waiting == 0
+}
+
+fn main() {
+    let mut seed = 12790;
+    let mut fails: Array[i64, 6] = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut crossed = 0;
+    for _ in 0..300 {
+        let n = next_random(mut seed) % 20 + 1;
+        let cars: Vec[i64] = (1..(n + 1)).collect();
+        let directions: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 4 + 1).collect();
+        let swapped: Vec[i64] = directions.iter().map(|d| if d <= 2 { d + 2 } else { d - 2 }).collect();
+        let mut times: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 10).collect();
+        times.sort();
+        let order = arrival_order(times, mut seed);
+        let reversed: Vec[i64] = order.iter().rev().collect();
+        let on_b = directions.iter().filter(|d| d > 2).count();
+        for a in 0..5 {
+            let log = arm(a, cars, directions, order);
+            crossed += log.iter().filter(|(k, _)| k == 2).count();
+            let greens = log.iter().filter(|(k, _)| k == 0).count();
+            let held = [
+                judge(cars, directions, log),
+                log.len() == 2 * n + greens and greens <= n,
+                changes_used(cars, directions, log),
+                greens <= 2 * on_b,
+                judge(cars, directions, arm(a, cars, directions, reversed)),
+                judge(cars, swapped, arm(a, cars, swapped, order)),
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                }
+            }
+        }
+    }
+    let mut total = 0;
+    for p in 0..6 {
+        if fails[p] > 0 {
+            print(f"P{p + 1}: {fails[p]} failures ");
+        }
+        total += fails[p];
+    }
+    println(f"300 problems: {crossed} crossings, {checks} checks over 5 arms: {total} failures");
+}

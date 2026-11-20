@@ -1,0 +1,88 @@
+// LeetCode #1234: Replace the Substring for Balanced String -- binary search
+// on the length: if some window of length m can be replaced, so can one of
+// m + 1 (widen it by a letter), so the shortest works by bisection; each
+// length is tested by sliding a window of that size across the string with
+// the counts outside it. O(n log n).
+
+fn fits(counts: Array[i64, 4], k: i64) -> bool {
+    counts.iter().all(|c| c <= k)
+}
+
+fn letter(c: char) -> i64 {
+    "QWER".find(c.to_string()).unwrap()
+}
+
+fn balanced_string(s: String) -> i64 {
+    let letters: Vec[i64] = s.chars().map(|c| letter(c)).collect();
+    let n = letters.len();
+    let k = n / 4;
+    let mut total = [0; 4];
+    for l in letters.iter() {
+        total[l] += 1;
+    }
+    let works = |m: i64| {
+        let mut outside = total;
+        for i in 0..m {
+            outside[letters[i]] -= 1;
+        }
+        if fits(outside, k) {
+            return true;
+        }
+        for i in m..n {
+            outside[letters[i]] -= 1;
+            outside[letters[i - m]] += 1;
+            if fits(outside, k) {
+                return true;
+            }
+        }
+        false
+    };
+    let mut lo = 0;
+    let mut hi = n;
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if works(mid) {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    lo
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` letters from "QWER" from `seed`, each letter drawn with a weight so
+// that some strings lean far from balanced.
+fn letters(n: i64, lean: i64, seed: mut ref i64) -> String {
+    let mut s = "".to_string();
+    for _ in 0..n {
+        let r = next_random(mut seed) % (4 + lean);
+        s.push(if r >= 4 or r == 0 { 'Q' } else if r == 1 { 'W' } else if r == 2 { 'E' } else { 'R' });
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's three examples, and one letter only
+    println(f"{balanced_string("QWER")}");
+    println(f"{balanced_string("QQWE")}");
+    println(f"{balanced_string("QQQW")}");
+    println(f"{balanced_string("QQQQ")}");
+    // 1000 random strings of 4 to 40 letters
+    let mut seed = 1234;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n = (next_random(mut seed) % 10 + 1) * 4;
+        let s = letters(n, next_random(mut seed) % 5, mut seed);
+        check = (check * 131 + balanced_string(s)) % 1000000007;
+    }
+    println(f"1000 random strings: checksum {check}");
+    // the constraints' top, 10^5 letters: drawn evenly, leaning, and balanced
+    println(f"10^5 letters: {balanced_string(letters(100000, 0, mut seed))}, {balanced_string(letters(100000, 2, mut seed))}, {balanced_string("QWER".repeat(25000))}");
+}

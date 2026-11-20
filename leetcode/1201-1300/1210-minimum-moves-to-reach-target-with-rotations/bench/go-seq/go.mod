@@ -1,0 +1,3 @@
+module minimum_moves_to_reach_target_with_rotations
+
+go 1.21

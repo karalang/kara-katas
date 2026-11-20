@@ -1,0 +1,51 @@
+// LeetCode #1262: Greatest Sum Divisible by Three -- by a fold: the best
+// sums with remainders 0, 1 and 2 carried as a tuple through
+// `Iterator.fold`, each number giving the next tuple by a `match` on its
+// remainder, which says which carried sum each new one grows from.
+
+fn max_sum_div_three(nums: Vec[i64]) -> i64 {
+    // `i64.MIN` stands for a remainder no sum has reached, and `grow`
+    // keeps it there.
+    let grow = |s: i64, x: i64| if s == i64.MIN { i64.MIN } else { s + x };
+    let (zero, _, _) = nums.iter().fold((0, i64.MIN, i64.MIN), |(a, b, c), x| match x % 3 {
+        0 => (grow(a, x), grow(b, x), grow(c, x)),
+        1 => (a.max(grow(c, x)), b.max(grow(a, x)), c.max(grow(b, x))),
+        _ => (a.max(grow(b, x)), b.max(grow(c, x)), c.max(grow(a, x))),
+    });
+    zero
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_nums(n: i64, top: i64, seed: mut ref i64) -> Vec[i64] {
+    (0..n).map(|_| next_random(mut seed) % top + 1).collect()
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{max_sum_div_three([3, 6, 5, 1, 8])} {max_sum_div_three([4])} {max_sum_div_three([1, 2, 3, 4, 4])}");
+    // 1000 random lists of 1 to 10 numbers from 1 to 9, and 1000 of 1 to
+    // 200 numbers from 1 to 10^4
+    let mut seed = 1262;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let (n, top) = if round < 1000 { (next_random(mut seed) % 10 + 1, 9) } else { (next_random(mut seed) % 200 + 1, 10000) };
+        let best = max_sum_div_three(random_nums(n, top, mut seed));
+        total += best;
+        check = (check * 131 + best) % 1000000007;
+    }
+    println(f"2000 random lists: total {total}, checksum {check}");
+    // the constraints' top: 4 * 10^4 numbers, all 10^4, at random, and all
+    // 2 but one 1
+    let all = Vec.filled(40000, 10000);
+    let mixed = random_nums(40000, 10000, mut seed);
+    let mut twos = Vec.filled(40000, 2);
+    twos[20000] = 1;
+    println(f"{max_sum_div_three(all)} {max_sum_div_three(mixed)} {max_sum_div_three(twos)}");
+}
