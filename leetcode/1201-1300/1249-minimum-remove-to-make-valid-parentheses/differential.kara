@@ -1,0 +1,277 @@
+// LeetCode #1249: the differential -- the five arms against the statement
+// read literally and four more properties, on 2000 random strings.
+
+// arm 0: min_remove_to_make_valid.kara
+fn a0_min_remove_to_make_valid(s: Str) -> String {
+    let chars: Vec[char] = s.chars().collect();
+    let mut keep: Vec[bool] = Vec.filled(chars.len(), true);
+    let mut open: Vec[i64] = Vec.new();
+    for (i, c) in chars.iter().enumerate() {
+        if c == '(' {
+            open.push(i);
+        } else if c == ')' {
+            if open.pop().is_none() {
+                keep[i] = false;
+            }
+        }
+    }
+    for i in open.iter() {
+        keep[i] = false;
+    }
+    let mut out = String.new();
+    for (i, c) in chars.iter().enumerate() {
+        if keep[i] {
+            out.push(c);
+        }
+    }
+    out
+}
+
+// arm 1: min_remove_to_make_valid_passes.kara
+fn a1_min_remove_to_make_valid(s: Str) -> String {
+    let mut first: Vec[char] = Vec.new();
+    let mut open = 0;
+    for c in s.chars() {
+        if c == '(' {
+            open += 1;
+        } else if c == ')' {
+            if open == 0 {
+                continue;
+            }
+            open -= 1;
+        }
+        first.push(c);
+    }
+    let mut back: Vec[char] = Vec.new();
+    let mut close = 0;
+    for c in first.iter().rev() {
+        if c == ')' {
+            close += 1;
+        } else if c == '(' {
+            if close == 0 {
+                continue;
+            }
+            close -= 1;
+        }
+        back.push(c);
+    }
+    back.iter().rev().collect()
+}
+
+// arm 2: min_remove_to_make_valid_count.kara
+fn a2_min_remove_to_make_valid(s: Str) -> String {
+    let mut kept = String.new();
+    let mut open = 0;
+    for c in s.chars() {
+        match c {
+            '(' => {
+                open += 1;
+                kept.push(c);
+            }
+            ')' => {
+                if open > 0 {
+                    open -= 1;
+                    kept.push(c);
+                }
+            }
+            _ => kept.push(c),
+        }
+    }
+    let mut out: Vec[char] = Vec.new();
+    for c in kept.chars().rev() {
+        if c == '(' and open > 0 {
+            open -= 1;
+        } else {
+            out.push(c);
+        }
+    }
+    out.reverse();
+    out.into_iter().collect()
+}
+
+// arm 3: min_remove_to_make_valid_set.kara
+fn a3_min_remove_to_make_valid(s: Str) -> String {
+    let mut drop: Set[i64] = Set.new();
+    let mut open: Vec[i64] = Vec.new();
+    for (i, c) in s.chars().enumerate() {
+        if c == '(' {
+            open.push(i);
+        } else if c == ')' and open.pop().is_none() {
+            drop.insert(i);
+        }
+    }
+    drop.extend(open);
+    s.chars().enumerate().filter(|(i, _)| not drop.contains(i)).map(|(_, c)| c).collect()
+}
+
+// arm 4: min_remove_to_make_valid_solution.kara
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn min_remove_to_make_valid(s: String) -> String {
+        let mut chars: Vec[char] = s.chars().collect();
+        let mut stack = Vec.new();
+        for i in 0..chars.len() {
+            if chars[i] == '(' {
+                stack.push(i);
+            } else if chars[i] == ')' {
+                if stack.is_empty() {
+                    chars[i] = '*';
+                } else {
+                    stack.pop();
+                }
+            }
+        }
+        for i in stack {
+            chars[i] = '*';
+        }
+        chars.into_iter().filter(|c| c != '*').collect()
+    }
+}
+
+fn a4_min_remove_to_make_valid(s: Str) -> String {
+    A4Solution.min_remove_to_make_valid(s.to_string())
+}
+
+// A random string of `n` characters, each `(` or `)` with chance
+// `percent` in 100 between them and a letter from `a` to `e` otherwise,
+// `(` a little more likely than `)` when `lean` is 1 and less when 2.
+fn random_text(n: i64, percent: i64, lean: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        let r = next_random(mut seed) % 100;
+        if r < percent {
+            let open = match lean {
+                0 => next_random(mut seed) % 2 == 0,
+                1 => next_random(mut seed) % 5 < 3,
+                _ => next_random(mut seed) % 5 < 2,
+            };
+            s.push(if open { '(' } else { ')' });
+        } else {
+            s.push(['a', 'b', 'c', 'd', 'e'][next_random(mut seed) % 5]);
+        }
+    }
+    s
+}
+
+// Whether `kept` is an answer for `s` other than in its length: its
+// parentheses balance, and it is `s` with characters taken out, every
+// letter still there. LeetCode accepts any such string of the least
+// removals, and the arms need not choose the same `(` to drop.
+fn valid_removal(s: Str, kept: Str) -> bool {
+    let mut open = 0;
+    for c in kept.chars() {
+        if c == '(' {
+            open += 1;
+        } else if c == ')' {
+            if open == 0 {
+                return false;
+            }
+            open -= 1;
+        }
+    }
+    let mut rest = s.chars();
+    for c in kept.chars() {
+        if not rest.any(|r| r == c) {
+            return false;
+        }
+    }
+    let letters = |t: Str| t.chars().filter(|c| c != '(' and c != ')').count();
+    open == 0 and letters(s) == letters(kept)
+}
+
+// The statement read literally: the fewest parentheses whose removal
+// leaves a valid string, found by trying every set of them, smallest
+// sets first.
+fn literal(s: Str) -> i64 {
+    let chars: Vec[char] = s.chars().collect();
+    let parens: Vec[i64] = (0..chars.len()).filter(|i| chars[i] == '(' or chars[i] == ')').collect();
+    let p = parens.len();
+    let mut best = p;
+    for mask in 0..(1 << p) {
+        let gone = (0..p).filter(|b| (mask >> b) & 1 == 1).count();
+        if gone >= best {
+            continue;
+        }
+        let mut open = 0;
+        let mut ok = true;
+        for b in 0..p {
+            if (mask >> b) & 1 == 1 {
+                continue;
+            }
+            if chars[parens[b]] == '(' {
+                open += 1;
+            } else if open == 0 {
+                ok = false;
+                break;
+            } else {
+                open -= 1;
+            }
+        }
+        if ok and open == 0 {
+            best = gone;
+        }
+    }
+    best
+}
+
+fn arms(s: Str) -> Vec[String] {
+    [a0_min_remove_to_make_valid(s), a1_min_remove_to_make_valid(s), a2_min_remove_to_make_valid(s), a3_min_remove_to_make_valid(s), a4_min_remove_to_make_valid(s)]
+}
+
+fn mirror(s: Str) -> String {
+    s.chars().rev().map(|c| if c == '(' { ')' } else if c == ')' { '(' } else { c }).collect()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["the statement read literally", "balanced, every letter kept", "mirrored, the same number removed", "the letters taken out, the same number removed", "the answer asked again comes back unchanged", "the ★ arm's number removed"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 12490;
+    for t in 0..2000 {
+        let n = next_random(mut seed) % 14 + 1;
+        let percent = next_random(mut seed) % 101;
+        let s = random_text(n, percent, t % 3, mut seed);
+        let want = literal(s);
+        check = (check * 131 + want) % 1000000007;
+        let got = arms(s);
+        let mirrored = arms(mirror(s));
+        let bare: String = s.chars().filter(|c| c == '(' or c == ')').collect();
+        let parens = arms(bare);
+        for arm in 0..5 {
+            let kept = got[arm].clone();
+            let gone = n - kept.len();
+            let again = arms(kept);
+            let held = [
+                gone == want,
+                valid_removal(s, kept),
+                n - mirrored[arm].len() == gone,
+                bare.len() - parens[arm].len() == gone,
+                again[arm] == kept,
+                gone == n - got[0].len(),
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {arm}: {s} -> {kept}");
+                    }
+                }
+            }
+        }
+    }
+    let total: i64 = fails.iter().sum();
+    for p in 0..6 {
+        if fails[p] > 0 {
+            print(f"P{p + 1}: {fails[p]} failures ");
+        }
+    }
+    println(f"2000 strings: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

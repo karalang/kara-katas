@@ -1,0 +1,118 @@
+// LeetCode #1249: Minimum Remove to Make Valid Parentheses -- a stack of
+// the places of the `(` not yet closed: a `)` with nothing to close is
+// marked for removal as it is met, and the `(` still on the stack at the
+// end, never closed, are marked too. Every other character is kept.
+
+fn min_remove_to_make_valid(s: Str) -> String {
+    let chars: Vec[char] = s.chars().collect();
+    let mut keep: Vec[bool] = Vec.filled(chars.len(), true);
+    let mut open: Vec[i64] = Vec.new();
+    for (i, c) in chars.iter().enumerate() {
+        if c == '(' {
+            open.push(i);
+        } else if c == ')' {
+            if open.pop().is_none() {
+                keep[i] = false;
+            }
+        }
+    }
+    for i in open.iter() {
+        keep[i] = false;
+    }
+    let mut out = String.new();
+    for (i, c) in chars.iter().enumerate() {
+        if keep[i] {
+            out.push(c);
+        }
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A random string of `n` characters, each `(` or `)` with chance
+// `percent` in 100 between them and a letter from `a` to `e` otherwise,
+// `(` a little more likely than `)` when `lean` is 1 and less when 2.
+fn random_text(n: i64, percent: i64, lean: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        let r = next_random(mut seed) % 100;
+        if r < percent {
+            let open = match lean {
+                0 => next_random(mut seed) % 2 == 0,
+                1 => next_random(mut seed) % 5 < 3,
+                _ => next_random(mut seed) % 5 < 2,
+            };
+            s.push(if open { '(' } else { ')' });
+        } else {
+            s.push(['a', 'b', 'c', 'd', 'e'][next_random(mut seed) % 5]);
+        }
+    }
+    s
+}
+
+// Whether `kept` is an answer for `s` other than in its length: its
+// parentheses balance, and it is `s` with characters taken out, every
+// letter still there. LeetCode accepts any such string of the least
+// removals, and the arms need not choose the same `(` to drop.
+fn valid_removal(s: Str, kept: Str) -> bool {
+    let mut open = 0;
+    for c in kept.chars() {
+        if c == '(' {
+            open += 1;
+        } else if c == ')' {
+            if open == 0 {
+                return false;
+            }
+            open -= 1;
+        }
+    }
+    let mut rest = s.chars();
+    for c in kept.chars() {
+        if not rest.any(|r| r == c) {
+            return false;
+        }
+    }
+    let letters = |t: Str| t.chars().filter(|c| c != '(' and c != ')').count();
+    open == 0 and letters(s) == letters(kept)
+}
+
+fn main() {
+    // LeetCode's three examples
+    let a = min_remove_to_make_valid("lee(t(c)o)de)");
+    let b = min_remove_to_make_valid("a)b(c)d");
+    let c = min_remove_to_make_valid("))((");
+    println(f"{a} {b} [{c}]");
+    // 1000 random strings of 1 to 2000 characters, each with its own share
+    // of parentheses, a third of them leaning to `(` and a third to `)`
+    let mut seed = 1249;
+    let mut removed = 0;
+    let mut invalid = 0;
+    let mut check = 0;
+    for t in 0..1000 {
+        let n = next_random(mut seed) % 2000 + 1;
+        let percent = next_random(mut seed) % 101;
+        let s = random_text(n, percent, t % 3, mut seed);
+        let kept = min_remove_to_make_valid(s);
+        if not valid_removal(s, kept) {
+            invalid += 1;
+        }
+        removed += n - kept.len();
+        check = (check * 131 + n - kept.len()) % 1000000007;
+    }
+    println(f"1000 random strings: {removed} removed, {invalid} invalid, checksum {check}");
+    // the constraints' top: 100000 characters, all `(` then all `)` with
+    // one more `)`, and random parentheses only
+    let mut deep = "(".repeat(50000);
+    deep.push_str(")".repeat(50001));
+    let noise = random_text(100000, 100, 0, mut seed);
+    let x = min_remove_to_make_valid(deep);
+    let y = min_remove_to_make_valid(noise);
+    let fine = valid_removal(deep, x) and valid_removal(noise, y);
+    println(f"100000 characters: nested keeps {x.len()}, random keeps {y.len()}, valid {fine}");
+}

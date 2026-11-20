@@ -1,0 +1,209 @@
+// LeetCode #1250: the differential -- the five arms against the statement
+// read literally and four more properties, on 2000 random arrays.
+
+// arm 0: is_good_array.kara
+fn a0_gcd(a: i64, b: i64) -> i64 {
+    let mut a = a;
+    let mut b = b;
+    while b != 0 {
+        let r = a % b;
+        a = b;
+        b = r;
+    }
+    a
+}
+
+fn a0_is_good_array(nums: Vec[i64]) -> bool {
+    let mut g = 0;
+    for x in nums {
+        g = a0_gcd(g, x);
+        if g == 1 {
+            return true;
+        }
+    }
+    g == 1
+}
+
+// arm 1: is_good_array_fold.kara
+fn a1_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { a1_gcd(b, a % b) }
+}
+
+fn a1_is_good_array(nums: Vec[i64]) -> bool {
+    nums.iter().fold(0, |g, x| a1_gcd(g, x)) == 1
+}
+
+// arm 2: is_good_array_binary.kara
+fn a2_gcd(a: i64, b: i64) -> i64 {
+    if a == 0 {
+        return b;
+    }
+    if b == 0 {
+        return a;
+    }
+    let shift = (a | b).trailing_zeros();
+    let mut a = a >> a.trailing_zeros();
+    let mut b = b;
+    while b != 0 {
+        b = b >> b.trailing_zeros();
+        if a > b {
+            let t = a;
+            a = b;
+            b = t;
+        }
+        b -= a;
+    }
+    a << shift
+}
+
+fn a2_is_good_array(nums: Vec[i64]) -> bool {
+    let mut g = 0;
+    for x in nums {
+        g = a2_gcd(g, x);
+        if g == 1 {
+            return true;
+        }
+    }
+    g == 1
+}
+
+// arm 3: is_good_array_primes.kara
+fn a3_prime_factors(n: i64) -> Vec[i64] {
+    let mut primes = Vec.new();
+    let mut n = n;
+    let mut p = 2;
+    while p * p <= n {
+        if n % p == 0 {
+            primes.push(p);
+            while n % p == 0 {
+                n /= p;
+            }
+        }
+        p += 1;
+    }
+    if n > 1 {
+        primes.push(n);
+    }
+    primes
+}
+
+fn a3_is_good_array(nums: Vec[i64]) -> bool {
+    a3_prime_factors(nums[0]).iter().all(|p| nums.iter().any(|x| x % p != 0))
+}
+
+// arm 4: is_good_array_solution.kara
+struct A4Solution {}
+
+fn a4_gcd(a: i32, b: i32) -> i32 {
+    if b == 0 { a } else { a4_gcd(b, a % b) }
+}
+
+impl A4Solution {
+    pub fn is_good_array(nums: Vec[i32]) -> bool {
+        nums.iter().fold(0, |acc, x| a4_gcd(acc, x)) == 1
+    }
+}
+
+fn a4_is_good_array(nums: Vec[i64]) -> bool {
+    A4Solution.is_good_array(nums.iter().map(|x| x as i32).collect())
+}
+
+// A random array of `n` values: from 1 to `top` when `factor` is 1, and
+// otherwise `factor` times a value from 1 to `top / factor`, so that
+// every value shares `factor`. Two draws of 15 bits make a value up to
+// 10^9 reachable.
+fn random_array(n: i64, top: i64, factor: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut nums = Vec.new();
+    for _ in 0..n {
+        let r = next_random(mut seed) * 32768 + next_random(mut seed);
+        nums.push(factor * (r % (top / factor) + 1));
+    }
+    nums
+}
+
+// The statement read literally: every sum of whole multiples of the
+// values, built by adding or taking away one value at a time from 0,
+// each partial sum kept between minus and plus the largest value, and
+// the array good when 1 is among them.
+fn literal(nums: Vec[i64]) -> bool {
+    let top = nums.iter().max().unwrap();
+    let mut seen = Vec.filled(2 * top + 1, false);
+    seen[top] = true;
+    let mut todo = [0];
+    while let Some(v) = todo.pop() {
+        for x in nums.iter() {
+            for w in [v + x, v - x] {
+                if w >= -top and w <= top and not seen[w + top] {
+                    seen[w + top] = true;
+                    todo.push(w);
+                }
+            }
+        }
+    }
+    seen[top + 1]
+}
+
+fn arms(nums: Vec[i64]) -> Vec[bool] {
+    [a0_is_good_array(nums), a1_is_good_array(nums), a2_is_good_array(nums), a3_is_good_array(nums), a4_is_good_array(nums)]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["the statement read literally", "rotated, the same answer", "the first value raised by the last, the same answer", "every value doubled, not good", "the product of two values added, the same answer", "the ★ arm's answer"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 12500;
+    for t in 0..2000 {
+        let n = next_random(mut seed) % 6 + 1;
+        let factor = if t % 2 == 0 { 1 } else { next_random(mut seed) % 4 + 2 };
+        let nums = random_array(n, 60, factor, mut seed);
+        let want = literal(nums);
+        check = (check * 131 + if want { t + 1 } else { 0 }) % 1000000007;
+        let got = arms(nums);
+        let mut rotated = nums[1..].to_vec();
+        rotated.push(nums[0]);
+        // with one value, the last is the first: the array is left as it is
+        let mut raised = nums.clone();
+        if n > 1 {
+            raised[0] += nums[n - 1];
+        }
+        let doubled: Vec[i64] = nums.iter().map(|x| 2 * x).collect();
+        let mut product = nums.clone();
+        product.push(nums[0] * nums[n - 1]);
+        let r = arms(rotated);
+        let s = arms(raised);
+        let d = arms(doubled);
+        let p = arms(product);
+        for arm in 0..5 {
+            let held = [
+                got[arm] == want,
+                r[arm] == got[arm],
+                s[arm] == got[arm],
+                not d[arm],
+                p[arm] == got[arm],
+                got[arm] == got[0],
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not held[q] {
+                    fails[q] += 1;
+                    if fails[q] <= 2 {
+                        println(f"P{q + 1} ({names[q]}) fails on arm {arm}: {nums}");
+                    }
+                }
+            }
+        }
+    }
+    let total: i64 = fails.iter().sum();
+    for q in 0..6 {
+        if fails[q] > 0 {
+            print(f"P{q + 1}: {fails[q]} failures ");
+        }
+    }
+    println(f"2000 arrays: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

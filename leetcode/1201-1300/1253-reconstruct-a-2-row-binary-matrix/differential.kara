@@ -1,0 +1,281 @@
+// LeetCode #1253: the differential -- the five arms against the statement
+// read literally and four more properties, on 2000 random cases.
+
+// arm 0: reconstruct_matrix.kara
+fn a0_reconstruct_matrix(upper: i64, lower: i64, colsum: Vec[i64]) -> Vec[Vec[i64]] {
+    let n = colsum.len();
+    let twos = colsum.iter().filter(|v| v == 2).count();
+    let ones = colsum.iter().filter(|v| v == 1).count();
+    if upper < twos or lower < twos or upper + lower != 2 * twos + ones {
+        return [];
+    }
+    let mut up = Vec.filled(n, 0);
+    let mut low = Vec.filled(n, 0);
+    let mut left = upper - twos;
+    for i in 0..n {
+        if colsum[i] == 2 {
+            up[i] = 1;
+            low[i] = 1;
+        } else if colsum[i] == 1 {
+            if left > 0 {
+                up[i] = 1;
+                left -= 1;
+            } else {
+                low[i] = 1;
+            }
+        }
+    }
+    [up, low]
+}
+
+// arm 1: reconstruct_matrix_balance.kara
+fn a1_reconstruct_matrix(upper: i64, lower: i64, colsum: Vec[i64]) -> Vec[Vec[i64]] {
+    let mut rows = [Vec.new(), Vec.new()];
+    let mut left = [upper, lower];
+    for v in colsum {
+        let (a, b) = match v {
+            2 => (1, 1),
+            1 if left[0] >= left[1] => (1, 0),
+            1 => (0, 1),
+            _ => (0, 0),
+        };
+        rows[0].push(a);
+        rows[1].push(b);
+        left[0] -= a;
+        left[1] -= b;
+        if left[0] < 0 or left[1] < 0 {
+            return [];
+        }
+    }
+    if left[0] != 0 or left[1] != 0 {
+        return [];
+    }
+    rows
+}
+
+// arm 2: reconstruct_matrix_lift.kara
+fn a2_reconstruct_matrix(upper: i64, lower: i64, colsum: Vec[i64]) -> Vec[Vec[i64]] {
+    let n = colsum.len();
+    let mut up: Vec[i64] = colsum.iter().map(|v| if v == 2 { 1 } else { 0 }).collect();
+    let mut low: Vec[i64] = colsum.iter().map(|v| if v > 0 { 1 } else { 0 }).collect();
+    let mut need = upper - up.iter().sum();
+    let mut i = n - 1;
+    while need > 0 and i >= 0 {
+        if colsum[i] == 1 {
+            up[i] = 1;
+            low[i] = 0;
+            need -= 1;
+        }
+        i -= 1;
+    }
+    let low_sum: i64 = low.iter().sum();
+    if need != 0 or low_sum != lower {
+        return [];
+    }
+    [up, low]
+}
+
+// arm 3: reconstruct_matrix_iter.kara
+fn a3_reconstruct_matrix(upper: i64, lower: i64, colsum: Vec[i64]) -> Vec[Vec[i64]] {
+    let twos = colsum.iter().filter(|v| v == 2).count();
+    let total: i64 = colsum.iter().sum();
+    if upper < twos or lower < twos or upper + lower != total {
+        return [];
+    }
+    let mut take = upper - twos;
+    let up: Vec[i64] = colsum
+        .iter()
+        .map(|v| {
+            if v == 2 {
+                1
+            } else if v == 1 and take > 0 {
+                take -= 1;
+                1
+            } else {
+                0
+            }
+        })
+        .collect();
+    let low: Vec[i64] = colsum.iter().zip(up.iter()).map(|(v, u)| v - u).collect();
+    [up, low]
+}
+
+// arm 4: reconstruct_matrix_solution.kara
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn reconstruct_matrix(upper: i32, lower: i32, colsum: Vec[i32]) -> Vec[Vec[i32]] {
+        let n = colsum.len();
+        let mut res = Vec.filled(2, Vec.filled(n, 0));
+        let mut (u, l) = (upper, lower);
+        for i in 0..n {
+            if colsum[i] == 2 {
+                res[0][i] = 1;
+                res[1][i] = 1;
+                u -= 1;
+                l -= 1;
+            } else if colsum[i] == 1 {
+                if u > l {
+                    res[0][i] = 1;
+                    u -= 1;
+                } else {
+                    res[1][i] = 1;
+                    l -= 1;
+                }
+            }
+            if u < 0 or l < 0 {
+                return Vec.new();
+            }
+        }
+        if u != 0 or l != 0 {
+            return Vec.new();
+        }
+        res
+    }
+}
+
+fn a4_reconstruct_matrix(upper: i64, lower: i64, colsum: Vec[i64]) -> Vec[Vec[i64]] {
+    let sums = colsum.iter().map(|x| x as i32).collect();
+    let rows = A4Solution.reconstruct_matrix(upper as i32, lower as i32, sums);
+    rows.iter().map(|r| r.iter().map(|x| x as i64).collect()).collect()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// 1 when `ans` is a matrix the statement asks for: two rows of 0s and 1s,
+// as long as `colsum`, whose rows add to `upper` and `lower` and whose
+// columns add to `colsum`; 0 when it is empty, the answer for no such
+// matrix; and -1 otherwise. LeetCode accepts any such matrix, and the
+// arms need not choose the same one.
+fn judge(upper: i64, lower: i64, colsum: Vec[i64], ans: Vec[Vec[i64]]) -> i64 {
+    if ans.is_empty() {
+        return 0;
+    }
+    let n = colsum.len();
+    if ans.len() != 2 or ans[0].len() != n or ans[1].len() != n {
+        return -1;
+    }
+    let mut up = 0;
+    let mut low = 0;
+    for i in 0..n {
+        let a = ans[0][i];
+        let b = ans[1][i];
+        if a < 0 or a > 1 or b < 0 or b > 1 or a + b != colsum[i] {
+            return -1;
+        }
+        up += a;
+        low += b;
+    }
+    if up == upper and low == lower { 1 } else { -1 }
+}
+
+// A random `colsum` of `n` columns, a 2 with chance `twos` in 100 and a 0
+// or 1 otherwise, and the row sums of one matrix that has it, moved by
+// -1 to 1 each half the time so that some have no matrix at all.
+fn random_case(n: i64, twos: i64, seed: mut ref i64) -> (i64, i64, Vec[i64]) {
+    let mut colsum = Vec.new();
+    let mut upper = 0;
+    let mut lower = 0;
+    for _ in 0..n {
+        let v = if next_random(mut seed) % 100 < twos { 2 } else { next_random(mut seed) % 2 };
+        colsum.push(v);
+        if v == 2 {
+            upper += 1;
+            lower += 1;
+        } else if v == 1 {
+            if next_random(mut seed) % 2 == 0 {
+                upper += 1;
+            } else {
+                lower += 1;
+            }
+        }
+    }
+    if next_random(mut seed) % 2 == 0 {
+        upper += next_random(mut seed) % 3 - 1;
+        lower += next_random(mut seed) % 3 - 1;
+    }
+    (upper.max(0), lower.max(0), colsum)
+}
+
+// The statement read literally: every matrix of two rows of 0s and 1s as
+// long as `colsum` tried, and whether one has rows adding to `upper` and
+// `lower` and columns adding to `colsum`.
+fn literal(upper: i64, lower: i64, colsum: Vec[i64]) -> bool {
+    let n = colsum.len();
+    for mask in 0..(1 << (2 * n)) {
+        let mut up = 0;
+        let mut low = 0;
+        let mut fits = true;
+        for i in 0..n {
+            let a = (mask >> i) & 1;
+            let b = (mask >> (n + i)) & 1;
+            if a + b != colsum[i] {
+                fits = false;
+                break;
+            }
+            up += a;
+            low += b;
+        }
+        if fits and up == upper and low == lower {
+            return true;
+        }
+    }
+    false
+}
+
+fn verdicts(upper: i64, lower: i64, colsum: Vec[i64]) -> Vec[i64] {
+    [
+        judge(upper, lower, colsum, a0_reconstruct_matrix(upper, lower, colsum)),
+        judge(upper, lower, colsum, a1_reconstruct_matrix(upper, lower, colsum)),
+        judge(upper, lower, colsum, a2_reconstruct_matrix(upper, lower, colsum)),
+        judge(upper, lower, colsum, a3_reconstruct_matrix(upper, lower, colsum)),
+        judge(upper, lower, colsum, a4_reconstruct_matrix(upper, lower, colsum)),
+    ]
+}
+
+fn main() {
+    let names = ["the statement read literally", "the columns reversed, the same verdict", "the rows' sums swapped, the same verdict", "a column of 2 added to both sums, the same verdict", "a column of 0 added, the same verdict", "the ★ arm's verdict"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 12530;
+    for t in 0..2000 {
+        let n = next_random(mut seed) % 6 + 1;
+        let twos = next_random(mut seed) % 101;
+        let (upper, lower, colsum) = random_case(n, twos, mut seed);
+        let want = if literal(upper, lower, colsum) { 1 } else { 0 };
+        check = (check * 131 + want * (t + 1)) % 1000000007;
+        let got = verdicts(upper, lower, colsum);
+        let reversed: Vec[i64] = colsum.iter().rev().collect();
+        let mut with_two = colsum.clone();
+        with_two.push(2);
+        let mut with_zero = colsum.clone();
+        with_zero.push(0);
+        let r = verdicts(upper, lower, reversed);
+        let s = verdicts(lower, upper, colsum);
+        let w = verdicts(upper + 1, lower + 1, with_two);
+        let z = verdicts(upper, lower, with_zero);
+        for arm in 0..5 {
+            let held = [got[arm] == want, r[arm] == got[arm], s[arm] == got[arm], w[arm] == got[arm], z[arm] == got[arm], got[arm] == got[0]];
+            for q in 0..6 {
+                checks += 1;
+                if not held[q] {
+                    fails[q] += 1;
+                    if fails[q] <= 2 {
+                        println(f"P{q + 1} ({names[q]}) fails on arm {arm}: {upper} {lower} {colsum}");
+                    }
+                }
+            }
+        }
+    }
+    let total: i64 = fails.iter().sum();
+    for q in 0..6 {
+        if fails[q] > 0 {
+            print(f"P{q + 1}: {fails[q]} failures ");
+        }
+    }
+    println(f"2000 cases: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

@@ -1,0 +1,351 @@
+// LeetCode #1254: the differential -- the five arms against the statement
+// read literally and four more properties, on 2000 random grids.
+
+// arm 0: closed_island.kara
+fn a0_closed(grid: mut ref Vec[Vec[i64]], i: i64, j: i64) -> bool {
+    if i < 0 or j < 0 or i >= grid.len() or j >= grid[0].len() {
+        return false;
+    }
+    if grid[i][j] == 1 {
+        return true;
+    }
+    grid[i][j] = 1;
+    let up = a0_closed(mut grid, i - 1, j);
+    let down = a0_closed(mut grid, i + 1, j);
+    let left = a0_closed(mut grid, i, j - 1);
+    let right = a0_closed(mut grid, i, j + 1);
+    up and down and left and right
+}
+
+fn a0_closed_island(grid: own Vec[Vec[i64]]) -> i64 {
+    let mut grid = grid;
+    let mut count = 0;
+    for i in 0..grid.len() {
+        for j in 0..grid[0].len() {
+            if grid[i][j] == 0 and a0_closed(mut grid, i, j) {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+// arm 1: closed_island_bfs.kara
+fn a1_closed_island(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut seen = Vec.filled(m, Vec.filled(n, false));
+    let mut count = 0;
+    for si in 0..m {
+        for sj in 0..n {
+            if grid[si][sj] == 1 or seen[si][sj] {
+                continue;
+            }
+            seen[si][sj] = true;
+            let mut queue = VecDeque.new();
+            queue.push_back((si, sj));
+            let mut inside = true;
+            while let Some((i, j)) = queue.pop_front() {
+                if i == 0 or j == 0 or i == m - 1 or j == n - 1 {
+                    inside = false;
+                }
+                for (di, dj) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                    let a = i + di;
+                    let b = j + dj;
+                    if a >= 0 and b >= 0 and a < m and b < n and grid[a][b] == 0 and not seen[a][b] {
+                        seen[a][b] = true;
+                        queue.push_back((a, b));
+                    }
+                }
+            }
+            if inside {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+// arm 2: closed_island_border.kara
+fn a2_sink(grid: mut ref Vec[Vec[i64]], i: i64, j: i64) {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut stack = [(i, j)];
+    while let Some((a, b)) = stack.pop() {
+        if a < 0 or b < 0 or a >= m or b >= n or grid[a][b] == 1 {
+            continue;
+        }
+        grid[a][b] = 1;
+        stack.push((a - 1, b));
+        stack.push((a + 1, b));
+        stack.push((a, b - 1));
+        stack.push((a, b + 1));
+    }
+}
+
+fn a2_closed_island(grid: own Vec[Vec[i64]]) -> i64 {
+    let mut grid = grid;
+    let m = grid.len();
+    let n = grid[0].len();
+    for i in 0..m {
+        a2_sink(mut grid, i, 0);
+        a2_sink(mut grid, i, n - 1);
+    }
+    for j in 0..n {
+        a2_sink(mut grid, 0, j);
+        a2_sink(mut grid, m - 1, j);
+    }
+    let mut count = 0;
+    for i in 0..m {
+        for j in 0..n {
+            if grid[i][j] == 0 {
+                count += 1;
+                a2_sink(mut grid, i, j);
+            }
+        }
+    }
+    count
+}
+
+// arm 3: closed_island_dsu.kara
+struct A3Dsu {
+    parent: Vec[i64],
+}
+
+impl A3Dsu {
+    fn new(n: i64) -> A3Dsu {
+        A3Dsu { parent: (0..n).collect() }
+    }
+
+    fn find(mut ref self, x: i64) -> i64 {
+        let mut root = x;
+        while self.parent[root] != root {
+            root = self.parent[root];
+        }
+        let mut x = x;
+        while self.parent[x] != root {
+            let next = self.parent[x];
+            self.parent[x] = root;
+            x = next;
+        }
+        root
+    }
+
+    fn union(mut ref self, a: i64, b: i64) {
+        let ra = self.find(a);
+        let rb = self.find(b);
+        if ra != rb {
+            self.parent[ra] = rb;
+        }
+    }
+}
+
+fn a3_closed_island(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let outside = m * n;
+    let mut dsu = A3Dsu.new(m * n + 1);
+    for i in 0..m {
+        for j in 0..n {
+            if grid[i][j] == 1 {
+                continue;
+            }
+            let id = i * n + j;
+            if i == 0 or j == 0 or i == m - 1 or j == n - 1 {
+                dsu.union(id, outside);
+            }
+            if j + 1 < n and grid[i][j + 1] == 0 {
+                dsu.union(id, id + 1);
+            }
+            if i + 1 < m and grid[i + 1][j] == 0 {
+                dsu.union(id, id + n);
+            }
+        }
+    }
+    let shore = dsu.find(outside);
+    let mut count = 0;
+    for i in 0..m {
+        for j in 0..n {
+            let id = i * n + j;
+            if grid[i][j] == 0 and dsu.find(id) == id and id != shore {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+// arm 4: closed_island_solution.kara
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn closed_island(grid: own Vec[Vec[i32]]) -> i32 {
+        let mut grid = grid;
+        let (m, n) = (grid.len(), grid[0].len());
+        let mut count = 0;
+        for i in 0..m {
+            for j in 0..n {
+                if grid[i][j] == 0 and A4Solution.dfs(mut grid, i as i32, j as i32) {
+                    count += 1;
+                }
+            }
+        }
+        count
+    }
+
+    fn dfs(grid: mut ref Vec[Vec[i32]], i: i32, j: i32) -> bool {
+        if i < 0 or j < 0 or i >= grid.len() as i32 or j >= grid[0].len() as i32 {
+            return false;
+        }
+        if grid[i as usize][j as usize] == 1 {
+            return true;
+        }
+        grid[i as usize][j as usize] = 1;
+        let up = A4Solution.dfs(mut grid, i - 1, j);
+        let down = A4Solution.dfs(mut grid, i + 1, j);
+        let left = A4Solution.dfs(mut grid, i, j - 1);
+        let right = A4Solution.dfs(mut grid, i, j + 1);
+        up and down and left and right
+    }
+}
+
+fn a4_closed_island(grid: Vec[Vec[i64]]) -> i64 {
+    let rows = grid.iter().map(|r| r.iter().map(|x| x as i32).collect()).collect();
+    A4Solution.closed_island(rows)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A random `m` by `n` grid, each cell land (0) with chance `land` in 100
+// and water (1) otherwise.
+fn random_grid(m: i64, n: i64, land: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut grid = Vec.new();
+    for _ in 0..m {
+        let mut row = Vec.new();
+        for _ in 0..n {
+            row.push(if next_random(mut seed) % 100 < land { 0 } else { 1 });
+        }
+        grid.push(row);
+    }
+    grid
+}
+
+// The statement read literally: an island is a largest group of land
+// joined side to side, found here by giving every land cell its own
+// number and letting each take the least number of a land neighbour until
+// none changes; an island is closed when water surrounds it on every
+// side, that is when no cell of it lies on the edge. Gives the closed
+// islands and all the islands.
+fn literal(grid: Vec[Vec[i64]]) -> (i64, i64) {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut label = Vec.filled(m, Vec.filled(n, -1));
+    for i in 0..m {
+        for j in 0..n {
+            if grid[i][j] == 0 {
+                label[i][j] = i * n + j;
+            }
+        }
+    }
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for i in 0..m {
+            for j in 0..n {
+                if grid[i][j] == 1 {
+                    continue;
+                }
+                for (a, b) in [(i - 1, j), (i + 1, j), (i, j - 1), (i, j + 1)] {
+                    if a >= 0 and b >= 0 and a < m and b < n and grid[a][b] == 0 and label[a][b] < label[i][j] {
+                        label[i][j] = label[a][b];
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+    let mut closed = 0;
+    let mut all = 0;
+    for i in 0..m {
+        for j in 0..n {
+            if grid[i][j] == 0 and label[i][j] == i * n + j {
+                all += 1;
+                let mut on_edge = false;
+                for a in 0..m {
+                    for b in 0..n {
+                        if label[a][b] == label[i][j] and (a == 0 or b == 0 or a == m - 1 or b == n - 1) {
+                            on_edge = true;
+                        }
+                    }
+                }
+                if not on_edge {
+                    closed += 1;
+                }
+            }
+        }
+    }
+    (closed, all)
+}
+
+fn arms(grid: Vec[Vec[i64]]) -> Vec[i64] {
+    [a0_closed_island(grid.clone()), a1_closed_island(grid), a2_closed_island(grid.clone()), a3_closed_island(grid), a4_closed_island(grid)]
+}
+
+// The grid with a frame of `v` around it.
+fn framed(grid: Vec[Vec[i64]], v: i64) -> Vec[Vec[i64]] {
+    let n = grid[0].len();
+    let mut out = [Vec.filled(n + 2, v)];
+    for row in grid.iter() {
+        let mut r = [v];
+        r.extend(row.iter());
+        r.push(v);
+        out.push(r);
+    }
+    out.push(Vec.filled(n + 2, v));
+    out
+}
+
+fn main() {
+    let names = ["the statement read literally", "transposed, the same count", "mirrored left to right, the same count", "framed by water, every island closed", "framed by land, the same count", "the ★ arm's count"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 12540;
+    for _ in 0..2000 {
+        let m = next_random(mut seed) % 8 + 1;
+        let n = next_random(mut seed) % 8 + 1;
+        let land = next_random(mut seed) % 61 + 20;
+        let grid = random_grid(m, n, land, mut seed);
+        let (want, all) = literal(grid);
+        check = (check * 131 + want * 17 + all) % 1000000007;
+        let got = arms(grid);
+        let transposed: Vec[Vec[i64]] = (0..n).map(|j| (0..m).map(|i| grid[i][j]).collect()).collect();
+        let mirrored: Vec[Vec[i64]] = grid.iter().map(|row| row.iter().rev().collect()).collect();
+        let t = arms(transposed);
+        let r = arms(mirrored);
+        let w = arms(framed(grid, 1));
+        let l = arms(framed(grid, 0));
+        for arm in 0..5 {
+            let held = [got[arm] == want, t[arm] == got[arm], r[arm] == got[arm], w[arm] == all, l[arm] == got[arm], got[arm] == got[0]];
+            for q in 0..6 {
+                checks += 1;
+                if not held[q] {
+                    fails[q] += 1;
+                    if fails[q] <= 2 {
+                        println(f"P{q + 1} ({names[q]}) fails on arm {arm}: {grid}");
+                    }
+                }
+            }
+        }
+    }
+    let total: i64 = fails.iter().sum();
+    for q in 0..6 {
+        if fails[q] > 0 {
+            print(f"P{q + 1}: {fails[q]} failures ");
+        }
+    }
+    println(f"2000 grids: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

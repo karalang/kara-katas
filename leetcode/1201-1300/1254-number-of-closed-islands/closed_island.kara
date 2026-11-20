@@ -1,0 +1,97 @@
+// LeetCode #1254: Number of Closed Islands -- depth first, by recursion:
+// each island of land flooded to water from its first cell, and counted
+// when no cell of it reached the edge of the grid. Every neighbour is
+// visited even after the edge is found, so the whole island is flooded.
+
+fn closed(grid: mut ref Vec[Vec[i64]], i: i64, j: i64) -> bool {
+    if i < 0 or j < 0 or i >= grid.len() or j >= grid[0].len() {
+        return false;
+    }
+    if grid[i][j] == 1 {
+        return true;
+    }
+    grid[i][j] = 1;
+    let up = closed(mut grid, i - 1, j);
+    let down = closed(mut grid, i + 1, j);
+    let left = closed(mut grid, i, j - 1);
+    let right = closed(mut grid, i, j + 1);
+    up and down and left and right
+}
+
+fn closed_island(grid: own Vec[Vec[i64]]) -> i64 {
+    let mut grid = grid;
+    let mut count = 0;
+    for i in 0..grid.len() {
+        for j in 0..grid[0].len() {
+            if grid[i][j] == 0 and closed(mut grid, i, j) {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A random `m` by `n` grid, each cell land (0) with chance `land` in 100
+// and water (1) otherwise.
+fn random_grid(m: i64, n: i64, land: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut grid = Vec.new();
+    for _ in 0..m {
+        let mut row = Vec.new();
+        for _ in 0..n {
+            row.push(if next_random(mut seed) % 100 < land { 0 } else { 1 });
+        }
+        grid.push(row);
+    }
+    grid
+}
+
+fn main() {
+    // LeetCode's three examples
+    let a = closed_island([[1, 1, 1, 1, 1, 1, 1, 0], [1, 0, 0, 0, 0, 1, 1, 0], [1, 0, 1, 0, 1, 1, 1, 0], [1, 0, 0, 0, 0, 1, 0, 1], [1, 1, 1, 1, 1, 1, 1, 0]]);
+    let b = closed_island([[0, 0, 1, 0, 0], [0, 1, 0, 1, 0], [0, 1, 1, 1, 0]]);
+    let c = closed_island([[1, 1, 1, 1, 1, 1, 1], [1, 0, 0, 0, 0, 0, 1], [1, 0, 1, 1, 1, 0, 1], [1, 0, 1, 0, 1, 0, 1], [1, 0, 1, 1, 1, 0, 1], [1, 0, 0, 0, 0, 0, 1], [1, 1, 1, 1, 1, 1, 1]]);
+    println(f"{a} {b} {c}");
+    // 500 random grids of 1 to 100 rows and columns, each with its own
+    // share of land from 20 to 80 in 100
+    let mut seed = 1254;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..500 {
+        let m = next_random(mut seed) % 100 + 1;
+        let n = next_random(mut seed) % 100 + 1;
+        let land = next_random(mut seed) % 61 + 20;
+        let closed = closed_island(random_grid(m, n, land, mut seed));
+        total += closed;
+        check = (check * 131 + closed) % 1000000007;
+    }
+    println(f"500 random grids: total {total}, checksum {check}");
+    // the constraints' top: 100 by 100, a winding path of land, every
+    // other row full but for one end, framed by water; and land on every
+    // other cell like a chessboard
+    let mut snake = Vec.filled(100, Vec.filled(100, 1));
+    for i in 1..99 {
+        for j in 1..99 {
+            if i % 2 == 1 or (i % 4 == 2 and j == 98) or (i % 4 == 0 and j == 1) {
+                snake[i][j] = 0;
+            }
+        }
+    }
+    let mut board = Vec.filled(100, Vec.filled(100, 1));
+    for i in 0..100 {
+        for j in 0..100 {
+            if (i + j) % 2 == 0 {
+                board[i][j] = 0;
+            }
+        }
+    }
+    let x = closed_island(snake);
+    let y = closed_island(board);
+    println(f"100 by 100: winding path {x}, chessboard {y}");
+}

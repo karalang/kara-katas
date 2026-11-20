@@ -1,0 +1,269 @@
+// LeetCode #1222: Queens That Can Attack the King -- the five arms against
+// the statement read literally and five more properties.
+// Generated from the arms; see the README.
+
+// ---- arm 0: star --------------------------------------------------------
+fn a0_queens_attackthe_king(queens: Vec[Vec[i64]], king: Vec[i64]) -> Vec[Vec[i64]] {
+    let mut board = [[false; 8]; 8];
+    for q in queens.iter() {
+        board[q[0]][q[1]] = true;
+    }
+    let mut attackers: Vec[Vec[i64]] = Vec.new();
+    for dx in -1..=1 {
+        for dy in -1..=1 {
+            if dx == 0 and dy == 0 {
+                continue;
+            }
+            let mut x = king[0] + dx;
+            let mut y = king[1] + dy;
+            while x >= 0 and x < 8 and y >= 0 and y < 8 {
+                if board[x][y] {
+                    attackers.push([x, y]);
+                    break;
+                }
+                x += dx;
+                y += dy;
+            }
+        }
+    }
+    attackers
+}
+
+// ---- arm 1: set ---------------------------------------------------------
+fn a1_queens_attackthe_king(queens: Vec[Vec[i64]], king: Vec[i64]) -> Vec[Vec[i64]] {
+    let placed: Set[(i64, i64)] = queens.iter().map(|q| (q[0], q[1])).collect();
+    let directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)];
+    let mut attackers: Vec[Vec[i64]] = Vec.new();
+    for (dx, dy) in directions {
+        let mut (x, y) = (king[0] + dx, king[1] + dy);
+        while 0 <= x and x < 8 and 0 <= y and y < 8 {
+            if placed.contains((x, y)) {
+                attackers.push([x, y]);
+                break;
+            }
+            x += dx;
+            y += dy;
+        }
+    }
+    attackers
+}
+
+// ---- arm 2: nearest -----------------------------------------------------
+fn a2_queens_attackthe_king(queens: Vec[Vec[i64]], king: Vec[i64]) -> Vec[Vec[i64]] {
+    let mut nearest: Map[(i64, i64), (i64, Vec[i64])] = Map.new();
+    for q in queens.iter() {
+        let dx = q[0] - king[0];
+        let dy = q[1] - king[1];
+        if dx != 0 and dy != 0 and dx.abs() != dy.abs() {
+            continue;
+        }
+        let direction = (dx.signum(), dy.signum());
+        let distance = dx.abs().max(dy.abs());
+        match nearest.get(direction) {
+            Some((known, _)) if known < distance => {}
+            _ => {
+                nearest.insert(direction, (distance, q.clone()));
+            }
+        }
+    }
+    nearest.values().map(|(_, q)| q.clone()).collect()
+}
+
+// ---- arm 3: closest -----------------------------------------------------
+fn a3_queens_attackthe_king(queens: Vec[Vec[i64]], king: Vec[i64]) -> Vec[Vec[i64]] {
+    let distance = |q: Vec[i64]| (q[0] - king[0]).abs().max((q[1] - king[1]).abs());
+    let mut order = queens.clone();
+    order.sort_by_key(|q| distance(q));
+    let mut taken = [false; 9];
+    let mut attackers: Vec[Vec[i64]] = Vec.new();
+    for q in order.iter() {
+        let dx = q[0] - king[0];
+        let dy = q[1] - king[1];
+        if dx == 0 or dy == 0 or dx.abs() == dy.abs() {
+            let slot = (dx.signum() + 1) * 3 + dy.signum() + 1;
+            if not taken[slot] {
+                taken[slot] = true;
+                attackers.push(q.clone());
+            }
+        }
+    }
+    attackers
+}
+
+// ---- arm 4: board -------------------------------------------------------
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn queens_attackthe_king(queens: Vec[Vec[i32]], king: Vec[i32]) -> Vec[Vec[i32]] {
+        let mut board = [[false; 8]; 8];
+        for q in ref queens {
+            board[q[0] as usize][q[1] as usize] = true;
+        }
+        let mut ans: Vec[Vec[i32]] = Vec.new();
+        let dirs = [(-1i32, -1i32), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)];
+        for (dx, dy) in dirs.iter() {
+            let mut (x, y) = (king[0] + dx, king[1] + dy);
+            while x >= 0 and x < 8 and y >= 0 and y < 8 {
+                if board[x as usize][y as usize] {
+                    ans.push([x, y]);
+                    break;
+                }
+                x += dx;
+                y += dy;
+            }
+        }
+        ans
+    }
+}
+
+fn a4_queens_attackthe_king(queens: Vec[Vec[i64]], king: Vec[i64]) -> Vec[Vec[i64]] {
+    let queens: Vec[Vec[i32]] = queens.iter().map(|q| q.iter().map(|v| v as i32).collect()).collect();
+    let king: Vec[i32] = king.iter().map(|v| v as i32).collect();
+    A4Solution.queens_attackthe_king(queens, king).iter().map(|q| q.iter().map(|v| v as i64).collect()).collect()
+}
+
+// ---- arm 5: iter --------------------------------------------------------
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn queens_attackthe_king(queens: Vec[Vec[i32]], king: Vec[i32]) -> Vec[Vec[i32]] {
+        let placed: Set[(i32, i32)] = queens.iter().map(|q| (q[0], q[1])).collect();
+        let (kx, ky) = (king[0], king[1]);
+        (-1i32..=1)
+            .flat_map(|dx| (-1i32..=1).map(|dy| (dx, dy)))
+            .filter(|(dx, dy)| dx != 0 or dy != 0)
+            .filter_map(|(dx, dy)| {
+                (1i32..8)
+                    .map(|k| (kx + k * dx, ky + k * dy))
+                    .take_while(|(x, y)| (0..8).contains(x) and (0..8).contains(y))
+                    .find(|p| placed.contains(p))
+            })
+            .map(|(x, y)| [x, y])
+            .collect()
+    }
+}
+
+fn a5_queens_attackthe_king(queens: Vec[Vec[i64]], king: Vec[i64]) -> Vec[Vec[i64]] {
+    let queens: Vec[Vec[i32]] = queens.iter().map(|q| q.iter().map(|v| v as i32).collect()).collect();
+    let king: Vec[i32] = king.iter().map(|v| v as i32).collect();
+    A5Solution.queens_attackthe_king(queens, king).iter().map(|q| q.iter().map(|v| v as i64).collect()).collect()
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// A queen attacks when she shares the king's row, column or a diagonal and
+// no other queen stands on a square strictly between them; each queen
+// tested against every other.
+fn literal(queens: Vec[Vec[i64]], king: Vec[i64]) -> Vec[Vec[i64]] {
+    let mut attackers: Vec[Vec[i64]] = Vec.new();
+    for q in queens.iter() {
+        let dx = q[0] - king[0];
+        let dy = q[1] - king[1];
+        if dx != 0 and dy != 0 and dx.abs() != dy.abs() {
+            continue;
+        }
+        let steps = dx.abs().max(dy.abs());
+        let mut blocked = false;
+        for other in queens.iter() {
+            for k in 1..steps {
+                if other[0] == king[0] + dx / steps * k and other[1] == king[1] + dy / steps * k {
+                    blocked = true;
+                }
+            }
+        }
+        if not blocked {
+            attackers.push(q.clone());
+        }
+    }
+    attackers.sort();
+    attackers
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn sorted(attackers: own Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut all = attackers;
+    all.sort();
+    all
+}
+
+fn arms(queens: Vec[Vec[i64]], king: Vec[i64]) -> Vec[Vec[Vec[i64]]] {
+    [sorted(a0_queens_attackthe_king(queens, king)), sorted(a1_queens_attackthe_king(queens, king)), sorted(a2_queens_attackthe_king(queens, king)), sorted(a3_queens_attackthe_king(queens, king)), sorted(a4_queens_attackthe_king(queens, king)), sorted(a5_queens_attackthe_king(queens, king))]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn board(count: i64, seed: mut ref i64) -> (Vec[Vec[i64]], Vec[i64]) {
+    let mut squares: Vec[i64] = (0..64).collect();
+    for k in 0..count + 1 {
+        let j = k + next_random(mut seed) % (64 - k);
+        squares.swap(k, j);
+    }
+    let queens: Vec[Vec[i64]] = squares[0..count].iter().map(|s| [s / 8, s % 8]).collect();
+    (queens, [squares[count] / 8, squares[count] % 8])
+}
+
+// Every square turned by `turn`: 0 mirrors the rows, 1 swaps row and column.
+fn turned(squares: Vec[Vec[i64]], turn: i64) -> Vec[Vec[i64]] {
+    sorted(squares.iter().map(|s| if turn == 0 { [7 - s[0], s[1]] } else { [s[1], s[0]] }).collect())
+}
+
+fn main() {
+    let names = ["the statement read literally", "every attacker a queen, none twice", "at most one in each of the eight directions", "the board mirrored gives the mirrored attackers", "the board transposed gives the transposed attackers", "the ★ arm's answer"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 1222;
+    for case in 0..2000 {
+        // a third with 1 to 8 queens, a third with 9 to 32, a third with 33 to 63
+        let count = match case % 3 {
+            0 => next_random(mut seed) % 8 + 1,
+            1 => next_random(mut seed) % 24 + 9,
+            _ => next_random(mut seed) % 31 + 33,
+        };
+        let (queens, king) = board(count, mut seed);
+        let want = literal(queens, king);
+        let got = arms(queens, king);
+        let mirrored = arms(turned(queens, 0), [7 - king[0], king[1]]);
+        let transposed = arms(turned(queens, 1), [king[1], king[0]]);
+        for a in 0..6 {
+            let v = ref got[a];
+            let mut directions: Vec[i64] = v.iter().map(|q| ((q[0] - king[0]).signum() + 1) * 3 + (q[1] - king[1]).signum() + 1).collect();
+            directions.sort();
+            directions.dedup();
+            let mut distinct = v.clone();
+            distinct.dedup();
+            let held = [
+                v == want,
+                distinct.len() == v.len() and v.iter().all(|q| queens.contains(q)),
+                directions.len() == v.len() and v.len() <= 8,
+                mirrored[a] == turned(v, 0),
+                transposed[a] == turned(v, 1),
+                v == got[0],
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not held[p] {
+                    fails[p] += 1;
+                    if fails[p] <= 2 {
+                        println(f"P{p + 1} ({names[p]}) fails on arm {a}: {queens} king {king} -> {v}");
+                    }
+                }
+            }
+        }
+        for q in want.iter() {
+            check = (check * 131 + q[0] * 8 + q[1] + 1) % 1000000007;
+        }
+        check = (check * 131 + 99) % 1000000007;
+    }
+    for p in 0..6 {
+        if fails[p] > 0 {
+            println(f"P{p + 1}: {fails[p]} failures");
+        }
+    }
+    let total = fails.iter().sum();
+    println(f"2000 cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+}

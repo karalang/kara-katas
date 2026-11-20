@@ -1,0 +1,112 @@
+// LeetCode #1244: Design A Leaderboard -- a Rust solution as LeetCode's
+// Rust users write it, carried to Kāra by `karac fix`, under its own name;
+// `Leaderboard` hands it the harness's `i64` calls as LeetCode's `i32`.
+
+struct LcLeaderboard {
+    scores: Map[i32, i32],
+}
+
+impl LcLeaderboard {
+    fn new() -> Self {
+        LcLeaderboard { scores: Map.new() }
+    }
+
+    fn add_score(mut ref self, player_id: i32, score: i32) {
+        *self.scores.entry(player_id).or_insert(0) += score;
+    }
+
+    fn top(self, k: i32) -> i32 {
+        let mut v: Vec[i32] = self.scores.values().cloned().collect();
+        v.sort_by(|a, b| b.cmp(a));
+        v.iter().take(k).sum()
+    }
+
+    fn reset(mut ref self, player_id: i32) {
+        self.scores.remove(player_id);
+    }
+}
+
+struct Leaderboard {
+    board: LcLeaderboard,
+}
+
+impl Leaderboard {
+    fn new() -> Leaderboard {
+        Leaderboard { board: LcLeaderboard.new() }
+    }
+
+    fn add_score(mut ref self, player_id: i64, score: i64) {
+        self.board.add_score(player_id as i32, score as i32);
+    }
+
+    fn top(self, k: i64) -> i64 {
+        self.board.top(k as i32)
+    }
+
+    fn reset(mut ref self, player_id: i64) {
+        self.board.reset(player_id as i32);
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A session of `calls` random calls on players 1..=`players`, each top
+// asked for at most as many players as are on the board, each reset of a
+// player who is; the tops' answers folded into a checksum.
+fn session(calls: i64, players: i64, seed: mut ref i64) -> (i64, i64) {
+    let mut board = Leaderboard.new();
+    let mut on: Vec[i64] = Vec.new();
+    let mut check = 0;
+    let mut tops = 0;
+    for _ in 0..calls {
+        let op = next_random(mut seed) % 4;
+        if op <= 1 or on.is_empty() {
+            let player = next_random(mut seed) % players + 1;
+            board.add_score(player, next_random(mut seed) % 100 + 1);
+            if not on.contains(player) {
+                on.push(player);
+            }
+        } else if op == 2 {
+            let got = board.top(next_random(mut seed) % on.len() + 1);
+            check = (check * 131 + got) % 1000000007;
+            tops += 1;
+        } else {
+            let player = on.swap_remove(next_random(mut seed) % on.len());
+            board.reset(player);
+        }
+    }
+    (tops, check)
+}
+
+fn main() {
+    // LeetCode's example
+    let mut board = Leaderboard.new();
+    for (player, score) in [(1i32, 73i32), (2, 56), (3, 39), (4, 51), (5, 4)] {
+        board.add_score(player, score);
+    }
+    let first = board.top(1);
+    board.reset(1);
+    board.reset(2);
+    board.add_score(2, 51);
+    println(f"{first} {board.top(3)}");
+    // 1000 sessions of 1 to 300 calls on 1 to 50 players
+    let mut seed = 1244;
+    let mut tops = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let calls = next_random(mut seed) % 300 + 1;
+        let players = next_random(mut seed) % 50 + 1;
+        let (t, c) = session(calls, players, mut seed);
+        tops += t;
+        check = (check * 31 + c) % 1000000007;
+    }
+    println(f"1000 sessions: {tops} tops, checksum {check}");
+    // the constraints' top: 3000 calls on players up to 10000
+    let (t, c) = session(3000, 10000, mut seed);
+    println(f"3000 calls on 10000 players: {t} tops, checksum {c}");
+}

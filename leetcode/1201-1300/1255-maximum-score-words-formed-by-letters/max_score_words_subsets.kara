@@ -1,0 +1,110 @@
+// LeetCode #1255: Maximum Score Words Formed by Letters -- every set of
+// words, by dynamic programming over bit masks: a set's letter counts are
+// those of the set without its lowest word plus that word's, and a set
+// scores when its counts stay within the letters on hand.
+
+fn max_score_words(words: Vec[String], letters: Vec[char], score: Vec[i64]) -> i64 {
+    let n = words.len();
+    let mut have = Vec.filled(26, 0);
+    for ch in letters {
+        have[ch as i64 - 'a' as i64] += 1;
+    }
+    let mut used: Vec[Vec[i64]] = Vec.filled(1 << n, Vec.new());
+    used[0] = Vec.filled(26, 0);
+    let mut best = 0;
+    for mask in 1..(1 << n) {
+        let low = mask.trailing_zeros();
+        let mut counts = used[mask & (mask - 1)].clone();
+        for ch in words[low].chars() {
+            counts[ch as i64 - 'a' as i64] += 1;
+        }
+        if (0..26).all(|c| counts[c] <= have[c]) {
+            let total: i64 = (0..26).map(|c| counts[c] * score[c]).sum();
+            best = best.max(total);
+        }
+        used[mask] = counts;
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A random word of 1 to `longest` letters from the first `alphabet` of
+// the alphabet.
+fn random_word(longest: i64, alphabet: i64, seed: mut ref i64) -> String {
+    let n = next_random(mut seed) % longest + 1;
+    let mut w = String.new();
+    for _ in 0..n {
+        w.push((b'a' + (next_random(mut seed) % alphabet) as u8) as char);
+    }
+    w
+}
+
+// A random case: `count` words, `pool` letters, and a score from 0 to 10
+// for each letter, all from the first `alphabet` letters.
+fn random_case(count: i64, longest: i64, pool: i64, alphabet: i64, seed: mut ref i64) -> (Vec[String], Vec[char], Vec[i64]) {
+    let mut words = Vec.new();
+    for _ in 0..count {
+        words.push(random_word(longest, alphabet, mut seed));
+    }
+    let mut letters = Vec.new();
+    for _ in 0..pool {
+        letters.push((b'a' + (next_random(mut seed) % alphabet) as u8) as char);
+    }
+    letters.sort();
+    let score: Vec[i64] = (0..26).map(|_| next_random(mut seed) % 11).collect();
+    (words, letters, score)
+}
+
+fn letter_scores(pairs: Str) -> Vec[i64] {
+    pairs.split(",").map(|s| i64.parse(s.trim()).unwrap()).collect()
+}
+
+fn main() {
+    // LeetCode's three examples
+    let s1 = letter_scores("1,0,9,5,0,0,3,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0");
+    let a = max_score_words(["dog", "cat", "dad", "good"].iter().map(|w| w.to_string()).collect(), ['a', 'a', 'c', 'd', 'd', 'd', 'g', 'o', 'o'], s1);
+    let s2 = letter_scores("4,4,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5,0,10");
+    let b = max_score_words(["xxxz", "ax", "bx", "cx"].iter().map(|w| w.to_string()).collect(), ['z', 'a', 'b', 'c', 'x', 'x', 'x'], s2);
+    let s3 = letter_scores("0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0");
+    let c = max_score_words(["leetcode"].iter().map(|w| w.to_string()).collect(), ['l', 'e', 't', 'c', 'o', 'd'], s3);
+    println(f"{a} {b} {c}");
+    // 300 random cases of 1 to 14 words of 1 to 15 letters, 1 to 100
+    // letters to spend, from the first 3 to 26 letters of the alphabet
+    let mut seed = 1255;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..300 {
+        let count = next_random(mut seed) % 14 + 1;
+        let longest = next_random(mut seed) % 15 + 1;
+        let pool = next_random(mut seed) % 100 + 1;
+        let alphabet = next_random(mut seed) % 24 + 3;
+        let (words, letters, score) = random_case(count, longest, pool, alphabet, mut seed);
+        let best = max_score_words(words, letters, score);
+        total += best;
+        check = (check * 131 + best) % 1000000007;
+    }
+    println(f"300 random cases: total {total}, checksum {check}");
+    // the constraints' top: 14 words of 15 letters and 100 letters to
+    // spend, all from the first 4 letters, scored 1 to 4
+    let mut words = Vec.new();
+    for _ in 0..14 {
+        let mut w = String.new();
+        for _ in 0..15 {
+            w.push((b'a' + (next_random(mut seed) % 4) as u8) as char);
+        }
+        words.push(w);
+    }
+    let mut letters = Vec.new();
+    for _ in 0..100 {
+        letters.push((b'a' + (next_random(mut seed) % 4) as u8) as char);
+    }
+    let score: Vec[i64] = (0..26).map(|i| i % 4 + 1).collect();
+    let x = max_score_words(words, letters, score);
+    println(f"14 words of 15 letters: best {x}");
+}

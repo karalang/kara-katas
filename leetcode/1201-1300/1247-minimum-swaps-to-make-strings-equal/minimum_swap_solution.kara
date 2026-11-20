@@ -1,0 +1,80 @@
+// LeetCode #1247: Minimum Swaps to Make Strings Equal -- a Rust solution
+// as LeetCode's Rust users write it, carried to Kāra by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_swap(s1: String, s2: String) -> i32 {
+        let mut (xy, yx) = (0, 0);
+        for (a, b) in s1.bytes().iter().zip(s2.bytes().iter()) {
+            if a == b'x' and b == b'y' {
+                xy += 1;
+            } else if a == b'y' and b == b'x' {
+                yx += 1;
+            }
+        }
+        if (xy + yx) % 2 == 1 {
+            return -1;
+        }
+        xy / 2 + yx / 2 + (xy % 2) * 2
+    }
+}
+
+// The harness's strings, handed over as LeetCode's owned `String`s.
+fn minimum_swap(s1: Str, s2: Str) -> i64 {
+    Solution.minimum_swap(s1.to_string(), s2.to_string())
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A random string of `n` letters `x` and `y`, each `x` with chance
+// `percent` in 100.
+fn random_xy(n: i64, percent: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(if next_random(mut seed) % 100 < percent { 'x' } else { 'y' });
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's examples
+    let a = minimum_swap("xx", "yy");
+    let b = minimum_swap("xy", "yx");
+    let c = minimum_swap("xx", "xy");
+    let d = minimum_swap("xxyyxyxyxx", "xyyxyxxxyx");
+    println(f"{a} {b} {c} {d}");
+    // 1000 random pairs of 1 to 1000 letters, each with its own mix of
+    // `x` and `y`
+    let mut seed = 1247;
+    let mut total = 0;
+    let mut impossible = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 1000 + 1;
+        let p1 = next_random(mut seed) % 101;
+        let p2 = next_random(mut seed) % 101;
+        let s1 = random_xy(n, p1, mut seed);
+        let s2 = random_xy(n, p2, mut seed);
+        let swaps = minimum_swap(s1, s2);
+        if swaps < 0 {
+            impossible += 1;
+        } else {
+            total += swaps;
+        }
+        check = (check * 131 + swaps + 1) % 1000000007;
+    }
+    println(f"1000 random pairs: {impossible} impossible, total {total}, checksum {check}");
+    // the constraints' top: 1000 letters, every place different, half
+    // each way and all one way
+    let half = "xy".repeat(500);
+    let flipped = "yx".repeat(500);
+    let all_x = "x".repeat(1000);
+    let all_y = "y".repeat(1000);
+    println(f"1000 letters: crossed {minimum_swap(half, flipped)}, one way {minimum_swap(all_x, all_y)}");
+}

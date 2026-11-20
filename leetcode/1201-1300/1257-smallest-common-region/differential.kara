@@ -1,0 +1,273 @@
+// LeetCode #1257: the differential -- the five arms against the statement
+// read literally and four more properties, on 2000 random trees.
+
+// arm 0: smallest_common_region.kara
+fn a0_find_smallest_region(regions: Vec[Vec[String]], region1: Str, region2: Str) -> String {
+    let mut parent: Map[String, String] = Map.new();
+    for list in regions.iter() {
+        for child in list[1..].iter() {
+            parent.insert(child.clone(), list[0].clone());
+        }
+    }
+    let mut holding: Set[String] = Set.new();
+    let mut at = region1.to_string();
+    holding.insert(at.clone());
+    while let Some(up) = parent.get(at) {
+        at = up.clone();
+        holding.insert(at.clone());
+    }
+    let mut at = region2.to_string();
+    while not holding.contains(at) {
+        at = parent[at].clone();
+    }
+    at
+}
+
+// arm 1: smallest_common_region_depth.kara
+fn a1_find_smallest_region(regions: Vec[Vec[String]], region1: Str, region2: Str) -> String {
+    let mut index: Map[String, i64] = Map.new();
+    let mut names: Vec[String] = Vec.new();
+    let mut parent: Vec[i64] = Vec.new();
+    for list in regions.iter() {
+        for region in list.iter() {
+            if not index.contains_key(region) {
+                index.insert(region.clone(), names.len());
+                names.push(region.clone());
+                parent.push(-1);
+            }
+        }
+        let p = index[list[0]];
+        for child in list[1..].iter() {
+            parent[index[child]] = p;
+        }
+    }
+    let depth = |r: i64| {
+        let mut d = 0;
+        let mut at = r;
+        while parent[at] != -1 {
+            at = parent[at];
+            d += 1;
+        }
+        d
+    };
+    let mut a = index[region1];
+    let mut b = index[region2];
+    let mut da = depth(a);
+    let mut db = depth(b);
+    while da > db {
+        a = parent[a];
+        da -= 1;
+    }
+    while db > da {
+        b = parent[b];
+        db -= 1;
+    }
+    while a != b {
+        a = parent[a];
+        b = parent[b];
+    }
+    names[a].clone()
+}
+
+// arm 2: smallest_common_region_paths.kara
+fn a2_path_down(parent: Map[String, String], region: Str) -> Vec[String] {
+    let mut path = [region.to_string()];
+    while let Some(up) = parent.get(path[path.len() - 1]) {
+        path.push(up.clone());
+    }
+    path.reverse();
+    path
+}
+
+fn a2_find_smallest_region(regions: Vec[Vec[String]], region1: Str, region2: Str) -> String {
+    let mut parent: Map[String, String] = Map.new();
+    for list in regions.iter() {
+        for child in list.iter().skip(1) {
+            parent.insert(child.clone(), list[0].clone());
+        }
+    }
+    let p = a2_path_down(parent, region1);
+    let q = a2_path_down(parent, region2);
+    let shared = p.iter().zip(q.iter()).take_while(|(a, b)| a == b).count();
+    p[shared - 1].clone()
+}
+
+// arm 3: smallest_common_region_switch.kara
+fn a3_find_smallest_region(regions: Vec[Vec[String]], region1: Str, region2: Str) -> String {
+    let mut parent: Map[String, String] = Map.new();
+    for list in regions.iter() {
+        for child in list[1..].iter() {
+            parent.insert(child.clone(), list[0].clone());
+        }
+    }
+    let step = |at: Str, restart: Str| {
+        match parent.get(at) {
+            Some(up) => up.clone(),
+            None => restart.to_string(),
+        }
+    };
+    let mut a = region1.to_string();
+    let mut b = region2.to_string();
+    while a != b {
+        a = step(a, region2);
+        b = step(b, region1);
+    }
+    a
+}
+
+// arm 4: smallest_common_region_solution.kara
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn find_smallest_region(regions: Vec[Vec[String]], region1: String, region2: String) -> String {
+        let mut parent: Map[Str, Str] = Map.new();
+        for r in ref regions {
+            for c in r[1..] {
+                parent.insert(c.as_str(), r[0].as_str());
+            }
+        }
+        let mut seen = Set.new();
+        let mut cur = region1.as_str();
+        seen.insert(cur);
+        while let Some(p) = parent.get(cur).cloned() {
+            seen.insert(p);
+            cur = p;
+        }
+        let mut cur = region2.as_str();
+        while not seen.contains(cur) {
+            cur = parent[cur];
+        }
+        cur.to_string()
+    }
+}
+
+fn a4_find_smallest_region(regions: Vec[Vec[String]], region1: Str, region2: Str) -> String {
+    A4Solution.find_smallest_region(regions, region1.to_string(), region2.to_string())
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn name(i: i64) -> String {
+    f"r{i}"
+}
+
+// A random tree of `n` regions named `r0` to `r{n-1}`, `r0` the root and
+// each other region inside one of the `spread` regions before it, as
+// LeetCode's lists: a region, then the regions directly inside it. The
+// lists come in a shuffled order.
+fn random_regions(n: i64, spread: i64, seed: mut ref i64) -> Vec[Vec[String]] {
+    let mut children: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for i in 1..n {
+        let lo = (i - spread).max(0);
+        let parent = lo + next_random(mut seed) % (i - lo);
+        children[parent].push(i);
+    }
+    let mut regions = Vec.new();
+    for p in 0..n {
+        if not children[p].is_empty() {
+            let mut list = [name(p)];
+            list.extend(children[p].iter().map(|c| name(c)));
+            regions.push(list);
+        }
+    }
+    for i in (1..regions.len()).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        regions.swap(i, j);
+    }
+    regions
+}
+
+fn number(region: Str) -> i64 {
+    i64.parse(region[1..]).unwrap()
+}
+
+// The statement read literally: a region holds itself and every region
+// listed inside it, and the regions inside those. Of the regions holding
+// both, the smallest is the one holding the fewest regions.
+fn holds(regions: Vec[Vec[String]], outer: Str, inner: Str) -> bool {
+    if outer == inner {
+        return true;
+    }
+    for list in regions.iter() {
+        if list[0] == outer {
+            for child in list[1..].iter() {
+                if holds(regions, child, inner) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn literal(regions: Vec[Vec[String]], all: Vec[String], region1: Str, region2: Str) -> String {
+    let mut best = String.new();
+    let mut fewest = all.len() + 1;
+    for outer in all.iter() {
+        if holds(regions, outer, region1) and holds(regions, outer, region2) {
+            let size = all.iter().filter(|r| holds(regions, outer, r)).count();
+            if size < fewest {
+                fewest = size;
+                best = outer.clone();
+            }
+        }
+    }
+    best
+}
+
+fn arms(regions: Vec[Vec[String]], region1: Str, region2: Str) -> Vec[String] {
+    [
+        a0_find_smallest_region(regions, region1, region2),
+        a1_find_smallest_region(regions, region1, region2),
+        a2_find_smallest_region(regions, region1, region2),
+        a3_find_smallest_region(regions, region1, region2),
+        a4_find_smallest_region(regions, region1, region2),
+    ]
+}
+
+fn main() {
+    let names = ["the statement read literally", "the two regions swapped, the same region", "the lists in reverse order, the same region", "the region found and region1 give the region found", "every name given a prefix, the same region with it", "the ★ arm's region"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 12570;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 11 + 2;
+        let spread = [1, 2, 1000000][next_random(mut seed) % 3];
+        let regions = random_regions(n, spread, mut seed);
+        let all: Vec[String] = (0..n).map(|i| name(i)).collect();
+        let x = name(next_random(mut seed) % n);
+        let y = name(next_random(mut seed) % n);
+        let want = literal(regions, all, x, y);
+        check = (check * 131 + number(want)) % 1000000007;
+        let got = arms(regions, x, y);
+        let swapped = arms(regions, y, x);
+        let reversed: Vec[Vec[String]] = regions.iter().rev().map(|l| l.clone()).collect();
+        let r = arms(reversed, x, y);
+        let renamed: Vec[Vec[String]] = regions.iter().map(|l| l.iter().map(|s| "x" + s).collect()).collect();
+        let p = arms(renamed, "x" + x, "x" + y);
+        for arm in 0..5 {
+            let again = arms(regions, got[arm], x);
+            let held = [got[arm] == want, swapped[arm] == got[arm], r[arm] == got[arm], again[arm] == got[arm], p[arm] == "x" + got[arm], got[arm] == got[0]];
+            for q in 0..6 {
+                checks += 1;
+                if not held[q] {
+                    fails[q] += 1;
+                    if fails[q] <= 2 {
+                        println(f"P{q + 1} ({names[q]}) fails on arm {arm}: {x} {y} in {regions}");
+                    }
+                }
+            }
+        }
+    }
+    let total: i64 = fails.iter().sum();
+    for q in 0..6 {
+        if fails[q] > 0 {
+            print(f"P{q + 1}: {fails[q]} failures ");
+        }
+    }
+    println(f"2000 trees: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

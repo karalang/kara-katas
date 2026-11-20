@@ -1,0 +1,78 @@
+// LeetCode #1257 bench, in Kāra: the ★ arm (each region's parent in a
+// `Map`, the regions holding `region1` in a `Set`, then a walk up from
+// `region2` until it meets one of them) on 20 random trees of 10000
+// regions built once, each nested broadly or deeply, with 250 random
+// pairs asked of each; every region found folded into a checksum.
+
+fn find_smallest_region(regions: Vec[Vec[String]], region1: Str, region2: Str) -> String {
+    let mut parent: Map[String, String] = Map.new();
+    for list in regions.iter() {
+        for child in list[1..].iter() {
+            parent.insert(child.clone(), list[0].clone());
+        }
+    }
+    let mut holding: Set[String] = Set.new();
+    let mut at = region1.to_string();
+    holding.insert(at.clone());
+    while let Some(up) = parent.get(at) {
+        at = up.clone();
+        holding.insert(at.clone());
+    }
+    let mut at = region2.to_string();
+    while not holding.contains(at) {
+        at = parent[at].clone();
+    }
+    at
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn name(i: i64) -> String {
+    f"r{i}"
+}
+
+fn random_regions(n: i64, spread: i64, seed: mut ref i64) -> Vec[Vec[String]] {
+    let mut children: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for i in 1..n {
+        let lo = (i - spread).max(0);
+        let parent = lo + next_random(mut seed) % (i - lo);
+        children[parent].push(i);
+    }
+    let mut regions = Vec.new();
+    for p in 0..n {
+        if not children[p].is_empty() {
+            let mut list = [name(p)];
+            list.extend(children[p].iter().map(|c| name(c)));
+            regions.push(list);
+        }
+    }
+    for i in (1..regions.len()).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        regions.swap(i, j);
+    }
+    regions
+}
+
+fn main() {
+    let mut seed = 1257;
+    let mut trees: Vec[Vec[Vec[String]]] = Vec.new();
+    for t in 0..20 {
+        let spread = [3, 30, 1000000, 10][t % 4];
+        trees.push(random_regions(10000, spread, mut seed));
+    }
+    let mut check = 0;
+    for regions in trees.iter() {
+        for _ in 0..250 {
+            let x = name(next_random(mut seed) % 10000);
+            let y = name(next_random(mut seed) % 10000);
+            let found = find_smallest_region(regions, x, y);
+            for b in found.bytes() {
+                check = (check * 131 + b) % 1000000007;
+            }
+        }
+    }
+    println(f"20 trees of 10000 regions, 250 pairs each: checksum {check}");
+}

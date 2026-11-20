@@ -1,0 +1,147 @@
+// LeetCode #1256: the differential -- the five arms against the statement
+// read literally and four more properties, on 2000 random numbers.
+
+// arm 0: encode_number.kara
+fn a0_encode(num: i64) -> String {
+    let mut digits = Vec.new();
+    let mut x = num + 1;
+    while x > 1 {
+        digits.push(if x % 2 == 1 { '1' } else { '0' });
+        x /= 2;
+    }
+    digits.iter().rev().collect()
+}
+
+// arm 1: encode_number_format.kara
+fn a1_encode(num: i64) -> String {
+    let bits = f"{num + 1:b}";
+    bits[1..].to_string()
+}
+
+// arm 2: encode_number_length.kara
+fn a2_encode(num: i64) -> String {
+    let mut k = 0;
+    while (1 << (k + 1)) - 1 <= num {
+        k += 1;
+    }
+    let offset = num - ((1 << k) - 1);
+    let mut s = String.new();
+    for bit in (0..k).rev() {
+        s.push(if (offset >> bit) & 1 == 1 { '1' } else { '0' });
+    }
+    s
+}
+
+// arm 3: encode_number_bijective.kara
+fn a3_encode(num: i64) -> String {
+    let mut digits: Vec[char] = Vec.new();
+    let mut n = num;
+    while n > 0 {
+        n -= 1;
+        digits.insert(0, if n % 2 == 0 { '0' } else { '1' });
+        n /= 2;
+    }
+    digits.iter().collect()
+}
+
+// arm 4: encode_number_solution.kara
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn encode(num: i32) -> String {
+        f"{num as i64 + 1:b}"[1..].to_string()
+    }
+}
+
+fn a4_encode(num: i64) -> String {
+    A4Solution.encode(num as i32)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// The statement read literally: the table's strings in its order, the
+// shorter first and those of one length counting up in binary, each made
+// from the one before by adding one to its last digit and carrying, and a
+// string of 1s followed by the 0s one longer.
+fn literal(count: i64) -> Vec[String] {
+    let mut table = [String.new()];
+    let mut digits: Vec[char] = Vec.new();
+    for _ in 1..count {
+        let mut i = digits.len() - 1;
+        while i >= 0 and digits[i] == '1' {
+            digits[i] = '0';
+            i -= 1;
+        }
+        if i >= 0 {
+            digits[i] = '1';
+        } else {
+            digits = Vec.filled(digits.len() + 1, '0');
+        }
+        table.push(digits.iter().collect());
+    }
+    table
+}
+
+fn arms(num: i64) -> Vec[String] {
+    [a0_encode(num), a1_encode(num), a2_encode(num), a3_encode(num), a4_encode(num)]
+}
+
+// Shorter first, then by digits.
+fn before(a: Str, b: Str) -> bool {
+    a.len() < b.len() or (a.len() == b.len() and a < b)
+}
+
+fn main() {
+    let names = ["the statement read literally", "as many digits as halvings of num + 1 to reach 1", "2 num + 1 and 2 num + 2 add a 0 and a 1", "before the next number's string", "1 and the string read in binary is num + 1", "the ★ arm's string"];
+    let table = literal(10002);
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 12560;
+    for t in 0..2000 {
+        let num = if t % 2 == 0 { next_random(mut seed) % 5000 } else { (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000001 };
+        let want = if num < 5000 { table[num].clone() } else { String.new() };
+        for c in want.chars() {
+            check = (check * 3 + if c == '1' { 2 } else { 1 }) % 1000000007;
+        }
+        let got = arms(num);
+        let halvings = 63 - (num + 1).leading_zeros();
+        let odd = arms(2 * num + 1);
+        let even = arms(2 * num + 2);
+        let next = arms(num + 1);
+        for arm in 0..5 {
+            let s = got[arm].clone();
+            let mut value = 1;
+            for c in s.chars() {
+                value = 2 * value + if c == '1' { 1 } else { 0 };
+            }
+            let held = [
+                num >= 5000 or s == want,
+                s.len() == halvings,
+                odd[arm] == s.clone() + "0" and even[arm] == s.clone() + "1",
+                before(s, next[arm]),
+                value == num + 1,
+                s == got[0],
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not held[q] {
+                    fails[q] += 1;
+                    if fails[q] <= 2 {
+                        println(f"P{q + 1} ({names[q]}) fails on arm {arm}: {num} -> {s}");
+                    }
+                }
+            }
+        }
+    }
+    let total: i64 = fails.iter().sum();
+    for q in 0..6 {
+        if fails[q] > 0 {
+            print(f"P{q + 1}: {fails[q]} failures ");
+        }
+    }
+    println(f"2000 numbers: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

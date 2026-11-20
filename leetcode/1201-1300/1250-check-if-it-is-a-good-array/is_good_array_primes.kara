@@ -1,0 +1,91 @@
+// LeetCode #1250: Check If It Is a Good Array -- by primes: the first
+// value factored by trial division, and the array good when every prime
+// of it fails to divide some value. A divisor shared by all the values
+// divides the first, so it has one of these primes.
+
+fn prime_factors(n: i64) -> Vec[i64] {
+    let mut primes = Vec.new();
+    let mut n = n;
+    let mut p = 2;
+    while p * p <= n {
+        if n % p == 0 {
+            primes.push(p);
+            while n % p == 0 {
+                n /= p;
+            }
+        }
+        p += 1;
+    }
+    if n > 1 {
+        primes.push(n);
+    }
+    primes
+}
+
+fn is_good_array(nums: Vec[i64]) -> bool {
+    prime_factors(nums[0]).iter().all(|p| nums.iter().any(|x| x % p != 0))
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A random array of `n` values: from 1 to `top` when `factor` is 1, and
+// otherwise `factor` times a value from 1 to `top / factor`, so that
+// every value shares `factor`. Two draws of 15 bits make a value up to
+// 10^9 reachable.
+fn random_array(n: i64, top: i64, factor: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut nums = Vec.new();
+    for _ in 0..n {
+        let r = next_random(mut seed) * 32768 + next_random(mut seed);
+        nums.push(factor * (r % (top / factor) + 1));
+    }
+    nums
+}
+
+fn main() {
+    // LeetCode's three examples
+    let a = is_good_array([12, 5, 7, 23]);
+    let b = is_good_array([29, 6, 10]);
+    let c = is_good_array([3, 6]);
+    println(f"{a} {b} {c}");
+    // 1500 random arrays of 1 to 2000 values: a third up to 10^9, a third
+    // up to 30 and of at most 6 values, and a third sharing a factor from
+    // 2 to 9, each with one value from 1 to 10^9 put in at a random place
+    // half the time
+    let mut seed = 1250;
+    let mut good = 0;
+    let mut check = 0;
+    for t in 0..1500 {
+        let kind = t % 3;
+        let n = if kind == 1 { next_random(mut seed) % 6 + 1 } else { next_random(mut seed) % 2000 + 1 };
+        let top = if kind == 1 { 30 } else { 1000000000 };
+        let factor = if kind == 2 { next_random(mut seed) % 8 + 2 } else { 1 };
+        let mut nums = random_array(n, top, factor, mut seed);
+        if kind == 2 and next_random(mut seed) % 2 == 0 {
+            let at = next_random(mut seed) % n;
+            nums[at] = random_array(1, 1000000000, 1, mut seed)[0];
+        }
+        let yes = is_good_array(nums);
+        if yes {
+            good += 1;
+        }
+        check = (check * 131 + if yes { t + 1 } else { 0 }) % 1000000007;
+    }
+    println(f"1500 random arrays: {good} good, checksum {check}");
+    // the constraints' top: 100000 values, all 223092870 (the product of
+    // the primes to 23) but the last, which is 29 and makes the array
+    // good; and 100000 values, all multiples of 223092870
+    let mut late = Vec.filled(99999, 223092870);
+    late.push(29);
+    let mut shared = Vec.new();
+    for i in 0..100000 {
+        shared.push(223092870 * (i % 4 + 1));
+    }
+    let x = is_good_array(late);
+    let y = is_good_array(shared);
+    println(f"100000 values: last coprime {x}, all sharing {y}");
+}

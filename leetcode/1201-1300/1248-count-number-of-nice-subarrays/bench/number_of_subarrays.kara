@@ -1,0 +1,47 @@
+// LeetCode #1248 bench, in Kāra: the ★ arm (prefix counts of odd values
+// in a `Vec` indexed by count) on 50 random arrays of 50000 values built
+// once, each with its own chance of an odd value, each asked with 10
+// random k; every answer folded into a checksum.
+
+fn number_of_subarrays(nums: Vec[i64], k: i64) -> i64 {
+    let mut prefixes: Vec[i64] = Vec.filled(nums.len() + 1, 0);
+    prefixes[0] = 1;
+    let mut odd = 0;
+    let mut nice = 0;
+    for v in nums.iter() {
+        odd += v % 2;
+        if odd >= k {
+            nice += prefixes[odd - k];
+        }
+        prefixes[odd] += 1;
+    }
+    nice
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1248;
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..50 {
+        let percent = next_random(mut seed) % 101;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..50000 {
+            let v = next_random(mut seed) % 50000 + 1;
+            nums.push(if next_random(mut seed) % 100 < percent { 2 * v - 1 } else { 2 * v });
+        }
+        arrays.push(nums);
+    }
+    let mut check = 0;
+    for nums in arrays.iter() {
+        let odd = nums.iter().filter(|v| v % 2 == 1).count();
+        for _ in 0..100 {
+            let k = next_random(mut seed) % (odd + 1) + 1;
+            check = (check * 131 + number_of_subarrays(nums, k)) % 1000000007;
+        }
+    }
+    println(f"50 arrays of 50000 values, 100 k each: checksum {check}");
+}

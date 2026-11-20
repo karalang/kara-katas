@@ -1,0 +1,55 @@
+// LeetCode #1246: Palindrome Removal -- the ★ recurrence in one flat
+// table, `best[i * (n + 1) + j]` for `arr[i..j]`, each entry the least of
+// its three kinds of move, the third an iterator over the later values
+// equal to `arr[i]`.
+
+fn minimum_moves(arr: Vec[i64]) -> i64 {
+    let n = arr.len();
+    let w = n + 1;
+    let mut best: Vec[i64] = Vec.filled(w * w, 0);
+    for i in (0..n).rev() {
+        for j in i + 1..w {
+            let alone = 1 + best[(i + 1) * w + j];
+            let pair = if i + 1 < j and arr[i + 1] == arr[i] { 1 + best[(i + 2) * w + j] } else { alone };
+            let later = (i + 2..j)
+                .filter(|k| arr[k] == arr[i])
+                .map(|k| best[(i + 1) * w + k] + best[(k + 1) * w + j])
+                .min()
+                .unwrap_or(alone);
+            best[i * w + j] = alone.min(pair).min(later);
+        }
+    }
+    best[n]
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{minimum_moves([1, 2])} {minimum_moves([1, 3, 4, 1, 5])}");
+    // 1000 random arrays of 1 to 100 values, from as few as 1 to as many
+    // as 20 distinct values, so that palindromes are common and rare
+    let mut seed = 1246;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 100 + 1;
+        let values = next_random(mut seed) % 20 + 1;
+        let arr: Vec[i64] = (0..n).map(|_| next_random(mut seed) % values + 1).collect();
+        let moves = minimum_moves(arr);
+        total += moves;
+        check = (check * 131 + moves) % 1000000007;
+    }
+    println(f"1000 random arrays: total {total}, checksum {check}");
+    // the constraints' top: 100 values from 1 to 20, from 1 to 2, and a
+    // run up and down, 1 to 50 and back
+    let wide: Vec[i64] = (0..100).map(|_| next_random(mut seed) % 20 + 1).collect();
+    let narrow: Vec[i64] = (0..100).map(|_| next_random(mut seed) % 2 + 1).collect();
+    let hill: Vec[i64] = (0..100).map(|i| if i < 50 { i + 1 } else { 100 - i }).collect();
+    println(f"100 values: from 1 to 20 {minimum_moves(wide)}, from 1 to 2 {minimum_moves(narrow)}, a hill {minimum_moves(hill)}");
+}

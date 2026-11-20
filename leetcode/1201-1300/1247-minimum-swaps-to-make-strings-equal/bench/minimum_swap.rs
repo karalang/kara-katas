@@ -1,0 +1,52 @@
+// LeetCode #1247 bench, in Rust: the ★ arm (the places that differ
+// counted by kind over the two strings zipped) on 2000 random pairs of
+// 1000 letters built once, each with its own mix of x and y, each asked 20
+// times; every answer folded into a checksum.
+
+fn minimum_swap(s1: &str, s2: &str) -> i64 {
+    let mut x_over_y = 0;
+    let mut y_over_x = 0;
+    for (a, b) in s1.chars().zip(s2.chars()) {
+        if a == 'x' && b == 'y' {
+            x_over_y += 1;
+        } else if a == 'y' && b == 'x' {
+            y_over_x += 1;
+        }
+    }
+    if (x_over_y + y_over_x) % 2 == 1 {
+        return -1;
+    }
+    x_over_y / 2 + y_over_x / 2 + 2 * (x_over_y % 2)
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_xy(n: i64, percent: i64, seed: &mut i64) -> String {
+    let mut s = String::new();
+    for _ in 0..n {
+        s.push(if next_random(seed) % 100 < percent { 'x' } else { 'y' });
+    }
+    s
+}
+
+fn main() {
+    let mut seed = 1247;
+    let mut pairs: Vec<(String, String)> = Vec::new();
+    for _ in 0..2000 {
+        let p1 = next_random(&mut seed) % 101;
+        let p2 = next_random(&mut seed) % 101;
+        let s1 = random_xy(1000, p1, &mut seed);
+        let s2 = random_xy(1000, p2, &mut seed);
+        pairs.push((s1, s2));
+    }
+    let mut check = 0;
+    for _ in 0..20 {
+        for (s1, s2) in &pairs {
+            check = (check * 131 + minimum_swap(s1, s2) + 1) % 1000000007;
+        }
+    }
+    println!("20 rounds of 2000 pairs of 1000 letters: checksum {check}");
+}

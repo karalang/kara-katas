@@ -1,0 +1,121 @@
+// LeetCode #1257: Smallest Common Region -- a Rust solution as LeetCode's
+// Rust users write it, carried to Kāra by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn find_smallest_region(regions: Vec[Vec[String]], region1: String, region2: String) -> String {
+        let mut parent: Map[Str, Str] = Map.new();
+        for r in ref regions {
+            for c in r[1..] {
+                parent.insert(c.as_str(), r[0].as_str());
+            }
+        }
+        let mut seen = Set.new();
+        let mut cur = region1.as_str();
+        seen.insert(cur);
+        while let Some(p) = parent.get(cur).cloned() {
+            seen.insert(p);
+            cur = p;
+        }
+        let mut cur = region2.as_str();
+        while not seen.contains(cur) {
+            cur = parent[cur];
+        }
+        cur.to_string()
+    }
+}
+
+// The harness's regions, the two names handed over as LeetCode's `String`.
+fn find_smallest_region(regions: Vec[Vec[String]], region1: Str, region2: Str) -> String {
+    Solution.find_smallest_region(regions, region1.to_string(), region2.to_string())
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn name(i: i64) -> String {
+    f"r{i}"
+}
+
+// A random tree of `n` regions named `r0` to `r{n-1}`, `r0` the root and
+// each other region inside one of the `spread` regions before it, as
+// LeetCode's lists: a region, then the regions directly inside it. The
+// lists come in a shuffled order.
+fn random_regions(n: i64, spread: i64, seed: mut ref i64) -> Vec[Vec[String]] {
+    let mut children: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for i in 1..n {
+        let lo = (i - spread).max(0);
+        let parent = lo + next_random(mut seed) % (i - lo);
+        children[parent].push(i);
+    }
+    let mut regions = Vec.new();
+    for p in 0..n {
+        if not children[p].is_empty() {
+            let mut list = [name(p)];
+            list.extend(children[p].iter().map(|c| name(c)));
+            regions.push(list);
+        }
+    }
+    for i in (1..regions.len()).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        regions.swap(i, j);
+    }
+    regions
+}
+
+fn number(region: Str) -> i64 {
+    i64.parse(region[1..]).unwrap()
+}
+
+fn main() {
+    // LeetCode's example, asked twice
+    let world: Vec[Vec[String]] = [
+        ["Earth", "North America", "South America"],
+        ["North America", "United States", "Canada"],
+        ["United States", "New York", "Boston"],
+        ["Canada", "Ontario", "Quebec"],
+        ["South America", "Brazil"],
+    ]
+        .iter()
+        .map(|list| list.iter().map(|s| s.to_string()).collect())
+        .collect();
+    let a = find_smallest_region(world, "Quebec", "New York");
+    let b = find_smallest_region(world, "Canada", "South America");
+    println(f"{a}, {b}");
+    // 200 random trees of 2 to 2000 regions, each nested broadly or
+    // deeply, with 20 random pairs of regions asked of each
+    let mut seed = 1257;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..200 {
+        let n = next_random(mut seed) % 1999 + 2;
+        let spread = [1, 3, 10, 1000000][next_random(mut seed) % 4];
+        let regions = random_regions(n, spread, mut seed);
+        for _ in 0..20 {
+            let x = name(next_random(mut seed) % n);
+            let y = name(next_random(mut seed) % n);
+            let found = number(find_smallest_region(regions, x, y));
+            total += found;
+            check = (check * 131 + found) % 1000000007;
+        }
+    }
+    println(f"4000 random pairs: total {total}, checksum {check}");
+    // the constraints' top: 10000 regions each inside the one before, and
+    // 10000 regions as two chains of 5000 from the root
+    let chain = random_regions(10000, 1, mut seed);
+    let mut forked: Vec[Vec[String]] = [[name(0), name(1), name(5001)]];
+    for i in 1..10000 {
+        if i != 5000 and i != 9999 {
+            forked.push([name(i), name(i + 1)]);
+        }
+    }
+    let x = find_smallest_region(chain, "r9999", "r5000");
+    let y = find_smallest_region(forked, "r5000", "r9999");
+    let z = find_smallest_region(forked, "r4000", "r3000");
+    println(f"10000 regions: chain {x}, two chains {y}, one chain {z}");
+}

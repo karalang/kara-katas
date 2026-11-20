@@ -1,0 +1,47 @@
+// LeetCode #1246 bench, in Kāra: the ★ arm (interval dynamic programming,
+// rows from the last) on 1000 random arrays of 100 values built once, each
+// from 1 to v distinct values with v from 1 to 20, each asked twice; every
+// answer folded into a checksum.
+
+fn minimum_moves(arr: Vec[i64]) -> i64 {
+    let n = arr.len();
+    // `best[i][j]` for `arr[i..j]`, end exclusive, so an empty interval
+    // is `best[i][i] = 0`.
+    let mut best: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.filled(n + 1, 0));
+    for i in (0..n).rev() {
+        for j in i + 1..n + 1 {
+            let mut moves = 1 + best[i + 1][j];
+            if i + 1 < j and arr[i + 1] == arr[i] {
+                moves = moves.min(1 + best[i + 2][j]);
+            }
+            for k in i + 2..j {
+                if arr[k] == arr[i] {
+                    moves = moves.min(best[i + 1][k] + best[k + 1][j]);
+                }
+            }
+            best[i][j] = moves;
+        }
+    }
+    best[0][n]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1246;
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..1000 {
+        let values = next_random(mut seed) % 20 + 1;
+        arrays.push((0..100).map(|_| next_random(mut seed) % values + 1).collect());
+    }
+    let mut check = 0;
+    for _ in 0..2 {
+        for arr in arrays.iter() {
+            check = (check * 131 + minimum_moves(arr)) % 1000000007;
+        }
+    }
+    println(f"2 rounds of 1000 arrays of 100 values: checksum {check}");
+}

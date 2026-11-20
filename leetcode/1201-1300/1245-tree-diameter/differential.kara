@@ -1,0 +1,288 @@
+// LeetCode #1245: the differential -- the five arms against the statement
+// read literally and four more properties, on 2000 random trees.
+
+// arm 0: tree_diameter.kara
+fn a0_farthest(adj: Vec[Vec[i64]], from: i64) -> (i64, i64) {
+    let mut dist: Vec[i64] = Vec.filled(adj.len(), -1);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    dist[from] = 0;
+    queue.push_back(from);
+    let mut last = from;
+    while let Some(node) = queue.pop_front() {
+        last = node;
+        for next in adj[node].iter() {
+            if dist[next] < 0 {
+                dist[next] = dist[node] + 1;
+                queue.push_back(next);
+            }
+        }
+    }
+    (last, dist[last])
+}
+
+fn a0_tree_diameter(edges: Vec[Vec[i64]]) -> i64 {
+    let n = edges.len() + 1;
+    let mut adj: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push(e[1]);
+        adj[e[1]].push(e[0]);
+    }
+    let (end, _) = a0_farthest(adj, 0);
+    let (_, diameter) = a0_farthest(adj, end);
+    diameter
+}
+
+// arm 1: tree_diameter_dfs.kara
+fn a1_height(adj: Vec[Vec[i64]], node: i64, parent: i64, best: mut ref i64) -> i64 {
+    let mut first = 0;
+    let mut second = 0;
+    for child in adj[node].iter() {
+        if child == parent {
+            continue;
+        }
+        let h = a1_height(adj, child, node, mut best) + 1;
+        if h > first {
+            second = first;
+            first = h;
+        } else if h > second {
+            second = h;
+        }
+    }
+    *best = (*best).max(first + second);
+    first
+}
+
+fn a1_tree_diameter(edges: Vec[Vec[i64]]) -> i64 {
+    let n = edges.len() + 1;
+    let mut adj: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push(e[1]);
+        adj[e[1]].push(e[0]);
+    }
+    let mut best = 0;
+    a1_height(adj, 0, -1, mut best);
+    best
+}
+
+// arm 2: tree_diameter_stack.kara
+fn a2_tree_diameter(edges: Vec[Vec[i64]]) -> i64 {
+    let n = edges.len() + 1;
+    let mut adj: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push(e[1]);
+        adj[e[1]].push(e[0]);
+    }
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    let mut order: Vec[i64] = Vec.new();
+    let mut stack = [0];
+    while let Some(node) = stack.pop() {
+        order.push(node);
+        for next in adj[node].iter() {
+            if next != parent[node] {
+                parent[next] = node;
+                stack.push(next);
+            }
+        }
+    }
+    let mut first: Vec[i64] = Vec.filled(n, 0);
+    let mut second: Vec[i64] = Vec.filled(n, 0);
+    let mut best = 0;
+    for node in order.iter().rev() {
+        best = best.max(first[node] + second[node]);
+        let up = parent[node];
+        if up >= 0 {
+            let h = first[node] + 1;
+            if h > first[up] {
+                second[up] = first[up];
+                first[up] = h;
+            } else if h > second[up] {
+                second[up] = h;
+            }
+        }
+    }
+    best
+}
+
+// arm 3: tree_diameter_peel.kara
+fn a3_tree_diameter(edges: Vec[Vec[i64]]) -> i64 {
+    let n = edges.len() + 1;
+    let mut adj: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    let mut degree: Vec[i64] = Vec.filled(n, 0);
+    for e in edges.iter() {
+        adj[e[0]].push(e[1]);
+        adj[e[1]].push(e[0]);
+        degree[e[0]] += 1;
+        degree[e[1]] += 1;
+    }
+    let mut leaves: Vec[i64] = (0..n).filter(|v| degree[v] <= 1).collect();
+    let mut left = n;
+    let mut rounds = 0;
+    while left > 2 {
+        let mut next_leaves: Vec[i64] = Vec.new();
+        for leaf in leaves.iter() {
+            left -= 1;
+            for next in adj[leaf].iter() {
+                degree[next] -= 1;
+                if degree[next] == 1 {
+                    next_leaves.push(next);
+                }
+            }
+        }
+        leaves = next_leaves;
+        rounds += 1;
+    }
+    2 * rounds + (left - 1)
+}
+
+// arm 4: tree_diameter_solution.kara
+struct A4Solution {}
+
+fn a4_dfs(graph: Vec[Vec[usize]], u: usize, p: usize, ans: mut ref i32) -> i32 {
+    let mut (d1, d2) = (0, 0);
+    for v in ref graph[u] {
+        if v == p {
+            continue;
+        }
+        let d = a4_dfs(graph, v, u, mut ans) + 1;
+        if d > d1 {
+            d2 = d1;
+            d1 = d;
+        } else if d > d2 {
+            d2 = d;
+        }
+    }
+    *ans = (*ans).max(d1 + d2);
+    d1
+}
+
+impl A4Solution {
+    pub fn tree_diameter(edges: Vec[Vec[i32]]) -> i32 {
+        let n = edges.len() + 1;
+        let mut graph = Vec.filled(n, Vec.new());
+        for e in ref edges {
+            let (a, b) = (e[0] as usize, e[1] as usize);
+            graph[a].push(b);
+            graph[b].push(a);
+        }
+        let mut ans = 0;
+        a4_dfs(graph, 0, usize.MAX, mut ans);
+        ans
+    }
+}
+
+fn a4_tree_diameter(edges: Vec[Vec[i64]]) -> i64 {
+    let narrow: Vec[Vec[i32]] = edges.iter().map(|e| [e[0] as i32, e[1] as i32]).collect();
+    A4Solution.tree_diameter(narrow)
+}
+
+// The statement read literally: the longest of the paths between any two
+// nodes, each path's length found by a breadth-first search from one end.
+fn literal(edges: Vec[Vec[i64]]) -> i64 {
+    let n = edges.len() + 1;
+    let mut best = 0;
+    for from in 0..n {
+        let mut dist: Vec[i64] = Vec.filled(n, -1);
+        dist[from] = 0;
+        let mut frontier = [from];
+        while not frontier.is_empty() {
+            let mut next_frontier: Vec[i64] = Vec.new();
+            for node in frontier.iter() {
+                for e in edges.iter() {
+                    let other = if e[0] == node { e[1] } else if e[1] == node { e[0] } else { -1 };
+                    if other >= 0 and dist[other] < 0 {
+                        dist[other] = dist[node] + 1;
+                        best = best.max(dist[other]);
+                        next_frontier.push(other);
+                    }
+                }
+            }
+            frontier = next_frontier;
+        }
+    }
+    best
+}
+
+fn arms(edges: Vec[Vec[i64]]) -> Vec[i64] {
+    [a0_tree_diameter(edges), a1_tree_diameter(edges), a2_tree_diameter(edges), a3_tree_diameter(edges), a4_tree_diameter(edges)]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_tree(n: i64, shape: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut label: Vec[i64] = (0..n).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        label.swap(i, j);
+    }
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for v in 1..n {
+        let parent = match shape {
+            0 => next_random(mut seed) % v,
+            1 => v - 1 - next_random(mut seed) % v.min(3),
+            _ => next_random(mut seed) % v.min(4),
+        };
+        edges.push([label[parent], label[v]]);
+    }
+    edges
+}
+
+fn main() {
+    let names = ["the statement read literally", "the nodes renamed", "the edges reversed and turned round", "at most n - 1, and n - 1 exactly for a path", "a new leaf adds at most one", "the ★ arm's answer"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 12450;
+    for case in 0..2000 {
+        let n = next_random(mut seed) % 60 + 1;
+        let edges = random_tree(n, case % 3, mut seed);
+        let want = literal(edges);
+        check = (check * 131 + want) % 1000000007;
+        let got = arms(edges);
+        let mut rename: Vec[i64] = (0..n).collect();
+        for i in (1..n).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            rename.swap(i, j);
+        }
+        let renamed = arms(edges.iter().map(|e| [rename[e[0]], rename[e[1]]]).collect());
+        let turned = arms(edges.iter().rev().map(|e| [e[1], e[0]]).collect());
+        let mut degree: Vec[i64] = Vec.filled(n, 0);
+        for e in edges.iter() {
+            degree[e[0]] += 1;
+            degree[e[1]] += 1;
+        }
+        let is_path = degree.iter().all(|d| d <= 2);
+        let mut grown = edges.clone();
+        grown.push([next_random(mut seed) % n, n]);
+        let bigger = arms(grown);
+        for arm in 0..5 {
+            let d = got[arm];
+            let held = [
+                d == want,
+                renamed[arm] == d,
+                turned[arm] == d,
+                d <= n - 1 and (d == n - 1) == is_path,
+                bigger[arm] == d or bigger[arm] == d + 1,
+                d == got[0],
+            ];
+            for t in 0..6 {
+                checks += 1;
+                if not held[t] {
+                    fails[t] += 1;
+                    if fails[t] <= 2 {
+                        println(f"P{t + 1} ({names[t]}) fails on arm {arm}: {edges} -> {d}");
+                    }
+                }
+            }
+        }
+    }
+    let total: i64 = fails.iter().sum();
+    for t in 0..6 {
+        if fails[t] > 0 {
+            print(f"P{t + 1}: {fails[t]} failures ");
+        }
+    }
+    println(f"2000 trees: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

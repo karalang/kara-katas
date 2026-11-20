@@ -1,0 +1,76 @@
+// LeetCode #1222: Queens That Can Attack the King -- from the queens'
+// side: a queen in line with the king lies in one of eight directions,
+// the signs of its offsets, at a distance, the larger offset; the nearest
+// queen in each direction is kept in a `Map` from the direction to its
+// distance and square. O(queens).
+
+fn queens_attackthe_king(queens: Vec[Vec[i64]], king: Vec[i64]) -> Vec[Vec[i64]] {
+    let mut nearest: Map[(i64, i64), (i64, Vec[i64])] = Map.new();
+    for q in queens.iter() {
+        let dx = q[0] - king[0];
+        let dy = q[1] - king[1];
+        if dx != 0 and dy != 0 and dx.abs() != dy.abs() {
+            continue;
+        }
+        let direction = (dx.signum(), dy.signum());
+        let distance = dx.abs().max(dy.abs());
+        match nearest.get(direction) {
+            Some((known, _)) if known < distance => {}
+            _ => {
+                nearest.insert(direction, (distance, q.clone()));
+            }
+        }
+    }
+    nearest.values().map(|(_, q)| q.clone()).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` queens and the king on distinct squares drawn from `seed`: the
+// first `count + 1` squares of a shuffle of all 64.
+fn board(count: i64, seed: mut ref i64) -> (Vec[Vec[i64]], Vec[i64]) {
+    let mut squares: Vec[i64] = (0..64).collect();
+    for k in 0..count + 1 {
+        let j = k + next_random(mut seed) % (64 - k);
+        squares.swap(k, j);
+    }
+    let queens: Vec[Vec[i64]] = squares[0..count].iter().map(|s| [s / 8, s % 8]).collect();
+    (queens, [squares[count] / 8, squares[count] % 8])
+}
+
+// The attackers sorted, since the statement allows any order.
+fn sorted(attackers: own Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut all = attackers;
+    all.sort();
+    all
+}
+
+fn main() {
+    println(f"{sorted(queens_attackthe_king([[0, 1], [1, 0], [4, 0], [0, 4], [3, 3], [2, 4]], [0, 0]))}");
+    println(f"{sorted(queens_attackthe_king([[0, 0], [1, 1], [2, 2], [3, 4], [3, 5], [4, 4], [4, 5]], [3, 3]))}");
+    println(f"{sorted(queens_attackthe_king([[1, 2], [2, 1], [7, 6]], [0, 0]))}");
+    let mut seed = 1222;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let count = next_random(mut seed) % 63 + 1;
+        let (queens, king) = board(count, mut seed);
+        let attackers = sorted(queens_attackthe_king(queens, king));
+        total += attackers.len();
+        for a in attackers.iter() {
+            check = (check * 131 + a[0] * 8 + a[1] + 1) % 1000000007;
+        }
+        check = (check * 131 + 99) % 1000000007;
+    }
+    println(f"1000 boards of 1 to 63 queens: attackers total {total}, checksum {check}");
+    // 63 queens: every square but the king's.
+    for king in [[0, 0], [3, 4], [7, 2]] {
+        let queens: Vec[Vec[i64]] = (0..64).filter(|s| s != king[0] * 8 + king[1]).map(|s| [s / 8, s % 8]).collect();
+        println(f"63 queens, king at {king}: {sorted(queens_attackthe_king(queens, king))}");
+    }
+}

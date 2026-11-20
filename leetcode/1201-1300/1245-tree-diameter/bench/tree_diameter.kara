@@ -1,0 +1,71 @@
+// LeetCode #1245 bench, in Kāra: the ★ arm (two breadth-first searches
+// over an adjacency list) on 100 random trees of 10000 nodes built once,
+// each asked 5 times; every diameter folded into a checksum.
+
+fn farthest(adj: Vec[Vec[i64]], from: i64) -> (i64, i64) {
+    let mut dist: Vec[i64] = Vec.filled(adj.len(), -1);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    dist[from] = 0;
+    queue.push_back(from);
+    let mut last = from;
+    while let Some(node) = queue.pop_front() {
+        last = node;
+        for next in adj[node].iter() {
+            if dist[next] < 0 {
+                dist[next] = dist[node] + 1;
+                queue.push_back(next);
+            }
+        }
+    }
+    (last, dist[last])
+}
+
+fn tree_diameter(edges: Vec[Vec[i64]]) -> i64 {
+    let n = edges.len() + 1;
+    let mut adj: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push(e[1]);
+        adj[e[1]].push(e[0]);
+    }
+    let (end, _) = farthest(adj, 0);
+    let (_, diameter) = farthest(adj, end);
+    diameter
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_tree(n: i64, shape: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut label: Vec[i64] = (0..n).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        label.swap(i, j);
+    }
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for v in 1..n {
+        let parent = match shape {
+            0 => next_random(mut seed) % v,
+            1 => v - 1 - next_random(mut seed) % v.min(3),
+            _ => next_random(mut seed) % v.min(4),
+        };
+        edges.push([label[parent], label[v]]);
+    }
+    edges
+}
+
+fn main() {
+    let mut seed = 1245;
+    let mut trees: Vec[Vec[Vec[i64]]] = Vec.new();
+    for t in 0..100 {
+        trees.push(random_tree(10000, t % 3, mut seed));
+    }
+    let mut check = 0;
+    for _ in 0..5 {
+        for edges in trees.iter() {
+            check = (check * 131 + tree_diameter(edges)) % 1000000007;
+        }
+    }
+    println(f"5 rounds of 100 trees of 10000 nodes: checksum {check}");
+}

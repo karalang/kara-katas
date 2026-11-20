@@ -1,0 +1,54 @@
+// LeetCode #1256: Encode Number -- by length: there are `2^k` strings of
+// `k` digits, so the strings shorter than `k` digits number `2^k - 1`;
+// `num`'s length is the largest `k` with `2^k - 1 <= num`, and its string
+// is `num - (2^k - 1)` written in exactly `k` digits, high bit first.
+
+fn encode(num: i64) -> String {
+    let mut k = 0;
+    while (1 << (k + 1)) - 1 <= num {
+        k += 1;
+    }
+    let offset = num - ((1 << k) - 1);
+    let mut s = String.new();
+    for bit in (0..k).rev() {
+        s.push(if (offset >> bit) & 1 == 1 { '1' } else { '0' });
+    }
+    s
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples, and the first eight numbers
+    let a = encode(23);
+    let b = encode(107);
+    let first: Vec[String] = (0..8).map(|n| f"[{encode(n)}]").collect();
+    println(f"{a} {b} {first.join(" ")}");
+    // 1000 random numbers from 0 to 10^9, and 0 to 99999 in order
+    let mut seed = 1256;
+    let mut length = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let num = (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000001;
+        let s = encode(num);
+        length += s.len();
+        for c in s.chars() {
+            check = (check * 3 + if c == '1' { 2 } else { 1 }) % 1000000007;
+        }
+    }
+    for num in 0..100000 {
+        let s = encode(num);
+        length += s.len();
+        for c in s.chars() {
+            check = (check * 3 + if c == '1' { 2 } else { 1 }) % 1000000007;
+        }
+    }
+    println(f"101000 numbers: {length} digits, checksum {check}");
+    // the constraints' top, and each side of the step to 30 digits
+    println(f"{encode(1000000000)} {encode(1073741822)} {encode(1073741823)}");
+}

@@ -1,0 +1,182 @@
+// LeetCode #1252: the differential -- the five arms against the statement
+// read literally and four more properties, on 2000 random matrices.
+
+// arm 0: odd_cells.kara
+fn a0_odd_cells(m: i64, n: i64, indices: Vec[Vec[i64]]) -> i64 {
+    let mut matrix = Vec.filled(m, Vec.filled(n, 0));
+    for place in indices {
+        let r = place[0];
+        let c = place[1];
+        for j in 0..n {
+            matrix[r][j] += 1;
+        }
+        for i in 0..m {
+            matrix[i][c] += 1;
+        }
+    }
+    let mut odd = 0;
+    for row in matrix {
+        for v in row {
+            if v % 2 == 1 {
+                odd += 1;
+            }
+        }
+    }
+    odd
+}
+
+// arm 1: odd_cells_counts.kara
+fn a1_odd_cells(m: i64, n: i64, indices: Vec[Vec[i64]]) -> i64 {
+    let mut rows = Vec.filled(m, 0);
+    let mut cols = Vec.filled(n, 0);
+    for place in indices {
+        rows[place[0]] += 1;
+        cols[place[1]] += 1;
+    }
+    let mut odd = 0;
+    for r in rows.iter() {
+        for c in cols.iter() {
+            odd += (r + c) % 2;
+        }
+    }
+    odd
+}
+
+// arm 2: odd_cells_formula.kara
+fn a2_odd_cells(m: i64, n: i64, indices: Vec[Vec[i64]]) -> i64 {
+    let mut rows = Vec.filled(m, false);
+    let mut cols = Vec.filled(n, false);
+    for place in indices {
+        rows[place[0]] = not rows[place[0]];
+        cols[place[1]] = not cols[place[1]];
+    }
+    let odd_rows = rows.iter().filter(|x| x).count();
+    let odd_cols = cols.iter().filter(|x| x).count();
+    odd_rows * (n - odd_cols) + (m - odd_rows) * odd_cols
+}
+
+// arm 3: odd_cells_bits.kara
+fn a3_odd_cells(m: i64, n: i64, indices: Vec[Vec[i64]]) -> i64 {
+    let mut rows: u64 = 0;
+    let mut cols: u64 = 0;
+    for place in indices {
+        rows ^= 1 << place[0];
+        cols ^= 1 << place[1];
+    }
+    let odd_rows = rows.count_ones();
+    let odd_cols = cols.count_ones();
+    odd_rows * (n - odd_cols) + (m - odd_rows) * odd_cols
+}
+
+// arm 4: odd_cells_solution.kara
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn odd_cells(m: i32, n: i32, indices: Vec[Vec[i32]]) -> i32 {
+        let mut mat = Vec.filled(m, Vec.filled(n, 0));
+        for idx in indices.iter() {
+            let (r, c) = (idx[0] as usize, idx[1] as usize);
+            for j in 0..n as usize {
+                mat[r][j] += 1;
+            }
+            for i in 0..m as usize {
+                mat[i][c] += 1;
+            }
+        }
+        mat.iter().flat_map(|v| v.iter()).filter(|x| x % 2 == 1).count() as i32
+    }
+}
+
+fn a4_odd_cells(m: i64, n: i64, indices: Vec[Vec[i64]]) -> i64 {
+    let rows = indices.iter().map(|p| p.iter().map(|x| x as i32).collect()).collect();
+    A4Solution.odd_cells(m as i32, n as i32, rows)
+}
+
+// `k` random places in an `m` by `n` matrix, as LeetCode's `[r, c]` pairs.
+fn random_indices(m: i64, n: i64, k: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut indices = Vec.new();
+    for _ in 0..k {
+        let r = next_random(mut seed) % m;
+        let c = next_random(mut seed) % n;
+        indices.push([r, c]);
+    }
+    indices
+}
+
+// The statement read literally, cell by cell: a cell's value is one for
+// each place on its row and one for each place on its column, and the
+// cells whose value is odd are counted.
+fn literal(m: i64, n: i64, indices: Vec[Vec[i64]]) -> i64 {
+    let mut odd = 0;
+    for r in 0..m {
+        for c in 0..n {
+            let on_row = indices.iter().filter(|p| p[0] == r).count();
+            let on_col = indices.iter().filter(|p| p[1] == c).count();
+            if (on_row + on_col) % 2 == 1 {
+                odd += 1;
+            }
+        }
+    }
+    odd
+}
+
+fn arms(m: i64, n: i64, indices: Vec[Vec[i64]]) -> Vec[i64] {
+    [a0_odd_cells(m, n, indices), a1_odd_cells(m, n, indices), a2_odd_cells(m, n, indices), a3_odd_cells(m, n, indices), a4_odd_cells(m, n, indices)]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["the statement read literally", "transposed, the same count", "the places in reverse order, the same count", "every place given twice, no odd cell", "the rows turned upside down, the same count", "the ★ arm's count"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 12520;
+    for _ in 0..2000 {
+        let m = next_random(mut seed) % 8 + 1;
+        let n = next_random(mut seed) % 8 + 1;
+        let k = next_random(mut seed) % 12 + 1;
+        let indices = random_indices(m, n, k, mut seed);
+        let want = literal(m, n, indices);
+        check = (check * 131 + want) % 1000000007;
+        let got = arms(m, n, indices);
+        let transposed: Vec[Vec[i64]] = indices.iter().map(|p| [p[1], p[0]]).collect();
+        let reversed: Vec[Vec[i64]] = indices.iter().rev().map(|p| p.clone()).collect();
+        let mut twice = indices.clone();
+        twice.extend(indices.iter().map(|p| p.clone()));
+        let flipped: Vec[Vec[i64]] = indices.iter().map(|p| [m - 1 - p[0], p[1]]).collect();
+        let t = arms(n, m, transposed);
+        let r = arms(m, n, reversed);
+        let d = arms(m, n, twice);
+        let f = arms(m, n, flipped);
+        for arm in 0..5 {
+            let held = [
+                got[arm] == want,
+                t[arm] == got[arm],
+                r[arm] == got[arm],
+                d[arm] == 0,
+                f[arm] == got[arm],
+                got[arm] == got[0],
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not held[q] {
+                    fails[q] += 1;
+                    if fails[q] <= 2 {
+                        println(f"P{q + 1} ({names[q]}) fails on arm {arm}: {m} by {n}, {indices}");
+                    }
+                }
+            }
+        }
+    }
+    let total: i64 = fails.iter().sum();
+    for q in 0..6 {
+        if fails[q] > 0 {
+            print(f"P{q + 1}: {fails[q]} failures ");
+        }
+    }
+    println(f"2000 matrices: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

@@ -1,0 +1,364 @@
+// LeetCode #1244: the differential -- the five arms against the statement
+// read literally and four more properties, on 2000 random sessions.
+
+// arm 0: leaderboard.kara
+struct A0Board {
+    scores: Map[i64, i64],
+}
+
+impl A0Board {
+    fn new() -> A0Board {
+        A0Board { scores: Map.new() }
+    }
+
+    fn add_score(mut ref self, player_id: i64, score: i64) {
+        let now = self.scores.get(player_id).unwrap_or(0);
+        self.scores.insert(player_id, now + score);
+    }
+
+    fn top(self, k: i64) -> i64 {
+        let mut all: Vec[i64] = self.scores.values().collect();
+        all.sort_by(|a, b| b.cmp(a));
+        all.iter().take(k).sum()
+    }
+
+    fn reset(mut ref self, player_id: i64) {
+        self.scores.remove(player_id);
+    }
+}
+
+// arm 1: leaderboard_buckets.kara
+struct A1Board {
+    scores: Map[i64, i64],
+    at: Vec[i64],
+}
+
+impl A1Board {
+    fn new() -> A1Board {
+        A1Board { scores: Map.new(), at: Vec.new() }
+    }
+
+    fn add_score(mut ref self, player_id: i64, score: i64) {
+        let old = self.scores.get(player_id).unwrap_or(0);
+        if old > 0 {
+            self.at[old] -= 1;
+        }
+        let now = old + score;
+        while self.at.len() <= now {
+            self.at.push(0);
+        }
+        self.at[now] += 1;
+        self.scores.insert(player_id, now);
+    }
+
+    fn top(self, k: i64) -> i64 {
+        let mut wanted = k;
+        let mut sum = 0;
+        let mut score = self.at.len() - 1;
+        while wanted > 0 and score > 0 {
+            let take = self.at[score].min(wanted);
+            sum += score * take;
+            wanted -= take;
+            score -= 1;
+        }
+        sum
+    }
+
+    fn reset(mut ref self, player_id: i64) {
+        let old = self.scores.remove(player_id).unwrap();
+        self.at[old] -= 1;
+    }
+}
+
+// arm 2: leaderboard_sorted.kara
+struct A2Board {
+    scores: Map[i64, i64],
+    counts: SortedMap[i64, i64],
+}
+
+impl A2Board {
+    fn new() -> A2Board {
+        A2Board { scores: Map.new(), counts: SortedMap.new() }
+    }
+
+    fn drop_score(mut ref self, score: i64) {
+        let left = self.counts[score] - 1;
+        if left == 0 {
+            self.counts.remove(score);
+        } else {
+            self.counts[score] = left;
+        }
+    }
+
+    fn add_score(mut ref self, player_id: i64, score: i64) {
+        let now = match self.scores.get(player_id).cloned() {
+            Some(old) => {
+                self.drop_score(old);
+                old + score
+            }
+            None => score,
+        };
+        self.scores[player_id] = now;
+        self.counts[now] = self.counts.get(now).unwrap_or(0) + 1;
+    }
+
+    fn top(self, k: i64) -> i64 {
+        let mut wanted = k;
+        let mut sum = 0;
+        for (score, count) in self.counts.iter().rev() {
+            if wanted == 0 {
+                break;
+            }
+            let take = count.min(wanted);
+            sum += score * take;
+            wanted -= take;
+        }
+        sum
+    }
+
+    fn reset(mut ref self, player_id: i64) {
+        if let Some(score) = self.scores.remove(player_id) {
+            self.drop_score(score);
+        }
+    }
+}
+
+// arm 3: leaderboard_heap.kara
+struct A3Board {
+    scores: Map[i64, i64],
+}
+
+impl A3Board {
+    fn new() -> A3Board {
+        A3Board { scores: Map.new() }
+    }
+
+    fn add_score(mut ref self, player_id: i64, score: i64) {
+        *self.scores.entry(player_id).or_insert(0) += score;
+    }
+
+    fn top(self, k: i64) -> i64 {
+        let mut heap: PriorityQueue[i64] = PriorityQueue.new();
+        for score in self.scores.values() {
+            if heap.len() < k {
+                heap.push(score);
+            } else if score > *heap.peek().unwrap() {
+                heap.pop();
+                heap.push(score);
+            }
+        }
+        heap.into_iter().sum()
+    }
+
+    fn reset(mut ref self, player_id: i64) {
+        self.scores.remove(player_id);
+    }
+}
+
+// arm 4: leaderboard_solution.kara
+struct A4Lc {
+    scores: Map[i32, i32],
+}
+
+impl A4Lc {
+    fn new() -> Self {
+        A4Lc { scores: Map.new() }
+    }
+
+    fn add_score(mut ref self, player_id: i32, score: i32) {
+        *self.scores.entry(player_id).or_insert(0) += score;
+    }
+
+    fn top(self, k: i32) -> i32 {
+        let mut v: Vec[i32] = self.scores.values().cloned().collect();
+        v.sort_by(|a, b| b.cmp(a));
+        v.iter().take(k).sum()
+    }
+
+    fn reset(mut ref self, player_id: i32) {
+        self.scores.remove(player_id);
+    }
+}
+
+struct A4Board {
+    board: A4Lc,
+}
+
+impl A4Board {
+    fn new() -> A4Board {
+        A4Board { board: A4Lc.new() }
+    }
+
+    fn add_score(mut ref self, player_id: i64, score: i64) {
+        self.board.add_score(player_id as i32, score as i32);
+    }
+
+    fn top(self, k: i64) -> i64 {
+        self.board.top(k as i32)
+    }
+
+    fn reset(mut ref self, player_id: i64) {
+        self.board.reset(player_id as i32);
+    }
+}
+
+// The statement read literally: each player on the board and their total,
+// side by side in two lists; a top sorts a copy of the totals from the
+// highest and adds the first `k`, and a reset takes the player out.
+struct Literal {
+    players: Vec[i64],
+    totals: Vec[i64],
+}
+
+impl Literal {
+    fn add_score(mut ref self, player_id: i64, score: i64) {
+        for i in 0..self.players.len() {
+            if self.players[i] == player_id {
+                self.totals[i] += score;
+                return;
+            }
+        }
+        self.players.push(player_id);
+        self.totals.push(score);
+    }
+
+    fn top(self, k: i64) -> i64 {
+        let mut sorted = self.totals.clone();
+        sorted.sort();
+        sorted.reverse();
+        let mut sum = 0;
+        for i in 0..k {
+            sum += sorted[i];
+        }
+        sum
+    }
+
+    fn total(self, player_id: i64) -> i64 {
+        for i in 0..self.players.len() {
+            if self.players[i] == player_id {
+                return self.totals[i];
+            }
+        }
+        0
+    }
+
+    fn reset(mut ref self, player_id: i64) {
+        for i in 0..self.players.len() {
+            if self.players[i] == player_id {
+                self.players.remove(i);
+                self.totals.remove(i);
+                return;
+            }
+        }
+    }
+}
+
+struct Boards {
+    b0: A0Board,
+    b1: A1Board,
+    b2: A2Board,
+    b3: A3Board,
+    b4: A4Board,
+}
+
+impl Boards {
+    fn add_score(mut ref self, player_id: i64, score: i64) {
+        self.b0.add_score(player_id, score);
+        self.b1.add_score(player_id, score);
+        self.b2.add_score(player_id, score);
+        self.b3.add_score(player_id, score);
+        self.b4.add_score(player_id, score);
+    }
+
+    fn top(self, k: i64) -> Vec[i64] {
+        [self.b0.top(k), self.b1.top(k), self.b2.top(k), self.b3.top(k), self.b4.top(k)]
+    }
+
+    fn reset(mut ref self, player_id: i64) {
+        self.b0.reset(player_id);
+        self.b1.reset(player_id);
+        self.b2.reset(player_id);
+        self.b3.reset(player_id);
+        self.b4.reset(player_id);
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["the statement read literally", "one more player adds a positive score", "every player's top is the board's sum", "the top one is the highest total", "a reset takes exactly that player's total", "the ★ arm's answer"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 12440;
+    for case in 0..2000 {
+        let players = match case % 3 {
+            0 => next_random(mut seed) % 4 + 1,
+            1 => next_random(mut seed) % 20 + 5,
+            _ => next_random(mut seed) % 200 + 25,
+        };
+        let calls = next_random(mut seed) % 80 + 1;
+        let mut boards = Boards { b0: A0Board.new(), b1: A1Board.new(), b2: A2Board.new(), b3: A3Board.new(), b4: A4Board.new() };
+        let mut literal = Literal { players: Vec.new(), totals: Vec.new() };
+        for _ in 0..calls {
+            let op = next_random(mut seed) % 4;
+            let n = literal.players.len();
+            if op <= 1 or n == 0 {
+                let player = next_random(mut seed) % players + 1;
+                let score = next_random(mut seed) % 100 + 1;
+                boards.add_score(player, score);
+                literal.add_score(player, score);
+                continue;
+            }
+            let all = boards.top(n);
+            let one = boards.top(1);
+            let mut held: Vec[Vec[bool]] = Vec.new();
+            let mut sum = 0;
+            let mut high = 0;
+            for t in literal.totals.iter() {
+                sum += t;
+                high = high.max(t);
+            }
+            if op == 2 {
+                let k = next_random(mut seed) % n + 1;
+                let want = literal.top(k);
+                let got = boards.top(k);
+                let less = if k > 1 { boards.top(k - 1) } else { [0, 0, 0, 0, 0] };
+                check = (check * 131 + want) % 1000000007;
+                for arm in 0..5 {
+                    held.push([got[arm] == want, got[arm] > less[arm], all[arm] == sum, one[arm] == high, true, got[arm] == got[0]]);
+                }
+            } else {
+                let player = literal.players[next_random(mut seed) % n];
+                let gone = literal.total(player);
+                boards.reset(player);
+                literal.reset(player);
+                let after = if n > 1 { boards.top(n - 1) } else { [0, 0, 0, 0, 0] };
+                for arm in 0..5 {
+                    held.push([true, true, all[arm] == sum, one[arm] == high, after[arm] == all[arm] - gone, after[arm] == after[0]]);
+                }
+            }
+            for arm in 0..5 {
+                for t in 0..6 {
+                    checks += 1;
+                    if not held[arm][t] {
+                        fails[t] += 1;
+                        if fails[t] <= 2 {
+                            println(f"P{t + 1} ({names[t]}) fails on arm {arm} in case {case}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let total: i64 = fails.iter().sum();
+    for t in 0..6 {
+        if fails[t] > 0 {
+            print(f"P{t + 1}: {fails[t]} failures ");
+        }
+    }
+    println(f"2000 sessions: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}

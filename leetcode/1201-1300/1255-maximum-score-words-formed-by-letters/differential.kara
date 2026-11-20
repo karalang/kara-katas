@@ -1,0 +1,321 @@
+// LeetCode #1255: the differential -- the five arms against the statement
+// read literally and four more properties, on 2000 random cases.
+
+// arm 0: max_score_words.kara
+fn a0_best(i: i64, words: Vec[Vec[i64]], left: mut ref Vec[i64], score: Vec[i64]) -> i64 {
+    if i == words.len() {
+        return 0;
+    }
+    let mut top = a0_best(i + 1, words, mut left, score);
+    let need = words[i].clone();
+    if (0..26).all(|c| need[c] <= left[c]) {
+        for c in 0..26 {
+            left[c] -= need[c];
+        }
+        let gain: i64 = (0..26).map(|c| need[c] * score[c]).sum();
+        top = top.max(gain + a0_best(i + 1, words, mut left, score));
+        for c in 0..26 {
+            left[c] += need[c];
+        }
+    }
+    top
+}
+
+fn a0_max_score_words(words: Vec[String], letters: Vec[char], score: Vec[i64]) -> i64 {
+    let counts: Vec[Vec[i64]] = words
+        .iter()
+        .map(|w| {
+            let mut n = Vec.filled(26, 0);
+            for ch in w.chars() {
+                n[ch as i64 - 'a' as i64] += 1;
+            }
+            n
+        })
+        .collect();
+    let mut left = Vec.filled(26, 0);
+    for ch in letters {
+        left[ch as i64 - 'a' as i64] += 1;
+    }
+    a0_best(0, counts, mut left, score)
+}
+
+// arm 1: max_score_words_subsets.kara
+fn a1_max_score_words(words: Vec[String], letters: Vec[char], score: Vec[i64]) -> i64 {
+    let n = words.len();
+    let mut have = Vec.filled(26, 0);
+    for ch in letters {
+        have[ch as i64 - 'a' as i64] += 1;
+    }
+    let mut used: Vec[Vec[i64]] = Vec.filled(1 << n, Vec.new());
+    used[0] = Vec.filled(26, 0);
+    let mut best = 0;
+    for mask in 1..(1 << n) {
+        let low = mask.trailing_zeros();
+        let mut counts = used[mask & (mask - 1)].clone();
+        for ch in words[low].chars() {
+            counts[ch as i64 - 'a' as i64] += 1;
+        }
+        if (0..26).all(|c| counts[c] <= have[c]) {
+            let total: i64 = (0..26).map(|c| counts[c] * score[c]).sum();
+            best = best.max(total);
+        }
+        used[mask] = counts;
+    }
+    best
+}
+
+// arm 2: max_score_words_gray.kara
+fn a2_max_score_words(words: Vec[String], letters: Vec[char], score: Vec[i64]) -> i64 {
+    let n = words.len();
+    let mut left = Vec.filled(26, 0);
+    for ch in letters {
+        left[ch as i64 - 'a' as i64] += 1;
+    }
+    let mut taken = Vec.filled(n, false);
+    let mut over = 0;
+    let mut total = 0;
+    let mut best = 0;
+    for step in 1..(1 << n) {
+        let w = step.trailing_zeros();
+        let take = not taken[w];
+        taken[w] = take;
+        for ch in words[w].chars() {
+            let c = ch as i64 - 'a' as i64;
+            if take {
+                left[c] -= 1;
+                total += score[c];
+                if left[c] == -1 {
+                    over += 1;
+                }
+            } else {
+                left[c] += 1;
+                total -= score[c];
+                if left[c] == 0 {
+                    over -= 1;
+                }
+            }
+        }
+        if over == 0 {
+            best = best.max(total);
+        }
+    }
+    best
+}
+
+// arm 3: max_score_words_prune.kara
+struct A3Search {
+    needs: Vec[Vec[i64]],
+    gains: Vec[i64],
+    rest: Vec[i64],
+    best: i64,
+}
+
+impl A3Search {
+    fn go(mut ref self, i: i64, left: mut ref Vec[i64], sum: i64) {
+        if sum > self.best {
+            self.best = sum;
+        }
+        if i == self.needs.len() or sum + self.rest[i] <= self.best {
+            return;
+        }
+        let need = self.needs[i].clone();
+        if (0..26).all(|c| need[c] <= left[c]) {
+            for c in 0..26 {
+                left[c] -= need[c];
+            }
+            self.go(i + 1, mut left, sum + self.gains[i]);
+            for c in 0..26 {
+                left[c] += need[c];
+            }
+        }
+        self.go(i + 1, mut left, sum);
+    }
+}
+
+fn a3_max_score_words(words: Vec[String], letters: Vec[char], score: Vec[i64]) -> i64 {
+    let mut left = Vec.filled(26, 0);
+    for ch in letters {
+        left[ch as i64 - 'a' as i64] += 1;
+    }
+    let mut scored: Vec[(i64, Vec[i64])] = Vec.new();
+    for w in words.iter() {
+        let mut need = Vec.filled(26, 0);
+        for ch in w.chars() {
+            need[ch as i64 - 'a' as i64] += 1;
+        }
+        if (0..26).all(|c| need[c] <= left[c]) {
+            let gain: i64 = (0..26).map(|c| need[c] * score[c]).sum();
+            scored.push((gain, need));
+        }
+    }
+    scored.sort_by(|a, b| b.0.cmp(a.0));
+    let n = scored.len();
+    let mut rest = Vec.filled(n + 1, 0);
+    for i in (0..n).rev() {
+        rest[i] = rest[i + 1] + scored[i].0;
+    }
+    let mut search = A3Search {
+        needs: scored.iter().map(|p| p.1.clone()).collect(),
+        gains: scored.iter().map(|p| p.0).collect(),
+        rest: rest,
+        best: 0,
+    };
+    search.go(0, mut left, 0);
+    search.best
+}
+
+// arm 4: max_score_words_solution.kara
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn max_score_words(words: Vec[String], letters: Vec[char], score: Vec[i32]) -> i32 {
+        let mut cnt = [0; 26];
+        for c in letters {
+            cnt[(c as u32 as u8 - b'a') as usize] += 1;
+        }
+        A4Solution.dfs(words, 0, mut cnt, score)
+    }
+
+    fn dfs(words: Vec[String], i: i64, cnt: mut ref Array[i32, 26], score: Vec[i32]) -> i32 {
+        if i == words.len() {
+            return 0;
+        }
+        let mut res = A4Solution.dfs(words, i + 1, mut cnt, score);
+        let mut ok = true;
+        let mut s: i32 = 0;
+        for b in words[i].bytes() {
+            let k = (b - b'a') as i64;
+            cnt[k] -= 1;
+            s += score[k];
+            if cnt[k] < 0 {
+                ok = false;
+            }
+        }
+        if ok {
+            res = res.max(s + A4Solution.dfs(words, i + 1, mut cnt, score));
+        }
+        for b in words[i].bytes() {
+            cnt[b - b'a'] += 1;
+        }
+        res
+    }
+}
+
+fn a4_max_score_words(words: Vec[String], letters: Vec[char], score: Vec[i64]) -> i64 {
+    A4Solution.max_score_words(words, letters, score.iter().map(|x| x as i32).collect())
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A random word of 1 to `longest` letters from the first `alphabet` of
+// the alphabet.
+fn random_word(longest: i64, alphabet: i64, seed: mut ref i64) -> String {
+    let n = next_random(mut seed) % longest + 1;
+    let mut w = String.new();
+    for _ in 0..n {
+        w.push((b'a' + (next_random(mut seed) % alphabet) as u8) as char);
+    }
+    w
+}
+
+// A random case: `count` words, `pool` letters, and a score from 0 to 10
+// for each letter, all from the first `alphabet` letters.
+fn random_case(count: i64, longest: i64, pool: i64, alphabet: i64, seed: mut ref i64) -> (Vec[String], Vec[char], Vec[i64]) {
+    let mut words = Vec.new();
+    for _ in 0..count {
+        words.push(random_word(longest, alphabet, mut seed));
+    }
+    let mut letters = Vec.new();
+    for _ in 0..pool {
+        letters.push((b'a' + (next_random(mut seed) % alphabet) as u8) as char);
+    }
+    letters.sort();
+    let score: Vec[i64] = (0..26).map(|_| next_random(mut seed) % 11).collect();
+    (words, letters, score)
+}
+
+// The statement read literally: every set of the words tried, each word
+// at most once, and a set allowed when its letters can be taken one by
+// one from the letters given, each letter used at most once; the best
+// total of the scores of the letters it uses.
+fn literal(words: Vec[String], letters: Vec[char], score: Vec[i64]) -> i64 {
+    let n = words.len();
+    let mut best = 0;
+    for mask in 0..(1 << n) {
+        let mut pool = letters.clone();
+        let mut total = 0;
+        let mut fits = true;
+        for w in 0..n {
+            if (mask >> w) & 1 == 0 {
+                continue;
+            }
+            for ch in words[w].chars() {
+                match pool.iter().position(|p| p == ch) {
+                    Some(k) => {
+                        pool.remove(k);
+                        total += score[ch as u32 as i64 - 97];
+                    }
+                    None => fits = false,
+                }
+            }
+        }
+        if fits {
+            best = best.max(total);
+        }
+    }
+    best
+}
+
+fn arms(words: Vec[String], letters: Vec[char], score: Vec[i64]) -> Vec[i64] {
+    [a0_max_score_words(words, letters, score), a1_max_score_words(words, letters, score), a2_max_score_words(words, letters, score), a3_max_score_words(words, letters, score), a4_max_score_words(words, letters, score)]
+}
+
+fn main() {
+    let names = ["the statement read literally", "the words reversed, the same score", "the letters given twice, at least the same score", "every score doubled, the score doubled", "a word of letters not given added, the same score", "the ★ arm's score"];
+    let mut fails = Vec.filled(6, 0);
+    let mut checks = 0;
+    let mut check = 0;
+    let mut seed = 12550;
+    for _ in 0..2000 {
+        let count = next_random(mut seed) % 7 + 1;
+        let longest = next_random(mut seed) % 5 + 1;
+        let pool = next_random(mut seed) % 15 + 1;
+        let alphabet = next_random(mut seed) % 5 + 2;
+        let (words, letters, score) = random_case(count, longest, pool, alphabet, mut seed);
+        let want = literal(words, letters, score);
+        check = (check * 131 + want) % 1000000007;
+        let got = arms(words, letters, score);
+        let reversed: Vec[String] = words.iter().rev().map(|w| w.to_string()).collect();
+        let mut twice = letters.clone();
+        twice.extend(letters.iter());
+        let doubled: Vec[i64] = score.iter().map(|s| 2 * s).collect();
+        let mut extra: Vec[String] = words.iter().map(|w| w.to_string()).collect();
+        extra.push("zz");
+        let r = arms(reversed, letters, score);
+        let t = arms(words, twice, score);
+        let d = arms(words, letters, doubled);
+        let e = arms(extra, letters, score);
+        for arm in 0..5 {
+            let held = [got[arm] == want, r[arm] == got[arm], t[arm] >= got[arm], d[arm] == 2 * got[arm], e[arm] == got[arm], got[arm] == got[0]];
+            for q in 0..6 {
+                checks += 1;
+                if not held[q] {
+                    fails[q] += 1;
+                    if fails[q] <= 2 {
+                        println(f"P{q + 1} ({names[q]}) fails on arm {arm}: {words} {letters}");
+                    }
+                }
+            }
+        }
+    }
+    let total: i64 = fails.iter().sum();
+    for q in 0..6 {
+        if fails[q] > 0 {
+            print(f"P{q + 1}: {fails[q]} failures ");
+        }
+    }
+    println(f"2000 cases: checksum {check}, {checks} checks over 5 arms: {total} failures");
+}
