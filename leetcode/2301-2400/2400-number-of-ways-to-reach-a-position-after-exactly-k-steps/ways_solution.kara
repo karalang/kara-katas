@@ -1,0 +1,69 @@
+// LeetCode #2400: Number of Ways to Reach a Position After Exactly k
+// Steps -- LeetCode's Rust template, as Rust writes it, carried by karac
+// fix: Pascal's triangle in a `vec![vec![0i64; k + 1]; k + 1]`, indexed by
+// `usize`, the binomial C(k, (k + d) / 2) read from its last row.
+
+struct Solution {}
+
+impl Solution {
+    pub fn number_of_ways(start_pos: i32, end_pos: i32, k: i32) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let d = (end_pos - start_pos).abs() as i64;
+        let k = k as i64;
+        if d > k or (k - d) % 2 == 1 {
+            return 0;
+        }
+        let mut dp = Vec.filled(k + 1, Vec.filled(k + 1, 0));
+        for i in 0..=k {
+            dp[i][0] = 1;
+            for j in 1..=i {
+                dp[i][j] = (dp[i - 1][j - 1] + dp[i - 1][j]) % MOD;
+            }
+        }
+        dp[k][(k + d) / 2] as i32
+    }
+}
+
+fn number_of_ways(start_pos: i64, end_pos: i64, k: i64) -> i64 {
+    Solution.number_of_ways(start_pos as i32, end_pos as i32, k as i32)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{number_of_ways(1, 2, 3)}");
+    println(f"{number_of_ways(2, 5, 10)}");
+    // the start itself, in an odd and an even count; the far end exactly
+    // k away, and one step short of it; going left past 1
+    println(f"{number_of_ways(7, 7, 1)} {number_of_ways(7, 7, 2)} {number_of_ways(1, 1000, 999)} {number_of_ways(1, 1000, 998)}");
+    println(f"{number_of_ways(3, 1, 6)} {number_of_ways(1, 1, 4)}");
+    // k = 1000 from 500 to five ends
+    let ends = [500, 502, 520, 1000, 2];
+    let mut line: Vec[String] = Vec.new();
+    for e in ends.iter() {
+        line.push(f"{number_of_ways(500, e, 1000)}");
+    }
+    println(line.join(" "));
+    // 400 random cases of k up to 120, each end within k of its start;
+    // a checksum of the answers and how many are 0
+    let mut seed = 2400;
+    let mut check = 0;
+    let mut zeros = 0;
+    for _ in 0..400 {
+        let k = 1 + next_random(mut seed) % 120;
+        let start = 1 + next_random(mut seed) % 1000;
+        let end = (start + next_random(mut seed) % (2 * k + 1) - k).max(1).min(1000);
+        let w = number_of_ways(start, end, k);
+        if w == 0 {
+            zeros += 1;
+        }
+        check = (check * 31 + w) % 1000000007;
+    }
+    println(f"400 random: checksum {check}, {zeros} zeros");
+}
