@@ -1,0 +1,60 @@
+// LeetCode #2352: Equal Row and Column Pairs -- iterators: each column
+// gathered by `map` and `collect`, and the rows equal to it counted by
+// `filter` and `count`, all summed.
+
+fn equal_pairs(grid: Vec[Vec[i64]]) -> i64 {
+    let n = grid.len();
+    (0..n)
+        .map(|j| {
+            let column: Vec[i64] = grid.iter().map(|row| row[j]).collect();
+            grid.iter().filter(|row| row == column).count()
+        })
+        .sum()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; then one cell, 200 x 200 ones, the identity,
+    // and (i j) mod 7, whose row i is its column i and the row of every i'
+    // with i' = i mod 7
+    println(f"{equal_pairs([[3, 2, 1], [1, 7, 6], [2, 7, 7]])}");
+    println(f"{equal_pairs([[3, 1, 2, 2], [1, 4, 4, 5], [2, 4, 2, 2], [2, 4, 2, 2]])}");
+    println(f"{equal_pairs([[5]])}");
+    let ones: Vec[Vec[i64]] = (0..200).map(|_| Vec.filled(200, 1)).collect();
+    println(f"{equal_pairs(ones)}");
+    let identity: Vec[Vec[i64]] = (0..200).map(|i| (0..200).map(|j| if i == j { 1 } else { 0 }).collect()).collect();
+    println(f"{equal_pairs(identity)}");
+    let sevens: Vec[Vec[i64]] = (0..200).map(|i| (0..200).map(|j| i * j % 7).collect()).collect();
+    println(f"{equal_pairs(sevens)}");
+    // 1000 random grids of 1 to 6 rows of values from 1 to 1 up to 1 to 3,
+    // and 1 to 10^5 in every tenth
+    let mut seed = 2352;
+    let mut check = 0;
+    let mut total = 0;
+    let mut none = 0;
+    for g in 0..1000 {
+        let n = 1 + next_random(mut seed) % 6;
+        let top = if g % 10 == 9 { 100000 } else { 1 + next_random(mut seed) % 3 };
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..n {
+            let mut row: Vec[i64] = Vec.new();
+            for _ in 0..n {
+                row.push(1 + next_random(mut seed) % top);
+            }
+            grid.push(row);
+        }
+        let p = equal_pairs(grid);
+        check = (check * 31 + p) % 1000000007;
+        total += p;
+        if p == 0 {
+            none += 1;
+        }
+    }
+    println(f"1000 grids: checksum {check}, pairs {total}, {none} with none");
+}
