@@ -1,0 +1,70 @@
+// LeetCode #2376: Count Special Integers -- the ★ arm, digit by digit. The
+// numbers with fewer digits than n are counted by length, 9 choices for
+// the first digit and then the unused ones, 9 * 9 * 8 * ...; the numbers
+// of n's length below it by the first place where they fall under n's
+// digit, every place after it filled from the digits left. O(10 L) for L
+// digits.
+
+fn arrangements(free: i64, places: i64) -> i64 {
+    let mut ways = 1;
+    for k in 0..places {
+        ways *= free - k;
+    }
+    ways
+}
+
+fn count_special_numbers(n: i64) -> i64 {
+    let digits: Vec[i64] = n.to_string().bytes().iter().map(|b| (b - b'0') as i64).collect();
+    let len = digits.len();
+    let mut count = 0;
+    for l in 1..len {
+        count += 9 * arrangements(9, l - 1);
+    }
+    let mut used: Vec[bool] = Vec.filled(10, false);
+    for i in 0..len {
+        let low = if i == 0 { 1 } else { 0 };
+        for d in low..digits[i] {
+            if not used[d] {
+                count += arrangements(9 - i, len - 1 - i);
+            }
+        }
+        if used[digits[i]] {
+            return count;
+        }
+        used[digits[i]] = true;
+    }
+    count + 1
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples; 1 and 10; 2 * 10^9 and 123456789; then
+    // 2000 random n of 1 to 5 digits, with a checksum and how many are
+    // special themselves
+    println(f"{count_special_numbers(20)} {count_special_numbers(5)} {count_special_numbers(135)}");
+    println(f"{count_special_numbers(1)} {count_special_numbers(10)}");
+    println(f"{count_special_numbers(2000000000)} {count_special_numbers(123456789)}");
+    let mut seed = 2376;
+    let mut check = 0;
+    let mut special = 0;
+    for _ in 0..2000 {
+        let digits = 1 + next_random(mut seed) % 5;
+        let mut top = 1;
+        for _ in 0..digits {
+            top *= 10;
+        }
+        let n = 1 + next_random(mut seed) % (top - 1);
+        let t = count_special_numbers(n);
+        check = (check * 31 + t) % 1000000007;
+        if t > count_special_numbers(n - 1) or n == 1 {
+            special += 1;
+        }
+    }
+    println(f"2000 values: checksum {check}, {special} special themselves");
+}

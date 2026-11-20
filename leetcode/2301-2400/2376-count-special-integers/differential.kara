@@ -1,0 +1,345 @@
+// LeetCode #2376: Count Special Integers -- the differential. The six
+// arms, against the statement read literally: every integer from 1 to n
+// taken apart by % 10 and counted when no digit comes twice. No digit
+// arithmetic on n. 300 random n of 1 to 5 digits, which the literal
+// reading answers; then 30 of 6 or 7 digits; then 30 special numbers of 4
+// to 6 different digits. Every case is drawn before any arm answers.
+//
+// P1  up to 5 digits, the answer is the literal reading's
+// P2  less the answer for n - 1: 1 when n's digits are all different,
+//     else 0
+// P3  from 1 to n
+// P4  for n + e, e from 1 to 1000: from the answer to the answer plus e
+// P5  every digit after n's first repeated one made 0: the same answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn distinct(v: i64) -> bool {
+    let mut seen = 0;
+    let mut x = v;
+    while x > 0 {
+        let d = x % 10;
+        if seen & (1 << d) != 0 {
+            return false;
+        }
+        seen = seen | (1 << d);
+        x /= 10;
+    }
+    true
+}
+
+fn special_literally(n: i64) -> i64 {
+    let mut count = 0;
+    for v in 1..n + 1 {
+        if distinct(v) {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn zero_after_repeat(n: i64) -> i64 {
+    let digits: Vec[i64] = n.to_string().bytes().iter().map(|b| (b - b'0') as i64).collect();
+    let mut seen = 0;
+    let mut out = 0;
+    let mut repeated = false;
+    for d in digits.iter() {
+        out = out * 10 + if repeated { 0 } else { d };
+        if seen & (1 << d) != 0 {
+            repeated = true;
+        }
+        seen = seen | (1 << d);
+    }
+    out
+}
+
+// ---- star (special.kara) -------------------------------------------------
+
+fn star_arrangements(free: i64, places: i64) -> i64 {
+    let mut ways = 1;
+    for k in 0..places {
+        ways *= free - k;
+    }
+    ways
+}
+
+fn star_count_special_numbers(n: i64) -> i64 {
+    let digits: Vec[i64] = n.to_string().bytes().iter().map(|b| (b - b'0') as i64).collect();
+    let len = digits.len();
+    let mut count = 0;
+    for l in 1..len {
+        count += 9 * star_arrangements(9, l - 1);
+    }
+    let mut used: Vec[bool] = Vec.filled(10, false);
+    for i in 0..len {
+        let low = if i == 0 { 1 } else { 0 };
+        for d in low..digits[i] {
+            if not used[d] {
+                count += star_arrangements(9 - i, len - 1 - i);
+            }
+        }
+        if used[digits[i]] {
+            return count;
+        }
+        used[digits[i]] = true;
+    }
+    count + 1
+}
+
+// ---- memo (special_memo.kara) --------------------------------------------
+
+fn memo_count_from(digits: Vec[i64], pos: i64, mask: i64, tight: bool, started: bool, memo: mut ref Vec[i64]) -> i64 {
+    if pos == digits.len() {
+        return if started { 1 } else { 0 };
+    }
+    let key = pos * 1024 + mask;
+    if not tight and started and memo[key] >= 0 {
+        return memo[key];
+    }
+    let top = if tight { digits[pos] } else { 9 };
+    let mut total = 0;
+    for d in 0..top + 1 {
+        if not started and d == 0 {
+            total += memo_count_from(digits, pos + 1, mask, tight and d == top, false, mut memo);
+        } else if mask & (1 << d) == 0 {
+            total += memo_count_from(digits, pos + 1, mask | (1 << d), tight and d == top, true, mut memo);
+        }
+    }
+    if not tight and started {
+        memo[key] = total;
+    }
+    total
+}
+
+fn memo_count_special_numbers(n: i64) -> i64 {
+    let digits: Vec[i64] = n.to_string().bytes().iter().map(|b| (b - b'0') as i64).collect();
+    let mut memo: Vec[i64] = Vec.filled(digits.len() * 1024, -1);
+    memo_count_from(digits, 0, 0, true, false, mut memo)
+}
+
+// ---- dfs (special_dfs.kara) ----------------------------------------------
+
+fn dfs_extend(value: i64, used: i64, n: i64) -> i64 {
+    let mut count = 1;
+    for d in 0..10 {
+        if used & (1 << d) == 0 {
+            let next = value * 10 + d;
+            if next > n {
+                break;
+            }
+            count += dfs_extend(next, used | (1 << d), n);
+        }
+    }
+    count
+}
+
+fn dfs_count_special_numbers(n: i64) -> i64 {
+    let mut count = 0;
+    for d in 1..10 {
+        if d > n {
+            break;
+        }
+        count += dfs_extend(d, 1 << d, n);
+    }
+    count
+}
+
+// ---- below (special_below.kara) ------------------------------------------
+
+fn below_count_special_numbers(n: i64) -> i64 {
+    let mut fact: Vec[i64] = Vec.filled(11, 1);
+    for k in 1..11 {
+        fact[k] = fact[k - 1] * k;
+    }
+    let digits: Vec[i64] = (n + 1).to_string().bytes().iter().map(|b| (b - b'0') as i64).collect();
+    let len = digits.len();
+    let mut count = 0;
+    for l in 1..len {
+        count += 9 * fact[9] / fact[9 - (l - 1)];
+    }
+    let mut seen: Vec[bool] = Vec.filled(10, false);
+    for i in 0..len {
+        let low = if i == 0 { 1 } else { 0 };
+        for d in low..digits[i] {
+            if not seen[d] {
+                count += fact[9 - i] / fact[9 - i - (len - 1 - i)];
+            }
+        }
+        if seen[digits[i]] {
+            break;
+        }
+        seen[digits[i]] = true;
+    }
+    count
+}
+
+// ---- iter (special_iter.kara) --------------------------------------------
+
+fn iter_count_special_numbers(n: i64) -> i64 {
+    let digits: Vec[i64] = n.to_string().bytes().iter().map(|b| (b - b'0') as i64).collect();
+    let len = digits.len();
+    let shorter: i64 = (1..len).map(|l| 9 * (0..l - 1).map(|k| 9 - k).product()).sum();
+    let (count, _, whole) = digits.iter().enumerate().fold((shorter, 0, true), |state: (i64, i64, bool), (i, d)| {
+        let (count, mask, whole) = state;
+        if not whole {
+            (count, mask, false)
+        } else {
+            let low = if i == 0 { 1 } else { 0 };
+            let below: i64 = (low..d).filter(|x| mask & (1 << x) == 0).count();
+            let rest: i64 = (0..len - 1 - i).map(|k| 9 - i - k).product();
+            (count + below * rest, mask | (1 << d), mask & (1 << d) == 0)
+        }
+    });
+    if whole { count + 1 } else { count }
+}
+
+// ---- solution (special_solution.kara) ------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn count_special_numbers(n: i32) -> i32 {
+        let s: Vec[u8] = n.to_string().bytes().to_vec();
+        let m = s.len();
+        let mut res: i32 = 0;
+        for len in 1..m {
+            let mut cur: i32 = 9;
+            for k in 0..len - 1 {
+                cur *= 9 - k as i32;
+            }
+            res += cur;
+        }
+        let mut used = [false; 10];
+        for i in 0..m {
+            let d = (s[i] - b'0') as usize;
+            let start = if i == 0 { 1 } else { 0 };
+            for x in start..d {
+                if not used[x] {
+                    let mut cur: i32 = 1;
+                    for k in 0..(m - 1 - i) {
+                        cur *= (9 - i - k) as i32;
+                    }
+                    res += cur;
+                }
+            }
+            if used[d] {
+                return res;
+            }
+            used[d] = true;
+        }
+        res + 1
+    }
+}
+
+fn solution_count_special_numbers(n: i64) -> i64 {
+    Solution.count_special_numbers(n as i32)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, n: i64) -> i64 {
+    match arm {
+        0 => star_count_special_numbers(n),
+        1 => memo_count_special_numbers(n),
+        2 => dfs_count_special_numbers(n),
+        3 => below_count_special_numbers(n),
+        4 => iter_count_special_numbers(n),
+        _ => solution_count_special_numbers(n),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "memo", "dfs", "below", "iter", "solution"];
+    let mut seed = 2376;
+    let mut cases: Vec[i64] = Vec.new();
+    for c in 0..360 {
+        let n = if c < 300 {
+            let digits = 1 + next_random(mut seed) % 5;
+            let mut top = 1;
+            for _ in 0..digits {
+                top *= 10;
+            }
+            1 + next_random(mut seed) % (top - 1)
+        } else if c < 330 {
+            100000 + next_random(mut seed) % 9900000
+        } else {
+            let len = 4 + next_random(mut seed) % 3;
+            let mut low = 1;
+            for _ in 1..len {
+                low *= 10;
+            }
+            let mut used = 0;
+            let mut v = 0;
+            while v < low {
+                let d = next_random(mut seed) % 10;
+                if used & (1 << d) == 0 and (v > 0 or d > 0) {
+                    used = used | (1 << d);
+                    v = v * 10 + d;
+                }
+            }
+            v
+        };
+        cases.push(n);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let n = cases[c];
+        let small = n < 100000;
+        let truth = if small { special_literally(n) } else { 0 };
+        if small {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let e = 1 + (c * 37) % 1000;
+        let zeroed = zero_after_repeat(n);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, n)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let step = if n == 1 { value } else { value - answer(arm, n - 1) };
+            let further = answer(arm, n + e) - value;
+            let verdicts = [
+                not small or value == truth,
+                step == if distinct(n) { 1 } else { 0 },
+                value >= 1 and value <= n,
+                further >= 0 and further <= e,
+                zeroed == n or answer(arm, zeroed) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
