@@ -1,0 +1,70 @@
+// LeetCode #2369: Check if There is a Valid Partition For The Array --
+// iterators: the values folded into the last two values and whether the
+// first i - 2, i - 1 and i values split, each value rolling them on.
+
+fn valid_partition(nums: Vec[i64]) -> bool {
+    // before any value: no values to match, and only the empty prefix splits
+    let start = (-10, -10, false, false, true);
+    let (_, _, _, _, last) = nums.iter().fold(start, |(c, b, three, two, one), a| {
+        let pair = a == b and two;
+        let triple = three and ((a == b and b == c) or (b == c + 1 and a == b + 1));
+        (b, a, two, one, pair or triple)
+    });
+    last
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; two values; 10^5 equal values; 99999 and
+    // 10^5 values rising by one; 99999 values in rising threes from 10^6
+    // down; then 3000 arrays of 2 to 30 values built from random blocks,
+    // each block of two or three equal values or three rising, and with a
+    // chance of 1 in 3 one value then changed by one
+    println(f"{valid_partition([4, 4, 4, 5, 6])}");
+    println(f"{valid_partition([1, 1, 1, 2])}");
+    println(f"{valid_partition([7, 7])}");
+    let same: Vec[i64] = (0..100000).map(|_| 1000000).collect();
+    println(f"{valid_partition(same)}");
+    let rising: Vec[i64] = (1..100001).collect();
+    println(f"{valid_partition(rising[0..99999].to_vec())} {valid_partition(rising)}");
+    let threes: Vec[i64] = (0..99999).map(|i| 1000000 - 3 * (i / 3) - 2 + i % 3).collect();
+    println(f"{valid_partition(threes)}");
+    let mut seed = 2369;
+    let mut check = 0;
+    let mut valid = 0;
+    for c in 0..3000 {
+        let target = 2 + next_random(mut seed) % 29;
+        let mut nums: Vec[i64] = Vec.new();
+        while nums.len() < target {
+            let kind = next_random(mut seed) % 3;
+            let v = 1 + next_random(mut seed) % 6;
+            if kind == 0 {
+                nums.push(v);
+                nums.push(v);
+            } else if kind == 1 {
+                nums.push(v);
+                nums.push(v);
+                nums.push(v);
+            } else {
+                nums.push(v);
+                nums.push(v + 1);
+                nums.push(v + 2);
+            }
+        }
+        if next_random(mut seed) % 3 == 0 {
+            let at = next_random(mut seed) % nums.len();
+            nums[at] += 1;
+        }
+        if valid_partition(nums) {
+            valid += 1;
+            check = (check * 31 + c + nums.len()) % 1000000007;
+        }
+    }
+    println(f"3000 arrays: checksum {check}, {valid} valid");
+}

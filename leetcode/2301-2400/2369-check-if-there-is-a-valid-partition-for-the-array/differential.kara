@@ -1,0 +1,320 @@
+// LeetCode #2369: Check if There is a Valid Partition For The Array --
+// the differential. The six arms, against the statement read literally:
+// every way of cutting the array into contiguous pieces, one cut mask of
+// n - 1 bits at a time, and the array valid when some way leaves every
+// piece two equal values, three equal values or three consecutive rising
+// values. No recurrence. 300 arrays of 2 to 16 values built from random
+// blocks, a third of them with one value then raised by one; then 30 of
+// up to 2000 values built the same way; then 30 of up to 16 values built
+// from blocks some of which are three falling values or three rising by
+// two. Every case is drawn before any arm answers.
+//
+// P1  up to 16 values, the answer is the literal reading's
+// P2  an array built from blocks and left unchanged: valid
+// P3  every value x written 10^6 + 1 - x, in reverse order: the same answer
+// P4  a pair of 10^6 put in front: the same answer
+// P5  the array written twice: valid when it is
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn piece_valid(nums: Vec[i64], from: i64, to: i64) -> bool {
+    let len = to - from;
+    if len == 2 {
+        return nums[from] == nums[from + 1];
+    }
+    if len == 3 {
+        let (a, b, c) = (nums[from], nums[from + 1], nums[from + 2]);
+        return (a == b and b == c) or (b == a + 1 and c == b + 1);
+    }
+    false
+}
+
+fn valid_literally(nums: Vec[i64]) -> bool {
+    let n = nums.len();
+    for mask in 0..1 << (n - 1) {
+        let mut from = 0;
+        let mut all = true;
+        for to in 1..n + 1 {
+            if to == n or (mask >> (to - 1)) & 1 == 1 {
+                if not piece_valid(nums, from, to) {
+                    all = false;
+                }
+                from = to;
+            }
+        }
+        if all {
+            return true;
+        }
+    }
+    false
+}
+
+// ---- star (partition.kara) -----------------------------------------------
+
+fn star_valid_partition(nums: Vec[i64]) -> bool {
+    let n = nums.len();
+    let mut good: Vec[bool] = Vec.filled(n + 1, false);
+    good[0] = true;
+    for i in 2..n + 1 {
+        let a = nums[i - 1];
+        let b = nums[i - 2];
+        if a == b and good[i - 2] {
+            good[i] = true;
+        }
+        if i >= 3 and good[i - 3] {
+            let c = nums[i - 3];
+            if (a == b and b == c) or (b == c + 1 and a == b + 1) {
+                good[i] = true;
+            }
+        }
+    }
+    good[n]
+}
+
+// ---- rolling (partition_rolling.kara) ------------------------------------
+
+fn rolling_valid_partition(nums: Vec[i64]) -> bool {
+    let n = nums.len();
+    let mut three = false;
+    let mut two = true;
+    let mut one = false;
+    for i in 2..n + 1 {
+        let a = nums[i - 1];
+        let b = nums[i - 2];
+        let mut now = a == b and two;
+        if i >= 3 {
+            let c = nums[i - 3];
+            if three and ((a == b and b == c) or (b == c + 1 and a == b + 1)) {
+                now = true;
+            }
+        }
+        three = two;
+        two = one;
+        one = now;
+    }
+    one
+}
+
+// ---- memo (partition_memo.kara) ------------------------------------------
+
+fn memo_splits(nums: Vec[i64], i: i64, memo: mut ref Vec[i64]) -> bool {
+    let n = nums.len();
+    if i == n {
+        return true;
+    }
+    if memo[i] >= 0 {
+        return memo[i] == 1;
+    }
+    let mut ok = false;
+    if i + 2 <= n and nums[i] == nums[i + 1] and memo_splits(nums, i + 2, mut memo) {
+        ok = true;
+    }
+    if not ok and i + 3 <= n {
+        let (a, b, c) = (nums[i], nums[i + 1], nums[i + 2]);
+        if ((a == b and b == c) or (b == a + 1 and c == b + 1)) and memo_splits(nums, i + 3, mut memo) {
+            ok = true;
+        }
+    }
+    memo[i] = if ok { 1 } else { 0 };
+    ok
+}
+
+fn memo_valid_partition(nums: Vec[i64]) -> bool {
+    let mut memo: Vec[i64] = Vec.filled(nums.len(), -1);
+    memo_splits(nums, 0, mut memo)
+}
+
+// ---- push (partition_push.kara) ------------------------------------------
+
+fn push_valid_partition(nums: Vec[i64]) -> bool {
+    let n = nums.len();
+    let mut reached: Vec[bool] = Vec.filled(n + 1, false);
+    reached[0] = true;
+    for i in 0..n {
+        if not reached[i] {
+            continue;
+        }
+        if i + 2 <= n and nums[i] == nums[i + 1] {
+            reached[i + 2] = true;
+        }
+        if i + 3 <= n {
+            let (a, b, c) = (nums[i], nums[i + 1], nums[i + 2]);
+            if (a == b and b == c) or (b == a + 1 and c == b + 1) {
+                reached[i + 3] = true;
+            }
+        }
+    }
+    reached[n]
+}
+
+// ---- iter (partition_iter.kara) ------------------------------------------
+
+fn iter_valid_partition(nums: Vec[i64]) -> bool {
+    // before any value: no values to match, and only the empty prefix splits
+    let start = (-10, -10, false, false, true);
+    let (_, _, _, _, last) = nums.iter().fold(start, |(c, b, three, two, one), a| {
+        let pair = a == b and two;
+        let triple = three and ((a == b and b == c) or (b == c + 1 and a == b + 1));
+        (b, a, two, one, pair or triple)
+    });
+    last
+}
+
+// ---- solution (partition_solution.kara) ----------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn valid_partition(nums: Vec[i32]) -> bool {
+        let n = nums.len();
+        let mut dp = Vec.filled(n + 1, false);
+        dp[0] = true;
+        for i in 1..=n {
+            if i >= 2 and nums[i - 1] == nums[i - 2] and dp[i - 2] {
+                dp[i] = true;
+            }
+            if i >= 3 and dp[i - 3] {
+                let (a, b, c) = (nums[i - 3], nums[i - 2], nums[i - 1]);
+                if (a == b and b == c) or (b == a + 1 and c == b + 1) {
+                    dp[i] = true;
+                }
+            }
+        }
+        dp[n]
+    }
+}
+
+fn solution_valid_partition(nums: Vec[i64]) -> bool {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.valid_partition(nums)
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64]) -> bool {
+    match arm {
+        0 => star_valid_partition(nums),
+        1 => rolling_valid_partition(nums),
+        2 => memo_valid_partition(nums),
+        3 => push_valid_partition(nums),
+        4 => iter_valid_partition(nums),
+        _ => solution_valid_partition(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "rolling", "memo", "push", "iter", "solution"];
+    let mut seed = 2369;
+    let mut cases: Vec[(Vec[i64], bool)] = Vec.new();
+    for c in 0..360 {
+        if c >= 330 {
+            // blocks that look valid but are not: three falling, or rising by two
+            let mut nums: Vec[i64] = Vec.new();
+            let mut built = true;
+            loop {
+                let kind = next_random(mut seed) % 5;
+                let v = 1 + next_random(mut seed) % 6;
+                let block: Vec[i64] = match kind {
+                    0 => [v, v].to_vec(),
+                    1 => [v, v, v].to_vec(),
+                    2 => [v, v + 1, v + 2].to_vec(),
+                    3 => [v + 2, v + 1, v].to_vec(),
+                    _ => [v, v + 2, v + 4].to_vec(),
+                };
+                if nums.len() + block.len() > 16 {
+                    break;
+                }
+                if kind >= 3 {
+                    built = false;
+                }
+                nums.extend(block.iter());
+            }
+            cases.push((nums, built));
+            continue;
+        }
+        let target = if c < 300 { 2 + next_random(mut seed) % 15 } else { 2 + next_random(mut seed) % 1999 };
+        let mut nums: Vec[i64] = Vec.new();
+        while nums.len() < target {
+            let kind = next_random(mut seed) % 3;
+            let v = 1 + next_random(mut seed) % 6;
+            let block: Vec[i64] = if kind == 0 { [v, v].to_vec() } else if kind == 1 { [v, v, v].to_vec() } else { [v, v + 1, v + 2].to_vec() };
+            if c < 300 and nums.len() + block.len() > 16 {
+                break;
+            }
+            nums.extend(block.iter());
+        }
+        if nums.len() < 2 {
+            nums = [1, 1].to_vec();
+        }
+        let mut built = true;
+        if next_random(mut seed) % 3 == 0 {
+            let at = next_random(mut seed) % nums.len();
+            nums[at] += 1;
+            built = false;
+        }
+        cases.push((nums, built));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (nums, built) = cases[c].clone();
+        let small = nums.len() <= 16;
+        let truth = small and valid_literally(nums);
+        if small {
+            check = (check * 31 + c + if truth { 1 } else { 0 }) % 1000000007;
+        }
+        let mut turned: Vec[i64] = nums.iter().map(|x| 1000001 - x).collect();
+        turned.reverse();
+        let mut fronted: Vec[i64] = [1000000, 1000000].to_vec();
+        fronted.extend(nums.iter());
+        let mut twice = nums.clone();
+        twice.extend(nums.iter());
+        let got: Vec[bool] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                not built or value,
+                answer(arm, turned) == value,
+                answer(arm, fronted) == value,
+                not value or answer(arm, twice),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
