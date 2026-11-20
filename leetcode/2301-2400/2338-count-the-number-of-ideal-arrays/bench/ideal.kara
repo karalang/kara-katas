@@ -1,0 +1,70 @@
+// LeetCode #2338: Count the Number of Ideal Arrays -- the bench, the ★ arm:
+// the strictly increasing divisor chains of each length counted level by
+// level, each level pushing its counts on to every multiple, and each
+// length k + 1 spread over the n places in C(n - 1, k) ways.
+const MODULUS: i64 = 1000000007;
+const LONGEST: i64 = 14;
+
+fn power(base: i64, exp: i64) -> i64 {
+    let mut result = 1;
+    let mut base = base % MODULUS;
+    let mut exp = exp;
+    while exp > 0 {
+        if exp % 2 == 1 {
+            result = result * base % MODULUS;
+        }
+        base = base * base % MODULUS;
+        exp /= 2;
+    }
+    result
+}
+
+// C(m, k) for k from 0 below `count`, each from the one before.
+fn binomials(m: i64, count: i64) -> Vec[i64] {
+    let mut out: Vec[i64] = [1].to_vec();
+    for k in 1..count {
+        let next = out[k - 1] * ((m - k + 1) % MODULUS) % MODULUS * power(k, MODULUS - 2) % MODULUS;
+        out.push(next);
+    }
+    out
+}
+
+fn ideal_arrays(n: i64, max_value: i64) -> i64 {
+    let ways = binomials(n - 1, LONGEST);
+    let mut ends: Vec[i64] = Vec.filled(max_value + 1, 1);
+    ends[0] = 0;
+    let mut answer = 0;
+    for k in 0..LONGEST {
+        let mut total = 0;
+        for v in 1..=max_value {
+            total = (total + ends[v]) % MODULUS;
+        }
+        answer = (answer + total * ways[k]) % MODULUS;
+        let mut following: Vec[i64] = Vec.filled(max_value + 1, 0);
+        for d in 1..=max_value {
+            if ends[d] != 0 {
+                let mut m = 2 * d;
+                while m <= max_value {
+                    following[m] = (following[m] + ends[d]) % MODULUS;
+                    m += d;
+                }
+            }
+        }
+        ends = following;
+    }
+    answer
+}
+
+fn scrambled(index: i64) -> i64 {
+    index * 2654435761 % 2147483647
+}
+
+fn main() {
+    let mut check = 0;
+    for q in 0..300 {
+        let n = 2 + scrambled(q + 1) % 9999;
+        let max_value = 5000 + scrambled(q + 1001) % 5001;
+        check = (check * 31 + ideal_arrays(n, max_value)) % 1000000007;
+    }
+    println(f"300 queries of n up to 10^4 and maxValue 5000 to 10^4: checksum {check}");
+}

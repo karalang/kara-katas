@@ -1,0 +1,78 @@
+// LeetCode #2338: Count the Number of Ideal Arrays -- iterators: each
+// value's proper divisors listed by a sieve with `step_by`; each level of
+// chain counts `map`ped from the level before by a `fold` over the
+// divisors; the binomials C(n - 1, k) threaded by `scan`; and the levels'
+// totals `zip`ped with them and folded into the answer.
+
+const MODULUS: i64 = 1000000007;
+const LONGEST: i64 = 14;
+
+fn power(base: i64, exp: i64) -> i64 {
+    let mut result = 1;
+    let mut base = base % MODULUS;
+    let mut exp = exp;
+    while exp > 0 {
+        if exp % 2 == 1 {
+            result = result * base % MODULUS;
+        }
+        base = base * base % MODULUS;
+        exp /= 2;
+    }
+    result
+}
+
+fn ideal_arrays(n: i64, max_value: i64) -> i64 {
+    let mut divisors: Vec[Vec[i64]] = (0..=max_value).map(|_| Vec.new()).collect();
+    for d in 1..=max_value {
+        for m in (2 * d..=max_value).step_by(d) {
+            divisors[m].push(d);
+        }
+    }
+    let ways: Vec[i64] = (0..LONGEST)
+        .scan(1, |c, k| {
+            let next = c * ((n - 1 - k) % MODULUS) % MODULUS * power(k + 1, MODULUS - 2) % MODULUS;
+            Some((next, c))
+        })
+        .collect();
+    let mut level: Vec[i64] = (0..=max_value).map(|v| if v == 0 { 0 } else { 1 }).collect();
+    let mut totals: Vec[i64] = Vec.new();
+    for _ in 0..LONGEST {
+        totals.push(level.iter().fold(0, |s, x| (s + x) % MODULUS));
+        level = (0..=max_value)
+            .map(|v| divisors[v].iter().fold(0, |s, d| (s + level[d]) % MODULUS))
+            .collect();
+    }
+    totals.iter().zip(ways.iter()).fold(0, |s, (t, w)| (s + t * w) % MODULUS)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; then a single value allowed, ten thousand
+    // places of it, ten thousand places up to 60, three places up to ten
+    // thousand, and 300 places up to 3000
+    println(f"{ideal_arrays(2, 5)}");
+    println(f"{ideal_arrays(5, 3)}");
+    println(f"{ideal_arrays(2, 1)}");
+    println(f"{ideal_arrays(10000, 1)}");
+    println(f"{ideal_arrays(10000, 60)}");
+    println(f"{ideal_arrays(3, 10000)}");
+    println(f"{ideal_arrays(300, 3000)}");
+    // 2000 random cases of 2 to 40 places and values up to 1 to 80
+    let mut seed = 2338;
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..2000 {
+        let n = 2 + next_random(mut seed) % 39;
+        let max_value = 1 + next_random(mut seed) % 80;
+        let count = ideal_arrays(n, max_value);
+        check = (check * 31 + count) % 1000000007;
+        total += count;
+    }
+    println(f"2000 cases: checksum {check}, total {total}");
+}

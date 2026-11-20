@@ -1,0 +1,59 @@
+// LeetCode #2338: Count the Number of Ideal Arrays -- place by place: the
+// arrays of length i ending at each value, and each of them extended by
+// every multiple of its last value to make the arrays of length i + 1.
+// O(n maxValue log maxValue).
+
+const MODULUS: i64 = 1000000007;
+
+fn ideal_arrays(n: i64, max_value: i64) -> i64 {
+    let mut ending: Vec[i64] = Vec.filled(max_value + 1, 1);
+    ending[0] = 0;
+    for _ in 1..n {
+        let mut longer: Vec[i64] = Vec.filled(max_value + 1, 0);
+        for last in 1..=max_value {
+            let mut next = last;
+            while next <= max_value {
+                longer[next] = (longer[next] + ending[last]) % MODULUS;
+                next += last;
+            }
+        }
+        ending = longer;
+    }
+    let mut answer = 0;
+    for v in 1..=max_value {
+        answer = (answer + ending[v]) % MODULUS;
+    }
+    answer
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; then a single value allowed, ten thousand
+    // places of it, ten thousand places up to 60, three places up to ten
+    // thousand, and 300 places up to 3000
+    println(f"{ideal_arrays(2, 5)}");
+    println(f"{ideal_arrays(5, 3)}");
+    println(f"{ideal_arrays(2, 1)}");
+    println(f"{ideal_arrays(10000, 1)}");
+    println(f"{ideal_arrays(10000, 60)}");
+    println(f"{ideal_arrays(3, 10000)}");
+    println(f"{ideal_arrays(300, 3000)}");
+    // 2000 random cases of 2 to 40 places and values up to 1 to 80
+    let mut seed = 2338;
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..2000 {
+        let n = 2 + next_random(mut seed) % 39;
+        let max_value = 1 + next_random(mut seed) % 80;
+        let count = ideal_arrays(n, max_value);
+        check = (check * 31 + count) % 1000000007;
+        total += count;
+    }
+    println(f"2000 cases: checksum {check}, total {total}");
+}
