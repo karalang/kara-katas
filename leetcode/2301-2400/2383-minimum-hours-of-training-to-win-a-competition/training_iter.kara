@@ -1,0 +1,51 @@
+// LeetCode #2383: Minimum Hours of Training to Win a Competition --
+// iterators. The energy trained from the opponents' `sum`, the experience
+// by a `fold` carrying what it has and the hours trained so far. O(n).
+
+fn min_number_of_hours(initial_energy: i64, initial_experience: i64, energy: Vec[i64], experience: Vec[i64]) -> i64 {
+    let energy_hours = (energy.iter().sum() + 1 - initial_energy).max(0);
+    let (_, experience_hours) = experience.iter().fold((initial_experience, 0), |state: (i64, i64), e| {
+        let (have, hours) = state;
+        let lack = (e + 1 - have).max(0);
+        (have + lack + e, hours + lack)
+    });
+    energy_hours + experience_hours
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; one opponent, met exactly; 100 opponents of
+    // 100 from 1 and 1, and from 100 and 100; then 3000 random contests of
+    // 1 to 100 opponents of 1 to 100, starting from 1 to 100, with a
+    // checksum, the total and how many need no training
+    println(f"{min_number_of_hours(5, 3, [1, 4, 3, 2], [2, 6, 3, 1])}");
+    println(f"{min_number_of_hours(2, 4, [1], [3])}");
+    println(f"{min_number_of_hours(3, 3, [3], [3])}");
+    let strong: Vec[i64] = Vec.filled(100, 100);
+    println(f"{min_number_of_hours(1, 1, strong, strong)} {min_number_of_hours(100, 100, strong, strong)}");
+    let mut seed = 2383;
+    let mut check = 0;
+    let mut total = 0;
+    let mut none = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 100;
+        let top = 1 + next_random(mut seed) % 100;
+        let initial_energy = 1 + next_random(mut seed) % 100;
+        let initial_experience = 1 + next_random(mut seed) % 100;
+        let energy: Vec[i64] = (0..n).map(|_| 1 + next_random(mut seed) % top).collect();
+        let experience: Vec[i64] = (0..n).map(|_| 1 + next_random(mut seed) % top).collect();
+        let hours = min_number_of_hours(initial_energy, initial_experience, energy, experience);
+        check = (check * 31 + hours) % 1000000007;
+        total += hours;
+        if hours == 0 {
+            none += 1;
+        }
+    }
+    println(f"3000 contests: checksum {check}, {total} hours in all, {none} needing none");
+}

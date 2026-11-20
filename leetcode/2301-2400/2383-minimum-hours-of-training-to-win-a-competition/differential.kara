@@ -1,0 +1,273 @@
+// LeetCode #2383: Minimum Hours of Training to Win a Competition -- the
+// differential. The six arms, against the statement read literally: every
+// number of hours from none upward, and every split of them between
+// energy and experience, the contest played out, until one split wins.
+// No shortfall worked out. 300 random contests of 1 to 6 opponents of 1
+// to 10, starting from 1 to 10, which the literal reading answers; then
+// 30 of up to 100 opponents of up to 100; then 30 of up to 100 opponents
+// of 1 to 3, starting from 1 to 3, where a tie loses. Every case is drawn
+// before any arm answers.
+//
+// P1  up to 6 opponents of up to 10, the answer is the literal reading's
+// P2  at least the energy short of one above the opponents' sum, and at
+//     most that plus the experience short of one above the strongest
+// P3  the answer's hours, the energy trained to one above the sum and the
+//     rest to experience, win the contest
+// P4  one hour fewer loses, whether the energy or the experience goes
+//     without it
+// P5  each start one more: the same answer or up to two less
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn wins(energy_start: i64, experience_start: i64, energy: Vec[i64], experience: Vec[i64]) -> bool {
+    let mut energy_left = energy_start;
+    let mut have = experience_start;
+    for i in 0..energy.len() {
+        if energy_left <= energy[i] or have <= experience[i] {
+            return false;
+        }
+        energy_left -= energy[i];
+        have += experience[i];
+    }
+    true
+}
+
+fn hours_literally(initial_energy: i64, initial_experience: i64, energy: Vec[i64], experience: Vec[i64]) -> i64 {
+    let mut hours = 0;
+    loop {
+        for to_energy in 0..hours + 1 {
+            if wins(initial_energy + to_energy, initial_experience + hours - to_energy, energy, experience) {
+                return hours;
+            }
+        }
+        hours += 1;
+    }
+}
+
+// ---- star (training.kara) ------------------------------------------------
+
+fn star_min_number_of_hours(initial_energy: i64, initial_experience: i64, energy: Vec[i64], experience: Vec[i64]) -> i64 {
+    let needed = energy.iter().sum() + 1;
+    let mut hours = 0;
+    if initial_energy < needed {
+        hours = needed - initial_energy;
+    }
+    let mut have = initial_experience;
+    for e in experience.iter() {
+        if have <= e {
+            hours += e + 1 - have;
+            have = e + 1;
+        }
+        have += e;
+    }
+    hours
+}
+
+// ---- each (training_each.kara) -------------------------------------------
+
+fn each_min_number_of_hours(initial_energy: i64, initial_experience: i64, energy: Vec[i64], experience: Vec[i64]) -> i64 {
+    let mut energy_left = initial_energy;
+    let mut have = initial_experience;
+    let mut hours = 0;
+    for i in 0..energy.len() {
+        while energy_left <= energy[i] {
+            energy_left += 1;
+            hours += 1;
+        }
+        while have <= experience[i] {
+            have += 1;
+            hours += 1;
+        }
+        energy_left -= energy[i];
+        have += experience[i];
+    }
+    hours
+}
+
+// ---- search (training_search.kara) ---------------------------------------
+
+fn search_beats(start: i64, opponents: Vec[i64], grows: bool) -> bool {
+    let mut have = start;
+    for o in opponents.iter() {
+        if have <= o {
+            return false;
+        }
+        if grows {
+            have += o;
+        } else {
+            have -= o;
+        }
+    }
+    true
+}
+
+fn search_least(start: i64, opponents: Vec[i64], grows: bool) -> i64 {
+    let mut low = 0;
+    let mut high = opponents.iter().sum() + 1;
+    while low < high {
+        let mid = (low + high) / 2;
+        if search_beats(start + mid, opponents, grows) {
+            high = mid;
+        } else {
+            low = mid + 1;
+        }
+    }
+    low
+}
+
+fn search_min_number_of_hours(initial_energy: i64, initial_experience: i64, energy: Vec[i64], experience: Vec[i64]) -> i64 {
+    search_least(initial_energy, energy, false) + search_least(initial_experience, experience, true)
+}
+
+// ---- prefix (training_prefix.kara) ---------------------------------------
+
+fn prefix_min_number_of_hours(initial_energy: i64, initial_experience: i64, energy: Vec[i64], experience: Vec[i64]) -> i64 {
+    let mut spent = 0;
+    let mut gained = 0;
+    let mut short_energy = 0;
+    let mut short_experience = 0;
+    for i in 0..energy.len() {
+        spent += energy[i];
+        short_energy = short_energy.max(spent + 1 - initial_energy);
+        short_experience = short_experience.max(experience[i] + 1 - initial_experience - gained);
+        gained += experience[i];
+    }
+    short_energy + short_experience
+}
+
+// ---- iter (training_iter.kara) -------------------------------------------
+
+fn iter_min_number_of_hours(initial_energy: i64, initial_experience: i64, energy: Vec[i64], experience: Vec[i64]) -> i64 {
+    let energy_hours = (energy.iter().sum() + 1 - initial_energy).max(0);
+    let (_, experience_hours) = experience.iter().fold((initial_experience, 0), |state: (i64, i64), e| {
+        let (have, hours) = state;
+        let lack = (e + 1 - have).max(0);
+        (have + lack + e, hours + lack)
+    });
+    energy_hours + experience_hours
+}
+
+// ---- solution (training_solution.kara) -----------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_number_of_hours(initial_energy: i32, initial_experience: i32, energy: Vec[i32], experience: Vec[i32]) -> i32 {
+        let total: i32 = energy.iter().sum();
+        let mut hours = (total + 1 - initial_energy).max(0);
+        let mut exp = initial_experience;
+        for e in ref experience {
+            if exp <= e {
+                hours += e + 1 - exp;
+                exp = e + 1;
+            }
+            exp += e;
+        }
+        hours
+    }
+}
+
+fn solution_min_number_of_hours(initial_energy: i64, initial_experience: i64, energy: Vec[i64], experience: Vec[i64]) -> i64 {
+    let energy: Vec[i32] = energy.iter().map(|v| v as i32).collect();
+    let experience: Vec[i32] = experience.iter().map(|v| v as i32).collect();
+    Solution.min_number_of_hours(initial_energy as i32, initial_experience as i32, energy, experience)
+}
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, initial_energy: i64, initial_experience: i64, energy: Vec[i64], experience: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_min_number_of_hours(initial_energy, initial_experience, energy, experience),
+        1 => each_min_number_of_hours(initial_energy, initial_experience, energy, experience),
+        2 => search_min_number_of_hours(initial_energy, initial_experience, energy, experience),
+        3 => prefix_min_number_of_hours(initial_energy, initial_experience, energy, experience),
+        4 => iter_min_number_of_hours(initial_energy, initial_experience, energy, experience),
+        _ => solution_min_number_of_hours(initial_energy, initial_experience, energy, experience),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "each", "search", "prefix", "iter", "solution"];
+    let mut seed = 2383;
+    let mut cases: Vec[(i64, i64, Vec[i64], Vec[i64])] = Vec.new();
+    for c in 0..360 {
+        let (n, top, start) = if c < 300 {
+            (1 + next_random(mut seed) % 6, 1 + next_random(mut seed) % 10, 10)
+        } else if c < 330 {
+            (1 + next_random(mut seed) % 100, 1 + next_random(mut seed) % 100, 100)
+        } else {
+            (1 + next_random(mut seed) % 100, 3, 3)
+        };
+        let initial_energy = 1 + next_random(mut seed) % start;
+        let initial_experience = 1 + next_random(mut seed) % start;
+        let energy: Vec[i64] = (0..n).map(|_| 1 + next_random(mut seed) % top).collect();
+        let experience: Vec[i64] = (0..n).map(|_| 1 + next_random(mut seed) % top).collect();
+        cases.push((initial_energy, initial_experience, energy, experience));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (ie, ix, energy, experience) = cases[c].clone();
+        let n = energy.len();
+        let small = c < 300;
+        let truth = if small { hours_literally(ie, ix, energy, experience) } else { 0 };
+        if small {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let need_energy = (energy.iter().sum() + 1 - ie).max(0);
+        let mut strongest = 0;
+        for i in 0..n {
+            strongest = strongest.max(experience[i]);
+        }
+        let need_experience = (strongest + 1 - ix).max(0);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, ie, ix, energy, experience)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let rest = value - need_energy;
+            let fresher = answer(arm, ie + 1, ix + 1, energy, experience);
+            let verdicts = [
+                not small or value == truth,
+                value >= need_energy and value <= need_energy + need_experience,
+                wins(ie + need_energy, ix + rest, energy, experience),
+                (need_energy == 0 or not wins(ie + need_energy - 1, ix + rest, energy, experience))
+                    and (rest <= 0 or not wins(ie + need_energy, ix + rest - 1, energy, experience)),
+                fresher <= value and fresher >= value - 2,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
