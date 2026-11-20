@@ -1,0 +1,39 @@
+// LeetCode #2375: Construct Smallest Number From DI String -- the bench,
+// the ★ arm: the digits 1 to n + 1 pushed on a stack, emptied at every I
+// and at the end, so each run of D's comes out falling.
+
+fn smallest_number(pattern: String) -> String {
+    let p = pattern.bytes();
+    let mut out: Vec[u8] = Vec.new();
+    let mut stack: Vec[u8] = Vec.new();
+    for i in 0..p.len() + 1 {
+        stack.push(b'1' + i as u8);
+        if i == p.len() or p[i] == b'I' {
+            while let Some(d) = stack.pop() {
+                out.push(d);
+            }
+        }
+    }
+    String.from_utf8(out).unwrap()
+}
+
+fn main() {
+    // every pattern of 1 to 8 letters, 510 in all
+    let mut patterns: Vec[String] = Vec.new();
+    for n in 1..9 {
+        for mask in 0..1 << n {
+            let letters: Vec[u8] = (0..n).map(|i| if (mask >> i) & 1 == 1 { b'D' } else { b'I' }).collect();
+            patterns.push(String.from_utf8(letters).unwrap());
+        }
+    }
+    let mut check = 0;
+    for p in 0..2000 {
+        for pattern in patterns.iter() {
+            let number = smallest_number(pattern);
+            for b in number.bytes().iter() {
+                check = (check * 31 + (b - b'0') + p) % 1000000007;
+            }
+        }
+    }
+    println(f"2000 passes over 510 patterns: checksum {check}");
+}

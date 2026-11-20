@@ -1,0 +1,51 @@
+// LeetCode #2375: Construct Smallest Number From DI String -- runs turned
+// around in place. The digits 1 to n + 1 written in order, and each run
+// of D's from place i to place j - 1 turned around over the digits i to
+// j, so that they fall across it. O(n).
+
+fn smallest_number(pattern: String) -> String {
+    let p = pattern.bytes();
+    let n = p.len();
+    let mut digits: Vec[u8] = (0..n + 1).map(|i| b'1' + i as u8).collect();
+    let mut i = 0;
+    while i < n {
+        if p[i] == b'D' {
+            let mut j = i;
+            while j < n and p[j] == b'D' {
+                j += 1;
+            }
+            digits[i..j + 1].reverse();
+            i = j;
+        } else {
+            i += 1;
+        }
+    }
+    String.from_utf8(digits).unwrap()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn main() {
+    // LeetCode's two examples; one letter of each; then every pattern of
+    // 1 to 8 letters, 510 in all, with a checksum of the numbers and how
+    // many begin with 1
+    println(smallest_number("IIIDIDDD"));
+    println(smallest_number("DDD"));
+    println(f"{smallest_number("I")} {smallest_number("D")}");
+    let mut check = 0;
+    let mut ones = 0;
+    let mut count = 0;
+    for n in 1..9 {
+        for mask in 0..1 << n {
+            let letters: Vec[u8] = (0..n).map(|i| if (mask >> i) & 1 == 1 { b'D' } else { b'I' }).collect();
+            let number = smallest_number(String.from_utf8(letters).unwrap());
+            let value: i64 = i64.parse(number).unwrap();
+            check = (check * 31 + value) % 1000000007;
+            if number.starts_with("1") {
+                ones += 1;
+            }
+            count += 1;
+        }
+    }
+    println(f"{count} patterns: checksum {check}, {ones} begin with 1");
+}

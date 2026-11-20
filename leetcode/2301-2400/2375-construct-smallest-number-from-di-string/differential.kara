@@ -1,0 +1,298 @@
+// LeetCode #2375: Construct Smallest Number From DI String -- the
+// differential. The six arms, against the statement read literally: every
+// number of n + 1 different digits from 1 to 9, tried from the smallest
+// up, and the first whose digits rise at each I and fall at each D. No
+// pruning and no use of the digits 1 to n + 1. Every pattern of 1 to 5
+// letters, 62 in all, which the literal reading answers; then 298 random
+// patterns of 6 to 8 letters. Every case is drawn before any arm answers.
+//
+// P1  up to 5 letters, the answer is the literal reading's
+// P2  n + 1 different digits that rise at each I and fall at each D
+// P3  an I appended, up to 7 letters: the answer followed by n + 2
+// P4  an I put in front, up to 7 letters: 1, then the answer with every
+//     digit one higher
+// P5  the digits are exactly 1 to n + 1
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn fits(p: Vec[u8], digits: Vec[u8]) -> bool {
+    for i in 0..p.len() {
+        let rising = digits[i + 1] > digits[i];
+        if rising != (p[i] == b'I') {
+            return false;
+        }
+    }
+    true
+}
+
+fn first_literally(p: Vec[u8], digits: mut ref Vec[u8], used: mut ref Vec[bool]) -> bool {
+    if digits.len() == p.len() + 1 {
+        return fits(p, digits);
+    }
+    for d in 1..10 {
+        if not used[d] {
+            used[d] = true;
+            digits.push(b'0' + d as u8);
+            if first_literally(p, mut digits, mut used) {
+                return true;
+            }
+            digits.pop();
+            used[d] = false;
+        }
+    }
+    false
+}
+
+fn smallest_literally(pattern: String) -> String {
+    let p: Vec[u8] = pattern.bytes().to_vec();
+    let mut digits: Vec[u8] = Vec.new();
+    let mut used: Vec[bool] = Vec.filled(10, false);
+    first_literally(p, mut digits, mut used);
+    String.from_utf8(digits).unwrap()
+}
+
+// ---- star (di.kara) ------------------------------------------------------
+
+fn star_smallest_number(pattern: String) -> String {
+    let p = pattern.bytes();
+    let mut out: Vec[u8] = Vec.new();
+    let mut stack: Vec[u8] = Vec.new();
+    for i in 0..p.len() + 1 {
+        stack.push(b'1' + i as u8);
+        if i == p.len() or p[i] == b'I' {
+            while let Some(d) = stack.pop() {
+                out.push(d);
+            }
+        }
+    }
+    String.from_utf8(out).unwrap()
+}
+
+// ---- reverse (di_reverse.kara) -------------------------------------------
+
+fn reverse_smallest_number(pattern: String) -> String {
+    let p = pattern.bytes();
+    let n = p.len();
+    let mut digits: Vec[u8] = (0..n + 1).map(|i| b'1' + i as u8).collect();
+    let mut i = 0;
+    while i < n {
+        if p[i] == b'D' {
+            let mut j = i;
+            while j < n and p[j] == b'D' {
+                j += 1;
+            }
+            digits[i..j + 1].reverse();
+            i = j;
+        } else {
+            i += 1;
+        }
+    }
+    String.from_utf8(digits).unwrap()
+}
+
+// ---- place (di_place.kara) -----------------------------------------------
+
+fn place_smallest_number(pattern: String) -> String {
+    let p = pattern.bytes();
+    let n = p.len();
+    let mut out: Vec[u8] = Vec.new();
+    for i in 0..n + 1 {
+        let mut s = i;
+        while s > 0 and p[s - 1] == b'D' {
+            s -= 1;
+        }
+        let mut j = i;
+        while j < n and p[j] == b'D' {
+            j += 1;
+        }
+        out.push(b'1' + (j - (i - s)) as u8);
+    }
+    String.from_utf8(out).unwrap()
+}
+
+// ---- search (di_search.kara) ---------------------------------------------
+
+fn search_extend(p: Vec[u8], digits: mut ref Vec[u8], used: mut ref Vec[bool]) -> bool {
+    if digits.len() == p.len() + 1 {
+        return true;
+    }
+    for d in 1..10 {
+        if used[d] {
+            continue;
+        }
+        let digit = b'0' + d as u8;
+        if digits.len() > 0 {
+            let last = digits[digits.len() - 1];
+            let rising = p[digits.len() - 1] == b'I';
+            if (rising and digit < last) or (not rising and digit > last) {
+                continue;
+            }
+        }
+        used[d] = true;
+        digits.push(digit);
+        if search_extend(p, mut digits, mut used) {
+            return true;
+        }
+        digits.pop();
+        used[d] = false;
+    }
+    false
+}
+
+fn search_smallest_number(pattern: String) -> String {
+    let p: Vec[u8] = pattern.bytes().to_vec();
+    let mut digits: Vec[u8] = Vec.new();
+    let mut used: Vec[bool] = Vec.filled(10, false);
+    search_extend(p, mut digits, mut used);
+    String.from_utf8(digits).unwrap()
+}
+
+// ---- iter (di_iter.kara) -------------------------------------------------
+
+fn iter_smallest_number(pattern: String) -> String {
+    let digits = pattern.split("I").fold(Vec.new(), |out: own Vec[u8], run| {
+        let mut out = out;
+        let start = out.len();
+        let k = run.len();
+        for d in (start..start + k + 1).rev() {
+            out.push(b'1' + d as u8);
+        }
+        out
+    });
+    String.from_utf8(digits).unwrap()
+}
+
+// ---- solution (di_solution.kara) -----------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn smallest_number(pattern: String) -> String {
+        let mut res = String.new();
+        let mut stack: Vec[char] = Vec.new();
+        for (i, c) in pattern.chars().chain(once('I')).enumerate() {
+            stack.push((b'1' + i as u8) as char);
+            if c == 'I' {
+                while let Some(d) = stack.pop() {
+                    res.push(d);
+                }
+            }
+        }
+        res
+    }
+}
+
+fn solution_smallest_number(pattern: String) -> String {
+    Solution.smallest_number(pattern)
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn answer(arm: i64, pattern: String) -> String {
+    match arm {
+        0 => star_smallest_number(pattern),
+        1 => reverse_smallest_number(pattern),
+        2 => place_smallest_number(pattern),
+        3 => search_smallest_number(pattern),
+        4 => iter_smallest_number(pattern),
+        _ => solution_smallest_number(pattern),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn lift(number: String) -> String {
+    let bytes: Vec[u8] = number.bytes().iter().map(|b| b + 1).collect();
+    String.from_utf8(bytes).unwrap()
+}
+
+fn main() {
+    let names = ["star", "reverse", "place", "search", "iter", "solution"];
+    let mut seed = 2375;
+    let mut cases: Vec[String] = Vec.new();
+    for n in 1..6 {
+        for mask in 0..1 << n {
+            let letters: Vec[u8] = (0..n).map(|i| if (mask >> i) & 1 == 1 { b'D' } else { b'I' }).collect();
+            cases.push(String.from_utf8(letters).unwrap());
+        }
+    }
+    while cases.len() < 360 {
+        let n = 6 + next_random(mut seed) % 3;
+        let letters: Vec[u8] = (0..n).map(|_| if next_random(mut seed) % 2 == 1 { b'D' } else { b'I' }).collect();
+        cases.push(String.from_utf8(letters).unwrap());
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let pattern = cases[c].clone();
+        let p: Vec[u8] = pattern.bytes().to_vec();
+        let n = p.len();
+        let small = n <= 5;
+        let truth = if small { smallest_literally(pattern) } else { "" };
+        if small {
+            let value: i64 = i64.parse(truth).unwrap();
+            check = (check * 31 + value) % 1000000007;
+        }
+        let appended = pattern + "I";
+        let fronted = "I" + pattern;
+        let got: Vec[String] = (0..6).map(|arm| answer(arm, pattern)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let digits: Vec[u8] = value.bytes().to_vec();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut seen: Vec[bool] = Vec.filled(10, false);
+            let mut distinct = digits.len() == n + 1;
+            let mut lowest = digits.len() == n + 1;
+            for d in digits.iter() {
+                if d < b'1' or d > b'9' or seen[d - b'0'] {
+                    distinct = false;
+                } else {
+                    seen[d - b'0'] = true;
+                    if (d - b'0') as i64 > n + 1 {
+                        lowest = false;
+                    }
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                distinct and fits(p, digits),
+                n == 8 or answer(arm, appended) == value + f"{n + 2}",
+                n == 8 or answer(arm, fronted) == "1" + lift(value),
+                distinct and lowest,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {pattern}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

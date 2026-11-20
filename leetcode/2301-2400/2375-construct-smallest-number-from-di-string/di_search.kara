@@ -1,0 +1,67 @@
+// LeetCode #2375: Construct Smallest Number From DI String -- search. The
+// digits chosen place by place, each place trying the unused digits from
+// 1 up and keeping one only when it rises or falls from the last as the
+// pattern says; the first number completed is the smallest. Backtracking,
+// at most 9 deep.
+
+fn extend(p: Vec[u8], digits: mut ref Vec[u8], used: mut ref Vec[bool]) -> bool {
+    if digits.len() == p.len() + 1 {
+        return true;
+    }
+    for d in 1..10 {
+        if used[d] {
+            continue;
+        }
+        let digit = b'0' + d as u8;
+        if digits.len() > 0 {
+            let last = digits[digits.len() - 1];
+            let rising = p[digits.len() - 1] == b'I';
+            if (rising and digit < last) or (not rising and digit > last) {
+                continue;
+            }
+        }
+        used[d] = true;
+        digits.push(digit);
+        if extend(p, mut digits, mut used) {
+            return true;
+        }
+        digits.pop();
+        used[d] = false;
+    }
+    false
+}
+
+fn smallest_number(pattern: String) -> String {
+    let p: Vec[u8] = pattern.bytes().to_vec();
+    let mut digits: Vec[u8] = Vec.new();
+    let mut used: Vec[bool] = Vec.filled(10, false);
+    extend(p, mut digits, mut used);
+    String.from_utf8(digits).unwrap()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn main() {
+    // LeetCode's two examples; one letter of each; then every pattern of
+    // 1 to 8 letters, 510 in all, with a checksum of the numbers and how
+    // many begin with 1
+    println(smallest_number("IIIDIDDD"));
+    println(smallest_number("DDD"));
+    println(f"{smallest_number("I")} {smallest_number("D")}");
+    let mut check = 0;
+    let mut ones = 0;
+    let mut count = 0;
+    for n in 1..9 {
+        for mask in 0..1 << n {
+            let letters: Vec[u8] = (0..n).map(|i| if (mask >> i) & 1 == 1 { b'D' } else { b'I' }).collect();
+            let number = smallest_number(String.from_utf8(letters).unwrap());
+            let value: i64 = i64.parse(number).unwrap();
+            check = (check * 31 + value) % 1000000007;
+            if number.starts_with("1") {
+                ones += 1;
+            }
+            count += 1;
+        }
+    }
+    println(f"{count} patterns: checksum {check}, {ones} begin with 1");
+}

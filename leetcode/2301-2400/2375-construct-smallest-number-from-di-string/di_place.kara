@@ -1,0 +1,50 @@
+// LeetCode #2375: Construct Smallest Number From DI String -- place by
+// place. Place i lies in a block of places from s to j, joined by D's,
+// with an I or an end on either side; the block takes the digits s + 1 to
+// j + 1, falling, so place i holds j + 1 - (i - s). Each place finds its
+// block by looking left and right. O(n^2), n at most 8.
+
+fn smallest_number(pattern: String) -> String {
+    let p = pattern.bytes();
+    let n = p.len();
+    let mut out: Vec[u8] = Vec.new();
+    for i in 0..n + 1 {
+        let mut s = i;
+        while s > 0 and p[s - 1] == b'D' {
+            s -= 1;
+        }
+        let mut j = i;
+        while j < n and p[j] == b'D' {
+            j += 1;
+        }
+        out.push(b'1' + (j - (i - s)) as u8);
+    }
+    String.from_utf8(out).unwrap()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn main() {
+    // LeetCode's two examples; one letter of each; then every pattern of
+    // 1 to 8 letters, 510 in all, with a checksum of the numbers and how
+    // many begin with 1
+    println(smallest_number("IIIDIDDD"));
+    println(smallest_number("DDD"));
+    println(f"{smallest_number("I")} {smallest_number("D")}");
+    let mut check = 0;
+    let mut ones = 0;
+    let mut count = 0;
+    for n in 1..9 {
+        for mask in 0..1 << n {
+            let letters: Vec[u8] = (0..n).map(|i| if (mask >> i) & 1 == 1 { b'D' } else { b'I' }).collect();
+            let number = smallest_number(String.from_utf8(letters).unwrap());
+            let value: i64 = i64.parse(number).unwrap();
+            check = (check * 31 + value) % 1000000007;
+            if number.starts_with("1") {
+                ones += 1;
+            }
+            count += 1;
+        }
+    }
+    println(f"{count} patterns: checksum {check}, {ones} begin with 1");
+}
