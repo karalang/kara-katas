@@ -1,0 +1,57 @@
+// LeetCode #2331: Evaluate Boolean Binary Tree -- the bench, the ★ arm.
+// A `match` on the node's value: a leaf is its own truth, and an OR or
+// an AND node is its two subtrees evaluated recursively and joined by
+// `or` or `and`, which stop at the first child that settles it. O(n).
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn evaluate_tree(root: Option[TreeNode]) -> bool {
+    let Some(node) = root else {
+        return false;
+    };
+    match node.val {
+        0 => false,
+        1 => true,
+        2 => evaluate_tree(node.left) or evaluate_tree(node.right),
+        _ => evaluate_tree(node.left) and evaluate_tree(node.right),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a full binary tree: a leaf once `depth` runs out or one time in 8,
+// otherwise an OR or an AND over two smaller trees
+fn random_tree(seed: mut ref i64, depth: i64) -> Option[TreeNode] {
+    if depth == 0 or next_random(mut seed) % 8 == 0 {
+        return Some(TreeNode { val: (next_random(mut seed) % 2) as i32, left: None, right: None });
+    }
+    let op = (next_random(mut seed) % 2 + 2) as i32;
+    let left = random_tree(mut seed, depth - 1);
+    let right = random_tree(mut seed, depth - 1);
+    Some(TreeNode { val: op, left: left, right: right })
+}
+
+fn main() {
+    // 200 random full trees of depth up to 14, built once; 500 passes
+    // evaluate every tree, pass `p` folding each truth into the checksum
+    let mut seed = 2331;
+    let mut trees: Vec[Option[TreeNode]] = Vec.new();
+    for _ in 0..200 {
+        trees.push(random_tree(mut seed, 14));
+    }
+    let mut check = 0;
+    for p in 0..500 {
+        for k in 0..200 {
+            let truth = if evaluate_tree(trees[k]) { 1 } else { 2 };
+            check = (check * 3 + truth + p) % 1000000007;
+        }
+    }
+    println(f"500 passes over 200 trees of depth up to 14: checksum {check}");
+}

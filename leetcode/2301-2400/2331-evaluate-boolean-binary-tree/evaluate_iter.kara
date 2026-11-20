@@ -1,0 +1,89 @@
+// LeetCode #2331: Evaluate Boolean Binary Tree -- iterators: a node's
+// children gathered from `[left, right]` by `filter_map`, evaluated by
+// `map`, and joined by `any` for an OR node and `all` for an AND node; a
+// leaf, with no children, is its own truth. O(n).
+
+fn evaluate_tree(root: Option[TreeNode]) -> bool {
+    let Some(node) = root else {
+        return false;
+    };
+    let children: Vec[TreeNode] = [node.left, node.right].into_iter().filter_map(|child| child).collect();
+    match node.val {
+        0 => false,
+        1 => true,
+        2 => children.iter().map(|child| evaluate_tree(Some(child))).any(|t| t),
+        _ => children.iter().map(|child| evaluate_tree(Some(child))).all(|t| t),
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+// LeetCode's TreeNode: an `i32` value and two children, with its `new`.
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+impl TreeNode {
+    fn new(val: i32) -> TreeNode {
+        TreeNode { val: val, left: None, right: None }
+    }
+}
+
+fn leaf(value: i64) -> Option[TreeNode] {
+    Some(TreeNode.new(value as i32))
+}
+
+fn join(op: i64, left: Option[TreeNode], right: Option[TreeNode]) -> Option[TreeNode] {
+    let node = TreeNode.new(op as i32);
+    node.left = left;
+    node.right = right;
+    Some(node)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a full binary tree: a leaf once `depth` runs out or one time in three,
+// otherwise an OR or an AND over two smaller trees
+fn random_tree(seed: mut ref i64, depth: i64) -> Option[TreeNode] {
+    if depth == 0 or next_random(mut seed) % 3 == 0 {
+        return leaf(next_random(mut seed) % 2);
+    }
+    let op = next_random(mut seed) % 2 + 2;
+    let left = random_tree(mut seed, depth - 1);
+    let right = random_tree(mut seed, depth - 1);
+    join(op, left, right)
+}
+
+fn main() {
+    // LeetCode's two examples; then a lone true leaf, an AND of false and
+    // true, an OR of two falses, and a chain of 500 ANDs down the left
+    // over true leaves, ending in a false
+    println(f"{evaluate_tree(join(2, leaf(1), join(3, leaf(0), leaf(1))))}");
+    println(f"{evaluate_tree(leaf(0))}");
+    println(f"{evaluate_tree(leaf(1))}");
+    println(f"{evaluate_tree(join(3, leaf(0), leaf(1)))}");
+    println(f"{evaluate_tree(join(2, leaf(0), leaf(0)))}");
+    let mut chain = leaf(0);
+    for _ in 0..500 {
+        chain = join(3, chain, leaf(1));
+    }
+    println(f"{evaluate_tree(chain)}");
+    // 3000 random full trees of depth up to 8
+    let mut seed = 2331;
+    let mut check = 0;
+    let mut truths = 0;
+    for _ in 0..3000 {
+        let depth = next_random(mut seed) % 9;
+        let value = evaluate_tree(random_tree(mut seed, depth));
+        check = (check * 3 + if value { 1 } else { 2 }) % 1000000007;
+        if value {
+            truths += 1;
+        }
+    }
+    println(f"3000 trees: checksum {check}, {truths} true");
+}
