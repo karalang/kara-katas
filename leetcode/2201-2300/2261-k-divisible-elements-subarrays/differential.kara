@@ -1,0 +1,313 @@
+// LeetCode #2261: K Divisible Elements Subarrays -- the differential. The
+// six arms, against the statement read literally: every subarray
+// `nums[i..=j]` in turn, its divisible elements counted, and when it has
+// at most `k` it is compared element by element with every one kept so
+// far and kept if it differs from all; no hashing, no sorting, no trie.
+// 300 random arrays of 1 to 12 elements from 1 to 6 or 1 to 12 in turn,
+// with `k` from 1 to the length and `p` from 1 to 6; then 30 of one value
+// repeated; then 30 with `p = 1`, every element divisible. Every case is drawn before any
+// arm answers.
+//
+// P1  the count is the literal reading's
+// P2  the array reversed: the same count
+// P3  `k` one larger: no smaller a count
+// P4  `p` added to every element: the same count
+// P5  1009 put on the end: the count plus the suffixes, the empty one
+//     with them, that still have room for it
+// P6  each arm agrees with at least three of the other five
+
+// ---- divisible.kara: the ★ arm, every subarray into a `Set[Vec[i64]]`
+fn star_count_distinct(nums: Vec[i64], k: i64, p: i64) -> i64 {
+    let mut seen: Set[Vec[i64]] = Set.new();
+    for start in 0..nums.len() {
+        let mut divisible = 0;
+        let mut run: Vec[i64] = Vec.new();
+        for end in start..nums.len() {
+            if nums[end] % p == 0 {
+                divisible += 1;
+            }
+            if divisible > k {
+                break;
+            }
+            run.push(nums[end]);
+            seen.insert(run.clone());
+        }
+    }
+    seen.len()
+}
+
+// ---- divisible_sort.kara: every subarray in a `Vec`, `sort`, `dedup`
+fn sort_count_distinct(nums: Vec[i64], k: i64, p: i64) -> i64 {
+    let mut all: Vec[Vec[i64]] = Vec.new();
+    let n = nums.len();
+    for start in 0..n {
+        let mut divisible = 0;
+        let mut end = start;
+        while end < n {
+            if nums[end] % p == 0 {
+                divisible += 1;
+            }
+            if divisible > k {
+                break;
+            }
+            all.push(nums[start..end + 1].to_vec());
+            end += 1;
+        }
+    }
+    all.sort();
+    all.dedup();
+    all.len()
+}
+
+// ---- divisible_trie.kara: a trie as a `Map[(i64, i64), i64]`
+fn trie_count_distinct(nums: Vec[i64], k: i64, p: i64) -> i64 {
+    let mut child: Map[(i64, i64), i64] = Map.new();
+    let mut made = 0;
+    for start in 0..nums.len() {
+        let mut node = 0;
+        let mut divisible = 0;
+        for x in nums[start..].iter() {
+            if x % p == 0 {
+                divisible += 1;
+                if divisible > k {
+                    break;
+                }
+            }
+            node = match child.get((node, x)) {
+                Some(next) => next,
+                None => {
+                    made += 1;
+                    child.insert((node, x), made);
+                    made
+                }
+            };
+        }
+    }
+    made
+}
+
+// ---- divisible_struct.kara: `struct Trie` of child maps
+struct StructTrie {
+    nodes: Vec[Map[i64, i64]],
+}
+
+impl StructTrie {
+    fn new() -> StructTrie {
+        StructTrie { nodes: [Map.new()].to_vec() }
+    }
+
+    fn step(mut ref self, node: i64, value: i64) -> (i64, bool) {
+        if let Some(next) = self.nodes[node].get(value) {
+            return (next, false);
+        }
+        let next = self.nodes.len();
+        self.nodes.push(Map.new());
+        self.nodes[node].insert(value, next);
+        (next, true)
+    }
+}
+
+fn struct_count_distinct(nums: Vec[i64], k: i64, p: i64) -> i64 {
+    let mut trie = StructTrie.new();
+    let mut fresh = 0;
+    for start in 0..nums.len() {
+        let mut node = 0;
+        let mut budget = k;
+        for end in start..nums.len() {
+            if nums[end] % p == 0 {
+                if budget == 0 {
+                    break;
+                }
+                budget -= 1;
+            }
+            let (next, added) = trie.step(node, nums[end]);
+            if added {
+                fresh += 1;
+            }
+            node = next;
+        }
+    }
+    fresh
+}
+
+// ---- divisible_iter.kara: `scan`, `take_while`, joined text in a `Set`
+fn iter_count_distinct(nums: Vec[i64], k: i64, p: i64) -> i64 {
+    let n = nums.len();
+    let keys: Set[String] = (0..n)
+        .flat_map(|start| {
+            (start..n)
+                .scan(0, |count, end| {
+                    let count = count + if nums[end] % p == 0 { 1 } else { 0 };
+                    Some((count, (end, count)))
+                })
+                .take_while(|(_, count)| count <= k)
+                .map(|(end, _)| {
+                    let parts: Vec[String] = nums[start..end + 1].iter().map(|v| v.to_string()).collect();
+                    parts.join(",")
+                })
+        })
+        .collect();
+    keys.len()
+}
+
+// ---- divisible_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn count_distinct(nums: Vec[i32], k: i32, p: i32) -> i32 {
+        let mut set = Set.new();
+        let n = nums.len();
+        for i in 0..n {
+            let mut cnt = 0;
+            for j in i..n {
+                if nums[j] % p == 0 {
+                    cnt += 1;
+                }
+                if cnt > k {
+                    break;
+                }
+                set.insert(nums[i..=j].to_vec());
+            }
+        }
+        set.len() as i32
+    }
+}
+
+struct Solution {}
+
+fn solution_count_distinct(nums: Vec[i64], k: i64, p: i64) -> i64 {
+    let values: Vec[i32] = nums.iter().map(|v| v as i32).collect();
+    Solution.count_distinct(values, k as i32, p as i32)
+}
+
+// ---- the statement read literally
+
+fn literal(nums: Vec[i64], k: i64, p: i64) -> i64 {
+    let n = nums.len();
+    let mut kept: Vec[Vec[i64]] = Vec.new();
+    for i in 0..n {
+        for j in i..n {
+            let mut divisible = 0;
+            let mut run: Vec[i64] = Vec.new();
+            for t in i..j + 1 {
+                if nums[t] % p == 0 {
+                    divisible += 1;
+                }
+                run.push(nums[t]);
+            }
+            if divisible > k {
+                continue;
+            }
+            let mut fresh = true;
+            for other in kept.iter() {
+                if other.len() == run.len() {
+                    let mut same = true;
+                    for t in 0..run.len() {
+                        if other[t] != run[t] {
+                            same = false;
+                        }
+                    }
+                    if same {
+                        fresh = false;
+                    }
+                }
+            }
+            if fresh {
+                kept.push(run);
+            }
+        }
+    }
+    kept.len()
+}
+
+fn answer(arm: i64, nums: Vec[i64], k: i64, p: i64) -> i64 {
+    match arm {
+        0 => star_count_distinct(nums, k, p),
+        1 => sort_count_distinct(nums, k, p),
+        2 => trie_count_distinct(nums, k, p),
+        3 => struct_count_distinct(nums, k, p),
+        4 => iter_count_distinct(nums, k, p),
+        _ => solution_count_distinct(nums, k, p),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "sort", "trie", "struct", "iter", "solution"];
+    let mut seed = 2261;
+    let mut cases: Vec[(Vec[i64], i64, i64)] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 12 + 1;
+        let nums: Vec[i64] = if c >= 300 and c < 330 {
+            Vec.filled(n, next_random(mut seed) % 6 + 1)
+        } else {
+            let top = if c % 2 == 0 { 6 } else { 12 };
+            (0..n).map(|_| next_random(mut seed) % top + 1).collect()
+        };
+        let k = next_random(mut seed) % n + 1;
+        let p = if c >= 330 { 1 } else { next_random(mut seed) % 6 + 1 };
+        cases.push((nums, k, p));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (nums, k, p) in cases.iter() {
+        let n = nums.len();
+        let truth = literal(nums, k, p);
+        check = (check * 31 + truth) % 1000000007;
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let shifted: Vec[i64] = nums.iter().map(|v| v + p).collect();
+        let mut longer = nums.clone();
+        longer.push(1009);
+        let extra = if 1009 % p == 0 { 1 } else { 0 };
+        let mut room = 0;
+        for i in 0..n + 1 {
+            let divisible = nums[i..].iter().filter(|v| v % p == 0).count();
+            if divisible + extra <= k {
+                room += 1;
+            }
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums, k, p)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, reversed, k, p) == value,
+                answer(arm, nums, k + 1, p) >= value,
+                answer(arm, shifted, k, p) == value,
+                answer(arm, longer, k, p) == value + room,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} k={k} p={p} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
