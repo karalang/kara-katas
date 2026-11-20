@@ -1,0 +1,445 @@
+// LeetCode #2322: Minimum Score After Removals on a Tree -- the
+// differential. The six arms, against the statement read literally:
+// every pair of distinct edges taken out, each node labelled with the
+// least node it can still reach by passing labels along the edges left
+// until none changes, the values XORed by label, and the largest XOR
+// less the smallest; the answer is the least of those. 300 random trees
+// of 3 to 15 nodes with values up to 30; then 30 paths of 3 to 15 nodes
+// with values up to 8; then 30 trees of up to 60 nodes with values up
+// to 10^8. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the answer is at least 0 and below the least power of two above
+//     every value
+// P3  every node renamed `n - 1 - i`: the same answer
+// P4  every edge written the other way round, and the edges in reverse
+//     order: the same answer
+// P5  every value doubled: the answer doubled
+// P6  each arm agrees with at least three of the other five
+
+// ---- tree.kara
+fn star_visit(node: i64, parent: i64, adjacent: Vec[Vec[i64]], nums: Vec[i64], xor: mut ref Vec[i64], enter: mut ref Vec[i64], leave: mut ref Vec[i64], clock: mut ref i64) {
+    enter[node] = *clock;
+    *clock += 1;
+    xor[node] = nums[node];
+    for next in adjacent[node].iter() {
+        if next != parent {
+            star_visit(next, node, adjacent, nums, mut xor, mut enter, mut leave, mut clock);
+            xor[node] ^= xor[next];
+        }
+    }
+    leave[node] = *clock;
+}
+
+fn star_minimum_score(nums: Vec[i64], edges: Vec[Vec[i64]]) -> i64 {
+    let n = nums.len();
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adjacent[e[0]].push(e[1]);
+        adjacent[e[1]].push(e[0]);
+    }
+    let mut xor: Vec[i64] = Vec.filled(n, 0);
+    let mut enter: Vec[i64] = Vec.filled(n, 0);
+    let mut leave: Vec[i64] = Vec.filled(n, 0);
+    let mut clock = 0;
+    star_visit(0, -1, adjacent, nums, mut xor, mut enter, mut leave, mut clock);
+    let whole = xor[0];
+    let mut best = i64.MAX;
+    for a in 1..n {
+        for b in (a + 1)..n {
+            let (x, y, z) = if enter[a] <= enter[b] and leave[b] <= leave[a] {
+                (xor[b], xor[a] ^ xor[b], whole ^ xor[a])
+            } else if enter[b] <= enter[a] and leave[a] <= leave[b] {
+                (xor[a], xor[b] ^ xor[a], whole ^ xor[b])
+            } else {
+                (xor[a], xor[b], whole ^ xor[a] ^ xor[b])
+            };
+            best = best.min(x.max(y).max(z) - x.min(y).min(z));
+        }
+    }
+    best
+}
+
+// ---- tree_naive.kara
+fn naive_minimum_score(nums: Vec[i64], edges: Vec[Vec[i64]]) -> i64 {
+    let n = nums.len();
+    let m = edges.len();
+    let mut best = i64.MAX;
+    for first in 0..m {
+        for second in (first + 1)..m {
+            let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+            for k in 0..m {
+                if k != first and k != second {
+                    adjacent[edges[k][0]].push(edges[k][1]);
+                    adjacent[edges[k][1]].push(edges[k][0]);
+                }
+            }
+            let mut label: Vec[i64] = Vec.filled(n, -1);
+            let mut parts: Vec[i64] = Vec.new();
+            for start in 0..n {
+                if label[start] >= 0 {
+                    continue;
+                }
+                let id = parts.len();
+                parts.push(0);
+                let mut stack = [start].to_vec();
+                label[start] = id;
+                while let Some(node) = stack.pop() {
+                    parts[id] ^= nums[node];
+                    for next in adjacent[node].iter() {
+                        if label[next] < 0 {
+                            label[next] = id;
+                            stack.push(next);
+                        }
+                    }
+                }
+            }
+            let high = parts.iter().max().unwrap();
+            let low = parts.iter().min().unwrap();
+            best = best.min(high - low);
+        }
+    }
+    best
+}
+
+// ---- tree_parents.kara
+fn parents_minimum_score(nums: Vec[i64], edges: Vec[Vec[i64]]) -> i64 {
+    let n = nums.len();
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adjacent[e[0]].push(e[1]);
+        adjacent[e[1]].push(e[0]);
+    }
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    let mut depth: Vec[i64] = Vec.filled(n, 0);
+    let mut order = [0].to_vec();
+    let mut seen: Vec[bool] = Vec.filled(n, false);
+    seen[0] = true;
+    let mut head = 0;
+    while head < order.len() {
+        let node = order[head];
+        head += 1;
+        for next in adjacent[node].iter() {
+            if not seen[next] {
+                seen[next] = true;
+                parent[next] = node;
+                depth[next] = depth[node] + 1;
+                order.push(next);
+            }
+        }
+    }
+    let mut xor = nums.clone();
+    for k in (1..n).rev() {
+        let node = order[k];
+        xor[parent[node]] ^= xor[node];
+    }
+    let whole = xor[0];
+    let under = |low: i64, high: i64| {
+        let mut node = low;
+        while depth[node] > depth[high] {
+            node = parent[node];
+        }
+        node == high
+    };
+    let mut best = i64.MAX;
+    for a in 1..n {
+        for b in (a + 1)..n {
+            let parts = if under(b, a) {
+                [xor[b], xor[a] ^ xor[b], whole ^ xor[a]]
+            } else if under(a, b) {
+                [xor[a], xor[b] ^ xor[a], whole ^ xor[b]]
+            } else {
+                [xor[a], xor[b], whole ^ xor[a] ^ xor[b]]
+            };
+            let high = parts[0].max(parts[1]).max(parts[2]);
+            let low = parts[0].min(parts[1]).min(parts[2]);
+            best = best.min(high - low);
+        }
+    }
+    best
+}
+
+// ---- tree_sets.kara
+fn sets_gather(node: i64, parent: i64, adjacent: Vec[Vec[i64]], nums: Vec[i64], xor: mut ref Vec[i64], below: mut ref Vec[Set[i64]]) {
+    xor[node] = nums[node];
+    below[node].insert(node);
+    for next in adjacent[node].iter() {
+        if next != parent {
+            sets_gather(next, node, adjacent, nums, mut xor, mut below);
+            xor[node] ^= xor[next];
+            let inner: Vec[i64] = below[next].iter().collect();
+            for v in inner.iter() {
+                below[node].insert(v);
+            }
+        }
+    }
+}
+
+fn sets_minimum_score(nums: Vec[i64], edges: Vec[Vec[i64]]) -> i64 {
+    let n = nums.len();
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adjacent[e[0]].push(e[1]);
+        adjacent[e[1]].push(e[0]);
+    }
+    let mut xor: Vec[i64] = Vec.filled(n, 0);
+    let mut below: Vec[Set[i64]] = Vec.filled(n, Set.new());
+    sets_gather(0, -1, adjacent, nums, mut xor, mut below);
+    let whole = xor[0];
+    let mut best = i64.MAX;
+    for a in 1..n {
+        for b in (a + 1)..n {
+            let (x, y, z) = if below[a].contains(b) {
+                (xor[b], xor[a] ^ xor[b], whole ^ xor[a])
+            } else if below[b].contains(a) {
+                (xor[a], xor[b] ^ xor[a], whole ^ xor[b])
+            } else {
+                (xor[a], xor[b], whole ^ xor[a] ^ xor[b])
+            };
+            best = best.min(x.max(y).max(z) - x.min(y).min(z));
+        }
+    }
+    best
+}
+
+// ---- tree_iter.kara
+fn iter_walk(node: i64, parent: i64, adjacent: Vec[Vec[i64]], nums: Vec[i64], xor: mut ref Vec[i64], span: mut ref Vec[(i64, i64)], clock: mut ref i64) {
+    let start = *clock;
+    *clock += 1;
+    xor[node] = nums[node];
+    for next in adjacent[node].iter().filter(|v| v != parent) {
+        iter_walk(next, node, adjacent, nums, mut xor, mut span, mut clock);
+        xor[node] ^= xor[next];
+    }
+    span[node] = (start, *clock);
+}
+
+fn iter_minimum_score(nums: Vec[i64], edges: Vec[Vec[i64]]) -> i64 {
+    let n = nums.len();
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adjacent[e[0]].push(e[1]);
+        adjacent[e[1]].push(e[0]);
+    }
+    let mut xor: Vec[i64] = Vec.filled(n, 0);
+    let mut span: Vec[(i64, i64)] = Vec.filled(n, (0, 0));
+    let mut clock = 0;
+    iter_walk(0, -1, adjacent, nums, mut xor, mut span, mut clock);
+    let whole = xor[0];
+    let inside = |inner: i64, outer: i64| span[outer].0 <= span[inner].0 and span[inner].1 <= span[outer].1;
+    (1..n)
+        .flat_map(|a| ((a + 1)..n).map(|b| (a, b)))
+        .map(|(a, b)| {
+            let parts = if inside(b, a) {
+                [xor[b], xor[a] ^ xor[b], whole ^ xor[a]]
+            } else if inside(a, b) {
+                [xor[a], xor[b] ^ xor[a], whole ^ xor[b]]
+            } else {
+                [xor[a], xor[b], whole ^ xor[a] ^ xor[b]]
+            };
+            parts.iter().max().unwrap() - parts.iter().min().unwrap()
+        })
+        .min()
+        .unwrap()
+}
+
+// ---- tree_solution.kara
+struct Solution {}
+
+fn solution_dfs(u: usize, p: usize, g: Vec[Vec[usize]], nums: Vec[i32], xr: mut ref Vec[i32], tin: mut ref Vec[usize], tout: mut ref Vec[usize], t: mut ref usize) {
+    tin[u] = *t;
+    *t += 1;
+    xr[u] = nums[u];
+    for v in ref g[u] {
+        if v != p {
+            solution_dfs(v, u, g, nums, mut xr, mut tin, mut tout, mut t);
+            xr[u] ^= xr[v];
+        }
+    }
+    tout[u] = *t;
+}
+
+impl Solution {
+    pub fn minimum_score(nums: Vec[i32], edges: Vec[Vec[i32]]) -> i32 {
+        let n = nums.len();
+        let mut g = Vec.filled(n, Vec.new());
+        for e in ref edges {
+            let (a, b) = (e[0] as usize, e[1] as usize);
+            g[a].push(b);
+            g[b].push(a);
+        }
+        let mut xr = Vec.filled(n, 0);
+        let mut tin = Vec.filled(n, 0);
+        let mut tout = Vec.filled(n, 0);
+        let mut t = 0;
+        solution_dfs(0, usize.MAX, g, nums, mut xr, mut tin, mut tout, mut t);
+        let mut ans = i32.MAX;
+        for i in 1..n {
+            for j in i + 1..n {
+                let (x, y, z) = if tin[i] <= tin[j] and tout[j] <= tout[i] {
+                    (xr[j], xr[i] ^ xr[j], xr[0] ^ xr[i])
+                } else if tin[j] <= tin[i] and tout[i] <= tout[j] {
+                    (xr[i], xr[j] ^ xr[i], xr[0] ^ xr[j])
+                } else {
+                    (xr[i], xr[j], xr[0] ^ xr[i] ^ xr[j])
+                };
+                ans = ans.min(x.max(y).max(z) - x.min(y).min(z));
+            }
+        }
+        ans
+    }
+}
+
+fn solution_minimum_score(nums: Vec[i64], edges: Vec[Vec[i64]]) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    let edges: Vec[Vec[i32]] = edges.iter().map(|e| e.iter().map(|x| x as i32).collect()).collect();
+    Solution.minimum_score(nums, edges)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(nums: Vec[i64], edges: Vec[Vec[i64]]) -> i64 {
+    let n = nums.len();
+    let m = edges.len();
+    let mut best = i64.MAX;
+    for first in 0..m {
+        for second in 0..m {
+            if first == second {
+                continue;
+            }
+            let mut label: Vec[i64] = (0..n).collect();
+            let mut changed = true;
+            while changed {
+                changed = false;
+                for k in 0..m {
+                    if k == first or k == second {
+                        continue;
+                    }
+                    let (a, b) = (edges[k][0], edges[k][1]);
+                    let low = label[a].min(label[b]);
+                    if label[a] != low or label[b] != low {
+                        label[a] = low;
+                        label[b] = low;
+                        changed = true;
+                    }
+                }
+            }
+            let mut parts: SortedMap[i64, i64] = SortedMap.new();
+            for v in 0..n {
+                let x = parts.get(label[v]).unwrap_or(0);
+                parts.insert(label[v], x ^ nums[v]);
+            }
+            let values: Vec[i64] = parts.values().collect();
+            let high = values.iter().max().unwrap();
+            let low = values.iter().min().unwrap();
+            best = best.min(high - low);
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, nums: Vec[i64], edges: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_minimum_score(nums, edges),
+        1 => naive_minimum_score(nums, edges),
+        2 => parents_minimum_score(nums, edges),
+        3 => sets_minimum_score(nums, edges),
+        4 => iter_minimum_score(nums, edges),
+        _ => solution_minimum_score(nums, edges),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// node `i` joined to one of the `reach` nodes before it, the edge
+// written either way round, and values from 1 to `top`
+fn tree(seed: mut ref i64, n: i64, top: i64, reach: i64) -> (Vec[i64], Vec[Vec[i64]]) {
+    let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top + 1).collect();
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for i in 1..n {
+        let p = i - 1 - next_random(mut seed) % i.min(reach);
+        if next_random(mut seed) % 2 == 0 {
+            edges.push([p, i].to_vec());
+        } else {
+            edges.push([i, p].to_vec());
+        }
+    }
+    (nums, edges)
+}
+
+fn main() {
+    let names = ["star", "naive", "parents", "sets", "iter", "solution"];
+    let mut seed = 2322;
+    let mut cases: Vec[(Vec[i64], Vec[Vec[i64]])] = Vec.new();
+    for c in 0..360 {
+        if c < 300 {
+            let n = next_random(mut seed) % 13 + 3;
+            cases.push(tree(mut seed, n, 30, n));
+        } else if c < 330 {
+            let n = next_random(mut seed) % 13 + 3;
+            cases.push(tree(mut seed, n, 8, 1));
+        } else {
+            let n = next_random(mut seed) % 58 + 3;
+            cases.push(tree(mut seed, n, 100000000, n));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (nums, edges) in cases.iter() {
+        let n = nums.len();
+        let truth = literal(nums, edges);
+        check = (check * 31 + truth) % 1000000007;
+        let mut power = 1;
+        while power <= nums.iter().max().unwrap() {
+            power *= 2;
+        }
+        let renamed_nums: Vec[i64] = (0..n).map(|i| nums[n - 1 - i]).collect();
+        let renamed_edges: Vec[Vec[i64]] = edges.iter().map(|e| [n - 1 - e[0], n - 1 - e[1]].to_vec()).collect();
+        let turned: Vec[Vec[i64]] = edges.iter().rev().map(|e| [e[1], e[0]].to_vec()).collect();
+        let doubled: Vec[i64] = nums.iter().map(|v| 2 * v).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums, edges)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                value >= 0 and value < power,
+                answer(arm, renamed_nums, renamed_edges) == value,
+                answer(arm, nums, turned) == value,
+                answer(arm, doubled, edges) == 2 * value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{n} nodes, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

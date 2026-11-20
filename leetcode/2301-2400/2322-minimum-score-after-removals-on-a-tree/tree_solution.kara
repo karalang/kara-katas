@@ -1,0 +1,102 @@
+// LeetCode #2322: Minimum Score After Removals on a Tree -- LeetCode's
+// Rust template as a Rust user fills it in, carried by `karac fix`: `i32`
+// values, a `dfs` nested in the method over `&Vec<Vec<usize>>` with
+// `&mut` tables, and `usize` nodes.
+
+struct Solution {}
+
+fn dfs(u: usize, p: usize, g: Vec[Vec[usize]], nums: Vec[i32], xr: mut ref Vec[i32], tin: mut ref Vec[usize], tout: mut ref Vec[usize], t: mut ref usize) {
+    tin[u] = *t;
+    *t += 1;
+    xr[u] = nums[u];
+    for v in ref g[u] {
+        if v != p {
+            dfs(v, u, g, nums, mut xr, mut tin, mut tout, mut t);
+            xr[u] ^= xr[v];
+        }
+    }
+    tout[u] = *t;
+}
+
+impl Solution {
+    pub fn minimum_score(nums: Vec[i32], edges: Vec[Vec[i32]]) -> i32 {
+        let n = nums.len();
+        let mut g = Vec.filled(n, Vec.new());
+        for e in ref edges {
+            let (a, b) = (e[0] as usize, e[1] as usize);
+            g[a].push(b);
+            g[b].push(a);
+        }
+        let mut xr = Vec.filled(n, 0);
+        let mut tin = Vec.filled(n, 0);
+        let mut tout = Vec.filled(n, 0);
+        let mut t = 0;
+        dfs(0, usize.MAX, g, nums, mut xr, mut tin, mut tout, mut t);
+        let mut ans = i32.MAX;
+        for i in 1..n {
+            for j in i + 1..n {
+                let (x, y, z) = if tin[i] <= tin[j] and tout[j] <= tout[i] {
+                    (xr[j], xr[i] ^ xr[j], xr[0] ^ xr[i])
+                } else if tin[j] <= tin[i] and tout[i] <= tout[j] {
+                    (xr[i], xr[j] ^ xr[i], xr[0] ^ xr[j])
+                } else {
+                    (xr[i], xr[j], xr[0] ^ xr[i] ^ xr[j])
+                };
+                ans = ans.min(x.max(y).max(z) - x.min(y).min(z));
+            }
+        }
+        ans
+    }
+}
+
+fn minimum_score(nums: Vec[i64], edges: Vec[Vec[i64]]) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    let edges: Vec[Vec[i32]] = edges.iter().map(|e| e.iter().map(|x| x as i32).collect()).collect();
+    Solution.minimum_score(nums, edges)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random tree of `n` nodes: node `i` joined to one before it, the
+// edge written either way round, and values from 1 to `top`
+fn tree(seed: mut ref i64, n: i64, top: i64) -> (Vec[i64], Vec[Vec[i64]]) {
+    let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top + 1).collect();
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for i in 1..n {
+        let p = next_random(mut seed) % i;
+        if next_random(mut seed) % 2 == 0 {
+            edges.push([p, i].to_vec());
+        } else {
+            edges.push([i, p].to_vec());
+        }
+    }
+    (nums, edges)
+}
+
+fn main() {
+    // LeetCode's two examples; then a path of three, a star of six, and
+    // a random tree of 200 nodes with values up to 10^8
+    println(minimum_score([1, 5, 5, 4, 11].to_vec(), [[0, 1].to_vec(), [1, 2].to_vec(), [1, 3].to_vec(), [3, 4].to_vec()].to_vec()));
+    println(minimum_score([5, 5, 2, 4, 4, 2].to_vec(), [[0, 1].to_vec(), [1, 2].to_vec(), [5, 2].to_vec(), [4, 3].to_vec(), [1, 3].to_vec()].to_vec()));
+    println(minimum_score([3, 9, 6].to_vec(), [[0, 1].to_vec(), [1, 2].to_vec()].to_vec()));
+    println(minimum_score([7, 1, 2, 4, 8, 16].to_vec(), [[0, 1].to_vec(), [0, 2].to_vec(), [3, 0].to_vec(), [0, 4].to_vec(), [5, 0].to_vec()].to_vec()));
+    let mut seed = 2322;
+    let (nums, edges) = tree(mut seed, 200, 100000000);
+    println(minimum_score(nums, edges));
+    // 500 random trees of 3 to 15 nodes with values up to 30
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..500 {
+        let n = next_random(mut seed) % 13 + 3;
+        let (nums, edges) = tree(mut seed, n, 30);
+        let score = minimum_score(nums, edges);
+        check = (check * 31 + score) % 1000000007;
+        total += score;
+    }
+    println(f"500 trees: checksum {check}, {total} in all");
+}

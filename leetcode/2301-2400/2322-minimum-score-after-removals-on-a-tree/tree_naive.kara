@@ -1,0 +1,91 @@
+// LeetCode #2322: Minimum Score After Removals on a Tree -- every pair of
+// edges taken out in turn: the three parts found by a flood fill over
+// the edges left, each labelled, and each part's XOR added up from its
+// labels. O(n^3).
+
+fn minimum_score(nums: Vec[i64], edges: Vec[Vec[i64]]) -> i64 {
+    let n = nums.len();
+    let m = edges.len();
+    let mut best = i64.MAX;
+    for first in 0..m {
+        for second in (first + 1)..m {
+            let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+            for k in 0..m {
+                if k != first and k != second {
+                    adjacent[edges[k][0]].push(edges[k][1]);
+                    adjacent[edges[k][1]].push(edges[k][0]);
+                }
+            }
+            let mut label: Vec[i64] = Vec.filled(n, -1);
+            let mut parts: Vec[i64] = Vec.new();
+            for start in 0..n {
+                if label[start] >= 0 {
+                    continue;
+                }
+                let id = parts.len();
+                parts.push(0);
+                let mut stack = [start].to_vec();
+                label[start] = id;
+                while let Some(node) = stack.pop() {
+                    parts[id] ^= nums[node];
+                    for next in adjacent[node].iter() {
+                        if label[next] < 0 {
+                            label[next] = id;
+                            stack.push(next);
+                        }
+                    }
+                }
+            }
+            let high = parts.iter().max().unwrap();
+            let low = parts.iter().min().unwrap();
+            best = best.min(high - low);
+        }
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random tree of `n` nodes: node `i` joined to one before it, the
+// edge written either way round, and values from 1 to `top`
+fn tree(seed: mut ref i64, n: i64, top: i64) -> (Vec[i64], Vec[Vec[i64]]) {
+    let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top + 1).collect();
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for i in 1..n {
+        let p = next_random(mut seed) % i;
+        if next_random(mut seed) % 2 == 0 {
+            edges.push([p, i].to_vec());
+        } else {
+            edges.push([i, p].to_vec());
+        }
+    }
+    (nums, edges)
+}
+
+fn main() {
+    // LeetCode's two examples; then a path of three, a star of six, and
+    // a random tree of 200 nodes with values up to 10^8
+    println(minimum_score([1, 5, 5, 4, 11].to_vec(), [[0, 1].to_vec(), [1, 2].to_vec(), [1, 3].to_vec(), [3, 4].to_vec()].to_vec()));
+    println(minimum_score([5, 5, 2, 4, 4, 2].to_vec(), [[0, 1].to_vec(), [1, 2].to_vec(), [5, 2].to_vec(), [4, 3].to_vec(), [1, 3].to_vec()].to_vec()));
+    println(minimum_score([3, 9, 6].to_vec(), [[0, 1].to_vec(), [1, 2].to_vec()].to_vec()));
+    println(minimum_score([7, 1, 2, 4, 8, 16].to_vec(), [[0, 1].to_vec(), [0, 2].to_vec(), [3, 0].to_vec(), [0, 4].to_vec(), [5, 0].to_vec()].to_vec()));
+    let mut seed = 2322;
+    let (nums, edges) = tree(mut seed, 200, 100000000);
+    println(minimum_score(nums, edges));
+    // 500 random trees of 3 to 15 nodes with values up to 30
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..500 {
+        let n = next_random(mut seed) % 13 + 3;
+        let (nums, edges) = tree(mut seed, n, 30);
+        let score = minimum_score(nums, edges);
+        check = (check * 31 + score) % 1000000007;
+        total += score;
+    }
+    println(f"500 trees: checksum {check}, {total} in all");
+}
