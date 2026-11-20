@@ -1,0 +1,157 @@
+// LeetCode #1740: Find Distance in a Binary Tree -- the ★ arm: the lowest
+// common ancestor, then each node's depth below it.
+//
+// The path between two nodes runs up from one to their lowest common
+// ancestor and down to the other. #236's search finds the ancestor: a
+// node that is p or q answers for its subtree, and a node with an answer
+// on both sides is the ancestor. The distance is then the depth of p
+// below it plus the depth of q. O(n).
+
+fn find_distance(root: Option[TreeNode], p: i32, q: i32) -> i32 {
+    let ancestor = common(root, p, q);
+    depth(ancestor, p) + depth(ancestor, q)
+}
+
+fn common(node: Option[TreeNode], p: i32, q: i32) -> Option[TreeNode] {
+    let n = node?;
+    if n.val == p or n.val == q {
+        return Some(n);
+    }
+    match (common(n.left, p, q), common(n.right, p, q)) {
+        (Some(_), Some(_)) => Some(n),
+        (Some(l), None) => Some(l),
+        (None, r) => r,
+    }
+}
+
+// the edges from `node` down to the value, or -1 when it is not below
+fn depth(node: Option[TreeNode], value: i32) -> i32 {
+    let Some(n) = node else {
+        return -1;
+    };
+    if n.val == value {
+        return 0;
+    }
+    let below = max(depth(n.left, value), depth(n.right, value));
+    if below < 0 { -1 } else { below + 1 }
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn leaf(val: i32) -> TreeNode {
+    TreeNode { val: val, left: None, right: None }
+}
+
+// a tree from LeetCode's level order, `None` for a missing child
+fn from_level(values: Slice[Option[i32]]) -> Option[TreeNode] {
+    let root = leaf(values[0].unwrap());
+    let mut waiting: VecDeque[TreeNode] = VecDeque.new();
+    waiting.push_back(root);
+    let mut i = 1;
+    while i < values.len() {
+        let parent = waiting.pop_front().unwrap();
+        if let Some(v) = values[i] {
+            let child = leaf(v);
+            parent.left = Some(child);
+            waiting.push_back(child);
+        }
+        i += 1;
+        if i < values.len() {
+            if let Some(v) = values[i] {
+                let child = leaf(v);
+                parent.right = Some(child);
+                waiting.push_back(child);
+            }
+            i += 1;
+        }
+    }
+    Some(root)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` nodes holding 0 to n - 1 shuffled, each hung from a random node
+// already placed, down a random walk to the first free child; every node,
+// the root first
+fn random_tree(n: i64, seed: mut ref i64) -> Vec[TreeNode] {
+    let mut values: Vec[i32] = (0..n).map(|v| v as i32).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        values.swap(i, j);
+    }
+    let mut nodes: Vec[TreeNode] = Vec.new();
+    for i in 0..n {
+        let node = leaf(values[i]);
+        if i > 0 {
+            let mut at = nodes[next_random(mut seed) % i];
+            loop {
+                if next_random(mut seed) % 2 == 0 {
+                    match at.left {
+                        Some(child) => at = child,
+                        None => {
+                            at.left = Some(node);
+                            break;
+                        }
+                    }
+                } else {
+                    match at.right {
+                        Some(child) => at = child,
+                        None => {
+                            at.right = Some(node);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        nodes.push(node);
+    }
+    nodes
+}
+
+// `count` random trees of 1 to `most` nodes, each asked about 5 random
+// pairs of values; the answers summed, and a checksum
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let nodes = random_tree(n, mut seed);
+        let root = Some(nodes[0]);
+        for _ in 0..5 {
+            let p = (next_random(mut seed) % n) as i32;
+            let q = (next_random(mut seed) % n) as i32;
+            let found = find_distance(root, p, q);
+            total += found;
+            check = (check * 31 + found + p) % 1000000007;
+        }
+    }
+    println(f"{count} trees of up to {most} nodes: distances sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then two leaves of one parent, two
+    // leaves on opposite sides, a node and the root, and a one-node tree
+    let example = from_level([Some(3), Some(5), Some(1), Some(6), Some(2), Some(0), Some(8), None, None, Some(7), Some(4)]);
+    println(find_distance(example, 5, 0));
+    println(find_distance(example, 5, 7));
+    println(find_distance(example, 5, 5));
+    println(find_distance(example, 7, 4));
+    println(find_distance(example, 7, 8));
+    println(find_distance(example, 4, 3));
+    let single = from_level([Some(1)]);
+    println(find_distance(single, 1, 1));
+    let mut seed = 1740;
+    batch(3000, 8, mut seed);
+    batch(300, 1000, mut seed);
+    batch(30, 10000, mut seed);
+}

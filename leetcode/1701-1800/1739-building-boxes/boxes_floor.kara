@@ -1,0 +1,80 @@
+// LeetCode #1739: Building Boxes -- a binary search on the floor.
+//
+// A floor of f boxes holds the most when it is the triangle of the
+// largest side s with s (s + 1) / 2 at most f, found from a square
+// root, and its f - s (s + 1) / 2 = j other boxes lie along the
+// triangle's edge: s (s + 1) (s + 2) / 6 + j (j + 1) / 2 boxes in all.
+// That grows with f, so the answer is the smallest f that holds n,
+// found by a binary search from 1 to n. O(log n).
+
+// the most boxes a floor of `floor` boxes can hold
+fn holds(floor: i64) -> i64 {
+    let mut side = ((((8 * floor + 1) as f64).sqrt() - 1.0) / 2.0) as i64;
+    while (side + 1) * (side + 2) / 2 <= floor {
+        side += 1;
+    }
+    while side * (side + 1) / 2 > floor {
+        side -= 1;
+    }
+    let edge = floor - side * (side + 1) / 2;
+    side * (side + 1) * (side + 2) / 6 + edge * (edge + 1) / 2
+}
+
+fn minimum_boxes(n: i32) -> i32 {
+    let n = n as i64;
+    let mut (low, high) = (1, n);
+    while low < high {
+        let middle = (low + high) / 2;
+        if holds(middle) >= n {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    low as i32
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// `count` random box counts from 1 to `most`
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = (wide(mut seed) % most + 1) as i32;
+        let answer = minimum_boxes(n);
+        sum += answer;
+        check = (check * 31 + answer) % 1000000007;
+    }
+    println(f"{count} counts up to {most}: floors sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then the smallest counts, a full
+    // staircase of 4 layers and one box more, and the largest count
+    println(minimum_boxes(3));
+    println(minimum_boxes(4));
+    println(minimum_boxes(10));
+    println(minimum_boxes(1));
+    println(minimum_boxes(2));
+    println(minimum_boxes(20));
+    println(minimum_boxes(21));
+    println(minimum_boxes(1000000000));
+    let mut sum = 0;
+    for n in 1..2001 {
+        sum += minimum_boxes(n);
+    }
+    println(f"every count from 1 to 2000: floors sum to {sum}");
+    let mut seed = 1739;
+    batch(3000, 1000, mut seed);
+    batch(3000, 1000000000, mut seed);
+}

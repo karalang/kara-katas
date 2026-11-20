@@ -1,0 +1,239 @@
+// LeetCode #1739: Building Boxes -- the differential.
+//
+// Four arms against the statement read literally, boxes stacked one at
+// a time in a room, on 1000 random counts from 1 to 120.
+//
+// P1  the answer is the statement read literally
+// P2  one box more needs the same floor or one floor box more
+// P3  n boxes need no more floor than m boxes and n - m boxes apart
+// P4  a full staircase of s layers needs s (s + 1) / 2 floor boxes
+// P5  each arm agrees with at least two of the other three
+
+// ---- boxes.kara: the ★ arm: the staircase layer by layer, then the floor
+
+fn star_arm(n: i32) -> i32 {
+    let n = n as i64;
+    let mut placed = 0;
+    let mut side = 0;
+    while placed + (side + 1) * (side + 2) / 2 <= n {
+        side += 1;
+        placed += side * (side + 1) / 2;
+    }
+    let mut floor = side * (side + 1) / 2;
+    let mut extra = 0;
+    while placed < n {
+        extra += 1;
+        floor += 1;
+        placed += extra;
+    }
+    floor as i32
+}
+
+// ---- boxes_search.kara: two binary searches
+
+// the smallest value in `low..high` for which `holds` is true, given
+// that it is false below some value and true from there on
+fn search_first_true(low: i64, high: i64, holds: Fn(i64) -> bool) -> i64 {
+    let mut (low, high) = (low, high);
+    while low < high {
+        let middle = low + (high - low) / 2;
+        if holds(middle) {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    low
+}
+
+fn search_arm(n: i32) -> i32 {
+    let n = n as i64;
+    let side = search_first_true(0, 2000, |s| (s + 1) * (s + 2) * (s + 3) / 6 > n);
+    let left = n - side * (side + 1) * (side + 2) / 6;
+    let extra = search_first_true(0, 2000, |j| j * (j + 1) / 2 >= left);
+    (side * (side + 1) / 2 + extra) as i32
+}
+
+// ---- boxes_floor.kara: a binary search on the floor
+
+// the most boxes a floor of `floor` boxes can hold
+fn floor_holds(floor: i64) -> i64 {
+    let mut side = ((((8 * floor + 1) as f64).sqrt() - 1.0) / 2.0) as i64;
+    while (side + 1) * (side + 2) / 2 <= floor {
+        side += 1;
+    }
+    while side * (side + 1) / 2 > floor {
+        side -= 1;
+    }
+    let edge = floor - side * (side + 1) / 2;
+    side * (side + 1) * (side + 2) / 6 + edge * (edge + 1) / 2
+}
+
+fn floor_arm(n: i32) -> i32 {
+    let n = n as i64;
+    let mut (low, high) = (1, n);
+    while low < high {
+        let middle = (low + high) / 2;
+        if floor_holds(middle) >= n {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    low as i32
+}
+
+// ---- boxes_solution.kara: LeetCode's Rust template, through karac fix
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_boxes(n: i32) -> i32 {
+        let n = n as i64;
+        let mut sum = 0;
+        let mut k = 1;
+        while sum + k * (k + 1) / 2 <= n {
+            sum += k * (k + 1) / 2;
+            k += 1;
+        }
+        k -= 1;
+        let mut ans = k * (k + 1) / 2;
+        let mut i = 1;
+        while sum < n {
+            ans += 1;
+            sum += i;
+            i += 1;
+        }
+        ans as i32
+    }
+}
+
+fn solution_arm(n: i32) -> i32 {
+    Solution.minimum_boxes(n)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: in a room n boxes wide, floor boxes are
+// laid in the corner one diagonal after another, and after each one
+// every box the rule allows is stacked, a box going on top of another
+// only when each of the lower box's four sides touches a box or a wall,
+// until n boxes stand
+fn literal(n: i64) -> i64 {
+    let mut boxes: Vec[(i64, i64, i64)] = Vec.new();
+    let mut taken: Set[i64] = Set.new();
+    let key = |x: i64, y: i64, z: i64| (x * n + y) * n + z;
+    let mut (floor, diagonal, along) = (0, 0, 0);
+    while boxes.len() < n {
+        boxes.push((along, diagonal - along, 0));
+        taken.insert(key(along, diagonal - along, 0));
+        floor += 1;
+        along += 1;
+        if along > diagonal {
+            diagonal += 1;
+            along = 0;
+        }
+        let mut grew = true;
+        while grew and boxes.len() < n {
+            grew = false;
+            for b in 0..boxes.len() {
+                let (x, y, z) = boxes[b];
+                let closed = (x == 0 or taken.contains(key(x - 1, y, z)))
+                    and (x == n - 1 or taken.contains(key(x + 1, y, z)))
+                    and (y == 0 or taken.contains(key(x, y - 1, z)))
+                    and (y == n - 1 or taken.contains(key(x, y + 1, z)));
+                if closed and z + 1 < n and not taken.contains(key(x, y, z + 1)) and boxes.len() < n {
+                    boxes.push((x, y, z + 1));
+                    taken.insert(key(x, y, z + 1));
+                    grew = true;
+                }
+            }
+        }
+    }
+    floor
+}
+
+fn arm(a: i64, n: i64) -> i64 {
+    let n = n as i32;
+    let answer = match a {
+        0 => star_arm(n),
+        1 => search_arm(n),
+        2 => floor_arm(n),
+        _ => solution_arm(n),
+    };
+    answer
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "search", "floor", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1739;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 1000;
+    let mut cases: Vec[(i64, i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 120 + 1;
+        let m = next_random(mut seed) % n + 1;
+        cases.push((n, m));
+    }
+    for (p, (n, m)) in cases.iter().enumerate() {
+        let want = literal(n);
+        check = (check * 31 + want) % 1000000007;
+        // the largest full staircase at most n boxes
+        let mut side = 1;
+        while (side + 1) * (side + 2) * (side + 3) / 6 <= n {
+            side += 1;
+        }
+        let staircase = side * (side + 1) * (side + 2) / 6;
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, n);
+            let next = arm(a, n + 1);
+            let split = m == n or got <= arm(a, m) + arm(a, n - m);
+            let failed = [got != want, next != got and next != got + 1, not split, arm(a, staircase) != side * (side + 1) / 2];
+            answers.push(got);
+            for t in 0..4 {
+                checks += 1;
+                if failed[t] {
+                    failures += 1;
+                    by_property[t + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} (n {n}, m {m}), {arm_name(a)}: P{t + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for t in 1..6 {
+            if by_property[t] > 0 {
+                counts.push(f"P{t}: {by_property[t]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

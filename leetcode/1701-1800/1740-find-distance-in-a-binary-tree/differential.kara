@@ -1,0 +1,336 @@
+// LeetCode #1740: Find Distance in a Binary Tree -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random trees
+// of 1 to 12 nodes, each with random values p, q and r.
+//
+// P1  the answer is the statement read literally
+// P2  p and q swapped give the same answer
+// P3  the distance is at most the distance by way of r
+// P4  the root's distances to p and q, less theirs, are twice a depth
+// P5  each arm agrees with at least two of the other three
+
+// ---- distance.kara: the ★ arm: the lowest common ancestor, then depths
+
+fn star_arm(root: Option[TreeNode], p: i32, q: i32) -> i32 {
+    let ancestor = star_common(root, p, q);
+    star_depth(ancestor, p) + star_depth(ancestor, q)
+}
+
+fn star_common(node: Option[TreeNode], p: i32, q: i32) -> Option[TreeNode] {
+    let n = node?;
+    if n.val == p or n.val == q {
+        return Some(n);
+    }
+    match (star_common(n.left, p, q), star_common(n.right, p, q)) {
+        (Some(_), Some(_)) => Some(n),
+        (Some(l), None) => Some(l),
+        (None, r) => r,
+    }
+}
+
+// the edges from `node` down to the value, or -1 when it is not below
+fn star_depth(node: Option[TreeNode], value: i32) -> i32 {
+    let Some(n) = node else {
+        return -1;
+    };
+    if n.val == value {
+        return 0;
+    }
+    let below = max(star_depth(n.left, value), star_depth(n.right, value));
+    if below < 0 { -1 } else { below + 1 }
+}
+
+// ---- distance_once.kara: one walk
+
+fn once_arm(root: Option[TreeNode], p: i32, q: i32) -> i32 {
+    if p == q {
+        return 0;
+    }
+    let mut answer = 0;
+    once_walk(root, p, q, mut answer);
+    answer
+}
+
+fn once_walk(node: Option[TreeNode], p: i32, q: i32, answer: mut ref i32) -> i32 {
+    let Some(n) = node else {
+        return -1;
+    };
+    let left = once_walk(n.left, p, q, mut answer);
+    let right = once_walk(n.right, p, q, mut answer);
+    let here = n.val == p or n.val == q;
+    if left >= 0 and right >= 0 {
+        *answer = left + right + 2;
+        return -1;
+    }
+    let side = max(left, right);
+    if here and side >= 0 {
+        *answer = side + 1;
+        return -1;
+    }
+    if here {
+        0
+    } else if side >= 0 {
+        side + 1
+    } else {
+        -1
+    }
+}
+
+// ---- distance_parents.kara: parents and depths
+
+fn parents_arm(root: Option[TreeNode], p: i32, q: i32) -> i32 {
+    let mut parent: Map[i32, i32] = Map.new();
+    let mut depth: Map[i32, i32] = Map.new();
+    let mut waiting: VecDeque[TreeNode] = VecDeque.new();
+    let top = root.unwrap();
+    depth.insert(top.val, 0);
+    waiting.push_back(top);
+    while let Some(node) = waiting.pop_front() {
+        for child in [node.left, node.right] {
+            if let Some(c) = child {
+                parent.insert(c.val, node.val);
+                depth.insert(c.val, depth[node.val] + 1);
+                waiting.push_back(c);
+            }
+        }
+    }
+    let mut (a, b) = (p, q);
+    let mut steps = 0;
+    while depth[a] > depth[b] {
+        a = parent[a];
+        steps += 1;
+    }
+    while depth[b] > depth[a] {
+        b = parent[b];
+        steps += 1;
+    }
+    while a != b {
+        a = parent[a];
+        b = parent[b];
+        steps += 2;
+    }
+    steps
+}
+
+// ---- distance_graph.kara: the tree as a graph
+
+fn graph_arm(root: Option[TreeNode], p: i32, q: i32) -> i32 {
+    let mut next: Map[i32, Vec[i32]] = Map.new();
+    let mut stack: Vec[TreeNode] = [root.unwrap()];
+    next.insert(stack[0].val, Vec.new());
+    while let Some(node) = stack.pop() {
+        for child in [node.left, node.right] {
+            if let Some(c) = child {
+                next.get_mut(node.val).unwrap().push(c.val);
+                next.insert(c.val, [node.val]);
+                stack.push(c);
+            }
+        }
+    }
+    let mut seen: Set[i32] = Set.new();
+    seen.insert(p);
+    let mut level: Vec[i32] = [p];
+    let mut distance = 0;
+    while not level.contains(q) {
+        let mut further: Vec[i32] = Vec.new();
+        for v in level.iter() {
+            for w in next[v].iter() {
+                if seen.insert(w) {
+                    further.push(w);
+                }
+            }
+        }
+        level = further;
+        distance += 1;
+    }
+    distance
+}
+
+// ---- the harness ----------------------------------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn leaf(val: i32) -> TreeNode {
+    TreeNode { val: val, left: None, right: None }
+}
+
+// a tree from LeetCode's level order, `None` for a missing child
+fn from_level(values: Slice[Option[i32]]) -> Option[TreeNode] {
+    let root = leaf(values[0].unwrap());
+    let mut waiting: VecDeque[TreeNode] = VecDeque.new();
+    waiting.push_back(root);
+    let mut i = 1;
+    while i < values.len() {
+        let parent = waiting.pop_front().unwrap();
+        if let Some(v) = values[i] {
+            let child = leaf(v);
+            parent.left = Some(child);
+            waiting.push_back(child);
+        }
+        i += 1;
+        if i < values.len() {
+            if let Some(v) = values[i] {
+                let child = leaf(v);
+                parent.right = Some(child);
+                waiting.push_back(child);
+            }
+            i += 1;
+        }
+    }
+    Some(root)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` nodes holding 0 to n - 1 shuffled, each hung from a random node
+// already placed, down a random walk to the first free child; every node,
+// the root first
+fn random_tree(n: i64, seed: mut ref i64) -> Vec[TreeNode] {
+    let mut values: Vec[i32] = (0..n).map(|v| v as i32).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        values.swap(i, j);
+    }
+    let mut nodes: Vec[TreeNode] = Vec.new();
+    for i in 0..n {
+        let node = leaf(values[i]);
+        if i > 0 {
+            let mut at = nodes[next_random(mut seed) % i];
+            loop {
+                if next_random(mut seed) % 2 == 0 {
+                    match at.left {
+                        Some(child) => at = child,
+                        None => {
+                            at.left = Some(node);
+                            break;
+                        }
+                    }
+                } else {
+                    match at.right {
+                        Some(child) => at = child,
+                        None => {
+                            at.right = Some(node);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        nodes.push(node);
+    }
+    nodes
+}
+
+// the statement read literally: the path between two nodes is the
+// path from the root to one, then back to where the two paths from the
+// root part, and on to the other; its edges are the two paths' lengths
+// less twice the part they share
+fn path(node: Option[TreeNode], value: i32, trail: mut ref Vec[i32]) -> bool {
+    let Some(n) = node else {
+        return false;
+    };
+    trail.push(n.val);
+    if n.val == value or path(n.left, value, mut trail) or path(n.right, value, mut trail) {
+        return true;
+    }
+    trail.pop();
+    false
+}
+
+fn literal(root: Option[TreeNode], p: i32, q: i32) -> i64 {
+    let mut to_p: Vec[i32] = Vec.new();
+    let mut to_q: Vec[i32] = Vec.new();
+    path(root, p, mut to_p);
+    path(root, q, mut to_q);
+    let mut shared = 0;
+    while shared < to_p.len() and shared < to_q.len() and to_p[shared] == to_q[shared] {
+        shared += 1;
+    }
+    to_p.len() + to_q.len() - 2 * shared
+}
+
+fn arm(a: i64, root: Option[TreeNode], p: i64, q: i64) -> i64 {
+    let (p, q) = (p as i32, q as i32);
+    let answer = match a {
+        0 => star_arm(root, p, q),
+        1 => once_arm(root, p, q),
+        2 => parents_arm(root, p, q),
+        _ => graph_arm(root, p, q),
+    };
+    answer
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "once", "parents", "graph"][a]
+}
+
+fn main() {
+    let mut seed = 1740;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[TreeNode], i64, i64, i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 12 + 1;
+        let nodes = random_tree(n, mut seed);
+        let p = next_random(mut seed) % n;
+        let q = next_random(mut seed) % n;
+        let r = next_random(mut seed) % n;
+        cases.push((nodes, p, q, r));
+    }
+    for (c, (nodes, p, q, r)) in cases.iter().enumerate() {
+        let root = Some(nodes[0]);
+        let top = nodes[0].val as i64;
+        let want = literal(root, p as i32, q as i32);
+        check = (check * 31 + want + p) % 1000000007;
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, root, p, q);
+            let through = arm(a, root, p, r) + arm(a, root, r, q);
+            let shared = arm(a, root, top, p) + arm(a, root, top, q) - got;
+            let failed = [got != want, arm(a, root, q, p) != got, got > through, shared < 0 or shared % 2 != 0];
+            answers.push(got);
+            for t in 0..4 {
+                checks += 1;
+                if failed[t] {
+                    failures += 1;
+                    by_property[t + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {c} ({nodes.len()} nodes, p {p}, q {q}, r {r}), {arm_name(a)}: P{t + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {c}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for t in 1..6 {
+            if by_property[t] > 0 {
+                counts.push(f"P{t}: {by_property[t]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}
