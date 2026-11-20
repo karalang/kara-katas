@@ -1,0 +1,72 @@
+// LeetCode #2263: Make Array Non-decreasing or Non-increasing -- the dp
+// arm in chains. A `fold` over the array carries the costs per candidate
+// value; each step is a `scan` along the candidates whose state is the
+// running minimum, Kāra's `Some((next_state, item))`. Run once over the
+// candidates rising and once falling, the least cost of either. O(n *
+// distinct).
+
+fn cheapest(nums: Vec[i64], values: Vec[i64]) -> i64 {
+    let start: Vec[i64] = values.iter().map(|_| 0).collect();
+    nums.iter()
+        .fold(start, |costs, x| {
+            values.iter()
+                .zip(costs.iter())
+                .scan(costs[0], |best, (v, c)| {
+                    let best = best.min(c);
+                    Some((best, best + (x - v).abs()))
+                })
+                .collect()
+        })
+        .iter()
+        .min()
+        .unwrap()
+}
+
+fn convert_array(nums: Vec[i64]) -> i64 {
+    let mut values = nums.clone();
+    values.sort();
+    values.dedup();
+    let falling: Vec[i64] = values.iter().rev().collect();
+    cheapest(nums, values).min(cheapest(nums, falling))
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: already non-increasing,
+    // one out of place, a zig-zag, and a valley
+    let examples = [
+        [3, 2, 4, 5, 0].to_vec(),
+        [2, 2, 3, 4].to_vec(),
+        [0].to_vec(),
+        [5, 4, 3, 2, 1].to_vec(),
+        [1, 3, 2].to_vec(),
+        [0, 1000, 0, 1000, 0].to_vec(),
+        [9, 4, 1, 0, 1, 4, 9].to_vec(),
+    ];
+    for nums in examples.iter() {
+        println(f"{nums} -> {convert_array(nums)}");
+    }
+    // 2000 arrays of 1 to 30 values from 0 to 3, 10, 100 or 1000
+    let mut seed = 2263;
+    let mut check = 0;
+    for t in 0..2000 {
+        let len = next_random(mut seed) % 30 + 1;
+        let top = [3, 10, 100, 1000][t % 4];
+        let nums: Vec[i64] = (0..len).map(|_| next_random(mut seed) % (top + 1)).collect();
+        check = (check * 31 + convert_array(nums)) % 1000000007;
+    }
+    println(f"2000 arrays: checksum {check}");
+    // the constraints' longest, 1000 values: random from 0 to 1000, a
+    // zig-zag of 0 and 1000, and 1000 down to 1 with every tenth at 1000
+    let random: Vec[i64] = (0..1000).map(|_| next_random(mut seed) % 1001).collect();
+    let zigzag: Vec[i64] = (0..1000).map(|i| (i % 2) * 1000).collect();
+    let spiked: Vec[i64] = (0..1000).map(|i| if i % 10 == 9 { 1000 } else { 1000 - i }).collect();
+    let answers = [convert_array(random), convert_array(zigzag), convert_array(spiked)];
+    println(f"1000 values: {answers}");
+}
