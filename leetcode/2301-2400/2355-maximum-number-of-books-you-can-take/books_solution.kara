@@ -1,0 +1,77 @@
+// LeetCode #2355: Maximum Number of Books You Can Take -- LeetCode's Rust
+// template, carried over by `karac fix`: the monotonic stack of the ★ arm
+// over `i32` shelves, the sums in `i64`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn maximum_books(books: Vec[i32]) -> i64 {
+        let n = books.len();
+        let mut best = Vec.filled(n, 0);
+        let mut stack: Vec[i64] = Vec.new();
+        let mut answer = 0;
+        for i in 0..n {
+            while let Some(top) = stack.last().cloned() {
+                if books[top] - top >= books[i] - i {
+                    stack.pop();
+                } else {
+                    break;
+                }
+            }
+            let b = books[i] as i64;
+            best[i] = if let Some(j) = stack.last().cloned() {
+                let length = i - j;
+                length * b - length * (length - 1) / 2 + best[j]
+            } else {
+                let length = ((i + 1)).min(b);
+                length * b - length * (length - 1) / 2
+            };
+            stack.push(i);
+            answer = answer.max(best[i]);
+        }
+        answer
+    }
+}
+
+fn maximum_books(books: Vec[i64]) -> i64 {
+    let books: Vec[i32] = books.iter().map(|x| x as i32).collect();
+    Solution.maximum_books(books)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples; one empty shelf; 2000 shelves rising by
+    // one, and falling; 10^5 shelves of up to 10^5 books every 50th and up
+    // to 200 between
+    println(f"{maximum_books([8, 5, 2, 7, 9])}");
+    println(f"{maximum_books([7, 0, 3, 4, 5])}");
+    println(f"{maximum_books([8, 2, 3, 7, 3, 4, 0, 1, 4, 3])}");
+    println(f"{maximum_books([0])}");
+    println(f"{maximum_books((1..2001).collect())}");
+    println(f"{maximum_books((1..2001).rev().collect())}");
+    let mut seed = 2355;
+    let mut big: Vec[i64] = Vec.new();
+    for i in 0..100000 {
+        let r = next_random(mut seed);
+        big.push(if i % 50 == 0 { r * 3 % 100001 } else { r % 201 });
+    }
+    println(f"{maximum_books(big)}");
+    // 2000 random arrays of 1 to 30 shelves of 0 to 1 up to 0 to 40 books
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let top = 2 + next_random(mut seed) % 40;
+        let books: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top).collect();
+        let m = maximum_books(books);
+        check = (check * 31 + m) % 1000000007;
+        total += m;
+    }
+    println(f"2000 arrays: checksum {check}, books {total}");
+}
