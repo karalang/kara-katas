@@ -1,0 +1,263 @@
+// LeetCode #2363: Merge Similar Items -- the differential. The six arms,
+// against the statement read literally: for every value from 1 to 1000
+// in turn, every item of both lists looked at, and the value written with
+// the sum of the weights of the items that hold it, when any does. No map
+// and no sort. 300 random pairs of lists of 1 to 30 items with values up
+// to 1 to 60; then 30 pairs of up to 1000 items with values up to 1 to
+// 1000; then 30 pairs of up to 1000 items with values up to 1000. Every
+// case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  values strictly rising, every weight positive, and the weights
+//     summing to all the weights given
+// P3  the two lists swapped: the same answer
+// P4  each list's items reversed: the same answer
+// P5  items1 merged with itself: items1 by value, each weight doubled
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn merge_literally(items1: Vec[Vec[i64]], items2: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut merged: Vec[Vec[i64]] = Vec.new();
+    for value in 1..1001 {
+        let mut held = false;
+        let mut weight = 0;
+        for item in items1.iter() {
+            if item[0] == value {
+                held = true;
+                weight += item[1];
+            }
+        }
+        for item in items2.iter() {
+            if item[0] == value {
+                held = true;
+                weight += item[1];
+            }
+        }
+        if held {
+            merged.push([value, weight]);
+        }
+    }
+    merged
+}
+
+// ---- star (merge.kara) ---------------------------------------------------
+
+fn star_merge_similar_items(items1: Vec[Vec[i64]], items2: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut totals: SortedMap[i64, i64] = SortedMap.new();
+    for item in items1.iter().chain(items2.iter()) {
+        *totals.entry(item[0]).or_insert(0) += item[1];
+    }
+    totals.iter().map(|(value, weight)| [value, weight]).collect()
+}
+
+// ---- count (merge_count.kara) --------------------------------------------
+
+fn count_merge_similar_items(items1: Vec[Vec[i64]], items2: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut weight: Vec[i64] = Vec.filled(1001, 0);
+    for item in items1.iter() {
+        weight[item[0]] += item[1];
+    }
+    for item in items2.iter() {
+        weight[item[0]] += item[1];
+    }
+    let mut merged: Vec[Vec[i64]] = Vec.new();
+    for value in 1..1001 {
+        if weight[value] > 0 {
+            merged.push([value, weight[value]]);
+        }
+    }
+    merged
+}
+
+// ---- two (merge_two.kara) ------------------------------------------------
+
+fn two_merge_similar_items(items1: Vec[Vec[i64]], items2: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut a = items1.clone();
+    let mut b = items2.clone();
+    a.sort();
+    b.sort();
+    let mut merged: Vec[Vec[i64]] = Vec.new();
+    let mut i = 0;
+    let mut j = 0;
+    while i < a.len() or j < b.len() {
+        if j == b.len() or (i < a.len() and a[i][0] < b[j][0]) {
+            merged.push(a[i].clone());
+            i += 1;
+        } else if i == a.len() or b[j][0] < a[i][0] {
+            merged.push(b[j].clone());
+            j += 1;
+        } else {
+            merged.push([a[i][0], a[i][1] + b[j][1]]);
+            i += 1;
+            j += 1;
+        }
+    }
+    merged
+}
+
+// ---- map (merge_map.kara) ------------------------------------------------
+
+fn map_merge_similar_items(items1: Vec[Vec[i64]], items2: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut totals: Map[i64, i64] = Map.new();
+    for item in items1.iter() {
+        totals[item[0]] = totals.get(item[0]).unwrap_or(0) + item[1];
+    }
+    for item in items2.iter() {
+        totals[item[0]] = totals.get(item[0]).unwrap_or(0) + item[1];
+    }
+    let mut merged: Vec[Vec[i64]] = totals.iter().map(|(value, weight)| [value, weight]).collect();
+    merged.sort_by_key(|p| p[0]);
+    merged
+}
+
+// ---- iter (merge_iter.kara) ----------------------------------------------
+
+fn iter_merge_similar_items(items1: Vec[Vec[i64]], items2: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut all: Vec[Vec[i64]] = items1.iter().chain(items2.iter()).cloned().collect();
+    all.sort();
+    all.into_iter().fold(Vec.new(), |merged: own Vec[Vec[i64]], item| {
+        let mut merged = merged;
+        if merged.len() > 0 and merged[merged.len() - 1][0] == item[0] {
+            merged[merged.len() - 1][1] += item[1];
+        } else {
+            merged.push(item);
+        }
+        merged
+    })
+}
+
+// ---- solution (merge_solution.kara) --------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn merge_similar_items(items1: Vec[Vec[i32]], items2: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+        let mut totals: SortedMap[i32, i32] = SortedMap.new();
+        for item in items1.iter().chain(items2.iter()) {
+            *totals.entry(item[0]).or_insert(0) += item[1];
+        }
+        totals.into_iter().map(|(v, w)| [v, w]).collect()
+    }
+}
+
+fn solution_narrow(items: Vec[Vec[i64]]) -> Vec[Vec[i32]] {
+    items.iter().map(|p| p.iter().map(|x| x as i32).collect()).collect()
+}
+
+fn solution_merge_similar_items(items1: Vec[Vec[i64]], items2: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let merged = Solution.merge_similar_items(solution_narrow(items1), solution_narrow(items2));
+    merged.iter().map(|p| p.iter().map(|x| x as i64).collect()).collect()
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn answer(arm: i64, items1: Vec[Vec[i64]], items2: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    match arm {
+        0 => star_merge_similar_items(items1, items2),
+        1 => count_merge_similar_items(items1, items2),
+        2 => two_merge_similar_items(items1, items2),
+        3 => map_merge_similar_items(items1, items2),
+        4 => iter_merge_similar_items(items1, items2),
+        _ => solution_merge_similar_items(items1, items2),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_items(seed: mut ref i64, count: i64, values: i64) -> Vec[Vec[i64]] {
+    let mut used: Vec[bool] = Vec.filled(values + 1, false);
+    let mut items: Vec[Vec[i64]] = Vec.new();
+    while items.len() < count {
+        let v = 1 + next_random(mut seed) % values;
+        if not used[v] {
+            used[v] = true;
+            items.push([v, 1 + next_random(mut seed) % 1000]);
+        }
+    }
+    items
+}
+
+fn main() {
+    let names = ["star", "count", "two", "map", "iter", "solution"];
+    let mut seed = 2363;
+    let mut cases: Vec[(Vec[Vec[i64]], Vec[Vec[i64]])] = Vec.new();
+    for c in 0..360 {
+        let values = if c < 300 { 1 + next_random(mut seed) % 60 } else if c < 330 { 1 + next_random(mut seed) % 1000 } else { 1000 };
+        let most = if c < 300 { values.min(30) } else { values };
+        let n = 1 + next_random(mut seed) % most;
+        let m = 1 + next_random(mut seed) % most;
+        let items1 = random_items(mut seed, n, values);
+        let items2 = random_items(mut seed, m, values);
+        cases.push((items1, items2));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (items1, items2) = cases[c].clone();
+        let truth = merge_literally(items1, items2);
+        for p in truth.iter() {
+            check = (check * 31 + p[0] * 1009 + p[1]) % 1000000007;
+        }
+        check = (check * 31 + truth.len()) % 1000000007;
+        let given: i64 = items1.iter().chain(items2.iter()).map(|p| p[1]).sum();
+        let backwards1: Vec[Vec[i64]] = items1.iter().rev().cloned().collect();
+        let backwards2: Vec[Vec[i64]] = items2.iter().rev().cloned().collect();
+        let mut doubled: Vec[Vec[i64]] = items1.iter().map(|p| [p[0], 2 * p[1]]).collect();
+        doubled.sort();
+        let got: Vec[Vec[Vec[i64]]] = (0..6).map(|arm| answer(arm, items1, items2)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut rising = true;
+            let mut total = 0;
+            for i in 0..value.len() {
+                if value[i].len() != 2 or value[i][1] <= 0 or (i > 0 and value[i - 1][0] >= value[i][0]) {
+                    rising = false;
+                }
+                if value[i].len() == 2 {
+                    total += value[i][1];
+                }
+            }
+            let verdicts = [
+                value == truth,
+                rising and total == given,
+                answer(arm, items2, items1) == value,
+                answer(arm, backwards1, backwards2) == value,
+                answer(arm, items1, items1) == doubled,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, {value.len()} pairs, literal {truth.len()}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

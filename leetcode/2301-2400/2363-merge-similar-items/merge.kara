@@ -1,0 +1,69 @@
+// LeetCode #2363: Merge Similar Items -- the ★ arm: every item of both
+// lists added into a sorted map from value to total weight, which walks
+// out in order of value. O((n + m) log(n + m)).
+
+fn merge_similar_items(items1: Vec[Vec[i64]], items2: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut totals: SortedMap[i64, i64] = SortedMap.new();
+    for item in items1.iter().chain(items2.iter()) {
+        *totals.entry(item[0]).or_insert(0) += item[1];
+    }
+    totals.iter().map(|(value, weight)| [value, weight]).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(items: Vec[Vec[i64]]) -> String {
+    let parts: Vec[String] = items.iter().map(|p| f"[{p[0]},{p[1]}]").collect();
+    "[" + parts.join(",") + "]"
+}
+
+fn random_items(seed: mut ref i64, count: i64, values: i64) -> Vec[Vec[i64]] {
+    // count distinct values from 1 to values, each with a weight of 1 to 1000
+    let mut used: Vec[bool] = Vec.filled(values + 1, false);
+    let mut items: Vec[Vec[i64]] = Vec.new();
+    while items.len() < count {
+        let v = 1 + next_random(mut seed) % values;
+        if not used[v] {
+            used[v] = true;
+            items.push([v, 1 + next_random(mut seed) % 1000]);
+        }
+    }
+    items
+}
+
+fn main() {
+    // LeetCode's three examples; one item in each list with the same
+    // value; 1000 items each with every value; then 2000 random pairs of
+    // lists of 1 to 30 items with values from 1 to 1 to 60
+    println(show(merge_similar_items([[1, 1], [4, 5], [3, 8]].to_vec(), [[3, 1], [1, 5]].to_vec())));
+    println(show(merge_similar_items([[1, 1], [3, 2], [2, 3]].to_vec(), [[2, 1], [3, 2], [1, 3]].to_vec())));
+    println(show(merge_similar_items([[1, 3], [2, 2]].to_vec(), [[7, 1], [2, 2], [1, 4]].to_vec())));
+    println(show(merge_similar_items([[1000, 1000]].to_vec(), [[1000, 1000]].to_vec())));
+    let all: Vec[Vec[i64]] = (1..1001).rev().map(|v| [v, v]).collect();
+    let odd: Vec[Vec[i64]] = (1..1001).map(|v| [v, v % 7 + 1]).collect();
+    let big = merge_similar_items(all, odd);
+    let total: i64 = big.iter().map(|p| p[0] * p[1]).sum();
+    println(f"{big.len()} values, {total}");
+    let mut seed = 2363;
+    let mut check = 0;
+    let mut shared = 0;
+    for _ in 0..2000 {
+        let values = 1 + next_random(mut seed) % 60;
+        let n = 1 + next_random(mut seed) % values.min(30);
+        let m = 1 + next_random(mut seed) % values.min(30);
+        let items1 = random_items(mut seed, n, values);
+        let items2 = random_items(mut seed, m, values);
+        let merged = merge_similar_items(items1, items2);
+        for p in merged.iter() {
+            check = (check * 31 + p[0] * 1009 + p[1]) % 1000000007;
+        }
+        check = (check * 31 + merged.len()) % 1000000007;
+        shared += n + m - merged.len();
+    }
+    println(f"2000 pairs: checksum {check}, {shared} values in both");
+}
