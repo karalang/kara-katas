@@ -1,0 +1,67 @@
+// LeetCode #2348: Number of Zero-Filled Subarrays -- whole runs: each
+// maximal run of zeros found by its start and its end, and a run of
+// length L counted at once as L (L + 1) / 2. O(n).
+
+fn zero_filled_subarray(nums: Vec[i64]) -> i64 {
+    let mut total = 0;
+    let mut i = 0;
+    while i < nums.len() {
+        if nums[i] != 0 {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < nums.len() and nums[i] == 0 {
+            i += 1;
+        }
+        let length = i - start;
+        total += length * (length + 1) / 2;
+    }
+    total
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples; then one zero, 10^5 zeros, zeros between
+    // every other value, and 10^5 values with every third one not zero
+    println(f"{zero_filled_subarray([1, 3, 0, 0, 2, 0, 0, 4].to_vec())}");
+    println(f"{zero_filled_subarray([0, 0, 0, 2, 0, 0].to_vec())}");
+    println(f"{zero_filled_subarray([2, 10, 2019].to_vec())}");
+    println(f"{zero_filled_subarray([0].to_vec())}");
+    println(f"{zero_filled_subarray(Vec.filled(100000, 0))}");
+    println(f"{zero_filled_subarray((0..100000).map(|i| i % 2 * 1000000000).collect())}");
+    println(f"{zero_filled_subarray((0..100000).map(|i| if i % 3 == 2 { -1 } else { 0 }).collect())}");
+    // 2000 random arrays of 1 to 40 values, each zero with a chance of 1 in
+    // 2 to 1 in 5, and otherwise from -10^9 to 10^9 but not 0
+    let mut seed = 2348;
+    let mut check = 0;
+    let mut total = 0;
+    let mut none = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 40;
+        let odds = 2 + next_random(mut seed) % 4;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            if next_random(mut seed) % odds == 0 {
+                nums.push(0);
+            } else {
+                let high = next_random(mut seed);
+                let v = (high * 32768 + next_random(mut seed)) % 1000000000 + 1;
+                nums.push(if next_random(mut seed) % 2 == 0 { v } else { -v });
+            }
+        }
+        let answer = zero_filled_subarray(nums);
+        check = (check * 31 + answer + 1) % 1000000007;
+        total += answer;
+        if answer == 0 {
+            none += 1;
+        }
+    }
+    println(f"2000 arrays: checksum {check}, sum {total}, none {none}");
+}

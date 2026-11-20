@@ -1,0 +1,251 @@
+// LeetCode #2348: Number of Zero-Filled Subarrays -- the differential. The
+// six arms, against the statement read literally: every subarray, from
+// every start to every end, checked value by value for being all zeros.
+// No runs. 300 random cases of 1 to 20 values, each zero with a chance
+// of 1 in 1 to 1 in 5 and otherwise from -10^9 to 10^9 but not 0; then 30
+// of up to 2000 values, zero with a chance of 1 in 1 to 1 in 3; then 30
+// of up to 300 values from -2 to 2. Every case is drawn before any arm
+// answers.
+//
+// P1  up to 20 values, the answer is the literal reading's
+// P2  0 exactly when there is no zero, and otherwise from the number of
+//     zeros z to z (z + 1) / 2
+// P3  the values reversed: the same answer
+// P4  every value that is not zero negated: the same answer
+// P5  a zero appended: the answer plus one more than the zeros that end
+//     the array
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn subarrays_literally(nums: Vec[i64]) -> i64 {
+    let mut total = 0;
+    for i in 0..nums.len() {
+        for j in i..nums.len() {
+            let mut all_zero = true;
+            for k in i..j + 1 {
+                if nums[k] != 0 {
+                    all_zero = false;
+                }
+            }
+            if all_zero {
+                total += 1;
+            }
+        }
+    }
+    total
+}
+
+// ---- star (zeros.kara) ---------------------------------------------------
+
+fn star_zero_filled_subarray(nums: Vec[i64]) -> i64 {
+    let mut run = 0;
+    let mut total = 0;
+    for x in nums {
+        if x == 0 {
+            run += 1;
+        } else {
+            run = 0;
+        }
+        total += run;
+    }
+    total
+}
+
+// ---- runs (zeros_runs.kara) ----------------------------------------------
+
+fn runs_zero_filled_subarray(nums: Vec[i64]) -> i64 {
+    let mut total = 0;
+    let mut i = 0;
+    while i < nums.len() {
+        if nums[i] != 0 {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < nums.len() and nums[i] == 0 {
+            i += 1;
+        }
+        let length = i - start;
+        total += length * (length + 1) / 2;
+    }
+    total
+}
+
+// ---- halves (zeros_halves.kara) ------------------------------------------
+
+fn halves_count(nums: Vec[i64], lo: i64, hi: i64) -> i64 {
+    if hi - lo == 1 {
+        return if nums[lo] == 0 { 1 } else { 0 };
+    }
+    let mid = (lo + hi) / 2;
+    let mut left = 0;
+    while mid - 1 - left >= lo and nums[mid - 1 - left] == 0 {
+        left += 1;
+    }
+    let mut right = 0;
+    while mid + right < hi and nums[mid + right] == 0 {
+        right += 1;
+    }
+    halves_count(nums, lo, mid) + halves_count(nums, mid, hi) + left * right
+}
+
+fn halves_zero_filled_subarray(nums: Vec[i64]) -> i64 {
+    halves_count(nums, 0, nums.len())
+}
+
+// ---- last (zeros_last.kara) ----------------------------------------------
+
+fn last_zero_filled_subarray(nums: Vec[i64]) -> i64 {
+    let mut last = -1;
+    let mut total = 0;
+    for (i, x) in nums.iter().enumerate() {
+        if x != 0 {
+            last = i;
+        } else {
+            total += i - last;
+        }
+    }
+    total
+}
+
+// ---- iter (zeros_iter.kara) ----------------------------------------------
+
+fn iter_zero_filled_subarray(nums: Vec[i64]) -> i64 {
+    nums.iter()
+        .scan(0, |run, x| {
+            let run = if x == 0 { run + 1 } else { 0 };
+            Some((run, run))
+        })
+        .sum()
+}
+
+// ---- solution (zeros_solution.kara) --------------------------------------
+
+impl Solution {
+    pub fn zero_filled_subarray(nums: Vec[i32]) -> i64 {
+        nums.split(|x| x != 0).into_iter()
+            .map(|run| {
+                let n = run.len();
+                n * (n + 1) / 2
+            })
+            .sum()
+    }
+}
+
+struct Solution {}
+
+fn solution_zero_filled_subarray(nums: Vec[i64]) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.zero_filled_subarray(nums)
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_zero_filled_subarray(nums),
+        1 => runs_zero_filled_subarray(nums),
+        2 => halves_zero_filled_subarray(nums),
+        3 => last_zero_filled_subarray(nums),
+        4 => iter_zero_filled_subarray(nums),
+        _ => solution_zero_filled_subarray(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "runs", "halves", "last", "iter", "solution"];
+    let mut seed = 2348;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..360 {
+        let mut nums: Vec[i64] = Vec.new();
+        if c < 330 {
+            let (most, odds) = if c < 300 {
+                (20, 1 + next_random(mut seed) % 5)
+            } else {
+                (2000, 1 + next_random(mut seed) % 3)
+            };
+            let n = 1 + next_random(mut seed) % most;
+            for _ in 0..n {
+                if next_random(mut seed) % odds == 0 {
+                    nums.push(0);
+                } else {
+                    let high = next_random(mut seed);
+                    let v = (high * 32768 + next_random(mut seed)) % 1000000000 + 1;
+                    nums.push(if next_random(mut seed) % 2 == 0 { v } else { -v });
+                }
+            }
+        } else {
+            let n = 1 + next_random(mut seed) % 300;
+            for _ in 0..n {
+                nums.push(next_random(mut seed) % 5 - 2);
+            }
+        }
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let nums = cases[c].clone();
+        let small = c < 300;
+        let truth = if small { subarrays_literally(nums) } else { -1 };
+        if small {
+            check = (check * 31 + truth + 1) % 1000000007;
+        }
+        let zeros = nums.iter().filter(|x| x == 0).count();
+        let mut ending = 0;
+        while ending < nums.len() and nums[nums.len() - 1 - ending] == 0 {
+            ending += 1;
+        }
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let negated: Vec[i64] = nums.iter().map(|x| -x).collect();
+        let mut with_zero = nums.clone();
+        with_zero.push(0);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                if zeros == 0 { value == 0 } else { value >= zeros and value <= zeros * (zeros + 1) / 2 },
+                answer(arm, reversed) == value,
+                answer(arm, negated) == value,
+                answer(arm, with_zero) == value + ending + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
