@@ -1,0 +1,80 @@
+// LeetCode #2386: Find the K-Sum of an Array -- binary search. As in the
+// ★ arm, the answer is the largest sum less the k-th smallest sum of a
+// set of the sizes, the empty set first. That is the least bound with at
+// least k sets summing within it, searched between 0 and the sum of all
+// the sizes; the sets are counted by a walk over the sorted sizes that
+// stops at a size too big, and at k. O(n log n + k log(sum)).
+
+fn count_within(sizes: Vec[i64], from: i64, room: i64, cap: i64) -> i64 {
+    let mut count = 0;
+    for i in from..sizes.len() {
+        if sizes[i] > room or count >= cap {
+            break;
+        }
+        count += 1 + count_within(sizes, i + 1, room - sizes[i], cap - count - 1);
+    }
+    count
+}
+
+fn k_sum(nums: Vec[i64], k: i64) -> i64 {
+    let mut largest = 0;
+    let mut sizes: Vec[i64] = Vec.new();
+    for v in nums.iter() {
+        if v > 0 {
+            largest += v;
+        }
+        sizes.push(v.abs());
+    }
+    sizes.sort();
+    let mut low = 0;
+    let mut high = sizes.iter().sum();
+    while low < high {
+        let mid = low + (high - low) / 2;
+        if 1 + count_within(sizes, 0, mid, k - 1) >= k {
+            high = mid;
+        } else {
+            low = mid + 1;
+        }
+    }
+    largest - low
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; one value, each way; all four sums of two
+    // values; then 10^5 values from -10^9 to 10^9 for k = 2000, and 10^5
+    // 0s for k = 2000; then 3000 random arrays of 1 to 12 values from
+    // -top to top, top from 1 to 10^9, for a random k up to 2^n, with a
+    // checksum and the sum of the answers
+    println(f"{k_sum([2, 4, -2], 5)}");
+    println(f"{k_sum([1, -2, 3, 4, -10, 12], 16)}");
+    println(f"{k_sum([-7], 1)} {k_sum([-7], 2)} {k_sum([7], 1)} {k_sum([7], 2)}");
+    println(f"{k_sum([3, -5], 1)} {k_sum([3, -5], 2)} {k_sum([3, -5], 3)} {k_sum([3, -5], 4)}");
+    let mut seed = 2386;
+    let big: Vec[i64] = (0..100000).map(|_| wide(mut seed) % 2000000001 - 1000000000).collect();
+    let zeros: Vec[i64] = Vec.filled(100000, 0);
+    println(f"{k_sum(big, 2000)} {k_sum(zeros, 2000)}");
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 12;
+        let top = 1 + wide(mut seed) % [1, 10, 1000, 1000000000][next_random(mut seed) % 4];
+        let nums: Vec[i64] = (0..n).map(|_| wide(mut seed) % (2 * top + 1) - top).collect();
+        let k = 1 + next_random(mut seed) % (1 << n).min(2000);
+        let answer = k_sum(nums, k);
+        check = (check * 31 + answer % 1000000007 + 1000000007) % 1000000007;
+        total += answer;
+    }
+    println(f"3000 arrays: checksum {check}, answers summing to {total}");
+}

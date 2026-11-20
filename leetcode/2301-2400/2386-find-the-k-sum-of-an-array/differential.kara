@@ -1,0 +1,314 @@
+// LeetCode #2386: Find the K-Sum of an Array -- the differential. The six
+// arms, against the statement read literally: the sum of every one of the
+// 2^n subsequences, sorted from the largest, and the k-th taken. No
+// sizes, no heap. 300 random arrays of 1 to 12 values, which the literal
+// reading answers; then 30 of up to 2000 values from -10^9 to 10^9; then
+// 30 of up to 2000 values from -2 to 2. Each asks for a random k up to
+// 2^n and 2000, the long ones up to 500, and every case is drawn before
+// any arm answers.
+//
+// P1  up to 12 values, the answer is the literal reading's
+// P2  at most the largest sum and at least the smallest, and the largest
+//     exactly when k is 1
+// P3  the values reversed: the same answer
+// P4  every value negated: the answer less the sum of all the values
+// P5  k one more, while there are that many: the answer or smaller
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn k_sum_literally(nums: Vec[i64], k: i64) -> i64 {
+    let mut sums: Vec[i64] = [0].to_vec();
+    for v in nums.iter() {
+        let more: Vec[i64] = sums.iter().map(|s| s + v).collect();
+        sums.extend(more);
+    }
+    sums.sort();
+    sums.reverse();
+    sums[k - 1]
+}
+
+// ---- star (ksum.kara) ----------------------------------------------------
+
+fn star_k_sum(nums: Vec[i64], k: i64) -> i64 {
+    let mut largest = 0;
+    let mut sizes: Vec[i64] = Vec.new();
+    for v in nums.iter() {
+        if v > 0 {
+            largest += v;
+        }
+        sizes.push(v.abs());
+    }
+    sizes.sort();
+    let mut heap: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    heap.push((sizes[0], 0));
+    let mut lost = 0;
+    for _ in 1..k {
+        let (sum, last) = heap.pop().unwrap();
+        lost = sum;
+        if last + 1 < sizes.len() {
+            heap.push((sum + sizes[last + 1], last + 1));
+            heap.push((sum - sizes[last] + sizes[last + 1], last + 1));
+        }
+    }
+    largest - lost
+}
+
+// ---- merge (ksum_merge.kara) ---------------------------------------------
+
+fn merge_k_sum(nums: Vec[i64], k: i64) -> i64 {
+    let mut largest = 0;
+    let mut sizes: Vec[i64] = Vec.new();
+    for v in nums.iter() {
+        if v > 0 {
+            largest += v;
+        }
+        sizes.push(v.abs());
+    }
+    sizes.sort();
+    let mut best: Vec[i64] = [0].to_vec();
+    for a in sizes.iter() {
+        if best.len() == k and a >= best[k - 1] {
+            break;
+        }
+        let mut merged: Vec[i64] = Vec.new();
+        let mut i = 0;
+        let mut j = 0;
+        while merged.len() < k and j < best.len() {
+            if i < best.len() and best[i] <= best[j] + a {
+                merged.push(best[i]);
+                i += 1;
+            } else {
+                merged.push(best[j] + a);
+                j += 1;
+            }
+        }
+        best = merged;
+    }
+    largest - best[k - 1]
+}
+
+// ---- search (ksum_search.kara) -------------------------------------------
+
+fn search_count_within(sizes: Vec[i64], from: i64, room: i64, cap: i64) -> i64 {
+    let mut count = 0;
+    for i in from..sizes.len() {
+        if sizes[i] > room or count >= cap {
+            break;
+        }
+        count += 1 + search_count_within(sizes, i + 1, room - sizes[i], cap - count - 1);
+    }
+    count
+}
+
+fn search_k_sum(nums: Vec[i64], k: i64) -> i64 {
+    let mut largest = 0;
+    let mut sizes: Vec[i64] = Vec.new();
+    for v in nums.iter() {
+        if v > 0 {
+            largest += v;
+        }
+        sizes.push(v.abs());
+    }
+    sizes.sort();
+    let mut low = 0;
+    let mut high = sizes.iter().sum();
+    while low < high {
+        let mid = low + (high - low) / 2;
+        if 1 + search_count_within(sizes, 0, mid, k - 1) >= k {
+            high = mid;
+        } else {
+            low = mid + 1;
+        }
+    }
+    largest - low
+}
+
+// ---- set (ksum_set.kara) -------------------------------------------------
+
+fn set_k_sum(nums: Vec[i64], k: i64) -> i64 {
+    let mut largest = 0;
+    let mut sizes: Vec[i64] = Vec.new();
+    for v in nums.iter() {
+        if v > 0 {
+            largest += v;
+        }
+        sizes.push(v.abs());
+    }
+    sizes.sort();
+    let mut queue: SortedSet[(i64, i64, i64)] = SortedSet.new();
+    queue.insert((sizes[0], 0, 0));
+    let mut serial = 1;
+    let mut lost = 0;
+    for _ in 1..k {
+        let (sum, last, _) = queue.pop_first().unwrap();
+        lost = sum;
+        if last + 1 < sizes.len() {
+            queue.insert((sum + sizes[last + 1], last + 1, serial));
+            queue.insert((sum - sizes[last] + sizes[last + 1], last + 1, serial + 1));
+            serial += 2;
+        }
+    }
+    largest - lost
+}
+
+// ---- iter (ksum_iter.kara) -----------------------------------------------
+
+fn iter_k_sum(nums: Vec[i64], k: i64) -> i64 {
+    let largest: i64 = nums.iter().filter(|v| v > 0).sum();
+    let mut sizes: Vec[i64] = nums.iter().map(|v| v.abs()).collect();
+    sizes.sort();
+    let best = sizes.iter().fold([0].to_vec(), |best: own Vec[i64], a| {
+        if best.len() == k and a >= best[k - 1] {
+            return best;
+        }
+        let mut all: Vec[i64] = best.iter().cloned().chain(best.iter().map(|s| s + a)).collect();
+        all.sort();
+        all.truncate(k);
+        all
+    });
+    largest - best[k - 1]
+}
+
+// ---- solution (ksum_solution.kara) ---------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn k_sum(nums: Vec[i32], k: i32) -> i64 {
+        let mut total: i64 = 0;
+        let mut a: Vec[i64] = Vec.with_capacity(nums.len());
+        for x in ref nums {
+            if x > 0 {
+                total += x;
+            }
+            a.push((x as i64).abs());
+        }
+        a.sort();
+        let mut heap = PriorityQueue.new();
+        heap.push((a[0], 0));
+        let mut cur = 0;
+        for _ in 1..k {
+            let (s, i) = heap.pop().unwrap();
+            cur = s;
+            if i + 1 < a.len() {
+                heap.push((s + a[i + 1], i + 1));
+                heap.push((s - a[i] + a[i + 1], i + 1));
+            }
+        }
+        total - cur
+    }
+}
+
+fn solution_k_sum(nums: Vec[i64], k: i64) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|v| v as i32).collect();
+    Solution.k_sum(nums, k as i32)
+}
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64], k: i64) -> i64 {
+    match arm {
+        0 => star_k_sum(nums, k),
+        1 => merge_k_sum(nums, k),
+        2 => search_k_sum(nums, k),
+        3 => set_k_sum(nums, k),
+        4 => iter_k_sum(nums, k),
+        _ => solution_k_sum(nums, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "merge", "search", "set", "iter", "solution"];
+    let mut seed = 2386;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..360 {
+        let (n, top) = if c < 300 {
+            (1 + next_random(mut seed) % 12, [2, 10, 1000, 1000000000][next_random(mut seed) % 4])
+        } else if c < 330 {
+            (1 + next_random(mut seed) % 2000, 1000000000)
+        } else {
+            (1 + next_random(mut seed) % 2000, 2)
+        };
+        let nums: Vec[i64] = (0..n).map(|_| wide(mut seed) % (2 * top + 1) - top).collect();
+        let most = if n >= 11 { 2000 } else { 1 << n };
+        let reach = if c < 300 { most } else { 500 };
+        cases.push((nums, 1 + next_random(mut seed) % reach));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (nums, k) = cases[c].clone();
+        let n = nums.len();
+        let most = if n >= 11 { 2000 } else { 1 << n };
+        let small = n <= 12;
+        let truth = if small { k_sum_literally(nums, k) } else { 0 };
+        if small {
+            check = (check * 31 + truth % 1000000007 + 1000000007) % 1000000007;
+        }
+        let mut largest = 0;
+        let mut smallest = 0;
+        let mut all = 0;
+        for v in nums.iter() {
+            if v > 0 {
+                largest += v;
+            } else {
+                smallest += v;
+            }
+            all += v;
+        }
+        let mut reversed = nums.clone();
+        reversed.reverse();
+        let negated: Vec[i64] = nums.iter().map(|v| -v).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums, k)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                value <= largest and value >= smallest and (k != 1 or value == largest),
+                answer(arm, reversed, k) == value,
+                answer(arm, negated, k) == value - all,
+                k == most or answer(arm, nums, k + 1) <= value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
