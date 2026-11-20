@@ -1,0 +1,304 @@
+// LeetCode #2342: Max Sum of a Pair With Equal Sum of Digits -- the
+// differential. The six arms, against the statement read literally: every
+// pair of places i < j, each value's digit sum read from its decimal text
+// one character at a time, and the largest sum of a pair whose digit sums
+// are equal, or -1. No table and no sorting. 300 random cases of 1 to 12
+// values up to 10, 100, 10^4 or 10^9; then 30 of up to 300 values up to
+// 10^9; then 30 of up to 300 values up to 100. Every case is drawn before
+// any arm answers.
+//
+// P1  up to 12 values, the answer is the literal reading's
+// P2  -1 exactly when no two values share a digit sum, and otherwise
+//     between twice the smallest value and twice the largest
+// P3  the values reversed: the same answer
+// P4  every value ten times itself, where that stays within i32: ten
+//     times the answer, or -1
+// P5  the largest value once more: twice the largest value
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn digits_of(x: i64) -> i64 {
+    let mut s = 0;
+    for c in f"{x}".chars() {
+        s += c as i64 - '0' as i64;
+    }
+    s
+}
+
+fn sum_literally(nums: Vec[i64]) -> i64 {
+    let mut answer = -1;
+    for i in 0..nums.len() {
+        for j in i + 1..nums.len() {
+            if digits_of(nums[i]) == digits_of(nums[j]) and nums[i] + nums[j] > answer {
+                answer = nums[i] + nums[j];
+            }
+        }
+    }
+    answer
+}
+
+// ---- star (digits.kara) --------------------------------------------------
+
+fn star_digit_sum(x: i64) -> i64 {
+    let mut rest = x;
+    let mut s = 0;
+    while rest > 0 {
+        s += rest % 10;
+        rest /= 10;
+    }
+    s
+}
+
+fn star_maximum_sum(nums: Vec[i64]) -> i64 {
+    let mut best: Vec[i64] = Vec.filled(82, -1);
+    let mut answer = -1;
+    for x in nums {
+        let s = star_digit_sum(x);
+        if best[s] >= 0 {
+            answer = answer.max(best[s] + x);
+        }
+        best[s] = best[s].max(x);
+    }
+    answer
+}
+
+// ---- naive (digits_naive.kara) -------------------------------------------
+
+fn naive_digit_sum(x: i64) -> i64 {
+    let mut rest = x;
+    let mut s = 0;
+    while rest > 0 {
+        s += rest % 10;
+        rest /= 10;
+    }
+    s
+}
+
+fn naive_maximum_sum(nums: Vec[i64]) -> i64 {
+    let sums: Vec[i64] = nums.iter().map(|x| naive_digit_sum(x)).collect();
+    let mut answer = -1;
+    for i in 0..nums.len() {
+        for j in i + 1..nums.len() {
+            if sums[i] == sums[j] and nums[i] + nums[j] > answer {
+                answer = nums[i] + nums[j];
+            }
+        }
+    }
+    answer
+}
+
+// ---- sorted (digits_sorted.kara) -----------------------------------------
+
+fn sorted_digit_sum(x: i64) -> i64 {
+    let mut rest = x;
+    let mut s = 0;
+    while rest > 0 {
+        s += rest % 10;
+        rest /= 10;
+    }
+    s
+}
+
+fn sorted_maximum_sum(nums: Vec[i64]) -> i64 {
+    let mut keyed: Vec[(i64, i64)] = nums.iter().map(|x| (sorted_digit_sum(x), x)).collect();
+    keyed.sort();
+    let mut answer = -1;
+    for i in 1..keyed.len() {
+        let (s, x) = keyed[i];
+        let (t, y) = keyed[i - 1];
+        let last_of_its_sum = i + 1 == keyed.len() or keyed[i + 1].0 != s;
+        if s == t and last_of_its_sum {
+            answer = answer.max(x + y);
+        }
+    }
+    answer
+}
+
+// ---- map (digits_map.kara) -----------------------------------------------
+
+fn map_digit_sum(x: i64) -> i64 {
+    let mut rest = x;
+    let mut s = 0;
+    while rest > 0 {
+        s += rest % 10;
+        rest /= 10;
+    }
+    s
+}
+
+fn map_maximum_sum(nums: Vec[i64]) -> i64 {
+    let mut top: SortedMap[i64, (i64, i64)] = SortedMap.new();
+    for x in nums {
+        let s = map_digit_sum(x);
+        let (first, second) = top.get(s).unwrap_or((-1, -1));
+        let kept = if x > first { (x, first) } else if x > second { (first, x) } else { (first, second) };
+        top.insert(s, kept);
+    }
+    let mut answer = -1;
+    for (_, (first, second)) in top {
+        if second >= 0 {
+            answer = answer.max(first + second);
+        }
+    }
+    answer
+}
+
+// ---- iter (digits_iter.kara) ---------------------------------------------
+
+fn iter_digit_sum(x: i64) -> i64 {
+    let mut rest = x;
+    let mut s = 0;
+    while rest > 0 {
+        s += rest % 10;
+        rest /= 10;
+    }
+    s
+}
+
+fn iter_maximum_sum(nums: Vec[i64]) -> i64 {
+    (1..82)
+        .filter_map(|s| {
+            let (first, second) = nums
+                .iter()
+                .filter(|x| iter_digit_sum(x) == s)
+                .fold((-1, -1), |(first, second), x| {
+                    if x > first { (x, first) } else { (first, second.max(x)) }
+                });
+            if second >= 0 { Some(first + second) } else { None }
+        })
+        .max()
+        .unwrap_or(-1)
+}
+
+// ---- solution (digits_solution.kara) -------------------------------------
+
+impl Solution {
+    pub fn maximum_sum(nums: Vec[i32]) -> i32 {
+        let mut best: Map[i32, i32] = Map.new();
+        let mut ans: i32 = -1;
+        for x in nums.iter() {
+            let mut s = 0;
+            let mut y = x;
+            while y > 0 {
+                s += y % 10;
+                y /= 10;
+            }
+            if let Some(b) = best.get(s).cloned() {
+                ans = ans.max(b + x);
+            }
+            let e = best.entry(s).or_insert(0);
+            *e = (*e).max(x);
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_maximum_sum(nums: Vec[i64]) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.maximum_sum(nums)
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_maximum_sum(nums),
+        1 => naive_maximum_sum(nums),
+        2 => sorted_maximum_sum(nums),
+        3 => map_maximum_sum(nums),
+        4 => iter_maximum_sum(nums),
+        _ => solution_maximum_sum(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "naive", "sorted", "map", "iter", "solution"];
+    let tops = [10, 100, 10000, 1000000000];
+    let mut seed = 2342;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..360 {
+        let (most, top) = if c < 300 {
+            (12, tops[next_random(mut seed) % 4])
+        } else if c < 330 {
+            (300, 1000000000)
+        } else {
+            (300, 100)
+        };
+        let n = 1 + next_random(mut seed) % most;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            let high = next_random(mut seed);
+            nums.push(1 + (high * 32768 + next_random(mut seed)) % top);
+        }
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let nums = cases[c].clone();
+        let small = c < 300;
+        let truth = if small { sum_literally(nums) } else { -1 };
+        if small {
+            check = (check * 31 + truth + 1) % 1000000007;
+        }
+        let largest = nums.iter().max().unwrap();
+        let smallest = nums.iter().min().unwrap();
+        let sums: SortedSet[i64] = nums.iter().map(|x| digits_of(x)).collect();
+        let shared = sums.len() < nums.len();
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let tenfold: Vec[i64] = nums.iter().map(|x| 10 * x).collect();
+        let fits = 20 * largest < 2147483647;
+        let mut once_more = nums.clone();
+        once_more.push(largest);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let scaled = if fits { answer(arm, tenfold) } else { -1 };
+            let verdicts = [
+                not small or value == truth,
+                if shared { value >= 2 * smallest and value <= 2 * largest } else { value == -1 },
+                answer(arm, reversed) == value,
+                not fits or scaled == (if value < 0 { -1 } else { 10 * value }),
+                answer(arm, once_more) == 2 * largest,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
