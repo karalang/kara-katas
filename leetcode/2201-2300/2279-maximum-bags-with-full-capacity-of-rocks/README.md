@@ -48,8 +48,9 @@ largest, 5 * 10^4 bags: capacities up to 10^9 (368), up to 100
 
 `PriorityQueue.min_first()`, the name the heap arm was first written
 with, does not exist: `PriorityQueue.new()` is already smallest first,
-and `max_first()` the other way. `karac check` reports the unknown
-method with no hint toward `new()`.
+and `max_first()` the other way. `karac check` reported the unknown
+method with no hint toward `new()`; it now names `PriorityQueue.new()`
+and `karac fix` rewrites the call to it (B-2026-11-18-83).
 
 `karac fix` carries the template in one round, reporting 20 edits:
 `Vec<i32>` to `Vec[i32]` three times, `sort_unstable` to `sort`,
