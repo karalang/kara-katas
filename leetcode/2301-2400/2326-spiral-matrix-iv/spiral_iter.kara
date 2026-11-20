@@ -1,0 +1,93 @@
+// LeetCode #2326: Spiral Matrix IV -- iterators: the list's values
+// gathered by `successors`-style walking into a `Vec`, each ring's cells
+// built from four ranges `chain`ed and `flat_map`ped over the rings, and
+// the two `zip`ped onto the grid.
+
+shared struct ListNode {
+    val: i64,
+    mut next: Option[ListNode],
+}
+
+fn ring(m: i64, n: i64, k: i64) -> Vec[(i64, i64)] {
+    let (last_row, last_col) = (m - 1 - k, n - 1 - k);
+    let top = (k..=last_col).map(|c| (k, c));
+    let right = ((k + 1)..=last_row).map(|r| (r, last_col));
+    let bottom = (k..last_col).rev().filter(|_| last_row > k).map(|c| (last_row, c));
+    let left = ((k + 1)..last_row).rev().filter(|_| last_col > k).map(|r| (r, k));
+    top.chain(right).chain(bottom).chain(left).collect()
+}
+
+fn spiral_matrix(m: i64, n: i64, head: Option[ListNode]) -> Vec[Vec[i64]] {
+    let mut values: Vec[i64] = Vec.new();
+    let mut node = head;
+    while let Some(here) = node {
+        values.push(here.val);
+        node = here.next;
+    }
+    let rings = (m.min(n) + 1) / 2;
+    let mut grid: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, -1));
+    (0..rings).flat_map(|k| ring(m, n, k).into_iter()).zip(values.iter()).for_each(|((r, c), v)| { grid[r][c] = v; });
+    grid
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn build(values: Vec[i64]) -> Option[ListNode] {
+    let mut head: Option[ListNode] = None;
+    for v in values.iter().rev() {
+        head = Some(ListNode { val: v, next: head });
+    }
+    head
+}
+
+fn show(grid: Vec[Vec[i64]]) -> String {
+    let rows: Vec[String] = grid.iter().map(|row| {
+        let cells: Vec[String] = row.iter().map(|v| f"{v}").collect();
+        f"[{cells.join(",")}]"
+    }).collect();
+    f"[{rows.join(",")}]"
+}
+
+fn fold(grid: Vec[Vec[i64]], check: mut ref i64, empty: mut ref i64) {
+    for row in grid.iter() {
+        for v in row.iter() {
+            *check = (*check * 31 + v + 1) % 1000000007;
+            if v == -1 {
+                *empty += 1;
+            }
+        }
+    }
+}
+
+fn main() {
+    // LeetCode's two examples; then one cell, a column of five, a full
+    // 4 by 4, and 300 by 300 with 50000 values, folded to a checksum
+    println(show(spiral_matrix(3, 5, build([3, 0, 2, 6, 8, 1, 7, 9, 4, 2, 5, 5, 0].to_vec()))));
+    println(show(spiral_matrix(1, 4, build([0, 1, 2].to_vec()))));
+    println(show(spiral_matrix(1, 1, build([7].to_vec()))));
+    println(show(spiral_matrix(5, 1, build([1, 2, 3].to_vec()))));
+    println(show(spiral_matrix(4, 4, build((1..=16).collect()))));
+    let mut seed = 2326;
+    let values: Vec[i64] = (0..50000).map(|_| next_random(mut seed) % 1001).collect();
+    let mut check = 0;
+    let mut empty = 0;
+    fold(spiral_matrix(300, 300, build(values)), mut check, mut empty);
+    println(f"300 by 300: checksum {check}, {empty} empty");
+    // 1000 random grids of 1 to 8 by 1 to 8, each with 1 to m n values
+    // from 0 to 1000
+    let mut check = 0;
+    let mut empty = 0;
+    for _ in 0..1000 {
+        let m = next_random(mut seed) % 8 + 1;
+        let n = next_random(mut seed) % 8 + 1;
+        let length = next_random(mut seed) % (m * n) + 1;
+        let values: Vec[i64] = (0..length).map(|_| next_random(mut seed) % 1001).collect();
+        fold(spiral_matrix(m, n, build(values)), mut check, mut empty);
+    }
+    println(f"1000 grids: checksum {check}, {empty} empty");
+}

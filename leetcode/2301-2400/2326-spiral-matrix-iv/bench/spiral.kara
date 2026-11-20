@@ -1,0 +1,58 @@
+// LeetCode #2326: Spiral Matrix IV -- the bench, the ★ arm. A walker
+// starts at the top left heading right and writes the list's values one
+// by one, turning clockwise when the next cell is off the grid or
+// already written. O(m n).
+
+shared struct ListNode {
+    val: i64,
+    mut next: Option[ListNode],
+}
+
+fn spiral_matrix(m: i64, n: i64, head: Option[ListNode]) -> Vec[Vec[i64]] {
+    let mut grid: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, -1));
+    let moves = [(0, 1), (1, 0), (0, -1), (-1, 0)];
+    let mut (r, c, d) = (0, 0, 0);
+    let mut node = head;
+    while let Some(here) = node {
+        grid[r][c] = here.val;
+        let (nr, nc) = (r + moves[d].0, c + moves[d].1);
+        if nr < 0 or nr >= m or nc < 0 or nc >= n or grid[nr][nc] != -1 {
+            d = (d + 1) % 4;
+        }
+        r += moves[d].0;
+        c += moves[d].1;
+        node = here.next;
+    }
+    grid
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 10 lists of 90000 to 99990 values built once; pass `p` lays list
+    // `k` into a grid of `10^5` cells whose shape changes with `p + k`,
+    // and folds two of its cells into the checksum
+    let rows = [100, 200, 250, 400, 500, 1000, 50, 125, 80, 160];
+    let mut seed = 2326;
+    let mut heads: Vec[Option[ListNode]] = Vec.new();
+    for k in 0..10 {
+        let mut head: Option[ListNode] = None;
+        for _ in 0..(90000 + 1111 * k) {
+            head = Some(ListNode { val: next_random(mut seed) % 1001, next: head });
+        }
+        heads.push(head);
+    }
+    let mut check = 0;
+    for p in 0..30 {
+        for k in 0..10 {
+            let m = rows[(p + k) % 10];
+            let n = 100000 / m;
+            let grid = spiral_matrix(m, n, heads[k].clone());
+            check = (check * 31 + grid[p % m][(3 * p + k) % n] + grid[m / 2][n / 2] + 2) % 1000000007;
+        }
+    }
+    println(f"30 passes over 10 lists in grids of 10^5 cells: checksum {check}");
+}

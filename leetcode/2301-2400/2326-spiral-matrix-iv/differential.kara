@@ -1,0 +1,396 @@
+// LeetCode #2326: Spiral Matrix IV -- the differential. The six arms,
+// against the statement read literally: each cell's place in the
+// clockwise order written as a key, its ring, then its side in the
+// order top, right, bottom, left, then how far along that side; the
+// cells sorted by key, and the list's values laid along them, -1 where
+// the list runs out. 300 random grids of 1 to 8 by 1 to 8 with 1 to
+// m n values from 0 to 1000; then 30 of 1 to 12 by 1 to 12 with a
+// value from 0 to 3 for every cell; then 30 of up to 30 by 30. Every
+// case is drawn before any arm answers.
+//
+// P1  the grid is the literal reading's
+// P2  the grid is m by n, and its cells other than -1 hold exactly the
+//     list's first values, as many of them as fit
+// P3  a grid one larger on every side and 2 (m + n) + 4 values of 1000
+//     in front of the list: a ring of 1000 round the same grid
+// P4  values of 1000 after the list until there are m n: the same
+//     grid with 1000 for every -1
+// P5  every value plus 1: the same grid with every cell other than -1
+//     one more
+// P6  each arm agrees with at least three of the other five
+
+shared struct ListNode {
+    val: i64,
+    mut next: Option[ListNode],
+}
+
+// ---- star (spiral.kara) --------------------------------------------------
+
+fn star_spiral_matrix(m: i64, n: i64, head: Option[ListNode]) -> Vec[Vec[i64]] {
+    let mut grid: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, -1));
+    let moves = [(0, 1), (1, 0), (0, -1), (-1, 0)];
+    let mut (r, c, d) = (0, 0, 0);
+    let mut node = head;
+    while let Some(here) = node {
+        grid[r][c] = here.val;
+        let (nr, nc) = (r + moves[d].0, c + moves[d].1);
+        if nr < 0 or nr >= m or nc < 0 or nc >= n or grid[nr][nc] != -1 {
+            d = (d + 1) % 4;
+        }
+        r += moves[d].0;
+        c += moves[d].1;
+        node = here.next;
+    }
+    grid
+}
+
+// ---- rings (spiral_rings.kara) -------------------------------------------
+
+fn rings_spiral_matrix(m: i64, n: i64, head: Option[ListNode]) -> Vec[Vec[i64]] {
+    let mut grid: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, -1));
+    let mut node = head;
+    let mut (top, bottom, left, right) = (0, m - 1, 0, n - 1);
+    while top <= bottom and left <= right and node.is_some() {
+        for c in left..=right {
+            if let Some(here) = node {
+                grid[top][c] = here.val;
+                node = here.next;
+            }
+        }
+        top += 1;
+        for r in top..=bottom {
+            if let Some(here) = node {
+                grid[r][right] = here.val;
+                node = here.next;
+            }
+        }
+        right -= 1;
+        if top <= bottom {
+            for c in (left..=right).rev() {
+                if let Some(here) = node {
+                    grid[bottom][c] = here.val;
+                    node = here.next;
+                }
+            }
+            bottom -= 1;
+        }
+        if left <= right {
+            for r in (top..=bottom).rev() {
+                if let Some(here) = node {
+                    grid[r][left] = here.val;
+                    node = here.next;
+                }
+            }
+            left += 1;
+        }
+    }
+    grid
+}
+
+// ---- order (spiral_order.kara) -------------------------------------------
+
+fn order_spiral_order(m: i64, n: i64) -> Vec[(i64, i64)] {
+    let mut order: Vec[(i64, i64)] = Vec.new();
+    let mut k = 0;
+    while 2 * k < m and 2 * k < n {
+        let (last_row, last_col) = (m - 1 - k, n - 1 - k);
+        for c in k..=last_col {
+            order.push((k, c));
+        }
+        for r in (k + 1)..=last_row {
+            order.push((r, last_col));
+        }
+        if last_row > k {
+            for c in (k..last_col).rev() {
+                order.push((last_row, c));
+            }
+        }
+        if last_col > k {
+            for r in ((k + 1)..last_row).rev() {
+                order.push((r, k));
+            }
+        }
+        k += 1;
+    }
+    order
+}
+
+fn order_spiral_matrix(m: i64, n: i64, head: Option[ListNode]) -> Vec[Vec[i64]] {
+    let mut grid: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, -1));
+    let order = order_spiral_order(m, n);
+    let mut node = head;
+    let mut i = 0;
+    while let Some(here) = node {
+        let (r, c) = order[i];
+        grid[r][c] = here.val;
+        i += 1;
+        node = here.next;
+    }
+    grid
+}
+
+// ---- rec (spiral_rec.kara) -----------------------------------------------
+
+fn rec_lay(node: Option[ListNode], r: i64, c: i64, d: i64, grid: mut ref Vec[Vec[i64]]) {
+    let Some(here) = node else {
+        return;
+    };
+    grid[r][c] = here.val;
+    let m = grid.len();
+    let n = grid[0].len();
+    let moves = [(0, 1), (1, 0), (0, -1), (-1, 0)];
+    let mut turn = d;
+    let (nr, nc) = (r + moves[d].0, c + moves[d].1);
+    if nr < 0 or nr >= m or nc < 0 or nc >= n or grid[nr][nc] != -1 {
+        turn = (d + 1) % 4;
+    }
+    rec_lay(here.next, r + moves[turn].0, c + moves[turn].1, turn, mut grid);
+}
+
+fn rec_spiral_matrix(m: i64, n: i64, head: Option[ListNode]) -> Vec[Vec[i64]] {
+    let mut grid: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, -1));
+    rec_lay(head, 0, 0, 0, mut grid);
+    grid
+}
+
+// ---- iter (spiral_iter.kara) ---------------------------------------------
+
+fn iter_ring(m: i64, n: i64, k: i64) -> Vec[(i64, i64)] {
+    let (last_row, last_col) = (m - 1 - k, n - 1 - k);
+    let top = (k..=last_col).map(|c| (k, c));
+    let right = ((k + 1)..=last_row).map(|r| (r, last_col));
+    let bottom = (k..last_col).rev().filter(|_| last_row > k).map(|c| (last_row, c));
+    let left = ((k + 1)..last_row).rev().filter(|_| last_col > k).map(|r| (r, k));
+    top.chain(right).chain(bottom).chain(left).collect()
+}
+
+fn iter_spiral_matrix(m: i64, n: i64, head: Option[ListNode]) -> Vec[Vec[i64]] {
+    let mut values: Vec[i64] = Vec.new();
+    let mut node = head;
+    while let Some(here) = node {
+        values.push(here.val);
+        node = here.next;
+    }
+    let rings = (m.min(n) + 1) / 2;
+    let mut grid: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, -1));
+    (0..rings).flat_map(|k| iter_ring(m, n, k).into_iter()).zip(values.iter()).for_each(|((r, c), v)| { grid[r][c] = v; });
+    grid
+}
+
+// ---- solution (spiral_solution.kara) -------------------------------------
+
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct SolutionNode {
+    pub val: i32,
+    pub next: Option[SolutionNode],
+}
+
+impl SolutionNode {
+    #[inline]
+    fn new(val: i32) -> Self {
+        SolutionNode { next: None, val }
+    }
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn spiral_matrix(m: i32, n: i32, head: Option[SolutionNode]) -> Vec[Vec[i32]] {
+        let mut res = Vec.filled(m, Vec.filled(n, -1));
+        let dirs = [(0, 1), (1, 0), (0, -1), (-1, 0)];
+        let mut (r, c, d) = (0i32, 0i32, 0usize);
+        let mut cur = head;
+        while let Some(node) = cur {
+            res[r as usize][c as usize] = node.val;
+            let (nr, nc) = (r + dirs[d].0, c + dirs[d].1);
+            if nr < 0 or nr >= m or nc < 0 or nc >= n or res[nr as usize][nc as usize] != -1 {
+                d = (d + 1) % 4;
+            }
+            r += dirs[d].0 as i32;
+            c += dirs[d].1 as i32;
+            cur = ref node.next;
+        }
+        res
+    }
+}
+
+fn solution_spiral_matrix(m: i64, n: i64, head: Option[SolutionNode]) -> Vec[Vec[i64]] {
+    Solution.spiral_matrix(m as i32, n as i32, head)
+        .into_iter()
+        .map(|row| row.into_iter().map(|v| v as i64).collect())
+        .collect()
+}
+
+
+fn solution_build(values: Vec[i64]) -> Option[SolutionNode] {
+    let mut head: Option[SolutionNode] = None;
+    for v in values.iter().rev() {
+        head = Some(SolutionNode { val: v as i32, next: head });
+    }
+    head
+}
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(m: i64, n: i64, values: Vec[i64]) -> Vec[Vec[i64]] {
+    let mut keyed: Vec[((i64, i64, i64), (i64, i64))] = Vec.new();
+    for r in 0..m {
+        for c in 0..n {
+            let ring = r.min(c).min(m - 1 - r).min(n - 1 - c);
+            let key = if r == ring {
+                (ring, 0, c)
+            } else if c == n - 1 - ring {
+                (ring, 1, r)
+            } else if r == m - 1 - ring {
+                (ring, 2, -c)
+            } else {
+                (ring, 3, -r)
+            };
+            keyed.push((key, (r, c)));
+        }
+    }
+    keyed.sort();
+    let mut grid: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, -1));
+    for i in 0..keyed.len().min(values.len()) {
+        let (r, c) = keyed[i].1;
+        grid[r][c] = values[i];
+    }
+    grid
+}
+
+fn build(values: Vec[i64]) -> Option[ListNode] {
+    let mut head: Option[ListNode] = None;
+    for v in values.iter().rev() {
+        head = Some(ListNode { val: v, next: head });
+    }
+    head
+}
+
+fn answer(arm: i64, m: i64, n: i64, values: Vec[i64]) -> Vec[Vec[i64]] {
+    match arm {
+        0 => star_spiral_matrix(m, n, build(values)),
+        1 => rings_spiral_matrix(m, n, build(values)),
+        2 => order_spiral_matrix(m, n, build(values)),
+        3 => rec_spiral_matrix(m, n, build(values)),
+        4 => iter_spiral_matrix(m, n, build(values)),
+        _ => solution_spiral_matrix(m, n, solution_build(values)),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// 1 to m n values from 0 to `top - 1`
+fn values(seed: mut ref i64, m: i64, n: i64, top: i64) -> Vec[i64] {
+    let length = next_random(mut seed) % (m * n) + 1;
+    (0..length).map(|_| next_random(mut seed) % top).collect()
+}
+
+// P2: the grid's shape, and its cells other than -1, sorted, the list's
+// first values sorted
+fn holds_prefix(grid: Vec[Vec[i64]], m: i64, n: i64, values: Vec[i64]) -> bool {
+    if grid.len() != m or grid.iter().any(|row| row.len() != n) {
+        return false;
+    }
+    let mut held: Vec[i64] = grid.iter().flat_map(|row| row.iter()).filter(|v| v != -1).collect();
+    let mut first: Vec[i64] = values.iter().take(m * n).collect();
+    held.sort();
+    first.sort();
+    held == first
+}
+
+fn checksum(grid: Vec[Vec[i64]], check: i64) -> i64 {
+    let mut check = check;
+    for row in grid.iter() {
+        for v in row.iter() {
+            check = (check * 31 + v + 1) % 1000000007;
+        }
+    }
+    check
+}
+
+fn main() {
+    let names = ["star", "rings", "order", "rec", "iter", "solution"];
+    let mut seed = 2326;
+    let mut cases: Vec[(i64, i64, Vec[i64])] = Vec.new();
+    for c in 0..360 {
+        if c < 300 {
+            let m = next_random(mut seed) % 8 + 1;
+            let n = next_random(mut seed) % 8 + 1;
+            cases.push((m, n, values(mut seed, m, n, 1001)));
+        } else if c < 330 {
+            let m = next_random(mut seed) % 12 + 1;
+            let n = next_random(mut seed) % 12 + 1;
+            let full: Vec[i64] = (0..m * n).map(|_| next_random(mut seed) % 4).collect();
+            cases.push((m, n, full));
+        } else {
+            let m = next_random(mut seed) % 30 + 1;
+            let n = next_random(mut seed) % 30 + 1;
+            cases.push((m, n, values(mut seed, m, n, 1001)));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (m, n, values) in cases.iter() {
+        let truth = literal(m, n, values);
+        check = checksum(truth, check);
+        let mut ringed: Vec[i64] = Vec.filled(2 * (m + n) + 4, 1000);
+        ringed.extend(values.iter());
+        let mut padded: Vec[i64] = values.clone();
+        padded.extend(Vec.filled(m * n - values.len(), 1000).iter());
+        let raised: Vec[i64] = values.iter().map(|v| v + 1).collect();
+        let got: Vec[Vec[Vec[i64]]] = (0..6).map(|arm| answer(arm, m, n, values)).collect();
+        for arm in 0..6 {
+            let grid = ref got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == grid {
+                    same += 1;
+                }
+            }
+            let outer = answer(arm, m + 2, n + 2, ringed);
+            let ring_kept = (0..m + 2).all(|r| (0..n + 2).all(|c| {
+                if r == 0 or c == 0 or r == m + 1 or c == n + 1 {
+                    outer[r][c] == 1000
+                } else {
+                    r - 1 < grid.len() and c - 1 < grid[r - 1].len() and outer[r][c] == grid[r - 1][c - 1]
+                }
+            }));
+            let filled: Vec[Vec[i64]] = grid.iter().map(|row| row.iter().map(|v| if v == -1 { 1000 } else { v }).collect()).collect();
+            let plus: Vec[Vec[i64]] = grid.iter().map(|row| row.iter().map(|v| if v == -1 { -1 } else { v + 1 }).collect()).collect();
+            let verdicts = [
+                grid == truth,
+                holds_prefix(grid, m, n, values),
+                outer.len() == m + 2 and outer.iter().all(|row| row.len() == n + 2) and ring_kept,
+                answer(arm, m, n, padded) == filled,
+                answer(arm, m, n, raised) == plus,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{m} by {n}, {values.len()} values, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
