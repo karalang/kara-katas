@@ -1,0 +1,294 @@
+// LeetCode #2401: Longest Nice Subarray -- the differential. The six
+// arms against the statement read literally: every subarray, and in it
+// every pair of distinct values ANDed, the longest whose pairs all give 0
+// kept. No running OR. 360 cases: 300 random arrays of 1 to 12 values,
+// each of one or two of 8 bits, which the literal reading answers; 30 of
+// up to 3000 values of one to three of 30 bits; and 30 of up to 3000
+// values up to 10^9. Every case is drawn before any arm answers.
+//
+// P1  up to 12 values: the answer is the literal reading's
+// P2  some window of the answer's length is nice, and none one longer
+// P3  the values reversed: the same answer
+// P4  the OR of every value appended: the same answer
+// P5  the first value dropped: the answer or one less
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn nice_literally(nums: Vec[i64]) -> i64 {
+    let mut best = 0;
+    for i in 0..nums.len() {
+        for j in i..nums.len() {
+            let mut nice = true;
+            for p in i..j + 1 {
+                for q in p + 1..j + 1 {
+                    if nums[p] & nums[q] != 0 {
+                        nice = false;
+                    }
+                }
+            }
+            if nice {
+                best = best.max(j - i + 1);
+            }
+        }
+    }
+    best
+}
+
+// ---- star (nice.kara) ----------------------------------------------------
+
+fn star_longest_nice_subarray(nums: Vec[i64]) -> i64 {
+    let mut used = 0;
+    let mut left = 0;
+    let mut best = 0;
+    for right in 0..nums.len() {
+        while used & nums[right] != 0 {
+            used ^= nums[left];
+            left += 1;
+        }
+        used |= nums[right];
+        best = best.max(right - left + 1);
+    }
+    best
+}
+
+// ---- bits (nice_bits.kara) -----------------------------------------------
+
+fn bits_longest_nice_subarray(nums: Vec[i64]) -> i64 {
+    let mut last: Vec[i64] = Vec.filled(30, -1);
+    let mut left = 0;
+    let mut best = 0;
+    for right in 0..nums.len() {
+        for bit in 0..30 {
+            if nums[right] >> bit & 1 == 1 {
+                left = left.max(last[bit] + 1);
+                last[bit] = right;
+            }
+        }
+        best = best.max(right - left + 1);
+    }
+    best
+}
+
+// ---- extend (nice_extend.kara) -------------------------------------------
+
+fn extend_longest_nice_subarray(nums: Vec[i64]) -> i64 {
+    let mut best = 0;
+    for start in 0..nums.len() {
+        let mut used = 0;
+        let mut end = start;
+        while end < nums.len() and used & nums[end] == 0 {
+            used |= nums[end];
+            end += 1;
+        }
+        best = best.max(end - start);
+    }
+    best
+}
+
+// ---- binary (nice_binary.kara) -------------------------------------------
+
+fn binary_some_window_nice(nums: Vec[i64], size: i64) -> bool {
+    let mut count: Vec[i64] = Vec.filled(30, 0);
+    let mut clashes = 0;
+    for right in 0..nums.len() {
+        for bit in 0..30 {
+            if nums[right] >> bit & 1 == 1 {
+                count[bit] += 1;
+                if count[bit] == 2 {
+                    clashes += 1;
+                }
+            }
+        }
+        if right >= size {
+            let gone = nums[right - size];
+            for bit in 0..30 {
+                if gone >> bit & 1 == 1 {
+                    count[bit] -= 1;
+                    if count[bit] == 1 {
+                        clashes -= 1;
+                    }
+                }
+            }
+        }
+        if right + 1 >= size and clashes == 0 {
+            return true;
+        }
+    }
+    false
+}
+
+fn binary_longest_nice_subarray(nums: Vec[i64]) -> i64 {
+    let mut low = 1;
+    let mut high = nums.len().min(30);
+    while low < high {
+        let mid = (low + high + 1) / 2;
+        if binary_some_window_nice(nums, mid) {
+            low = mid;
+        } else {
+            high = mid - 1;
+        }
+    }
+    low
+}
+
+// ---- iter (nice_iter.kara) -----------------------------------------------
+
+fn iter_longest_nice_subarray(nums: Vec[i64]) -> i64 {
+    (0..nums.len()).map(|right| {
+        (0..right + 1).rev().scan(0, |used, i| if used & nums[i] != 0 {
+            None
+        } else {
+            Some((used | nums[i], i))
+        }).count()
+    }).max().unwrap()
+}
+
+// ---- solution (nice_solution.kara) ---------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn longest_nice_subarray(nums: Vec[i32]) -> i32 {
+        let mut (used, l, ans) = (0i32, 0, 0);
+        for (r, x) in nums.iter().enumerate() {
+            while used & x != 0 {
+                used ^= nums[l];
+                l += 1;
+            }
+            used |= x;
+            ans = ans.max(r - l + 1);
+        }
+        ans as i32
+    }
+}
+
+fn solution_longest_nice_subarray(nums: Vec[i64]) -> i64 {
+    Solution.longest_nice_subarray(nums.iter().map(|x| x as i32).collect())
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_longest_nice_subarray(nums),
+        1 => bits_longest_nice_subarray(nums),
+        2 => extend_longest_nice_subarray(nums),
+        3 => binary_longest_nice_subarray(nums),
+        4 => iter_longest_nice_subarray(nums),
+        _ => solution_longest_nice_subarray(nums),
+    }
+}
+
+// Whether some window of `size` values has no bit set twice: its values
+// then sum to their OR.
+fn some_nice(nums: Vec[i64], size: i64) -> bool {
+    if size > nums.len() {
+        return false;
+    }
+    for i in 0..nums.len() - size + 1 {
+        let mut sum = 0;
+        let mut union = 0;
+        for j in i..i + size {
+            sum += nums[j];
+            union |= nums[j];
+        }
+        if sum == union {
+            return true;
+        }
+    }
+    false
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "bits", "extend", "binary", "iter", "solution"];
+    let mut seed = 2401;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let mut nums: Vec[i64] = Vec.new();
+        if t < 300 {
+            for _ in 0..1 + next_random(mut seed) % 12 {
+                let mut x = 0;
+                for _ in 0..1 + next_random(mut seed) % 2 {
+                    x |= 1 << next_random(mut seed) % 8;
+                }
+                nums.push(x);
+            }
+        } else if t < 330 {
+            for _ in 0..1 + next_random(mut seed) % 3000 {
+                let mut x = 0;
+                for _ in 0..1 + next_random(mut seed) % 3 {
+                    x |= 1 << next_random(mut seed) % 30;
+                }
+                nums.push(x);
+            }
+        } else {
+            for _ in 0..1 + next_random(mut seed) % 3000 {
+                nums.push(1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000);
+            }
+        }
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let nums = cases[c].clone();
+        let truth = if nums.len() <= 12 {
+            nice_literally(nums)
+        } else {
+            -1
+        };
+        if truth >= 0 {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let mut reversed = nums.clone();
+        reversed.reverse();
+        let mut with_or = nums.clone();
+        with_or.push(nums.iter().fold(0, |a, x| a | x));
+        let dropped: Vec[i64] = nums.iter().skip(1).cloned().collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let shorter = if dropped.len() == 0 {
+                0
+            } else {
+                answer(arm, dropped)
+            };
+            let verdicts = [truth < 0 or value == truth, some_nice(nums, value) and not some_nice(nums, value + 1), answer(arm, reversed) == value, answer(arm, with_or) == value, dropped.len() == 0 or shorter == value or shorter == value - 1, same >= 3];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

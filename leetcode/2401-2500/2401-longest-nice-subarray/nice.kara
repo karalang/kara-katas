@@ -1,0 +1,69 @@
+// LeetCode #2401: Longest Nice Subarray -- the ★ arm, a sliding window.
+// The window's values share no bit exactly when each new value shares
+// none with the OR of the window, so the OR is kept, and values leave
+// from the left, their bits taken off by XOR, until the new value fits.
+// O(n).
+
+fn longest_nice_subarray(nums: Vec[i64]) -> i64 {
+    let mut used = 0;
+    let mut left = 0;
+    let mut best = 0;
+    for right in 0..nums.len() {
+        while used & nums[right] != 0 {
+            used ^= nums[left];
+            left += 1;
+        }
+        used |= nums[right];
+        best = best.max(right - left + 1);
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; one value; every power of two up to 2^29
+    // in order, and then twice over
+    println(f"{longest_nice_subarray([1, 3, 8, 48, 10].to_vec())}");
+    println(f"{longest_nice_subarray([3, 1, 5, 11, 13].to_vec())}");
+    println(f"{longest_nice_subarray([1000000000].to_vec())}");
+    let powers: Vec[i64] = (0..30).map(|b| 1 << b).collect();
+    println(f"{longest_nice_subarray(powers)}");
+    let mut twice = powers.clone();
+    twice.extend(powers.iter().cloned());
+    println(f"{longest_nice_subarray(twice)}");
+    // 10^5 values up to 10^9, and 10^5 values of one bit each
+    let mut seed = 2401;
+    let big: Vec[i64] = (0..100000).map(|_| 1 + wide(mut seed) % 1000000000).collect();
+    println(f"{longest_nice_subarray(big)}");
+    let bits: Vec[i64] = (0..100000).map(|_| 1 << (next_random(mut seed) % 30)).collect();
+    println(f"{longest_nice_subarray(bits)}");
+    // 3000 random arrays of 1 to 20 values, each of one to three of 12
+    // bits; a checksum of the answers and their total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 20;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            let mut x = 0;
+            for _ in 0..1 + next_random(mut seed) % 3 {
+                x |= 1 << (next_random(mut seed) % 12);
+            }
+            nums.push(x);
+        }
+        let a = longest_nice_subarray(nums);
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}, total {total}");
+}

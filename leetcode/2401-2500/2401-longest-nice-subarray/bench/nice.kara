@@ -1,0 +1,48 @@
+// LeetCode #2401: Longest Nice Subarray -- the bench, the ★ arm: a
+// sliding window keeping the OR of its values, values leaving from the
+// left by XOR until the new one fits.
+
+fn longest_nice_subarray(nums: Vec[i64]) -> i64 {
+    let mut used = 0;
+    let mut left = 0;
+    let mut best = 0;
+    for right in 0..nums.len() {
+        while used & nums[right] != 0 {
+            used ^= nums[left];
+            left += 1;
+        }
+        used |= nums[right];
+        best = best.max(right - left + 1);
+    }
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 20 arrays of 10^5 values, each of one or two of 30 bits; each pass
+    // answers them all and folds every answer, plus the pass
+    let mut seed = 2401;
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..20 {
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..100000 {
+            let mut x = 1 << (next_random(mut seed) % 30);
+            if next_random(mut seed) % 2 == 0 {
+                x |= 1 << (next_random(mut seed) % 30);
+            }
+            nums.push(x);
+        }
+        arrays.push(nums);
+    }
+    let mut check = 0;
+    for p in 0..20 {
+        for nums in arrays.iter() {
+            check = (check * 31 + longest_nice_subarray(nums) + p) % 1000000007;
+        }
+    }
+    println(f"20 passes over 20 arrays of 10^5 values: checksum {check}");
+}
