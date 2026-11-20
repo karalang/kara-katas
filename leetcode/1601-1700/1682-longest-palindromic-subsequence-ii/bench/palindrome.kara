@@ -1,0 +1,66 @@
+// LeetCode #1682: Longest Palindromic Subsequence II -- the bench: the ★
+// arm on 200 random strings of 250 letters, LeetCode's longest, from the
+// first 4 of the alphabet, all drawn first, each answered 2 times.
+
+fn longest_palindrome_subseq(s: String) -> i32 {
+    let letters: Vec[i64] = s.bytes().iter().map(|b| (b - b'a') as i64).collect();
+    let n = letters.len();
+    let mut best: Vec[Vec[Array[i32, 26]]] = Vec.filled(n, Vec.filled(n, [0; 26]));
+    for i in (0..n).rev() {
+        for j in i + 1..n {
+            for c in 0..26 {
+                best[i][j][c] = if letters[i] == c and letters[j] == c {
+                    let mut inside = 0;
+                    if i + 1 < j - 1 {
+                        for d in 0..26 {
+                            if d != c {
+                                inside = max(inside, best[i + 1][j - 1][d]);
+                            }
+                        }
+                    }
+                    inside + 2
+                } else {
+                    max(best[i + 1][j][c], best[i][j - 1][c])
+                };
+            }
+        }
+    }
+    if n == 0 {
+        return 0;
+    }
+    best[0][n - 1].iter().max().unwrap()
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 200;
+    let n = 250;
+    let rounds = 2;
+    let alphabet = "abcd";
+    let mut seed = 1682;
+    let mut strings: Vec[String] = Vec.new();
+    for _ in 0..count {
+        let mut s = String.new();
+        for _ in 0..n {
+            let at = next_random(mut seed) % 4;
+            s.push_str(alphabet[at..at + 1]);
+        }
+        strings.push(s);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for s in strings.iter() {
+            let answer = longest_palindrome_subseq(s);
+            total += answer;
+            check = (check * 31 + answer + r) % 1000000007;
+        }
+    }
+    println(f"{count} strings of {n} letters, {rounds} rounds: answers sum to {total}, checksum {check}");
+}

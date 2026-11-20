@@ -1,0 +1,213 @@
+// LeetCode #1710: Maximum Units on a Truck -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random
+// problems of 1 to 5 box types, each 1 to 4 boxes of 1 to 6 units, and a
+// truck of 1 to 16 boxes.
+//
+// P1  the answer is the statement read literally
+// P2  a truck one box larger carries at least as many units, and at most
+//     the most units of any box more
+// P3  every box's units doubled doubles the answer
+// P4  the box types listed in reverse give the same answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- units.kara: the ★ arm: sorted by units, most first
+
+fn star_arm(box_types: Vec[Vec[i32]], truck_size: i32) -> i32 {
+    let mut order = box_types.clone();
+    order.sort_by_key(|t| -t[1]);
+    let mut room = truck_size;
+    let mut total: i32 = 0;
+    for t in order.iter() {
+        let take = min(t[0], room);
+        total += take * t[1];
+        room -= take;
+        if room == 0 {
+            break;
+        }
+    }
+    total
+}
+
+// ---- units_counting.kara: the boxes counted by their units
+
+fn counting_arm(box_types: Vec[Vec[i32]], truck_size: i32) -> i32 {
+    let mut count: Vec[i32] = Vec.filled(1001, 0);
+    for t in box_types.iter() {
+        count[t[1]] += t[0];
+    }
+    let mut room = truck_size;
+    let mut total: i32 = 0;
+    for units in (1i32..=1000).rev() {
+        if room == 0 {
+            break;
+        }
+        let take = min(count[units], room);
+        total += take * units;
+        room -= take;
+    }
+    total
+}
+
+// ---- units_heap.kara: a PriorityQueue, most units first
+
+fn heap_arm(box_types: Vec[Vec[i32]], truck_size: i32) -> i32 {
+    let mut queue = PriorityQueue.max_first();
+    for t in box_types.iter() {
+        queue.push((t[1], t[0]));
+    }
+    let mut room = truck_size;
+    let mut total: i32 = 0;
+    while room > 0 {
+        match queue.pop() {
+            Some((units, boxes)) => {
+                let take = min(boxes, room);
+                total += take * units;
+                room -= take;
+            }
+            None => break,
+        }
+    }
+    total
+}
+
+// ---- units_solution.kara: LeetCode's Rust template, through karac fix
+
+struct Solution {}
+
+impl Solution {
+    pub fn maximum_units(box_types: own Vec[Vec[i32]], truck_size: i32) -> i32 {
+        let mut box_types = box_types;
+        box_types.sort_by(|a, b| b[1].cmp(a[1]));
+        let mut remaining = truck_size;
+        let mut total: i32 = 0;
+        for bt in box_types {
+            let take = remaining.min(bt[0]);
+            total += take * bt[1];
+            remaining -= take;
+            if remaining == 0 {
+                break;
+            }
+        }
+        total
+    }
+}
+
+fn solution_arm(box_types: own Vec[Vec[i32]], truck_size: i32) -> i32 {
+    Solution.maximum_units(box_types, truck_size)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every choice of how many boxes of each
+// type to put on, from none to all of them, that the truck holds; the
+// most units among them
+fn literal(box_types: Slice[Vec[i32]], truck_size: i64) -> i64 {
+    let mut best = 0;
+    let mut taken: Vec[i64] = Vec.filled(box_types.len(), 0);
+    loop {
+        let boxes: i64 = taken.iter().sum();
+        if boxes <= truck_size {
+            let units: i64 = (0..box_types.len()).map(|i| taken[i] * box_types[i][1]).sum();
+            best = max(best, units);
+        }
+        // the next choice, counting in mixed radix
+        let mut i = 0;
+        while i < box_types.len() and taken[i] == box_types[i][0] {
+            taken[i] = 0;
+            i += 1;
+        }
+        if i == box_types.len() {
+            break;
+        }
+        taken[i] += 1;
+    }
+    best
+}
+
+fn arm(a: i64, box_types: Slice[Vec[i32]], truck_size: i64) -> i64 {
+    let box_types = box_types.to_vec();
+    let truck_size = truck_size as i32;
+    match a {
+        0 => star_arm(box_types, truck_size),
+        1 => counting_arm(box_types, truck_size),
+        2 => heap_arm(box_types, truck_size),
+        _ => solution_arm(box_types, truck_size),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "counting", "heap", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1710;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[Vec[i32]], i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 5 + 1;
+        let mut box_types: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..n {
+            let b = next_random(mut seed) % 4 + 1;
+            let u = next_random(mut seed) % 6 + 1;
+            box_types.push([b as i32, u as i32]);
+        }
+        let truck_size = next_random(mut seed) % 16 + 1;
+        cases.push((box_types, truck_size));
+    }
+    for (p, (box_types, truck_size)) in cases.iter().enumerate() {
+        let want = literal(box_types, truck_size);
+        check = (check * 31 + want + truck_size + box_types.len()) % 1000000007;
+        let most = box_types.iter().map(|t| t[1] as i64).max().unwrap();
+        let doubled: Vec[Vec[i32]] = box_types.iter().map(|t| [t[0], t[1] * 2]).collect();
+        let reversed: Vec[Vec[i32]] = box_types.iter().rev().cloned().collect();
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, box_types, truck_size);
+            let more = arm(a, box_types, truck_size + 1) - got;
+            let failed = [got != want, more < 0 or more > most, arm(a, doubled, truck_size) != 2 * got, arm(a, reversed, truck_size) != got];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({box_types}, truck {truck_size}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

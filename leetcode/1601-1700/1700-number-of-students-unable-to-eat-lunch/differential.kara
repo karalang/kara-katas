@@ -1,0 +1,206 @@
+// LeetCode #1700: Number of Students Unable to Eat Lunch -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random lunches
+// of 1 to 12 students and as many sandwiches.
+//
+// P1  the answer is the statement read literally
+// P2  the students in another order (rotated by one) give the same answer
+// P3  every 0 and 1 swapped, in students and sandwiches, gives the same
+//     answer
+// P4  a student and a sandwich of the same kind put in front give the
+//     same answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- lunch.kara: the ★ arm: only how many want each kind matters
+
+fn star_arm(students: Vec[i32], sandwiches: Vec[i32]) -> i32 {
+    let mut wanting = [0, 0];
+    for s in students.iter() {
+        wanting[s] += 1;
+    }
+    for s in sandwiches.iter() {
+        if wanting[s] == 0 {
+            break;
+        }
+        wanting[s] -= 1;
+    }
+    wanting[0] + wanting[1]
+}
+
+// ---- lunch_queue.kara: the queue played out
+
+fn queue_arm(students: Vec[i32], sandwiches: Vec[i32]) -> i32 {
+    let mut queue: VecDeque[i32] = students.iter().cloned().collect();
+    let mut top = 0;
+    let mut passed = 0;
+    while not queue.is_empty() and passed < queue.len() {
+        let student = queue.pop_front().unwrap();
+        if student == sandwiches[top] {
+            top += 1;
+            passed = 0;
+        } else {
+            queue.push_back(student);
+            passed += 1;
+        }
+    }
+    queue.len() as i32
+}
+
+// ---- lunch_iter.kara: the sandwiches eaten, counted by `take_while`
+
+fn iter_arm(students: Vec[i32], sandwiches: Vec[i32]) -> i32 {
+    let ones = students.iter().filter(|s| s == 1).count();
+    let mut wanting = [students.len() - ones, ones];
+    let eaten = sandwiches
+        .iter()
+        .take_while(|s| {
+            if wanting[s] > 0 {
+                wanting[s] -= 1;
+                true
+            } else {
+                false
+            }
+        })
+        .count();
+    (students.len() - eaten) as i32
+}
+
+// ---- lunch_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn count_students(students: Vec[i32], sandwiches: Vec[i32]) -> i32 {
+        let mut cnt = [0; 2];
+        for s in ref students {
+            cnt[s as usize] += 1;
+        }
+        for s in ref sandwiches {
+            if cnt[s as usize] == 0 {
+                break;
+            }
+            cnt[s as usize] -= 1;
+        }
+        cnt[0] + cnt[1]
+    }
+}
+
+fn solution_arm(students: Vec[i32], sandwiches: Vec[i32]) -> i32 {
+    SolutionArm.count_students(students, sandwiches)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: while some student in the queue wants
+// the sandwich on top, the one at the front takes it if it is the kind
+// they want, or else goes to the end of the queue; the students left
+fn literal(students: Vec[i32], sandwiches: Vec[i32]) -> i32 {
+    let mut queue = students.clone();
+    let mut stack = sandwiches.clone();
+    while not stack.is_empty() and queue.iter().any(|s| s == stack[0]) {
+        let front = queue.remove(0);
+        if front == stack[0] {
+            stack.remove(0);
+        } else {
+            queue.push(front);
+        }
+    }
+    queue.len() as i32
+}
+
+fn arm(a: i64, students: Vec[i32], sandwiches: Vec[i32]) -> i32 {
+    match a {
+        0 => star_arm(students, sandwiches),
+        1 => queue_arm(students, sandwiches),
+        2 => iter_arm(students, sandwiches),
+        _ => solution_arm(students, sandwiches),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "queue", "iter", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1700;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i32], Vec[i32])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 12 + 1;
+        let lean = next_random(mut seed) % 11;
+        let mut students: Vec[i32] = Vec.new();
+        let mut sandwiches: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            students.push(if next_random(mut seed) % 10 < lean { 1 } else { 0 });
+        }
+        for _ in 0..n {
+            sandwiches.push(if next_random(mut seed) % 10 < lean { 1 } else { 0 });
+        }
+        cases.push((students, sandwiches));
+    }
+    for (p, (students, sandwiches)) in cases.iter().enumerate() {
+        let want = literal(students, sandwiches);
+        check = (check * 31 + want + students.len()) % 1000000007;
+        let mut rotated = students[1..].to_vec();
+        rotated.push(students[0]);
+        let swapped: Vec[i32] = students.iter().map(|s| 1 - s).collect();
+        let swapped_sandwiches: Vec[i32] = sandwiches.iter().map(|s| 1 - s).collect();
+        let mut both = [sandwiches[0]];
+        both.extend(students.iter().cloned());
+        let mut topped = [sandwiches[0]];
+        topped.extend(sandwiches.iter().cloned());
+        let mut answers: Vec[i32] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, students, sandwiches);
+            let failed = [
+                got != want,
+                arm(a, rotated, sandwiches) != got,
+                arm(a, swapped, swapped_sandwiches) != got,
+                arm(a, both, topped) != got,
+            ];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({students}, {sandwiches}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

@@ -1,0 +1,165 @@
+// LeetCode #1688: Count of Matches in Tournament -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random n from
+// 1 to 200.
+//
+// P1  the answer is the statement read literally
+// P2  one team more plays one match more
+// P3  fewer matches than teams, and none for one team
+// P4  two tournaments of a and b teams and a final between their winners
+//     play as many matches as one of a + b teams
+// P5  each arm agrees with at least two of the other three
+
+// ---- matches.kara: the ★ arm: the rounds played out
+
+fn star_arm(n: i32) -> i32 {
+    let mut teams = n;
+    let mut played: i32 = 0;
+    while teams > 1 {
+        played += teams / 2;
+        teams = (teams + 1) / 2;
+    }
+    played
+}
+
+// ---- matches_closed.kara: one match per team out
+
+fn closed_arm(n: i32) -> i32 {
+    n - 1
+}
+
+// ---- matches_recursive.kara: one round, then the rest of the tournament
+
+fn recursive_arm(n: i32) -> i32 {
+    if n == 1 {
+        return 0;
+    }
+    n / 2 + recursive_arm(n - n / 2)
+}
+
+// ---- matches_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn number_of_matches(n: i32) -> i32 {
+        let mut n = n;
+        let mut res: i32 = 0;
+        while n > 1 {
+            res += n / 2;
+            n = (n + 1) / 2;
+        }
+        res
+    }
+}
+
+fn solution_arm(n: i32) -> i32 {
+    SolutionArm.number_of_matches(n)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: the teams in a list, paired off in order
+// each round, the first of each pair winning; with an odd count the last
+// team advances unplayed. Every match played is counted
+fn literal(n: i32) -> i32 {
+    let mut teams: Vec[i32] = (0..n).collect();
+    let mut played = 0i32;
+    while teams.len() > 1 {
+        let mut next: Vec[i32] = Vec.new();
+        let mut k = 0;
+        while k + 1 < teams.len() {
+            played += 1;
+            next.push(teams[k]);
+            k += 2;
+        }
+        if k < teams.len() {
+            next.push(teams[k]);
+        }
+        teams = next;
+    }
+    played
+}
+
+fn arm(a: i64, n: i32) -> i32 {
+    match a {
+        0 => star_arm(n),
+        1 => closed_arm(n),
+        2 => recursive_arm(n),
+        _ => solution_arm(n),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "closed", "recursive", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1688;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    // n from 1 to 200, and a split of it into two tournaments when n > 1
+    let mut cases: Vec[(i32, i32)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 200 + 1;
+        let a = if n > 1 { next_random(mut seed) % (n - 1) + 1 } else { 0 };
+        cases.push((n as i32, a as i32));
+    }
+    for (p, (n, a_teams)) in cases.iter().enumerate() {
+        let want = literal(n);
+        check = (check * 31 + want) % 1000000007;
+        check = (check * 31 + n) % 1000000007;
+        let mut answers: Vec[i32] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, n);
+            let merged = if n > 1 { arm(a, a_teams) + arm(a, n - a_teams) + 1 } else { got };
+            let failed = [
+                got != want,
+                arm(a, n + 1) != got + 1,
+                got >= n or arm(a, 1) != 0,
+                merged != got,
+            ];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({n}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

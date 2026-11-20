@@ -1,0 +1,123 @@
+// LeetCode #1697: Checking Existence of Edge Length Limited Paths -- the
+// minimum spanning forest, then the longest edge on each tree path.
+//
+// Two nodes are joined by edges all shorter than a limit exactly when the
+// longest edge on their path in a minimum spanning forest is shorter
+// (Kruskal's forest keeps, between any two nodes, the path whose longest
+// edge is least). The forest is built by Kruskal's rule over a
+// union-find, rooted by a walk that records each node's parent, the
+// length up to it and its depth; a query climbs both nodes to their meeting
+// point, keeping the longest length passed. O(E log E + Q * h).
+
+fn root_of(parent: mut ref Vec[i64], x: i64) -> i64 {
+    if parent[x] == x {
+        return x;
+    }
+    let root = root_of(mut parent, parent[x]);
+    parent[x] = root;
+    root
+}
+
+fn distance_limited_paths_exist(n: i32, edge_list: Vec[Vec[i32]], queries: Vec[Vec[i32]]) -> Vec[bool] {
+    let mut edges = edge_list.clone();
+    edges.sort_by_key(|e| e[2]);
+    let mut sets: Vec[i64] = (0..n as i64).collect();
+    let mut tree: Vec[Vec[(i64, i32)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        let a = root_of(mut sets, e[0]);
+        let b = root_of(mut sets, e[1]);
+        if a != b {
+            sets[a] = b;
+            tree[e[0]].push((e[1], e[2]));
+            tree[e[1]].push((e[0], e[2]));
+        }
+    }
+    // each tree rooted at its first node: parent, the length up, the depth
+    let mut up: Vec[i64] = Vec.filled(n, -1);
+    let mut length: Vec[i32] = Vec.filled(n, 0);
+    let mut depth: Vec[i64] = Vec.filled(n, -1);
+    for start in 0..n as i64 {
+        if depth[start] >= 0 {
+            continue;
+        }
+        depth[start] = 0;
+        let mut stack = [start];
+        while let Some(at) = stack.pop() {
+            for (to, l) in tree[at].iter() {
+                if depth[to] < 0 {
+                    depth[to] = depth[at] + 1;
+                    up[to] = at;
+                    length[to] = l;
+                    stack.push(to);
+                }
+            }
+        }
+    }
+    let mut answer: Vec[bool] = Vec.new();
+    for query in queries.iter() {
+        let mut (a, b) = (query[0] as i64, query[1] as i64);
+        let mut longest = 0;
+        while a != b and (up[a] >= 0 or up[b] >= 0) {
+            if depth[a] >= depth[b] and up[a] >= 0 {
+                longest = max(longest, length[a]);
+                a = up[a];
+            } else {
+                longest = max(longest, length[b]);
+                b = up[b];
+            }
+        }
+        answer.push(a == b and longest < query[2]);
+    }
+    answer
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random graphs of 2 to `most` nodes, each with up to 2 * `most`
+// edges and up to `most` queries, lengths and limits from 1 to `top`;
+// the answers that are true, and a checksum of every answer
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut trues = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % (most - 1) + 2;
+        let mut edges: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..next_random(mut seed) % (2 * most) + 1 {
+            let u = next_random(mut seed) % n;
+            let v = (u + 1 + next_random(mut seed) % (n - 1)) % n;
+            edges.push([u as i32, v as i32, (next_random(mut seed) % top + 1) as i32]);
+        }
+        let mut queries: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..next_random(mut seed) % most + 1 {
+            let p = next_random(mut seed) % n;
+            let q = (p + 1 + next_random(mut seed) % (n - 1)) % n;
+            queries.push([p as i32, q as i32, (next_random(mut seed) % top + 1) as i32]);
+        }
+        let answer = distance_limited_paths_exist(n as i32, edges, queries);
+        for a in answer.iter() {
+            if a {
+                trues += 1;
+            }
+            check = (check * 31 + if a { 2 } else { 1 }) % 1000000007;
+        }
+    }
+    println(f"{count} graphs of up to {most} nodes, lengths up to {top}: {trues} true, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then a limit equal to the only edge's
+    // length, and two nodes joined twice
+    println(distance_limited_paths_exist(3, [[0, 1, 2], [1, 2, 4], [2, 0, 8], [1, 0, 16]], [[0, 1, 2], [0, 2, 5]]));
+    println(distance_limited_paths_exist(5, [[0, 1, 10], [1, 2, 5], [2, 3, 9], [3, 4, 13]], [[0, 4, 14], [1, 4, 13]]));
+    println(distance_limited_paths_exist(2, [[0, 1, 3]], [[0, 1, 3], [1, 0, 4]]));
+    println(distance_limited_paths_exist(2, [[0, 1, 7], [1, 0, 2]], [[0, 1, 3], [0, 1, 2]]));
+    let mut seed = 1697;
+    batch(3000, 6, 5, mut seed);
+    batch(300, 100, 100, mut seed);
+    batch(10, 2000, 1000000000, mut seed);
+}

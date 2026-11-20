@@ -1,0 +1,73 @@
+// LeetCode #1675: Minimize Deviation in Array -- a Rust solution as
+// LeetCode's Rust users write it, the ★ arm's queue as a
+// `std::collections::BinaryHeap` (which pops the largest first) drained by
+// `while let Some(max_val) = heap.pop()`, carried to Kāra by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_deviation(nums: Vec[i32]) -> i32 {
+        let mut heap = PriorityQueue.max_first();
+        let mut min_val = i32.MAX;
+        for num in ref nums {
+            let n = if num % 2 == 1 { num * 2 } else { num };
+            heap.push(n);
+            min_val = min_val.min(n);
+        }
+        let mut ans = i32.MAX;
+        while let Some(max_val) = heap.pop() {
+            ans = ans.min(max_val - min_val);
+            if max_val % 2 == 1 {
+                break;
+            }
+            let half = max_val / 2;
+            min_val = min_val.min(half);
+            heap.push(half);
+        }
+        ans
+    }
+}
+
+fn minimum_deviation(nums: Vec[i32]) -> i32 {
+    Solution.minimum_deviation(nums)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` arrays of 2 to `longest` values from 1 to `most`; the
+// deviations summed, and a checksum of every answer
+fn batch(count: i64, longest: i64, most: i64, seed: mut ref i64) {
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % (longest - 1) + 2;
+        let mut nums: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            nums.push(((next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1) as i32);
+        }
+        let deviation = minimum_deviation(nums);
+        total += deviation;
+        check = (check * 31 + deviation + n) % 1000000007;
+    }
+    println(f"{count} arrays of up to {longest} values up to {most}: deviations sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then two odd values, one value doubled
+    // past the other, and the largest values
+    println(minimum_deviation([1, 2, 3, 4]));
+    println(minimum_deviation([4, 1, 5, 20, 3]));
+    println(minimum_deviation([2, 10, 8]));
+    println(minimum_deviation([3, 5]));
+    println(minimum_deviation([1, 1024]));
+    println(minimum_deviation([1000000000, 999999999]));
+    let mut seed = 1675;
+    batch(3000, 8, 64, mut seed);
+    batch(300, 1000, 1000000000, mut seed);
+    batch(10, 50000, 1000000000, mut seed);
+}

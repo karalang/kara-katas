@@ -1,0 +1,271 @@
+// LeetCode #1671: Minimum Number of Removals to Make Mountain Array -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random arrays
+// of 3 to 10 values from 1 to between 2 and 6, an array drawn again until
+// a mountain can be made of it.
+//
+// P1  the answer is the statement read literally
+// P2  the answer leaves at least 3 values
+// P3  the array reversed gives the same answer
+// P4  every value raised by 1000 gives the same answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- mountain.kara: the ★ arm: the longest rise and fall at each value
+
+fn star_arm(nums: Vec[i32]) -> i32 {
+    let n = nums.len();
+    let mut up = Vec.filled(n, 1);
+    let mut down = Vec.filled(n, 1);
+    for i in 0..n {
+        for j in 0..i {
+            if nums[j] < nums[i] {
+                up[i] = max(up[i], up[j] + 1);
+            }
+        }
+    }
+    for i in (0..n).rev() {
+        for j in i + 1..n {
+            if nums[j] < nums[i] {
+                down[i] = max(down[i], down[j] + 1);
+            }
+        }
+    }
+    let mut longest = 0;
+    for i in 1..n - 1 {
+        if up[i] > 1 and down[i] > 1 {
+            longest = max(longest, up[i] + down[i] - 1);
+        }
+    }
+    (n - longest) as i32
+}
+
+// ---- mountain_patience.kara: rises and falls by patience sorting
+
+// for each value, the longest strictly rising run of `values` ending there
+fn patience_rises(values: Slice[i32]) -> Vec[i64] {
+    let mut tails: Vec[i32] = Vec.new();
+    let mut lengths = Vec.new();
+    for v in values.iter() {
+        let at = tails.partition_point(|t| t < v);
+        if at == tails.len() {
+            tails.push(v);
+        } else {
+            tails[at] = v;
+        }
+        lengths.push(at + 1);
+    }
+    lengths
+}
+
+fn patience_arm(nums: Vec[i32]) -> i32 {
+    let n = nums.len();
+    let up = patience_rises(nums);
+    let reversed: Vec[i32] = nums.iter().rev().collect();
+    let mut down = patience_rises(reversed);
+    down.reverse();
+    let mut longest = 0;
+    for i in 1..n - 1 {
+        if up[i] > 1 and down[i] > 1 {
+            longest = max(longest, up[i] + down[i] - 1);
+        }
+    }
+    (n - longest) as i32
+}
+
+// ---- mountain_peaks.kara: every value tried as the peak
+
+// the longest strictly rising run in `values`
+fn peaks_longest_rise(values: own impl Iterator[Item = i32]) -> i64 {
+    let mut tails: Vec[i32] = Vec.new();
+    for v in values {
+        let at = tails.partition_point(|t| t < v);
+        if at == tails.len() {
+            tails.push(v);
+        } else {
+            tails[at] = v;
+        }
+    }
+    tails.len()
+}
+
+fn peaks_arm(nums: Vec[i32]) -> i32 {
+    let n = nums.len();
+    let mut longest = 0;
+    for i in 1..n - 1 {
+        let peak = nums[i];
+        let left = peaks_longest_rise(nums[..i].iter().filter(|v| v < peak).cloned());
+        let right = peaks_longest_rise(nums[i + 1..].iter().rev().filter(|v| v < peak).cloned());
+        if left > 0 and right > 0 {
+            longest = max(longest, left + 1 + right);
+        }
+    }
+    (n - longest) as i32
+}
+
+// ---- mountain_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn minimum_mountain_removals(nums: Vec[i32]) -> i32 {
+        let n = nums.len();
+        let mut lis = Vec.filled(n, 1);
+        let mut lds = Vec.filled(n, 1);
+        for i in 0..n {
+            for j in 0..i {
+                if nums[j] < nums[i] {
+                    lis[i] = lis[i].max(lis[j] + 1);
+                }
+            }
+        }
+        for i in (0..n).rev() {
+            for j in (i + 1)..n {
+                if nums[j] < nums[i] {
+                    lds[i] = lds[i].max(lds[j] + 1);
+                }
+            }
+        }
+        let mut ans = 0;
+        for i in 1..n - 1 {
+            if lis[i] > 1 and lds[i] > 1 {
+                ans = ans.max(lis[i] + lds[i] - 1);
+            }
+        }
+        (n - ans) as i32
+    }
+}
+
+fn solution_arm(nums: Vec[i32]) -> i32 {
+    SolutionArm.minimum_mountain_removals(nums)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` values from 1 to `most`, then one inside raised above them all, so
+// a mountain can always be made
+fn random_nums(n: i64, most: i64, seed: mut ref i64) -> Vec[i32] {
+    let mut nums: Vec[i32] = Vec.new();
+    for _ in 0..n {
+        nums.push(((next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1) as i32);
+    }
+    let peak = next_random(mut seed) % (n - 2) + 1;
+    nums[peak] = (most + 1) as i32;
+    nums
+}
+
+// the statement read literally: every set of values kept, in order, tried
+// as a mountain (at least 3, strictly up to a peak that is neither end,
+// then strictly down); the fewest removed
+fn literal(nums: Slice[i32]) -> i64 {
+    let n = nums.len();
+    let mut best = n;
+    for mask in 0..1 << n {
+        let kept: Vec[i32] = (0..n).filter(|i| mask >> i & 1 == 1).map(|i| nums[i]).collect();
+        let k = kept.len();
+        if k < 3 {
+            continue;
+        }
+        let mut top = 0;
+        while top + 1 < k and kept[top] < kept[top + 1] {
+            top += 1;
+        }
+        let mut end = top;
+        while end + 1 < k and kept[end] > kept[end + 1] {
+            end += 1;
+        }
+        if top > 0 and top < k - 1 and end == k - 1 {
+            best = min(best, n - k);
+        }
+    }
+    best
+}
+
+fn arm(a: i64, nums: Slice[i32]) -> i64 {
+    let nums = nums.to_vec();
+    match a {
+        0 => star_arm(nums),
+        1 => patience_arm(nums),
+        2 => peaks_arm(nums),
+        _ => solution_arm(nums),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "patience", "peaks", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1671;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 8 + 3;
+        let most = next_random(mut seed) % 5 + 2;
+        loop {
+            let nums: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % most + 1) as i32).collect();
+            if literal(nums) < n {
+                cases.push(nums);
+                break;
+            }
+        }
+    }
+    for (p, nums) in cases.iter().enumerate() {
+        let want = literal(nums);
+        check = (check * 31 + want + nums.len()) % 1000000007;
+        let reversed: Vec[i32] = nums.iter().rev().collect();
+        let raised: Vec[i32] = nums.iter().map(|v| v + 1000).collect();
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, nums);
+            answers.push(got);
+            let failed = [
+                got != want,
+                got < 0 or got > nums.len() - 3,
+                arm(a, reversed) != got,
+                arm(a, raised) != got,
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({nums}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

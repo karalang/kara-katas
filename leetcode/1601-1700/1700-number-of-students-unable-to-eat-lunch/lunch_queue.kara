@@ -1,0 +1,67 @@
+// LeetCode #1700: Number of Students Unable to Eat Lunch -- the queue
+// played out.
+//
+// The students in a `VecDeque`: the front one takes the top sandwich if
+// it is the kind wanted, or goes to the back; once the whole queue has
+// gone round without anyone eating, those left are the answer.
+// O(n^2) at worst.
+
+fn count_students(students: Vec[i32], sandwiches: Vec[i32]) -> i32 {
+    let mut queue: VecDeque[i32] = students.iter().cloned().collect();
+    let mut top = 0;
+    let mut passed = 0;
+    while not queue.is_empty() and passed < queue.len() {
+        let student = queue.pop_front().unwrap();
+        if student == sandwiches[top] {
+            top += 1;
+            passed = 0;
+        } else {
+            queue.push_back(student);
+            passed += 1;
+        }
+    }
+    queue.len() as i32
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random lunches of 1 to `most` students and as many sandwiches,
+// each a 1 with a chance of its lunch's own from 0 to 10 in 10; the
+// answers summed, and a checksum of them
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let lean = next_random(mut seed) % 11;
+        let mut students: Vec[i32] = Vec.new();
+        let mut sandwiches: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            students.push(if next_random(mut seed) % 10 < lean { 1 } else { 0 });
+        }
+        for _ in 0..n {
+            sandwiches.push(if next_random(mut seed) % 10 < lean { 1 } else { 0 });
+        }
+        let answer = count_students(students, sandwiches);
+        total += answer;
+        check = (check * 31 + answer) % 1000000007;
+    }
+    println(f"{count} lunches of up to {most} students: answers sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then one student without and with a match
+    println(count_students([1, 1, 0, 0], [0, 1, 0, 1]));
+    println(count_students([1, 1, 1, 0, 0, 1], [1, 0, 0, 0, 1, 1]));
+    println(count_students([0], [1]));
+    println(count_students([1], [1]));
+    let mut seed = 1700;
+    batch(3000, 12, mut seed);
+    batch(300, 100, mut seed);
+    batch(10, 10000, mut seed);
+}

@@ -1,0 +1,73 @@
+// LeetCode #1723: Find Minimum Time to Finish All Jobs -- dynamic
+// programming over the subsets of the jobs.
+//
+// `sum[mask]` is the time of the jobs in `mask`, each from the mask
+// without its lowest job. `best[mask]` is the least finish for the jobs
+// in `mask` on the workers so far: one worker more lets any part `sub` of
+// the mask go to the new worker, so the new best is the least, over every
+// part, of the larger of `sum[sub]` and the old best of the rest.
+// O(k 3^n).
+
+fn minimum_time_required(jobs: Vec[i32], k: i32) -> i32 {
+    let n = jobs.len();
+    let full = 1 << n;
+    let mut sum: Vec[i32] = Vec.filled(full, 0);
+    for mask in 1..full {
+        let low = mask.trailing_zeros();
+        sum[mask] = sum[mask & (mask - 1)] + jobs[low];
+    }
+    let mut best = sum.clone();
+    for _ in 1..k {
+        let mut next = best.clone();
+        for mask in 1..full {
+            let mut sub = mask;
+            while sub > 0 {
+                next[mask] = min(next[mask], max(best[mask ^ sub], sum[sub]));
+                sub = (sub - 1) & mask;
+            }
+        }
+        best = next;
+    }
+    best[full - 1]
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// `count` problems of `least` to `most` jobs of 1 to `top` each, and 1 to
+// as many workers as jobs
+fn batch(count: i64, least: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut sum: i64 = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = least + next_random(mut seed) % (most - least + 1);
+        let jobs: Vec[i32] = (0..n).map(|_| (wide(mut seed) % top + 1) as i32).collect();
+        let k = (next_random(mut seed) % n + 1) as i32;
+        let answer = minimum_time_required(jobs, k);
+        sum += answer;
+        check = (check * 31 + answer + n + k) % 1000000007;
+    }
+    println(f"{count} problems of {least} to {most} jobs up to {top}: answers sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then one job, twelve equal jobs for twelve
+    // workers, and the same for one
+    println(minimum_time_required([3, 2, 3], 3));
+    println(minimum_time_required([1, 2, 4, 7, 8], 2));
+    println(minimum_time_required([5], 1));
+    println(minimum_time_required(Vec.filled(12, 10000000), 12));
+    println(minimum_time_required(Vec.filled(12, 10000000), 1));
+    let mut seed = 1723;
+    batch(3000, 1, 6, 10, mut seed);
+    batch(300, 1, 10, 10000000, mut seed);
+    batch(20, 12, 12, 10000000, mut seed);
+}

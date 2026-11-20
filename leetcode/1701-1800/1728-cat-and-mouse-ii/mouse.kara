@@ -1,0 +1,173 @@
+// LeetCode #1728: Cat and Mouse II -- the ★ arm: the game solved
+// backwards from its ends.
+//
+// A state is the mouse's cell, the cat's cell and whose move it is. The
+// ends are known by the cells alone: the cat on the mouse or on the food
+// wins for the cat, the mouse on the food for the mouse. Working back from
+// them, a state where the player to move has a move to a state that player
+// wins is won for that player; one where every move goes to the other's
+// win is lost, found by counting down each state's moves still open. What
+// is never decided is a draw, which the turn limit gives to the cat.
+// O(cells^2 (rows + cols)).
+
+// the cells reachable in one move from `at` with jumps up to `jump`:
+// staying, or up to `jump` cells in a line, stopped by a wall or the edge
+fn reach(marks: Slice[Vec[char]], at: i64, jump: i32) -> Vec[i64] {
+    let rows = marks.len();
+    let cols = marks[0].len();
+    let (r, c) = (at / cols, at % cols);
+    let mut cells: Vec[i64] = [at];
+    for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+        for k in 1..jump as i64 + 1 {
+            let (nr, nc) = (r + dr * k, c + dc * k);
+            if nr < 0 or nr >= rows or nc < 0 or nc >= cols or marks[nr][nc] == '#' {
+                break;
+            }
+            cells.push(nr * cols + nc);
+        }
+    }
+    cells
+}
+
+fn can_mouse_win(grid: Vec[String], cat_jump: i32, mouse_jump: i32) -> bool {
+    let marks: Vec[Vec[char]] = grid.iter().map(|row| row.chars().collect()).collect();
+    let cols = marks[0].len();
+    let cells = marks.len() * cols;
+    let mut (mouse, cat, food) = (0, 0, 0);
+    for at in 0..cells {
+        match marks[at / cols][at % cols] {
+            'M' => mouse = at,
+            'C' => cat = at,
+            'F' => food = at,
+            _ => {}
+        }
+    }
+    let open: Vec[bool] = (0..cells).map(|at| marks[at / cols][at % cols] != '#').collect();
+    let mouse_moves: Vec[Vec[i64]] = (0..cells).map(|at| if open[at] { reach(marks, at, mouse_jump) } else { Vec.new() }).collect();
+    let cat_moves: Vec[Vec[i64]] = (0..cells).map(|at| if open[at] { reach(marks, at, cat_jump) } else { Vec.new() }).collect();
+    // state (m, c, turn) at (m * cells + c) * 2 + turn; turn 0 is the
+    // mouse's move. 0 undecided, 1 the mouse wins, 2 the cat wins.
+    let state = |m: i64, c: i64, turn: i64| (m * cells + c) * 2 + turn;
+    let mut result: Vec[i32] = Vec.filled(cells * cells * 2, 0);
+    let mut left: Vec[i64] = Vec.filled(cells * cells * 2, 0);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    for m in 0..cells {
+        for c in 0..cells {
+            if not open[m] or not open[c] {
+                continue;
+            }
+            left[state(m, c, 0)] = mouse_moves[m].len();
+            left[state(m, c, 1)] = cat_moves[c].len();
+            let end = if m == c or c == food { 2 } else if m == food { 1 } else { 0 };
+            if end != 0 {
+                for turn in 0..2 {
+                    result[state(m, c, turn)] = end;
+                    queue.push_back(state(m, c, turn));
+                }
+            }
+        }
+    }
+    while let Some(s) = queue.pop_front() {
+        let turn = s % 2;
+        let m = s / 2 / cells;
+        let c = s / 2 % cells;
+        let won = result[s];
+        // the move into s was made by the other player
+        if turn == 0 {
+            for before in cat_moves[c].iter() {
+                let p = state(m, before, 1);
+                if result[p] != 0 {
+                    continue;
+                }
+                if won == 2 {
+                    result[p] = 2;
+                    queue.push_back(p);
+                } else {
+                    left[p] -= 1;
+                    if left[p] == 0 {
+                        result[p] = 1;
+                        queue.push_back(p);
+                    }
+                }
+            }
+        } else {
+            for before in mouse_moves[m].iter() {
+                let p = state(before, c, 0);
+                if result[p] != 0 {
+                    continue;
+                }
+                if won == 1 {
+                    result[p] = 1;
+                    queue.push_back(p);
+                } else {
+                    left[p] -= 1;
+                    if left[p] == 0 {
+                        result[p] = 2;
+                        queue.push_back(p);
+                    }
+                }
+            }
+        }
+    }
+    result[state(mouse, cat, 0)] == 1
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a grid of `rows` by `cols`, a wall in each cell with a chance of 1 in
+// 4, then the cat, the mouse and the food on three different cells
+fn draw(rows: i64, cols: i64, seed: mut ref i64) -> Vec[String] {
+    let cells = rows * cols;
+    let mut marks: Vec[char] = (0..cells).map(|_| if next_random(mut seed) % 4 == 0 { '#' } else { '.' }).collect();
+    let mut places: Vec[i64] = (0..cells).collect();
+    for i in 0..3 {
+        let j = i + next_random(mut seed) % (cells - i);
+        places.swap(i, j);
+    }
+    marks[places[0]] = 'C';
+    marks[places[1]] = 'M';
+    marks[places[2]] = 'F';
+    (0..rows).map(|r| marks[r * cols..(r + 1) * cols].iter().collect()).collect()
+}
+
+// `count` grids of 1 to `most` rows and columns, at least three cells,
+// and jumps of 1 to `most`
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut wins = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let mut rows = next_random(mut seed) % most + 1;
+        let cols = next_random(mut seed) % most + 1;
+        while rows * cols < 3 {
+            rows += 1;
+        }
+        let grid = draw(rows, cols, mut seed);
+        let cat_jump = (next_random(mut seed) % most + 1) as i32;
+        let mouse_jump = (next_random(mut seed) % most + 1) as i32;
+        let answer = can_mouse_win(grid, cat_jump, mouse_jump);
+        if answer {
+            wins += 1;
+        }
+        check = (check * 31 + if answer { 2 } else { 1 } + rows * cols) % 1000000007;
+    }
+    println(f"{count} grids of up to {most} by {most}: the mouse wins {wins}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then a mouse beside the food, and a cat
+    // between them in a corridor
+    println(can_mouse_win(["####F", "#C...", "M...."], 1, 2));
+    println(can_mouse_win(["M.C...F"], 1, 4));
+    println(can_mouse_win(["M.C...F"], 1, 3));
+    println(can_mouse_win(["MF", "C."], 8, 1));
+    println(can_mouse_win(["M.C.F"], 1, 1));
+    let mut seed = 1728;
+    batch(3000, 3, mut seed);
+    batch(300, 5, mut seed);
+    batch(20, 8, mut seed);
+}

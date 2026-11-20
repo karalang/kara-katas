@@ -1,0 +1,85 @@
+// LeetCode #1671: Minimum Number of Removals to Make Mountain Array -- every
+// value tried as the peak.
+//
+// For a peak at i, the best left side is the longest strictly rising run
+// among the values before i that are below nums[i], and the best right
+// side the longest strictly falling run among those after it that are
+// below it; each is found afresh with a patience-sorting pass over that
+// side. O(n^2 log n).
+
+// the longest strictly rising run in `values`
+fn longest_rise(values: own impl Iterator[Item = i32]) -> i64 {
+    let mut tails: Vec[i32] = Vec.new();
+    for v in values {
+        let at = tails.partition_point(|t| t < v);
+        if at == tails.len() {
+            tails.push(v);
+        } else {
+            tails[at] = v;
+        }
+    }
+    tails.len()
+}
+
+fn minimum_mountain_removals(nums: Vec[i32]) -> i32 {
+    let n = nums.len();
+    let mut longest = 0;
+    for i in 1..n - 1 {
+        let peak = nums[i];
+        let left = longest_rise(nums[..i].iter().filter(|v| v < peak).cloned());
+        let right = longest_rise(nums[i + 1..].iter().rev().filter(|v| v < peak).cloned());
+        if left > 0 and right > 0 {
+            longest = max(longest, left + 1 + right);
+        }
+    }
+    (n - longest) as i32
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` values from 1 to `most`, then one inside raised above them all, so
+// a mountain can always be made
+fn random_nums(n: i64, most: i64, seed: mut ref i64) -> Vec[i32] {
+    let mut nums: Vec[i32] = Vec.new();
+    for _ in 0..n {
+        nums.push(((next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1) as i32);
+    }
+    let peak = next_random(mut seed) % (n - 2) + 1;
+    nums[peak] = (most + 1) as i32;
+    nums
+}
+
+// `count` arrays of 3 to `longest` values up to `most`; the removals
+// summed, and a checksum of every answer
+fn batch(count: i64, longest: i64, most: i64, seed: mut ref i64) {
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % (longest - 2) + 3;
+        let nums = random_nums(n, most, mut seed);
+        let removed = minimum_mountain_removals(nums);
+        total += removed;
+        check = (check * 31 + removed + n) % 1000000007;
+    }
+    println(f"{count} arrays of up to {longest} values up to {most}: {total} removals, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then a mountain already, one whose sides
+    // hold equal values, and a peak at each end of the slope
+    println(minimum_mountain_removals([1, 3, 1]));
+    println(minimum_mountain_removals([2, 1, 1, 5, 6, 2, 3, 1]));
+    println(minimum_mountain_removals([1, 2, 3, 4, 3, 2, 1]));
+    println(minimum_mountain_removals([1, 1, 2, 2, 3, 3, 2, 2, 1, 1]));
+    println(minimum_mountain_removals([9, 8, 1, 7, 6, 5]));
+    println(minimum_mountain_removals([1, 2, 3, 4, 9, 1]));
+    let mut seed = 1671;
+    batch(3000, 12, 5, mut seed);
+    batch(300, 1000, 1000000000, mut seed);
+    batch(30, 1000, 10, mut seed);
+}

@@ -1,0 +1,89 @@
+// LeetCode #1722: Minimize Hamming Distance After Swap Operations -- the
+// bench (hamming.kara): the swaps joined into groups with a union-find,
+// each group's source values counted, and each target value matched from
+// its group's counts.
+//
+// 10 problems of 10^5 values up to 10^5 in each array and 10^5 swaps,
+// LeetCode's largest, all drawn first, then each answered 5 times; each
+// answer builds its union-find and its map anew.
+
+fn find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+fn minimum_hamming_distance(source: Vec[i32], target: Vec[i32], allowed_swaps: Vec[Vec[i32]]) -> i32 {
+    let n = source.len();
+    let mut parent: Vec[i64] = (0..n).collect();
+    let mut size: Vec[i64] = Vec.filled(n, 1);
+    for swap in allowed_swaps.iter() {
+        let mut a = find(mut parent, swap[0]);
+        let mut b = find(mut parent, swap[1]);
+        if a == b {
+            continue;
+        }
+        if size[a] < size[b] {
+            a, b = b, a;
+        }
+        parent[b] = a;
+        size[a] += size[b];
+    }
+    let mut counts: Map[(i64, i32), i64] = Map.new();
+    for i in 0..n {
+        *counts.entry((find(mut parent, i), source[i])).or_insert(0) += 1;
+    }
+    let mut distance = 0;
+    for i in 0..n {
+        let key = (find(mut parent, i), target[i]);
+        match counts.get_mut(key) {
+            Some(c) if *c > 0 => *c -= 1,
+            _ => distance += 1,
+        }
+    }
+    distance
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let count = 10;
+    let rounds = 5;
+    let n = 100000;
+    let mut seed = 1722;
+    let mut problems: Vec[(Vec[i32], Vec[i32], Vec[Vec[i32]])] = Vec.new();
+    for _ in 0..count {
+        let source: Vec[i32] = (0..n).map(|_| (wide(mut seed) % 100000 + 1) as i32).collect();
+        let target: Vec[i32] = (0..n).map(|_| (wide(mut seed) % 100000 + 1) as i32).collect();
+        let mut allowed: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..n {
+            let a = wide(mut seed) % n;
+            let mut b = wide(mut seed) % (n - 1);
+            if b >= a {
+                b += 1;
+            }
+            allowed.push([a as i32, b as i32]);
+        }
+        problems.push((source, target, allowed));
+    }
+    let mut sum = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (source, target, allowed) in problems.iter() {
+            let answer = minimum_hamming_distance(source, target, allowed);
+            sum += answer;
+            check = (check * 31 + answer + r) % 1000000007;
+        }
+    }
+    println(f"{count} problems of {n} values and {n} swaps, {rounds} rounds: distances sum to {sum}, checksum {check}");
+}

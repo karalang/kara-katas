@@ -1,0 +1,83 @@
+// LeetCode #1668: Maximum Repeating Substring -- copies counted from every
+// start.
+//
+// From each place in the sequence, step over copies of the word for as
+// long as the rest starts with one; the most copies from any start is the
+// answer. O(n * n) time, O(1) space.
+
+fn max_repeating(sequence: Str, word: Str) -> i32 {
+    let mut best: i32 = 0;
+    for start in 0..sequence.len() {
+        let mut k: i32 = 0;
+        let mut at = start;
+        while sequence[at..].starts_with(word) {
+            k += 1;
+            at += word.len();
+        }
+        best = best.max(k);
+    }
+    best
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` letters drawn from the first `kinds` of the alphabet
+fn random_text(n: i64, kinds: i64, seed: mut ref i64) -> String {
+    let mut text = String.new();
+    for _ in 0..n {
+        let letter = (b'a' + (next_random(mut seed) % kinds) as u8) as char;
+        text.push(letter);
+    }
+    text
+}
+
+// a sequence of about `n` letters built of whole copies of `word` and
+// single random letters, half and half
+fn random_sequence(word: Str, n: i64, kinds: i64, seed: mut ref i64) -> String {
+    let mut text = String.new();
+    while text.len() < n {
+        if next_random(mut seed) % 2 == 0 {
+            text.push_str(word);
+        } else {
+            text.push_str(random_text(1, kinds, mut seed));
+        }
+    }
+    text
+}
+
+// `count` problems with sequences of up to `longest` letters and words of
+// up to `widest`; the answers summed, and a checksum of every answer
+fn batch(count: i64, longest: i64, widest: i64, seed: mut ref i64) {
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let kinds = next_random(mut seed) % 3 + 1;
+        let word = random_text(next_random(mut seed) % widest + 1, kinds, mut seed);
+        let sequence = random_sequence(word, next_random(mut seed) % longest + 1, kinds, mut seed);
+        let k = max_repeating(sequence, word);
+        total += k;
+        check = (check * 31 + k + sequence.len()) % 1000000007;
+    }
+    println(f"{count} problems of up to {longest} letters: answers sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then a case where the longest run does
+    // not start at the first copy, a word longer than the sequence, and a
+    // sequence that is the word
+    println(max_repeating("ababc", "ab"));
+    println(max_repeating("ababc", "ba"));
+    println(max_repeating("ababc", "ac"));
+    println(max_repeating("aaabaaaabaaabaaaabaaaabaaaabaaaaba", "aaaba"));
+    println(max_repeating("ab", "abc"));
+    println(max_repeating("kara", "kara"));
+    let mut seed = 1668;
+    batch(3000, 12, 3, mut seed);
+    batch(3000, 100, 6, mut seed);
+    batch(300, 100, 100, mut seed);
+}

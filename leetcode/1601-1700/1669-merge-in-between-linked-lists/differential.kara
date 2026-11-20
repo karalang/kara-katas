@@ -1,0 +1,292 @@
+// LeetCode #1669: Merge In Between Linked Lists -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random
+// problems: a first list of 3 to 12 nodes, a second of 1 to 12, and a
+// random cut a..b that keeps list1's first and last nodes. The ★, count
+// and values arms share the `shared struct ListNode`; the solution arm
+// keeps LeetCode's plain `ListNode` with `i32` values, here `BoxNode`.
+//
+// P1  the merged values are the statement read literally
+// P2  the merged list holds n - (b - a + 1) + m nodes
+// P3  list2's place in the answer, cut out again for list1's cut nodes,
+//     gives list1 back
+// P4  every value one more gives every merged value one more
+// P5  each arm agrees with at least two of the other three
+
+shared struct ListNode {
+    val: i64,
+    mut next: Option[ListNode],
+}
+
+// ---- merge.kara: the ★ arm: the two ends of the cut found first
+
+fn star_arm(list1: Option[ListNode], a: i64, b: i64, list2: Option[ListNode]) -> Option[ListNode] {
+    let head = list1.unwrap();
+    let mut before = head;
+    for _ in 1..a {
+        before = before.next.unwrap();
+    }
+    let mut after = before.next;
+    for _ in a..=b {
+        after = after.unwrap().next;
+    }
+    let first = list2.unwrap();
+    let mut last = first;
+    while let Some(node) = last.next {
+        last = node;
+    }
+    before.next = Some(first);
+    last.next = after;
+    Some(head)
+}
+
+// ---- merge_count.kara: one walk, counting
+
+fn count_arm(list1: Option[ListNode], a: i64, b: i64, list2: Option[ListNode]) -> Option[ListNode] {
+    let mut before: Option[ListNode] = None;
+    let mut cur = list1;
+    let mut i = 0;
+    while let Some(node) = cur {
+        if i == a - 1 {
+            before = Some(node);
+        }
+        if i == b {
+            let start = before.unwrap();
+            start.next = list2;
+            let mut last = start;
+            while let Some(next) = last.next {
+                last = next;
+            }
+            last.next = node.next;
+            break;
+        }
+        cur = node.next;
+        i += 1;
+    }
+    list1
+}
+
+// ---- merge_values.kara: the values, rebuilt
+
+fn values_arm(list1: Option[ListNode], a: i64, b: i64, list2: Option[ListNode]) -> Option[ListNode] {
+    let mut values = Vec.new();
+    let mut i = 0;
+    let mut cur = list1;
+    while let Some(node) = cur {
+        if i == a {
+            let mut other = list2;
+            while let Some(n) = other {
+                values.push(n.val);
+                other = n.next;
+            }
+        }
+        if i < a or i > b {
+            values.push(node.val);
+        }
+        cur = node.next;
+        i += 1;
+    }
+    let mut head = None;
+    for v in values.into_iter().rev() {
+        head = Some(ListNode { val: v, next: head });
+    }
+    head
+}
+
+// ---- merge_solution.kara: LeetCode's Rust template as karac fix left it
+
+// Definition for singly-linked list.
+#[derive(PartialEq, Eq, Clone, Debug)]
+// pub struct BoxNode {
+//   pub val: i32,
+//   pub next: Option<Box<BoxNode>>
+// }
+//
+// impl BoxNode {
+//   #[inline]
+//   fn new(val: i32) -> Self {
+//     BoxNode {
+//       next: None,
+//       val
+//     }
+//   }
+// }
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct BoxNode {
+    pub val: i32,
+    pub next: Option[BoxNode],
+}
+
+impl BoxNode {
+    #[inline]
+    fn new(val: i32) -> Self {
+        BoxNode { next: None, val }
+    }
+}
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn merge_in_between(list1: own Option[BoxNode], a: i32, b: i32, list2: own Option[BoxNode]) -> Option[BoxNode] {
+        let mut list1 = list1;
+        let mut cur = list1.as_mut().unwrap();
+        for _ in 0..a - 1 {
+            cur = cur.next.as_mut().unwrap();
+        }
+        let mut rest = cur.next.take();
+        for _ in 0..b - a + 1 {
+            rest = rest.unwrap().next;
+        }
+        cur.next = list2;
+        while cur.next.is_some() {
+            cur = cur.next.as_mut().unwrap();
+        }
+        cur.next = rest;
+        list1
+    }
+}
+
+fn solution_arm(list1: own Option[BoxNode], a: i64, b: i64, list2: own Option[BoxNode]) -> Option[BoxNode] {
+    SolutionArm.merge_in_between(list1, a as i32, b as i32, list2)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn build(values: Slice[i64]) -> Option[ListNode] {
+    let mut head: Option[ListNode] = None;
+    for v in values.iter().rev() {
+        head = Some(ListNode { val: v, next: head });
+    }
+    head
+}
+
+fn values_of(head: Option[ListNode]) -> Vec[i64] {
+    let mut out = Vec.new();
+    let mut cur = head;
+    while let Some(node) = cur {
+        out.push(node.val);
+        cur = node.next;
+    }
+    out
+}
+
+fn build_box(values: Slice[i64]) -> Option[BoxNode] {
+    let mut head: Option[BoxNode] = None;
+    for v in values.iter().rev() {
+        head = Some(BoxNode { val: v as i32, next: head });
+    }
+    head
+}
+
+fn values_of_box(head: Option[BoxNode]) -> Vec[i64] {
+    let mut out = Vec.new();
+    let mut cur = ref head;
+    while let Some(node) = cur {
+        out.push(node.val as i64);
+        cur = ref node.next;
+    }
+    out
+}
+
+fn show(values: Slice[i64]) -> String {
+    let parts: Vec[String] = values.iter().map(|v| f"{v}").collect();
+    f"[{parts.join(",")}]"
+}
+
+// the statement read literally: list1's nodes a to b taken out and list2
+// put in their place
+fn literal(list1: Slice[i64], a: i64, b: i64, list2: Slice[i64]) -> Vec[i64] {
+    let mut out = list1[..a].to_vec();
+    out.extend(list2.iter());
+    out.extend(list1[b + 1..].iter());
+    out
+}
+
+fn answer(arm: i64, list1: Slice[i64], a: i64, b: i64, list2: Slice[i64]) -> Vec[i64] {
+    match arm {
+        0 => values_of(star_arm(build(list1), a, b, build(list2))),
+        1 => values_of(count_arm(build(list1), a, b, build(list2))),
+        2 => values_of(values_arm(build(list1), a, b, build(list2))),
+        _ => values_of_box(solution_arm(build_box(list1), a, b, build_box(list2))),
+    }
+}
+
+fn arm_name(arm: i64) -> Str {
+    ["the ★ arm", "count", "values", "solution"][arm]
+}
+
+fn main() {
+    let mut seed = 1669;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i64], i64, i64, Vec[i64])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 10 + 3;
+        let m = next_random(mut seed) % 12 + 1;
+        let a = next_random(mut seed) % (n - 2) + 1;
+        let b = a + next_random(mut seed) % (n - 1 - a);
+        let list1: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 1000001).collect();
+        let list2: Vec[i64] = (0..m).map(|_| next_random(mut seed) % 1000001).collect();
+        cases.push((list1, a, b, list2));
+    }
+    for (p, (list1, a, b, list2)) in cases.iter().enumerate() {
+        let (n, m) = (list1.len(), list2.len());
+        let want = literal(list1, a, b, list2);
+        for v in want.iter() {
+            check = (check * 31 + v + 1) % 1000000007;
+        }
+        let up1: Vec[i64] = list1.iter().map(|v| v + 1).collect();
+        let up2: Vec[i64] = list2.iter().map(|v| v + 1).collect();
+        let mut answers: Vec[Vec[i64]] = Vec.new();
+        for k in 0..4 {
+            let got = answer(k, list1, a, b, list2);
+            let failed = [
+                got != want,
+                got.len() != n - (b - a + 1) + m,
+                got.len() < a + m or answer(k, got, a, a + m - 1, list1[a..b + 1]) != list1,
+                answer(k, up1, a, b, up2) != Vec[i64].from_iter(got.iter().map(|v| v + 1)),
+            ];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({show(list1)}, {a}..{b}, {show(list2)}), {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for k in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[k]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

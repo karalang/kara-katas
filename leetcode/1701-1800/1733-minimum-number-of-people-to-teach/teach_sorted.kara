@@ -1,0 +1,118 @@
+// LeetCode #1733: Minimum Number of People to Teach -- sorted lists of
+// languages merged.
+//
+// Each user's languages are sorted, and two users share one when a merge
+// of their lists, the smaller head stepping on, finds an equal pair. The
+// stuck users' languages are then gathered into one list and sorted, and
+// the longest run of one language is the most of them that already know
+// it. O(f k + s k log(s k)) for s stuck users.
+
+fn shares(a: Slice[i32], b: Slice[i32]) -> bool {
+    let mut (i, j) = (0, 0);
+    while i < a.len() and j < b.len() {
+        if a[i] == b[j] {
+            return true;
+        } else if a[i] < b[j] {
+            i += 1;
+        } else {
+            j += 1;
+        }
+    }
+    false
+}
+
+fn minimum_teachings(n: i32, languages: Vec[Vec[i32]], friendships: Vec[Vec[i32]]) -> i32 {
+    let mut sorted = languages.clone();
+    for known in sorted.iter_mut() {
+        known.sort();
+    }
+    let mut stuck: Vec[bool] = Vec.filled(sorted.len(), false);
+    for f in friendships.iter() {
+        let (u, v) = (f[0] as i64 - 1, f[1] as i64 - 1);
+        if not shares(sorted[u], sorted[v]) {
+            stuck[u] = true;
+            stuck[v] = true;
+        }
+    }
+    let mut spoken: Vec[i32] = Vec.new();
+    let mut total: i32 = 0;
+    for (u, known) in sorted.iter().enumerate() {
+        if stuck[u] {
+            total += 1;
+            spoken.extend(known.iter().cloned());
+        }
+    }
+    spoken.sort();
+    let mut best: i32 = 0;
+    let mut run: i32 = 0;
+    for i in 0..spoken.len() {
+        run = if i > 0 and spoken[i] == spoken[i - 1] { run + 1 } else { 1 };
+        best = max(best, run);
+    }
+    total - best
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a problem of `n` languages and `users` users, each knowing 1 to 3 of
+// them, and `pairs` distinct friendships
+fn draw(n: i64, users: i64, pairs: i64, seed: mut ref i64) -> (Vec[Vec[i32]], Vec[Vec[i32]]) {
+    let mut languages: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..users {
+        let k = next_random(mut seed) % min(n, 3) + 1;
+        let mut known: Vec[i32] = Vec.new();
+        while known.len() < k {
+            let l = (next_random(mut seed) % n + 1) as i32;
+            if not known.contains(l) {
+                known.push(l);
+            }
+        }
+        languages.push(known);
+    }
+    let mut friends: Vec[Vec[bool]] = Vec.filled(users, Vec.filled(users, false));
+    let mut friendships: Vec[Vec[i32]] = Vec.new();
+    while friendships.len() < pairs {
+        let u = next_random(mut seed) % users;
+        let v = next_random(mut seed) % users;
+        if u != v and not friends[u][v] {
+            friends[u][v] = true;
+            friends[v][u] = true;
+            friendships.push([(u + 1) as i32, (v + 1) as i32]);
+        }
+    }
+    (languages, friendships)
+}
+
+// `count` problems of up to `most` languages and 2 to `crowd` users
+fn batch(count: i64, most: i64, crowd: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let users = next_random(mut seed) % (crowd - 1) + 2;
+        let pairs = next_random(mut seed) % min(users * (users - 1) / 2, 500) + 1;
+        let (languages, friendships) = draw(n, users, pairs, mut seed);
+        let answer = minimum_teachings(n as i32, languages, friendships);
+        sum += answer;
+        check = (check * 31 + answer + users) % 1000000007;
+    }
+    println(f"{count} problems of up to {most} languages and {crowd} users: teachings sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then friends who all share a language, and
+    // a ring of four who share none
+    println(minimum_teachings(2, [[1], [2], [1, 2]], [[1, 2], [1, 3], [2, 3]]));
+    println(minimum_teachings(3, [[2], [1, 3], [1, 2], [3]], [[1, 4], [1, 2], [3, 4], [2, 3]]));
+    println(minimum_teachings(2, [[1], [1, 2], [1]], [[1, 2], [2, 3]]));
+    println(minimum_teachings(4, [[1], [2], [3], [4]], [[1, 2], [2, 3], [3, 4], [4, 1]]));
+    let mut seed = 1733;
+    batch(3000, 5, 6, mut seed);
+    batch(300, 50, 100, mut seed);
+    batch(5, 500, 500, mut seed);
+}

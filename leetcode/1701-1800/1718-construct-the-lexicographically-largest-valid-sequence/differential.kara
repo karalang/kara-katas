@@ -1,0 +1,311 @@
+// LeetCode #1718: Construct the Lexicographically Largest Valid Sequence --
+// the differential.
+//
+// Four arms against the statement read literally, for every n from 1 to
+// 20, LeetCode's whole range; the literal reading, every valid sequence,
+// up to n = 7.
+//
+// P1  up to n = 7, the answer is the statement read literally
+// P2  the answer is valid: 2n - 1 values, 1 once, each of 2 to n twice and
+//     that far apart
+// P3  the answer starts with n
+// P4  the answer reversed, valid too, is no larger
+// P5  each arm agrees with at least two of the other three
+
+// ---- sequence.kara: the ★ arm: the first empty slot, the largest free number
+
+fn place(seq: mut ref Vec[i32], used: mut ref Vec[bool], at: i64, n: i32) -> bool {
+    let mut at = at;
+    while at < seq.len() and seq[at] != 0 {
+        at += 1;
+    }
+    if at == seq.len() {
+        return true;
+    }
+    for v in (1..=n).rev() {
+        if used[v] {
+            continue;
+        }
+        if v > 1 and (at + v >= seq.len() or seq[at + v] != 0) {
+            continue;
+        }
+        used[v] = true;
+        seq[at] = v;
+        if v > 1 {
+            seq[at + v] = v;
+        }
+        if place(mut seq, mut used, at + 1, n) {
+            return true;
+        }
+        used[v] = false;
+        seq[at] = 0;
+        if v > 1 {
+            seq[at + v] = 0;
+        }
+    }
+    false
+}
+
+fn star_arm(n: i32) -> Vec[i32] {
+    let mut seq: Vec[i32] = Vec.filled(2 * n - 1, 0);
+    let mut used: Vec[bool] = Vec.filled(n + 1, false);
+    place(mut seq, mut used, 0, n);
+    seq
+}
+
+// ---- sequence_bits.kara: the free numbers as the bits of a mask
+
+fn fill(seq: mut ref Vec[i32], free: i64, at: i64) -> bool {
+    if at == seq.len() {
+        return true;
+    }
+    if seq[at] != 0 {
+        return fill(mut seq, free, at + 1);
+    }
+    let mut v = 63 - free.leading_zeros();
+    while v >= 1 {
+        if free >> v & 1 == 1 and (v == 1 or (at + v < seq.len() and seq[at + v] == 0)) {
+            seq[at] = v as i32;
+            if v > 1 {
+                seq[at + v] = v as i32;
+            }
+            if fill(mut seq, free & ~(1 << v), at + 1) {
+                return true;
+            }
+            seq[at] = 0;
+            if v > 1 {
+                seq[at + v] = 0;
+            }
+        }
+        v -= 1;
+    }
+    false
+}
+
+fn bits_arm(n: i32) -> Vec[i32] {
+    let mut seq: Vec[i32] = Vec.filled(2 * n - 1, 0);
+    // bits 1 to n
+    let free = (1 << (n + 1)) - 2;
+    fill(mut seq, free, 0);
+    seq
+}
+
+// ---- sequence_stack.kara: a stack of choices instead of recursion
+
+fn stack_arm(n: i32) -> Vec[i32] {
+    let len = 2 * n as i64 - 1;
+    let mut seq: Vec[i32] = Vec.filled(len, 0);
+    let mut used: Vec[bool] = Vec.filled(n + 1, false);
+    let mut choices: Vec[(i64, i32)] = Vec.new();
+    let mut at = 0;
+    // the largest number to try at `at`
+    let mut from = n;
+    loop {
+        while at < len and seq[at] != 0 {
+            at += 1;
+        }
+        if at == len {
+            return seq;
+        }
+        let mut placed = false;
+        let mut v = from;
+        while v >= 1 {
+            if not used[v] and (v == 1 or (at + v < len and seq[at + v] == 0)) {
+                used[v] = true;
+                seq[at] = v;
+                if v > 1 {
+                    seq[at + v] = v;
+                }
+                choices.push((at, v));
+                placed = true;
+                break;
+            }
+            v -= 1;
+        }
+        if placed {
+            from = n;
+            continue;
+        }
+        // nothing fits: take back the last choice and try below it
+        let (back, was) = choices.pop().unwrap();
+        used[was] = false;
+        seq[back] = 0;
+        if was > 1 {
+            seq[back + was] = 0;
+        }
+        at = back;
+        from = was - 1;
+    }
+}
+
+// ---- sequence_solution.kara: LeetCode's Rust template, through karac fix
+
+fn dfs(i: i64, n: i64, res: mut ref Vec[i32], used: mut ref Vec[bool]) -> bool {
+    if i == res.len() {
+        return true;
+    }
+    if res[i] != 0 {
+        return dfs(i + 1, n, mut res, mut used);
+    }
+    for x in (1..=n).rev() {
+        if used[x] {
+            continue;
+        }
+        if x > 1 and (i + x >= res.len() or res[i + x] != 0) {
+            continue;
+        }
+        used[x] = true;
+        res[i] = x as i32;
+        if x > 1 {
+            res[i + x] = x as i32;
+        }
+        if dfs(i + 1, n, mut res, mut used) {
+            return true;
+        }
+        used[x] = false;
+        res[i] = 0;
+        if x > 1 {
+            res[i + x] = 0;
+        }
+    }
+    false
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn construct_distanced_sequence(n: i32) -> Vec[i32] {
+        let n = n as i64;
+        let mut res = Vec.filled(2 * n - 1, 0);
+        let mut used = Vec.filled(n + 1, false);
+        dfs(0, n, mut res, mut used);
+        res
+    }
+}
+
+fn solution_arm(n: i32) -> Vec[i32] {
+    Solution.construct_distanced_sequence(n)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+// every valid sequence for n read literally: each number from n down put
+// in every way it fits, 1 in any empty slot and v > 1 in any two empty
+// slots v apart, all of them collected
+fn all_valid(seq: mut ref Vec[i32], v: i32, out: mut ref Vec[Vec[i32]]) {
+    if v == 0 {
+        out.push(seq.clone());
+        return;
+    }
+    let len = seq.len();
+    let gap = if v == 1 { 0 } else { v as i64 };
+    for at in 0..len - gap {
+        if seq[at] == 0 and seq[at + gap] == 0 {
+            seq[at] = v;
+            seq[at + gap] = v;
+            all_valid(mut seq, v - 1, mut out);
+            seq[at] = 0;
+            seq[at + gap] = 0;
+        }
+    }
+}
+
+// the statement read literally: the largest of every valid sequence,
+// compared as sequences
+fn literal(n: i32) -> Vec[i32] {
+    let mut seq: Vec[i32] = Vec.filled(2 * n - 1, 0);
+    let mut out: Vec[Vec[i32]] = Vec.new();
+    all_valid(mut seq, n, mut out);
+    out.iter().max().unwrap().clone()
+}
+
+// the sequence holds 1 once and each of 2 to n twice, v apart
+fn valid(seq: Slice[i32], n: i32) -> bool {
+    if seq.len() != 2 * n as i64 - 1 {
+        return false;
+    }
+    for v in 1..=n {
+        let at: Vec[i64] = (0..seq.len()).filter(|i| seq[i] == v).collect();
+        let fits = if v == 1 { at.len() == 1 } else { at.len() == 2 and at[1] - at[0] == v };
+        if not fits {
+            return false;
+        }
+    }
+    true
+}
+
+fn arm(a: i64, n: i32) -> Vec[i32] {
+    match a {
+        0 => star_arm(n),
+        1 => bits_arm(n),
+        2 => stack_arm(n),
+        _ => solution_arm(n),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "bits", "stack", "solution"][a]
+}
+
+fn main() {
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    // every n LeetCode allows; the literal reading only up to 7, past which
+    // its count of sequences grows too fast
+    let problems = 20;
+    let mut literals: Vec[Option[Vec[i32]]] = Vec.new();
+    for n in 1..=problems {
+        literals.push(if n <= 7 { Some(literal(n as i32)) } else { None });
+    }
+    for p in 0..problems {
+        let n = (p + 1) as i32;
+        let want = literals[p].clone();
+        if let Some(w) = want.clone() {
+            for v in w.iter() {
+                check = (check * 31 + v) % 1000000007;
+            }
+        }
+        check = (check * 31 + n) % 1000000007;
+        let mut answers: Vec[Vec[i32]] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, n);
+            let reversed: Vec[i32] = got.iter().rev().cloned().collect();
+            let failed = [want.is_some_and(|w| w != got), not valid(got, n), got[0] != n, got < reversed];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"n {n}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"n {n}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

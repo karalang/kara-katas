@@ -1,0 +1,66 @@
+// LeetCode #1674: Minimum Moves to Make Array Complementary -- every target
+// sum tried.
+//
+// For each target sum from 2 to 2 * limit, each pair costs 0 if it
+// already sums to it, 1 if changing one of its values can reach it, else
+// 2; the cheapest total wins. O(n * limit).
+
+fn min_moves(nums: Vec[i32], limit: i32) -> i32 {
+    let n = nums.len();
+    let mut best = i32.MAX;
+    for target in 2..=2 * limit {
+        let mut moves = 0;
+        for i in 0..n / 2 {
+            let (a, b) = (nums[i], nums[n - 1 - i]);
+            moves += if a + b == target {
+                0
+            } else if min(a, b) + 1 <= target and target <= max(a, b) + limit {
+                1
+            } else {
+                2
+            };
+        }
+        best = min(best, moves);
+    }
+    best
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` arrays of 1 to `pairs` pairs with a limit of 1 to `most`; the
+// moves summed, and a checksum of every answer
+fn batch(count: i64, pairs: i64, most: i64, seed: mut ref i64) {
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = 2 * (next_random(mut seed) % pairs + 1);
+        let limit = next_random(mut seed) % most + 1;
+        let mut nums: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            nums.push((next_random(mut seed) % limit + 1) as i32);
+        }
+        let moves = min_moves(nums, limit as i32);
+        total += moves;
+        check = (check * 31 + moves + n) % 1000000007;
+    }
+    println(f"{count} arrays of up to {pairs} pairs, limits up to {most}: {total} moves, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then a pair of ones beside (1, 4), and a
+    // single pair
+    println(min_moves([1, 2, 4, 3], 4));
+    println(min_moves([1, 2, 2, 1], 2));
+    println(min_moves([1, 2, 1, 2], 2));
+    println(min_moves([1, 1, 1, 4], 4));
+    println(min_moves([3, 3], 3));
+    let mut seed = 1674;
+    batch(3000, 6, 6, mut seed);
+    batch(300, 100, 100, mut seed);
+    batch(10, 1000, 1000, mut seed);
+}

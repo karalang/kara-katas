@@ -1,0 +1,207 @@
+// LeetCode #1695: Maximum Erasure Value -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random arrays
+// of 1 to 12 values from 1 to between 1 and 8.
+//
+// P1  the answer is the statement read literally
+// P2  the array reversed gives the same answer
+// P3  every value doubled doubles the answer
+// P4  the last value written again at the end gives the same answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- erasure.kara: the ★ arm: each value's last place and the prefix sums
+
+fn star_arm(nums: Vec[i32]) -> i32 {
+    let mut last: Vec[i64] = Vec.filled(10001, -1);
+    let mut prefix: Vec[i32] = Vec.filled(nums.len() + 1, 0);
+    let mut start = 0;
+    let mut best = 0;
+    for (i, v) in nums.iter().enumerate() {
+        prefix[i + 1] = prefix[i] + v;
+        start = max(start, last[v] + 1);
+        last[v] = i;
+        best = max(best, prefix[i + 1] - prefix[start]);
+    }
+    best
+}
+
+// ---- erasure_set.kara: a window and a `Set`
+
+fn set_arm(nums: Vec[i32]) -> i32 {
+    let mut inside: Set[i32] = Set.new();
+    let mut left = 0;
+    let mut sum: i32 = 0;
+    let mut best: i32 = 0;
+    for v in nums.iter() {
+        while inside.contains(v) {
+            inside.remove(nums[left]);
+            sum -= nums[left];
+            left += 1;
+        }
+        inside.insert(v);
+        sum += v;
+        best = max(best, sum);
+    }
+    best
+}
+
+// ---- erasure_starts.kara: every start tried
+
+fn starts_arm(nums: Vec[i32]) -> i32 {
+    let mut seen = Vec.filled(10001, false);
+    let mut best: i32 = 0;
+    for start in 0..nums.len() {
+        let mut sum: i32 = 0;
+        let mut end = start;
+        while end < nums.len() and not seen[nums[end]] {
+            seen[nums[end]] = true;
+            sum += nums[end];
+            end += 1;
+        }
+        best = max(best, sum);
+        for i in start..end {
+            seen[nums[i]] = false;
+        }
+    }
+    best
+}
+
+// ---- erasure_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn maximum_unique_subarray(nums: Vec[i32]) -> i32 {
+        let mut seen = Set.new();
+        let mut (l, sum, best) = (0, 0i32, 0i32);
+        for r in 0..nums.len() {
+            while seen.contains(nums[r]) {
+                seen.remove(nums[l]);
+                sum -= nums[l];
+                l += 1;
+            }
+            seen.insert(nums[r]);
+            sum += nums[r];
+            best = best.max(sum);
+        }
+        best
+    }
+}
+
+fn solution_arm(nums: Vec[i32]) -> i32 {
+    SolutionArm.maximum_unique_subarray(nums)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every subarray, from every start to every
+// end, kept when no two of its values are equal, scored by its sum; the
+// best score
+fn literal(nums: Vec[i32]) -> i32 {
+    let mut best: i32 = 0;
+    for start in 0..nums.len() {
+        for end in start + 1..=nums.len() {
+            let window = nums[start..end];
+            let mut unique = true;
+            for a in 0..window.len() {
+                for b in a + 1..window.len() {
+                    if window[a] == window[b] {
+                        unique = false;
+                    }
+                }
+            }
+            if unique {
+                best = max(best, window.iter().sum());
+            }
+        }
+    }
+    best
+}
+
+fn arm(a: i64, nums: Vec[i32]) -> i32 {
+    match a {
+        0 => star_arm(nums),
+        1 => set_arm(nums),
+        2 => starts_arm(nums),
+        _ => solution_arm(nums),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "set", "starts", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1695;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 12 + 1;
+        let top = next_random(mut seed) % 8 + 1;
+        let mut nums: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            nums.push((next_random(mut seed) % top + 1) as i32);
+        }
+        cases.push(nums);
+    }
+    for (p, nums) in cases.iter().enumerate() {
+        let want = literal(nums);
+        check = (check * 31 + want + nums.len()) % 1000000007;
+        let reversed: Vec[i32] = nums.iter().rev().cloned().collect();
+        let doubled: Vec[i32] = nums.iter().map(|v| 2 * v).collect();
+        let mut again = nums.clone();
+        again.push(nums[nums.len() - 1]);
+        let mut answers: Vec[i32] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, nums);
+            let failed = [
+                got != want,
+                arm(a, reversed) != got,
+                arm(a, doubled) != 2 * got,
+                arm(a, again) != got,
+            ];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({nums}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

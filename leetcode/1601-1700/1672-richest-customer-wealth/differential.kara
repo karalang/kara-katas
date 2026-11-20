@@ -1,0 +1,174 @@
+// LeetCode #1672: Richest Customer Wealth -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random grids
+// of 1 to 6 customers by 1 to 6 banks, 1 to 10 in each account.
+//
+// P1  the answer is the statement read literally
+// P2  the customers in another order give the same answer
+// P3  one more in an account of a richest customer gives one more
+// P4  a customer added as a copy of another gives the same answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- wealth.kara: the ★ arm: each row summed, the largest kept
+
+fn star_arm(accounts: Vec[Vec[i32]]) -> i32 {
+    accounts.iter().map(|row| row.iter().sum()).max().unwrap()
+}
+
+// ---- wealth_loops.kara: two loops
+
+fn loops_arm(accounts: Vec[Vec[i32]]) -> i32 {
+    let mut richest: i32 = 0;
+    for row in accounts.iter() {
+        let mut wealth: i32 = 0;
+        for money in row.iter() {
+            wealth += money;
+        }
+        richest = max(richest, wealth);
+    }
+    richest
+}
+
+// ---- wealth_fold.kara: one fold
+
+fn fold_arm(accounts: Vec[Vec[i32]]) -> i32 {
+    accounts.iter().fold(0, |richest, row| max(richest, row.iter().fold(0i32, |sum, money| sum + money)))
+}
+
+// ---- wealth_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn maximum_wealth(accounts: Vec[Vec[i32]]) -> i32 {
+        accounts.iter().map(|a| a.iter().sum()).max().unwrap()
+    }
+}
+
+fn solution_arm(accounts: Vec[Vec[i32]]) -> i32 {
+    SolutionArm.maximum_wealth(accounts)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: a customer's wealth is the money in all
+// their accounts, and the richest is one no other customer is richer
+// than; that customer's wealth
+fn literal(accounts: Slice[Vec[i32]]) -> i64 {
+    let wealth = |c: i64| {
+        let mut total = 0;
+        for j in 0..accounts[c].len() {
+            total += accounts[c][j];
+        }
+        total
+    };
+    for c in 0..accounts.len() {
+        if (0..accounts.len()).all(|d| wealth(d) <= wealth(c)) {
+            return wealth(c);
+        }
+    }
+    panic("no richest customer");
+}
+
+fn arm(a: i64, accounts: Slice[Vec[i32]]) -> i64 {
+    let accounts = accounts.to_vec();
+    match a {
+        0 => star_arm(accounts),
+        1 => loops_arm(accounts),
+        2 => fold_arm(accounts),
+        _ => solution_arm(accounts),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "loops", "fold", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1672;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    // each case: the grid, a shuffle of its customers, and a customer to
+    // copy
+    let mut cases: Vec[(Vec[Vec[i32]], Vec[i64], i64)] = Vec.new();
+    for _ in 0..problems {
+        let m = next_random(mut seed) % 6 + 1;
+        let n = next_random(mut seed) % 6 + 1;
+        let mut accounts: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..m {
+            let mut row: Vec[i32] = Vec.new();
+            for _ in 0..n {
+                row.push((next_random(mut seed) % 10 + 1) as i32);
+            }
+            accounts.push(row);
+        }
+        let mut order: Vec[i64] = (0..m).collect();
+        for i in (1..m).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            order.swap(i, j);
+        }
+        let copy = next_random(mut seed) % m;
+        cases.push((accounts, order, copy));
+    }
+    for (p, (accounts, order, copy)) in cases.iter().enumerate() {
+        let want = literal(accounts);
+        check = (check * 31 + want + accounts.len()) % 1000000007;
+        let shuffled: Vec[Vec[i32]] = order.iter().map(|i| accounts[i].clone()).collect();
+        let richest = (0..accounts.len()).find(|c| accounts[c].iter().map(|v| v as i64).sum() == want).unwrap();
+        let mut richer = accounts.to_vec();
+        richer[richest][0] += 1;
+        let mut copied = accounts.to_vec();
+        copied.push(accounts[copy].clone());
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, accounts);
+            answers.push(got);
+            let failed = [
+                got != want,
+                arm(a, shuffled) != got,
+                arm(a, richer) != got + 1,
+                arm(a, copied) != got,
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({accounts}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

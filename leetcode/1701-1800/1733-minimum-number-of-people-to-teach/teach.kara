@@ -1,0 +1,93 @@
+// LeetCode #1733: Minimum Number of People to Teach -- the ★ arm: the
+// stuck users gathered in a `Set`, and the language most of them know.
+//
+// Only one language is taught, so a friendship whose users already share
+// one needs nothing, and one that shares none needs both its users to
+// know the taught language. Every user of such a friendship is gathered
+// once; teaching language l to them costs those who do not know it yet,
+// so the best l is the one most of them already know. O(f k + u k) for f
+// friendships, u users and k languages a user knows.
+
+fn minimum_teachings(n: i32, languages: Vec[Vec[i32]], friendships: Vec[Vec[i32]]) -> i32 {
+    let known: Vec[Set[i32]] = languages.iter().map(|l| l.iter().cloned().collect()).collect();
+    let mut stuck: Set[i64] = Set.new();
+    for f in friendships.iter() {
+        let (u, v) = (f[0] as i64 - 1, f[1] as i64 - 1);
+        if known[u].is_disjoint(known[v]) {
+            stuck.insert(u);
+            stuck.insert(v);
+        }
+    }
+    let mut speakers: Vec[i32] = Vec.filled(n as i64 + 1, 0);
+    for u in stuck.iter() {
+        for l in known[u].iter() {
+            speakers[l] += 1;
+        }
+    }
+    stuck.len() as i32 - speakers.iter().max().unwrap()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a problem of `n` languages and `users` users, each knowing 1 to 3 of
+// them, and `pairs` distinct friendships
+fn draw(n: i64, users: i64, pairs: i64, seed: mut ref i64) -> (Vec[Vec[i32]], Vec[Vec[i32]]) {
+    let mut languages: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..users {
+        let k = next_random(mut seed) % min(n, 3) + 1;
+        let mut known: Vec[i32] = Vec.new();
+        while known.len() < k {
+            let l = (next_random(mut seed) % n + 1) as i32;
+            if not known.contains(l) {
+                known.push(l);
+            }
+        }
+        languages.push(known);
+    }
+    let mut friends: Vec[Vec[bool]] = Vec.filled(users, Vec.filled(users, false));
+    let mut friendships: Vec[Vec[i32]] = Vec.new();
+    while friendships.len() < pairs {
+        let u = next_random(mut seed) % users;
+        let v = next_random(mut seed) % users;
+        if u != v and not friends[u][v] {
+            friends[u][v] = true;
+            friends[v][u] = true;
+            friendships.push([(u + 1) as i32, (v + 1) as i32]);
+        }
+    }
+    (languages, friendships)
+}
+
+// `count` problems of up to `most` languages and 2 to `crowd` users
+fn batch(count: i64, most: i64, crowd: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let users = next_random(mut seed) % (crowd - 1) + 2;
+        let pairs = next_random(mut seed) % min(users * (users - 1) / 2, 500) + 1;
+        let (languages, friendships) = draw(n, users, pairs, mut seed);
+        let answer = minimum_teachings(n as i32, languages, friendships);
+        sum += answer;
+        check = (check * 31 + answer + users) % 1000000007;
+    }
+    println(f"{count} problems of up to {most} languages and {crowd} users: teachings sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then friends who all share a language, and
+    // a ring of four who share none
+    println(minimum_teachings(2, [[1], [2], [1, 2]], [[1, 2], [1, 3], [2, 3]]));
+    println(minimum_teachings(3, [[2], [1, 3], [1, 2], [3]], [[1, 4], [1, 2], [3, 4], [2, 3]]));
+    println(minimum_teachings(2, [[1], [1, 2], [1]], [[1, 2], [2, 3]]));
+    println(minimum_teachings(4, [[1], [2], [3], [4]], [[1, 2], [2, 3], [3, 4], [4, 1]]));
+    let mut seed = 1733;
+    batch(3000, 5, 6, mut seed);
+    batch(300, 50, 100, mut seed);
+    batch(5, 500, 500, mut seed);
+}

@@ -1,0 +1,80 @@
+// LeetCode #1669: Merge In Between Linked Lists -- the bench: the ★ arm
+// on one list of 100000 nodes, 10000 times cut at a random place, 1 to 8
+// nodes taken out and a new list of 1 to 8 put in, every cut and value
+// drawn first.
+
+shared struct ListNode {
+    val: i64,
+    mut next: Option[ListNode],
+}
+
+fn merge_in_between(list1: Option[ListNode], a: i64, b: i64, list2: Option[ListNode]) -> Option[ListNode] {
+    let head = list1.unwrap();
+    let mut before = head;
+    for _ in 1..a {
+        before = before.next.unwrap();
+    }
+    let mut after = before.next;
+    for _ in a..=b {
+        after = after.unwrap().next;
+    }
+    let first = list2.unwrap();
+    let mut last = first;
+    while let Some(node) = last.next {
+        last = node;
+    }
+    before.next = Some(first);
+    last.next = after;
+    Some(head)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn build(values: Slice[i64]) -> Option[ListNode] {
+    let mut head: Option[ListNode] = None;
+    for v in values.iter().rev() {
+        head = Some(ListNode { val: v, next: head });
+    }
+    head
+}
+
+fn main() {
+    let start = 100000;
+    let rounds = 10000;
+    let mut seed = 1669;
+    let mut values: Vec[i64] = Vec.new();
+    for _ in 0..start {
+        values.push(next_random(mut seed) % 1000001);
+    }
+    let mut len = start;
+    let mut cuts: Vec[(i64, i64, Vec[i64])] = Vec.new();
+    for _ in 0..rounds {
+        let m = next_random(mut seed) % 8 + 1;
+        let a = (next_random(mut seed) * 32768 + next_random(mut seed)) % (len - 2) + 1;
+        let b = a + next_random(mut seed) % min(8, len - 1 - a);
+        let mut list2: Vec[i64] = Vec.new();
+        for _ in 0..m {
+            list2.push(next_random(mut seed) % 1000001);
+        }
+        len += m - (b - a + 1);
+        cuts.push((a, b, list2));
+    }
+    let mut list = build(values);
+    for (a, b, list2) in cuts.iter() {
+        list = merge_in_between(list, a, b, build(list2));
+    }
+    let mut nodes = 0;
+    let mut check = 0;
+    let mut cur = list;
+    while let Some(node) = cur {
+        nodes += 1;
+        check = (check * 31 + node.val + 1) % 1000000007;
+        cur = node.next;
+    }
+    println(f"{start} nodes, {rounds} merges: {nodes} nodes, checksum {check}");
+}

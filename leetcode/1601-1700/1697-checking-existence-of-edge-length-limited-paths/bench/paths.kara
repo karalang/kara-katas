@@ -1,0 +1,93 @@
+// LeetCode #1697: Checking Existence of Edge Length Limited Paths -- the
+// bench: the ★ arm on 10 random graphs of 100000 nodes, 100000 edges and
+// 100000 queries, LeetCode's largest, lengths and limits up to 10^9, all
+// drawn first, each answered 5 times.
+//
+// The edges sorted by length and the queries by limit; before a query
+// every edge shorter than its limit is joined in a union-find with path
+// compression. O((E + Q) log + (E + Q) α(n)).
+
+fn find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut root = x;
+    while parent[root] != root {
+        root = parent[root];
+    }
+    let mut at = x;
+    while parent[at] != root {
+        let next = parent[at];
+        parent[at] = root;
+        at = next;
+    }
+    root
+}
+
+fn distance_limited_paths_exist(n: i32, edge_list: Vec[Vec[i32]], queries: Vec[Vec[i32]]) -> Vec[bool] {
+    let mut edges = edge_list.clone();
+    edges.sort_by_key(|e| e[2]);
+    let mut order: Vec[i64] = (0..queries.len()).collect();
+    order.sort_by_key(|i| queries[i][2]);
+    let mut parent: Vec[i64] = (0..n as i64).collect();
+    let mut answer = Vec.filled(queries.len(), false);
+    let mut joined = 0;
+    for i in order.iter() {
+        let limit = queries[i][2];
+        while joined < edges.len() and edges[joined][2] < limit {
+            let a = find(mut parent, edges[joined][0]);
+            let b = find(mut parent, edges[joined][1]);
+            parent[a] = b;
+            joined += 1;
+        }
+        answer[i] = find(mut parent, queries[i][0]) == find(mut parent, queries[i][1]);
+    }
+    answer
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random number below `bound`, from two draws
+fn wide(bound: i64, seed: mut ref i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % bound
+}
+
+// `count` triples of two different nodes below `n` and a length up to 10^9
+fn triples(count: i64, n: i64, seed: mut ref i64) -> Vec[Vec[i32]] {
+    let mut out: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..count {
+        let u = wide(n, mut seed);
+        let v = (u + 1 + wide(n - 1, mut seed)) % n;
+        out.push([u as i32, v as i32, (wide(1000000000, mut seed) + 1) as i32]);
+    }
+    out
+}
+
+fn main() {
+    let count = 10;
+    let rounds = 5;
+    let n = 100000;
+    let mut seed = 1697;
+    let mut graphs: Vec[(Vec[Vec[i32]], Vec[Vec[i32]])] = Vec.new();
+    for _ in 0..count {
+        let edges = triples(n, n, mut seed);
+        let queries = triples(n, n, mut seed);
+        graphs.push((edges, queries));
+    }
+    let mut trues = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (edges, queries) in graphs.iter() {
+            let answer = distance_limited_paths_exist(n as i32, edges, queries);
+            for a in answer.iter() {
+                if a {
+                    trues += 1;
+                }
+                check = (check * 31 + if a { 2 } else { 1 } + r) % 1000000007;
+            }
+        }
+    }
+    println(f"{count} graphs of {n} nodes, edges and queries, {rounds} rounds: {trues} true, checksum {check}");
+}

@@ -1,0 +1,189 @@
+// LeetCode #1701: Average Waiting Time -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random lists of
+// 1 to 8 customers, each arriving 0 to 4 after the one before and wanting
+// 1 to 5 of the chef's time.
+//
+// P1  the answer is the statement read literally
+// P2  every arrival 10 later gives the same answer
+// P3  every arrival and every time doubled doubles the answer
+// P4  one more customer, arriving once the chef is free, adds their own
+//     time to the waits
+// P5  each arm agrees with at least two of the other three
+
+// ---- waiting.kara: the ★ arm: the chef's finishing time carried from customer to customer
+
+fn star_arm(customers: Vec[Vec[i32]]) -> f64 {
+    let mut finish: i64 = 0;
+    let mut waited: i64 = 0;
+    for c in customers.iter() {
+        finish = max(finish, c[0]) + c[1];
+        waited += finish - c[0];
+    }
+    waited as f64 / customers.len() as f64
+}
+
+// ---- waiting_fold.kara: one `fold` over the customers
+
+fn fold_arm(customers: Vec[Vec[i32]]) -> f64 {
+    let (_, waited) = customers.iter().fold((0, 0), |(finish, waited), c| {
+        let done = max(finish, c[0] as i64) + c[1];
+        (done, waited + done - c[0])
+    });
+    waited as f64 / customers.len() as f64
+}
+
+// ---- waiting_starts.kara: every start time listed first
+
+fn starts_arm(customers: Vec[Vec[i32]]) -> f64 {
+    let n = customers.len();
+    let mut starts: Vec[i64] = Vec.with_capacity(n);
+    for i in 0..n {
+        let free = if i == 0 { 0 } else { starts[i - 1] + customers[i - 1][1] };
+        starts.push(max(free, customers[i][0] as i64));
+    }
+    let mut waited: i64 = 0;
+    for i in 0..n {
+        waited += starts[i] - customers[i][0] + customers[i][1];
+    }
+    waited as f64 / n as f64
+}
+
+// ---- waiting_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn average_waiting_time(customers: Vec[Vec[i32]]) -> f64 {
+        let mut time = 0;
+        let mut total = 0;
+        for c in ref customers {
+            let (a, t) = (c[0] as i64, c[1] as i64);
+            time = time.max(a) + t;
+            total += time - a;
+        }
+        total as f64 / customers.len() as f64
+    }
+}
+
+fn solution_arm(customers: Vec[Vec[i32]]) -> f64 {
+    SolutionArm.average_waiting_time(customers)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: a clock that moves one unit at a time;
+// the chef, free, waits for the next customer in order to arrive, then
+// cooks for their time, and the customer's wait runs from their arrival
+// until the clock stops at the end of their order; the waits' mean
+fn literal(customers: Vec[Vec[i32]]) -> f64 {
+    let mut clock: i64 = 0;
+    let mut waited: i64 = 0;
+    for c in customers.iter() {
+        while clock < c[0] {
+            clock += 1;
+        }
+        for _ in 0..c[1] {
+            clock += 1;
+        }
+        waited += clock - c[0];
+    }
+    waited as f64 / customers.len() as f64
+}
+
+fn arm(a: i64, customers: Vec[Vec[i32]]) -> f64 {
+    match a {
+        0 => star_arm(customers),
+        1 => fold_arm(customers),
+        2 => starts_arm(customers),
+        _ => solution_arm(customers),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "fold", "starts", "solution"][a]
+}
+
+// an answer times the customers, the waits' sum, a whole number
+fn waits(answer: f64, n: i64) -> i64 {
+    (answer * n as f64).round() as i64
+}
+
+fn main() {
+    let mut seed = 1701;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[Vec[Vec[i32]]] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 8 + 1;
+        let mut customers: Vec[Vec[i32]] = Vec.new();
+        let mut arrival = 0;
+        for _ in 0..n {
+            arrival += next_random(mut seed) % 5;
+            customers.push([(arrival + 1) as i32, (next_random(mut seed) % 5 + 1) as i32]);
+        }
+        cases.push(customers);
+    }
+    for (p, customers) in cases.iter().enumerate() {
+        let n = customers.len();
+        let want = literal(customers);
+        check = (check * 31 + (want * 100000.0).round() as i64 + n) % 1000000007;
+        let later: Vec[Vec[i32]] = customers.iter().map(|c| [c[0] + 10, c[1]]).collect();
+        let doubled: Vec[Vec[i32]] = customers.iter().map(|c| [2 * c[0], 2 * c[1]]).collect();
+        // the chef is free by the last arrival plus every order's time
+        let free = customers[n - 1][0] + customers.iter().map(|c| c[1]).sum();
+        let mut more = customers.clone();
+        more.push([free, 3]);
+        let mut answers: Vec[f64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, customers);
+            let failed = [
+                got != want,
+                arm(a, later) != got,
+                arm(a, doubled) != 2.0 * got,
+                waits(arm(a, more), n + 1) != waits(got, n) + 3,
+            ];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({customers}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

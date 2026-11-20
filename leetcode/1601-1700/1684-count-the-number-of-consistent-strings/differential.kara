@@ -1,0 +1,207 @@
+// LeetCode #1684: Count the Number of Consistent Strings -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random
+// problems of 1 to 12 words of 1 to 6 letters.
+//
+// P1  the answer is the statement read literally
+// P2  the words split in two give two answers that add up to it
+// P3  every word and the allowed letters reversed give the same answer
+// P4  the allowed letters added as a word, and they with a z, add one
+// P5  each arm agrees with at least two of the other three
+
+// ---- consistent.kara: the ★ arm: a table of the 26 letters
+
+fn star_arm(allowed: String, words: Vec[String]) -> i32 {
+    let mut ok = [false; 26];
+    for b in allowed.bytes() {
+        ok[b - b'a'] = true;
+    }
+    let mut count = 0;
+    for word in words.iter() {
+        if word.bytes().iter().all(|b| ok[b - b'a']) {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- consistent_set.kara: a `Set` of the allowed letters
+
+fn set_arm(allowed: String, words: Vec[String]) -> i32 {
+    let letters: Set[char] = allowed.chars().collect();
+    words.iter().filter(|word| word.chars().all(|c| letters.contains(c))).count() as i32
+}
+
+// ---- consistent_mask.kara: each word's letters as a bit mask
+
+fn mask_of(word: String) -> i32 {
+    word.bytes().iter().fold(0, |mask, b| mask | 1 << (b - b'a'))
+}
+
+fn mask_arm(allowed: String, words: Vec[String]) -> i32 {
+    let allowed_mask = mask_of(allowed);
+    let mut count = 0;
+    for word in words.iter() {
+        if mask_of(word) & ~allowed_mask == 0 {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- consistent_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn count_consistent_strings(allowed: String, words: Vec[String]) -> i32 {
+        let mut mask = 0u32;
+        for b in allowed.bytes() {
+            mask |= 1 << (b - b'a');
+        }
+        words
+            .iter()
+            .filter(|w| w.bytes().iter().all(|b| mask & (1 << (b - b'a')) != 0))
+            .count() as i32
+    }
+}
+
+fn solution_arm(allowed: String, words: Vec[String]) -> i32 {
+    SolutionArm.count_consistent_strings(allowed, words)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: a word is consistent when every one of
+// its characters appears in `allowed`; the consistent words counted
+fn literal(allowed: String, words: Vec[String]) -> i32 {
+    let mut count = 0;
+    for word in words.iter() {
+        let mut consistent = true;
+        for c in word.chars() {
+            if not allowed.chars().any(|a| a == c) {
+                consistent = false;
+            }
+        }
+        if consistent {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn arm(a: i64, allowed: String, words: Vec[String]) -> i32 {
+    match a {
+        0 => star_arm(allowed, words),
+        1 => set_arm(allowed, words),
+        2 => mask_arm(allowed, words),
+        _ => solution_arm(allowed, words),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "set", "mask", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1684;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let alphabet = "abcdefg".bytes();
+    // the allowed letters: each of the first 1 to 6 kept half the time, at
+    // least one, shuffled; the words from those letters and one more
+    let mut cases: Vec[(String, Vec[String], i64)] = Vec.new();
+    for _ in 0..problems {
+        let letters = next_random(mut seed) % 6 + 1;
+        let mut kept: Vec[char] = Vec.new();
+        for i in 0..letters {
+            if next_random(mut seed) % 2 == 0 {
+                kept.push(alphabet[i] as char);
+            }
+        }
+        if kept.is_empty() {
+            kept.push('a');
+        }
+        for i in (1..kept.len()).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            kept.swap(i, j);
+        }
+        let allowed: String = kept.iter().collect();
+        let n = next_random(mut seed) % 12 + 1;
+        let mut words = Vec.new();
+        for _ in 0..n {
+            let length = next_random(mut seed) % 6 + 1;
+            let mut word = String.new();
+            for _ in 0..length {
+                word.push(alphabet[next_random(mut seed) % (letters + 1)] as char);
+            }
+            words.push(word);
+        }
+        let m = next_random(mut seed) % (n + 1);
+        cases.push((allowed, words, m));
+    }
+    for (p, (allowed, words, m)) in cases.iter().enumerate() {
+        let want = literal(allowed, words);
+        check = (check * 31 + want) % 1000000007;
+        check = (check * 31 + words.len()) % 1000000007;
+        let first = words[..m].to_vec();
+        let rest = words[m..].to_vec();
+        let reversed_allowed: String = allowed.chars().rev().collect();
+        let reversed_words: Vec[String] = words.iter().map(|w| w.chars().rev().collect()).collect();
+        let mut more = words.clone();
+        more.push(allowed.clone());
+        more.push(f"{allowed}z");
+        let mut answers: Vec[i32] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, allowed, words);
+            let failed = [
+                got != want,
+                arm(a, allowed, first) + arm(a, allowed, rest) != got,
+                arm(a, reversed_allowed, reversed_words) != got,
+                arm(a, allowed, more) != got + 1,
+            ];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({allowed} {words}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

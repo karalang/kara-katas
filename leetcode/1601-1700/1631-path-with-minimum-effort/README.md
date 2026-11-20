@@ -145,5 +145,5 @@ and `&&`/`||` to `and`/`or`. It kept the block
 § Constants), and then `DIRS.iter()` was refused as "undefined name
 'DIRS'": a method call on a name reads as a path, and the pass that
 hoists a block constant to module scope renamed only a bare use. Kara
-`BLOCKSHA` renames the path's first segment too, and the arm then checks
+`5228eca59` renames the path's first segment too, and the arm then checks
 and agrees with no hand edit.

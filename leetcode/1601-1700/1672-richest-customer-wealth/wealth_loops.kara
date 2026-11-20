@@ -1,0 +1,60 @@
+// LeetCode #1672: Richest Customer Wealth -- two loops.
+//
+// Each row's sum built by an inner loop, the largest kept by the outer
+// one, starting from 0 since every account holds at least 1. O(m * n).
+
+fn maximum_wealth(accounts: Vec[Vec[i32]]) -> i32 {
+    let mut richest: i32 = 0;
+    for row in accounts.iter() {
+        let mut wealth: i32 = 0;
+        for money in row.iter() {
+            wealth += money;
+        }
+        richest = max(richest, wealth);
+    }
+    richest
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` grids of 1 to `most` customers and 1 to `most` banks, each
+// holding 1 to `money`; the answers summed, and a checksum of every answer
+fn batch(count: i64, most: i64, money: i64, seed: mut ref i64) {
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let m = next_random(mut seed) % most + 1;
+        let n = next_random(mut seed) % most + 1;
+        let mut accounts: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..m {
+            let mut row: Vec[i32] = Vec.new();
+            for _ in 0..n {
+                row.push((next_random(mut seed) % money + 1) as i32);
+            }
+            accounts.push(row);
+        }
+        let richest = maximum_wealth(accounts);
+        total += richest;
+        check = (check * 31 + richest + m * n) % 1000000007;
+    }
+    println(f"{count} grids of up to {most} by {most}, up to {money} in each account: answers sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then one customer, one bank each, and
+    // the richest last
+    println(maximum_wealth([[1, 2, 3], [3, 2, 1]]));
+    println(maximum_wealth([[1, 5], [7, 3], [3, 5]]));
+    println(maximum_wealth([[2, 8, 7], [7, 1, 3], [1, 9, 5]]));
+    println(maximum_wealth([[4, 4, 4, 4]]));
+    println(maximum_wealth([[3], [9], [2]]));
+    println(maximum_wealth([[1, 1], [1, 1], [100, 100]]));
+    let mut seed = 1672;
+    batch(3000, 5, 10, mut seed);
+    batch(1000, 50, 100, mut seed);
+}

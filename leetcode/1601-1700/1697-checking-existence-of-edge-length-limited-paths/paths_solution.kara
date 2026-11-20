@@ -1,0 +1,92 @@
+// LeetCode #1697: Checking Existence of Edge Length Limited Paths -- a
+// Rust solution as LeetCode's Rust users write it: `mut edge_list` sorted
+// in place by `sort_unstable_by_key`, the query order likewise, and a
+// recursive `find` nested in the method over a `Vec<usize>`.
+
+fn find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    if parent[x] != x {
+        let p = parent[x];
+        parent[x] = find(mut parent, p);
+    }
+    parent[x]
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn distance_limited_paths_exist(n: i32, edge_list: own Vec[Vec[i32]], queries: Vec[Vec[i32]]) -> Vec[bool] {
+        let mut edge_list = edge_list;
+        edge_list.sort_by_key(|e| e[2]);
+        let mut order: Vec[i64] = (0..queries.len()).collect();
+        order.sort_by_key(|i| queries[i][2]);
+        let mut parent: Vec[i64] = (0..n as i64).collect();
+        let mut ans = Vec.filled(queries.len(), false);
+        let mut j = 0;
+        for i in order {
+            let limit = queries[i][2];
+            while j < edge_list.len() and edge_list[j][2] < limit {
+                let a = find(mut parent, edge_list[j][0]);
+                let b = find(mut parent, edge_list[j][1]);
+                parent[a] = b;
+                j += 1;
+            }
+            ans[i] = find(mut parent, queries[i][0]) == find(mut parent, queries[i][1]);
+        }
+        ans
+    }
+}
+
+fn distance_limited_paths_exist(n: i32, edge_list: own Vec[Vec[i32]], queries: Vec[Vec[i32]]) -> Vec[bool] {
+    Solution.distance_limited_paths_exist(n, edge_list, queries)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random graphs of 2 to `most` nodes, each with up to 2 * `most`
+// edges and up to `most` queries, lengths and limits from 1 to `top`;
+// the answers that are true, and a checksum of every answer
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut trues = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % (most - 1) + 2;
+        let mut edges: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..next_random(mut seed) % (2 * most) + 1 {
+            let u = next_random(mut seed) % n;
+            let v = (u + 1 + next_random(mut seed) % (n - 1)) % n;
+            edges.push([u as i32, v as i32, (next_random(mut seed) % top + 1) as i32]);
+        }
+        let mut queries: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..next_random(mut seed) % most + 1 {
+            let p = next_random(mut seed) % n;
+            let q = (p + 1 + next_random(mut seed) % (n - 1)) % n;
+            queries.push([p as i32, q as i32, (next_random(mut seed) % top + 1) as i32]);
+        }
+        let answer = distance_limited_paths_exist(n as i32, edges, queries);
+        for a in answer.iter() {
+            if a {
+                trues += 1;
+            }
+            check = (check * 31 + if a { 2 } else { 1 }) % 1000000007;
+        }
+    }
+    println(f"{count} graphs of up to {most} nodes, lengths up to {top}: {trues} true, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then a limit equal to the only edge's
+    // length, and two nodes joined twice
+    println(distance_limited_paths_exist(3, [[0, 1, 2], [1, 2, 4], [2, 0, 8], [1, 0, 16]], [[0, 1, 2], [0, 2, 5]]));
+    println(distance_limited_paths_exist(5, [[0, 1, 10], [1, 2, 5], [2, 3, 9], [3, 4, 13]], [[0, 4, 14], [1, 4, 13]]));
+    println(distance_limited_paths_exist(2, [[0, 1, 3]], [[0, 1, 3], [1, 0, 4]]));
+    println(distance_limited_paths_exist(2, [[0, 1, 7], [1, 0, 2]], [[0, 1, 3], [0, 1, 2]]));
+    let mut seed = 1697;
+    batch(3000, 6, 5, mut seed);
+    batch(300, 100, 100, mut seed);
+    batch(10, 2000, 1000000000, mut seed);
+}

@@ -1,0 +1,212 @@
+// LeetCode #1679: Max Number of K-Sum Pairs -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random arrays
+// of 1 to 10 values from 1 to between 1 and 6, each with a k from 2 to
+// twice the largest.
+//
+// P1  the answer is the statement read literally
+// P2  the array reversed gives the same answer
+// P3  every value 1000 more, and k 2000 more, gives the same answer
+// P4  a pair that sums to k added, one at each end, gives one more
+// P5  each arm agrees with at least two of the other three
+
+// ---- pairs.kara: the ★ arm: the values still waiting for a partner
+
+fn star_arm(nums: Vec[i32], k: i32) -> i32 {
+    let mut waiting: Map[i32, i32] = Map.new();
+    let mut operations = 0;
+    for x in nums.iter() {
+        let partner = k - x;
+        match waiting.get(partner) {
+            Some(c) if c > 0 => {
+                waiting[partner] = c - 1;
+                operations += 1;
+            }
+            _ => {
+                *waiting.entry(x).or_insert(0) += 1;
+            }
+        }
+    }
+    operations
+}
+
+// ---- pairs_sorted.kara: two pointers over the sorted values
+
+fn sorted_arm(nums: Vec[i32], k: i32) -> i32 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut operations = 0;
+    let mut lo = 0;
+    let mut hi = sorted.len() - 1;
+    while lo < hi {
+        let sum = sorted[lo] + sorted[hi];
+        if sum == k {
+            operations += 1;
+            lo += 1;
+            hi -= 1;
+        } else if sum < k {
+            lo += 1;
+        } else {
+            hi -= 1;
+        }
+    }
+    operations
+}
+
+// ---- pairs_counts.kara: every value counted first
+
+fn counts_arm(nums: Vec[i32], k: i32) -> i32 {
+    let mut counts: Map[i32, i32] = Map.new();
+    for x in nums.iter() {
+        *counts.entry(x).or_insert(0) += 1;
+    }
+    counts.iter().fold(0, |operations, (v, c)| {
+        let partner = k - v;
+        if v < partner {
+            operations + min(c, counts.get(partner).unwrap_or(0))
+        } else if v == partner {
+            operations + c / 2
+        } else {
+            operations
+        }
+    })
+}
+
+// ---- pairs_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn max_operations(nums: Vec[i32], k: i32) -> i32 {
+        let mut map: Map[i32, i32] = Map.new();
+        let mut ans = 0;
+        for num in nums {
+            let target = k - num;
+            if let Some(cnt) = map.get_mut(target) {
+                if *cnt > 0 {
+                    *cnt -= 1;
+                    ans += 1;
+                    continue;
+                }
+            }
+            *map.entry(num).or_insert(0) += 1;
+        }
+        ans
+    }
+}
+
+fn solution_arm(nums: Vec[i32], k: i32) -> i32 {
+    SolutionArm.max_operations(nums, k)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: the first value left is either never
+// picked, or picked with some later value that sums to k, both removed;
+// the most operations over every such choice
+fn literal(nums: Slice[i32], k: i32) -> i64 {
+    if nums.len() < 2 {
+        return 0;
+    }
+    let rest = nums[1..].to_vec();
+    let mut best = literal(rest, k);
+    for j in 0..rest.len() {
+        if nums[0] + rest[j] == k {
+            let mut left = rest.clone();
+            left.remove(j);
+            best = max(best, 1 + literal(left, k));
+        }
+    }
+    best
+}
+
+fn arm(a: i64, nums: Slice[i32], k: i32) -> i64 {
+    let nums = nums.to_vec();
+    match a {
+        0 => star_arm(nums, k),
+        1 => sorted_arm(nums, k),
+        2 => counts_arm(nums, k),
+        _ => solution_arm(nums, k),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "sorted", "counts", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1679;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i32], i32, i32)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 10 + 1;
+        let most = next_random(mut seed) % 6 + 1;
+        let nums: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % most + 1) as i32).collect();
+        let k = (next_random(mut seed) % (2 * most - 1) + 2) as i32;
+        let a = (next_random(mut seed) % (k - 1) + 1) as i32;
+        cases.push((nums, k, a));
+    }
+    for (p, (nums, k, a)) in cases.iter().enumerate() {
+        let want = literal(nums, k);
+        check = (check * 31 + want + nums.len() + k) % 1000000007;
+        let reversed: Vec[i32] = nums.iter().rev().collect();
+        let raised: Vec[i32] = nums.iter().map(|x| x + 1000).collect();
+        // a pair that sums to k, put at the front and the back
+        let mut with_pair = [a];
+        with_pair.extend(nums.iter());
+        with_pair.push(k - a);
+        let mut answers: Vec[i64] = Vec.new();
+        for r in 0..4 {
+            let got = arm(r, nums, k);
+            answers.push(got);
+            let failed = [
+                got != want,
+                arm(r, reversed, k) != got,
+                arm(r, raised, k + 2000) != got,
+                arm(r, with_pair, k) != got + 1,
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({nums}, k {k}), {arm_name(r)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for r in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[r]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(r)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

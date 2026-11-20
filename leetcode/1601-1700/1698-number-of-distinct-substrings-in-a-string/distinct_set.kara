@@ -1,0 +1,57 @@
+// LeetCode #1698: Number of Distinct Substrings in a String -- every
+// substring in a `Set`.
+//
+// Each of the n(n + 1) / 2 substrings is copied into a `Set[String]`,
+// which keeps one of each; its size is the answer. O(n^3) time.
+
+fn count_distinct(s: Str) -> i32 {
+    let mut seen: Set[String] = Set.new();
+    for start in 0..s.len() {
+        for end in start + 1..=s.len() {
+            seen.insert(s[start..end].to_string());
+        }
+    }
+    seen.len() as i32
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random strings of 1 to `most` letters from the first 1 to
+// `letters` of the alphabet; the answers summed, and a checksum of them
+fn batch(count: i64, most: i64, letters: i64, seed: mut ref i64) {
+    let alphabet = "abcdefghijklmnopqrstuvwxyz";
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let used = next_random(mut seed) % letters + 1;
+        let mut s = String.new();
+        for _ in 0..n {
+            let pick = next_random(mut seed) % used;
+            s.push_str(alphabet.substring(pick, pick + 1));
+        }
+        let answer = count_distinct(s);
+        total += answer;
+        check = (check * 31 + answer) % 1000000007;
+    }
+    println(f"{count} strings of up to {most} letters from up to {letters}: answers sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then one letter, one letter four times, and
+    // a pair twice
+    println(count_distinct("aabbaba"));
+    println(count_distinct("abcdefg"));
+    println(count_distinct("a"));
+    println(count_distinct("aaaa"));
+    println(count_distinct("abab"));
+    let mut seed = 1698;
+    batch(3000, 12, 4, mut seed);
+    batch(300, 100, 4, mut seed);
+    batch(10, 500, 26, mut seed);
+}

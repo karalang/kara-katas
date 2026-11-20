@@ -1,0 +1,212 @@
+// LeetCode #1690: Stone Game VII -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random rows of
+// 2 to 10 stones.
+//
+// P1  the answer is the statement read literally
+// P2  the row reversed gives the same answer
+// P3  every stone doubled doubles the answer
+// P4  the answer is at least 0 and at most the sum less the smallest stone
+// P5  each arm agrees with at least two of the other three
+
+// ---- game.kara: the ★ arm: one row of the table at a time
+
+fn star_arm(stones: Vec[i32]) -> i32 {
+    let n = stones.len();
+    let mut prefix = Vec.filled(n + 1, 0i32);
+    for i in 0..n {
+        prefix[i + 1] = prefix[i] + stones[i];
+    }
+    let mut best = Vec.filled(n, 0i32);
+    for i in (0..n).rev() {
+        for j in i + 1..n {
+            let take_left = prefix[j + 1] - prefix[i + 1] - best[j];
+            let take_right = prefix[j] - prefix[i] - best[j - 1];
+            best[j] = max(take_left, take_right);
+        }
+    }
+    best[n - 1]
+}
+
+// ---- game_memo.kara: the game searched from the whole row, each stretch remembered
+
+fn memo_best(i: i64, j: i64, total: i32, stones: Vec[i32], memo: mut ref Vec[Vec[Option[i32]]]) -> i32 {
+    if i == j {
+        return 0;
+    }
+    if let Some(known) = memo[i][j] {
+        return known;
+    }
+    let take_left = total - stones[i] - memo_best(i + 1, j, total - stones[i], stones, mut memo);
+    let take_right = total - stones[j] - memo_best(i, j - 1, total - stones[j], stones, mut memo);
+    let answer = max(take_left, take_right);
+    memo[i][j] = Some(answer);
+    answer
+}
+
+fn memo_arm(stones: Vec[i32]) -> i32 {
+    let n = stones.len();
+    let mut memo = Vec.filled(n, Vec.filled(n, None));
+    let total = stones.iter().sum();
+    memo_best(0, n - 1, total, stones, mut memo)
+}
+
+// ---- game_table.kara: the whole table, stretch by length
+
+fn table_arm(stones: Vec[i32]) -> i32 {
+    let n = stones.len();
+    let mut table: Vec[Vec[i32]] = Vec.filled(n, Vec.filled(n, 0));
+    let mut sums: Vec[Vec[i32]] = Vec.filled(n, Vec.filled(n, 0));
+    for i in 0..n {
+        sums[i][i] = stones[i];
+    }
+    for length in 2..=n {
+        for i in 0..=n - length {
+            let j = i + length - 1;
+            sums[i][j] = sums[i][j - 1] + stones[j];
+            let take_left = sums[i + 1][j] - table[i + 1][j];
+            let take_right = sums[i][j - 1] - table[i][j - 1];
+            table[i][j] = max(take_left, take_right);
+        }
+    }
+    table[0][n - 1]
+}
+
+// ---- game_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn stone_game_vii(stones: Vec[i32]) -> i32 {
+        let n = stones.len();
+        let mut pre = Vec.filled(n + 1, 0i32);
+        for i in 0..n {
+            pre[i + 1] = pre[i] + stones[i];
+        }
+        let mut dp = Vec.filled(n, Vec.filled(n, 0i32));
+        for i in (0..n).rev() {
+            for j in i + 1..n {
+                dp[i][j] = (pre[j + 1] - pre[i + 1] - dp[i + 1][j]).max(pre[j] - pre[i] - dp[i][j - 1]);
+            }
+        }
+        dp[0][n - 1]
+    }
+}
+
+fn solution_arm(stones: Vec[i32]) -> i32 {
+    SolutionArm.stone_game_vii(stones)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every removal played out, Alice to move
+// when `alice`, each removal scoring the stones left after it; Alice takes
+// the largest final lead of hers over Bob, Bob the smallest
+fn play(stones: Vec[i32], alice: bool, lead: i32) -> i32 {
+    if stones.len() == 1 {
+        return lead;
+    }
+    let mut results: Vec[i32] = Vec.new();
+    for end in [0, stones.len() - 1] {
+        let mut rest = stones.clone();
+        rest.remove(end);
+        let score: i32 = rest.iter().sum();
+        let next = if alice { lead + score } else { lead - score };
+        results.push(play(rest, not alice, next));
+    }
+    if alice { results.iter().max().unwrap() } else { results.iter().min().unwrap() }
+}
+
+fn literal(stones: Vec[i32]) -> i32 {
+    play(stones, true, 0)
+}
+
+fn arm(a: i64, stones: Vec[i32]) -> i32 {
+    match a {
+        0 => star_arm(stones),
+        1 => memo_arm(stones),
+        2 => table_arm(stones),
+        _ => solution_arm(stones),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "memo", "table", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1690;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    // 2 to 10 stones from 1 to between 1 and 20
+    let mut cases: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 9 + 2;
+        let top = next_random(mut seed) % 20 + 1;
+        let mut stones: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            stones.push((next_random(mut seed) % top + 1) as i32);
+        }
+        cases.push(stones);
+    }
+    for (p, stones) in cases.iter().enumerate() {
+        let want = literal(stones);
+        check = (check * 31 + want) % 1000000007;
+        check = (check * 31 + stones.len()) % 1000000007;
+        let reversed: Vec[i32] = stones.iter().rev().cloned().collect();
+        let doubled: Vec[i32] = stones.iter().map(|s| 2 * s).collect();
+        let sum: i32 = stones.iter().sum();
+        let smallest = stones.iter().min().unwrap();
+        let mut answers: Vec[i32] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, stones);
+            let failed = [
+                got != want,
+                arm(a, reversed) != got,
+                arm(a, doubled) != 2 * got,
+                got < 0 or got > sum - smallest,
+            ];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({stones}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

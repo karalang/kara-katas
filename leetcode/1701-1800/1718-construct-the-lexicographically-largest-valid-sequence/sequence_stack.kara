@@ -1,0 +1,74 @@
+// LeetCode #1718: Construct the Lexicographically Largest Valid Sequence --
+// the search with a stack of choices instead of recursion.
+//
+// Each choice is the slot filled and the number put there. To go on, the
+// next empty slot is tried from the largest free number down; when none
+// fits, the last choice is taken back and its slot tried from the number
+// below the one it held. The same order as the ★ arm, so the same answer.
+
+fn construct_distanced_sequence(n: i32) -> Vec[i32] {
+    let len = 2 * n as i64 - 1;
+    let mut seq: Vec[i32] = Vec.filled(len, 0);
+    let mut used: Vec[bool] = Vec.filled(n + 1, false);
+    let mut choices: Vec[(i64, i32)] = Vec.new();
+    let mut at = 0;
+    // the largest number to try at `at`
+    let mut from = n;
+    loop {
+        while at < len and seq[at] != 0 {
+            at += 1;
+        }
+        if at == len {
+            return seq;
+        }
+        let mut placed = false;
+        let mut v = from;
+        while v >= 1 {
+            if not used[v] and (v == 1 or (at + v < len and seq[at + v] == 0)) {
+                used[v] = true;
+                seq[at] = v;
+                if v > 1 {
+                    seq[at + v] = v;
+                }
+                choices.push((at, v));
+                placed = true;
+                break;
+            }
+            v -= 1;
+        }
+        if placed {
+            from = n;
+            continue;
+        }
+        // nothing fits: take back the last choice and try below it
+        let (back, was) = choices.pop().unwrap();
+        used[was] = false;
+        seq[back] = 0;
+        if was > 1 {
+            seq[back + was] = 0;
+        }
+        at = back;
+        from = was - 1;
+    }
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn main() {
+    // LeetCode's two examples, then the smallest two and the largest
+    println(construct_distanced_sequence(3));
+    println(construct_distanced_sequence(5));
+    println(construct_distanced_sequence(1));
+    println(construct_distanced_sequence(2));
+    println(construct_distanced_sequence(20));
+    // every n the constraints allow
+    let mut values = 0;
+    let mut check = 0;
+    for n in 1..=20 {
+        for v in construct_distanced_sequence(n).iter() {
+            values += 1;
+            check = (check * 31 + v) % 1000000007;
+        }
+    }
+    println(f"every n from 1 to 20: {values} values, checksum {check}");
+}

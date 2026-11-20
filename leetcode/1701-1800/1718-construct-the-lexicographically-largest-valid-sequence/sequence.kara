@@ -1,0 +1,69 @@
+// LeetCode #1718: Construct the Lexicographically Largest Valid Sequence --
+// the ★ arm: the first empty slot filled with the largest number still
+// free that fits, backtracking when none does.
+//
+// The sequence is filled from the front, so the first complete one found
+// trying the larger numbers first is the largest. A number v > 1 takes its
+// slot and the one v later, which must be empty and inside; 1 takes one
+// slot. The search is exponential in principle, but for n up to 20 it
+// meets few dead ends.
+
+fn place(seq: mut ref Vec[i32], used: mut ref Vec[bool], at: i64, n: i32) -> bool {
+    let mut at = at;
+    while at < seq.len() and seq[at] != 0 {
+        at += 1;
+    }
+    if at == seq.len() {
+        return true;
+    }
+    for v in (1..=n).rev() {
+        if used[v] {
+            continue;
+        }
+        if v > 1 and (at + v >= seq.len() or seq[at + v] != 0) {
+            continue;
+        }
+        used[v] = true;
+        seq[at] = v;
+        if v > 1 {
+            seq[at + v] = v;
+        }
+        if place(mut seq, mut used, at + 1, n) {
+            return true;
+        }
+        used[v] = false;
+        seq[at] = 0;
+        if v > 1 {
+            seq[at + v] = 0;
+        }
+    }
+    false
+}
+
+fn construct_distanced_sequence(n: i32) -> Vec[i32] {
+    let mut seq: Vec[i32] = Vec.filled(2 * n - 1, 0);
+    let mut used: Vec[bool] = Vec.filled(n + 1, false);
+    place(mut seq, mut used, 0, n);
+    seq
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn main() {
+    // LeetCode's two examples, then the smallest two and the largest
+    println(construct_distanced_sequence(3));
+    println(construct_distanced_sequence(5));
+    println(construct_distanced_sequence(1));
+    println(construct_distanced_sequence(2));
+    println(construct_distanced_sequence(20));
+    // every n the constraints allow
+    let mut values = 0;
+    let mut check = 0;
+    for n in 1..=20 {
+        for v in construct_distanced_sequence(n).iter() {
+            values += 1;
+            check = (check * 31 + v) % 1000000007;
+        }
+    }
+    println(f"every n from 1 to 20: {values} values, checksum {check}");
+}

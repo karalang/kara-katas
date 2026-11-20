@@ -1,0 +1,252 @@
+// LeetCode #1723: Find Minimum Time to Finish All Jobs -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random
+// problems: 1 to 6 jobs of 1 to 6 each, and 1 to as many workers as jobs.
+//
+// P1  the answer is the statement read literally
+// P2  the jobs in reverse order give the same answer
+// P3  every job doubled doubles the answer
+// P4  a job as long as the answer added, with a worker more, gives the
+//     same answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- jobs.kara: the ★ arm: backtracking, the longest job first, cut at the best
+
+fn star_place(jobs: Slice[i32], i: i64, loads: mut ref Vec[i32], best: mut ref i32) {
+    if i == jobs.len() {
+        *best = loads.iter().max().unwrap();
+        return;
+    }
+    for w in 0..loads.len() {
+        if loads[w] + jobs[i] < *best {
+            loads[w] += jobs[i];
+            star_place(jobs, i + 1, mut loads, mut best);
+            loads[w] -= jobs[i];
+        }
+        if loads[w] == 0 {
+            break;
+        }
+    }
+}
+
+fn star_arm(jobs: Vec[i32], k: i32) -> i32 {
+    let mut order = jobs.clone();
+    order.sort_by(|a, b| b.cmp(a));
+    let total: i32 = order.iter().sum();
+    let mut loads: Vec[i32] = Vec.filled(k, 0);
+    let mut best = total + 1;
+    star_place(order, 0, mut loads, mut best);
+    best
+}
+
+// ---- jobs_binary.kara: a binary search on the finish, each limit tried by backtracking
+
+fn fits(jobs: Slice[i32], i: i64, loads: mut ref Vec[i32], limit: i32) -> bool {
+    if i == jobs.len() {
+        return true;
+    }
+    for w in 0..loads.len() {
+        if loads[w] + jobs[i] <= limit {
+            loads[w] += jobs[i];
+            let done = fits(jobs, i + 1, mut loads, limit);
+            loads[w] -= jobs[i];
+            if done {
+                return true;
+            }
+        }
+        if loads[w] == 0 {
+            break;
+        }
+    }
+    false
+}
+
+fn binary_arm(jobs: Vec[i32], k: i32) -> i32 {
+    let mut order = jobs.clone();
+    order.sort();
+    order.reverse();
+    let mut lo = order[0];
+    let mut hi: i32 = order.iter().sum();
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        let mut loads: Vec[i32] = Vec.filled(k, 0);
+        if fits(order, 0, mut loads, mid) {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    lo
+}
+
+// ---- jobs_dp.kara: dynamic programming over the subsets of the jobs
+
+fn dp_arm(jobs: Vec[i32], k: i32) -> i32 {
+    let n = jobs.len();
+    let full = 1 << n;
+    let mut sum: Vec[i32] = Vec.filled(full, 0);
+    for mask in 1..full {
+        let low = mask.trailing_zeros();
+        sum[mask] = sum[mask & (mask - 1)] + jobs[low];
+    }
+    let mut best = sum.clone();
+    for _ in 1..k {
+        let mut next = best.clone();
+        for mask in 1..full {
+            let mut sub = mask;
+            while sub > 0 {
+                next[mask] = min(next[mask], max(best[mask ^ sub], sum[sub]));
+                sub = (sub - 1) & mask;
+            }
+        }
+        best = next;
+    }
+    best[full - 1]
+}
+
+// ---- jobs_solution.kara: LeetCode's Rust template, through karac fix
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn minimum_time_required(jobs: own Vec[i32], k: i32) -> i32 {
+        let mut jobs = jobs;
+        jobs.sort_by(|a, b| b.cmp(a));
+        let mut workers = Vec.filled(k, 0);
+        let mut ans = i32.MAX;
+        SolutionArm.backtrack(jobs, 0, mut workers, mut ans);
+        ans
+    }
+
+    fn backtrack(jobs: Slice[i32], idx: i64, workers: mut ref Vec[i32], ans: mut ref i32) {
+        if idx == jobs.len() {
+            let max = *workers.iter().max().unwrap();
+            *ans = (*ans).min(max);
+            return;
+        }
+        let mut seen = Set.new();
+        for i in 0..workers.len() {
+            if not seen.insert(workers[i]) {
+                continue;
+            }
+            if workers[i] + jobs[idx] >= *ans {
+                continue;
+            }
+            workers[i] += jobs[idx];
+            SolutionArm.backtrack(jobs, idx + 1, mut workers, mut ans);
+            workers[i] -= jobs[idx];
+        }
+    }
+}
+
+fn solution_arm(jobs: own Vec[i32], k: i32) -> i32 {
+    SolutionArm.minimum_time_required(jobs, k)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every assignment of each job to one of
+// the k workers, counted as the n digits of a number in base k; a
+// worker's time is the sum of its jobs, an assignment's the longest
+// worker's, and the answer the least of those
+fn literal(jobs: Slice[i32], k: i32) -> i32 {
+    let n = jobs.len();
+    let k = k as i64;
+    let mut ways = 1;
+    for _ in 0..n {
+        ways *= k;
+    }
+    let mut best = i32.MAX;
+    for code in 0..ways {
+        let mut loads: Vec[i32] = Vec.filled(k, 0);
+        let mut rest = code;
+        for i in 0..n {
+            loads[rest % k] += jobs[i];
+            rest /= k;
+        }
+        best = min(best, loads.iter().max().unwrap());
+    }
+    best
+}
+
+fn arm(a: i64, jobs: Slice[i32], k: i32) -> i32 {
+    let jobs = jobs.to_vec();
+    match a {
+        0 => star_arm(jobs, k),
+        1 => binary_arm(jobs, k),
+        2 => dp_arm(jobs, k),
+        _ => solution_arm(jobs, k),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "binary", "dp", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1723;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i32], i32)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 6 + 1;
+        let jobs: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % 6 + 1) as i32).collect();
+        let k = (next_random(mut seed) % n + 1) as i32;
+        cases.push((jobs, k));
+    }
+    for (p, (jobs, k)) in cases.iter().enumerate() {
+        let want = literal(jobs, k);
+        check = (check * 31 + want + jobs.len() + k) % 1000000007;
+        let reversed: Vec[i32] = jobs.iter().rev().cloned().collect();
+        let doubled: Vec[i32] = jobs.iter().map(|j| j * 2).collect();
+        let mut answers: Vec[i32] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, jobs, k);
+            let mut longer = jobs.to_vec();
+            longer.push(got);
+            let failed = [got != want, arm(a, reversed, k) != got, arm(a, doubled, k) != 2 * got, arm(a, longer, k + 1) != got];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({jobs}, k {k}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

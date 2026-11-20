@@ -1,0 +1,55 @@
+// LeetCode #1711: Count Good Meals -- the ★ arm: one pass, each dish
+// paired with the earlier dishes that make a power of two with it,
+// counted in a map.
+//
+// A dish is at most 2^20, so two make at most 2^21: for each dish the 22
+// powers 2^0 to 2^21 each name the one value it would pair with, and the
+// map says how many earlier dishes have it. O(22 n).
+
+fn count_pairs(deliciousness: Vec[i32]) -> i32 {
+    let mut seen: Map[i32, i64] = Map.new();
+    let mut pairs = 0;
+    for d in deliciousness.iter() {
+        for b in 0..22 {
+            pairs += seen.get((1 << b) - d).unwrap_or(0);
+        }
+        seen[d] = seen.get(d).unwrap_or(0) + 1;
+    }
+    (pairs % 1000000007) as i32
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random lists of 1 to `most` dishes, each 0 to `top`
+// delicious; the answers summed, and a checksum
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let deliciousness: Vec[i32] = (0..n).map(|_| ((next_random(mut seed) * 32768 + next_random(mut seed)) % (top + 1)) as i32).collect();
+        let answer = count_pairs(deliciousness) as i64;
+        sum += answer;
+        check = (check * 31 + answer + n) % 1000000007;
+    }
+    println(f"{count} lists of up to {most} dishes up to {top}: answers sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then one dish, two zeros, and two dishes
+    // of 2^20, the largest
+    println(count_pairs([1, 3, 5, 7, 9]));
+    println(count_pairs([1, 1, 1, 3, 3, 3, 7]));
+    println(count_pairs([1]));
+    println(count_pairs([0, 0]));
+    println(count_pairs([1048576, 1048576]));
+    let mut seed = 1711;
+    batch(3000, 12, 16, mut seed);
+    batch(300, 1000, 4096, mut seed);
+    batch(10, 100000, 1000, mut seed);
+}

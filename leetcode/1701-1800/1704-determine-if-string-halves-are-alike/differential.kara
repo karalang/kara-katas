@@ -1,0 +1,186 @@
+// LeetCode #1704: Determine if String Halves Are Alike -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random strings
+// of an even 2 to 12 letters, vowels and consonants in either case.
+//
+// P1  the answer is the statement read literally
+// P2  the two halves swapped give the same answer
+// P3  the string reversed gives the same answer
+// P4  the string in capitals gives the same answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- halves.kara: the ★ arm: one pass, a vowel counted up in the first half and down in the second
+
+fn star_arm(s: String) -> bool {
+    let bytes = s.bytes();
+    let half = bytes.len() / 2;
+    let mut balance = 0;
+    for (i, b) in bytes.iter().enumerate() {
+        match b {
+            b'a' | b'e' | b'i' | b'o' | b'u' | b'A' | b'E' | b'I' | b'O' | b'U' => {
+                balance += if i < half { 1 } else { -1 };
+            }
+            _ => {}
+        }
+    }
+    balance == 0
+}
+
+// ---- halves_count.kara: each half's vowels counted with `filter` and `contains`
+
+fn count_vowels(text: Str) -> i64 {
+    text.chars().filter(|c| "aeiouAEIOU".contains(c.to_string())).count()
+}
+
+fn count_arm(s: String) -> bool {
+    let (a, b) = s.split_at(s.len() / 2);
+    count_vowels(a) == count_vowels(b)
+}
+
+// ---- halves_table.kara: a table of the vowels, the two halves walked together
+
+fn table_arm(s: String) -> bool {
+    let mut vowel: Array[bool, 128] = [false; 128];
+    for b in "aeiouAEIOU".bytes().iter() {
+        vowel[b] = true;
+    }
+    let bytes = s.bytes();
+    let half = bytes.len() / 2;
+    let mut difference = 0;
+    for i in 0..half {
+        if vowel[bytes[i]] {
+            difference += 1;
+        }
+        if vowel[bytes[i + half]] {
+            difference -= 1;
+        }
+    }
+    difference == 0
+}
+
+// ---- halves_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn halves_are_alike(s: String) -> bool {
+        let count = |t: Str| t.chars().filter(|c| "aeiouAEIOU".contains(c.to_string())).count();
+        let n = s.len();
+        count(s[..n / 2]) == count(s[n / 2..])
+    }
+}
+
+fn solution_arm(s: String) -> bool {
+    SolutionArm.halves_are_alike(s)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: the string split into its two halves; in
+// each, every letter compared with each of the ten vowels the statement
+// lists, a match counted; alike when the two counts are equal
+fn literal(s: String) -> bool {
+    let listed = ['a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U'];
+    let letters: Vec[char] = s.chars().collect();
+    let half = letters.len() / 2;
+    let mut counts = [0, 0];
+    for i in 0..letters.len() {
+        for v in listed.iter() {
+            if letters[i] == v {
+                counts[if i < half { 0 } else { 1 }] += 1;
+            }
+        }
+    }
+    counts[0] == counts[1]
+}
+
+fn arm(a: i64, s: String) -> bool {
+    match a {
+        0 => star_arm(s),
+        1 => count_arm(s),
+        2 => table_arm(s),
+        _ => solution_arm(s),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "count", "table", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1704;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let vowels = "aeiouAEIOU".bytes();
+    let consonants = "bcdfghjklmnpqrstvwxyzBCDFGHJKLMNPQRSTVWXYZ".bytes();
+    let mut cases: Vec[String] = Vec.new();
+    for _ in 0..problems {
+        let n = 2 * (next_random(mut seed) % 6 + 1);
+        let lean = next_random(mut seed) % 11;
+        let mut s = String.new();
+        for _ in 0..n {
+            let b = if next_random(mut seed) % 10 < lean {
+                vowels[next_random(mut seed) % vowels.len()]
+            } else {
+                consonants[next_random(mut seed) % consonants.len()]
+            };
+            s.push(b as char);
+        }
+        cases.push(s);
+    }
+    for (p, s) in cases.iter().enumerate() {
+        let want = literal(s);
+        check = (check * 31 + (if want { 1 } else { 2 }) + s.len()) % 1000000007;
+        let (front, back) = s.split_at(s.len() / 2);
+        let swapped = f"{back}{front}";
+        let reversed: String = s.chars().rev().collect();
+        let capitals = s.to_uppercase();
+        let mut answers: Vec[bool] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, s);
+            let failed = [got != want, arm(a, swapped) != got, arm(a, reversed) != got, arm(a, capitals) != got];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({s}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

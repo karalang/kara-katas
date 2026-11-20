@@ -1,0 +1,59 @@
+// LeetCode #1694: Reformat Phone Number -- the bench: the ★ arm on 100000
+// random numbers of 100 characters, LeetCode's longest, all drawn first,
+// each answered 40 times.
+//
+// The spaces and dashes go first; blocks of three are cut while more than
+// four digits are left, then the rest is one block or two of two. O(n).
+
+fn reformat_number(number: Str) -> String {
+    let digits: String = number.chars().filter(|c| c.is_ascii_digit()).collect();
+    let mut blocks: Vec[Str] = Vec.new();
+    let mut at = 0;
+    while digits.len() - at > 4 {
+        blocks.push(digits[at..at + 3]);
+        at += 3;
+    }
+    if digits.len() - at == 4 {
+        blocks.push(digits[at..at + 2]);
+        blocks.push(digits[at + 2..]);
+    } else {
+        blocks.push(digits[at..]);
+    }
+    blocks.join("-")
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 100000;
+    let rounds = 40;
+    let length = 100;
+    let alphabet = "0123456789 -";
+    let mut seed = 1694;
+    let mut numbers: Vec[String] = Vec.new();
+    for _ in 0..count {
+        let mut number = String.new();
+        for i in 0..length {
+            // the first two characters digits, so every number has two
+            let pick = if i < 2 { next_random(mut seed) % 10 } else { next_random(mut seed) % 12 };
+            number.push_str(alphabet.substring(pick, pick + 1));
+        }
+        numbers.push(number);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for number in numbers.iter() {
+            let answer = reformat_number(number);
+            let bytes = answer.bytes();
+            total += answer.len();
+            check = (check * 31 + answer.len() + bytes[bytes.len() / 2] + bytes[bytes.len() - 1] + r) % 1000000007;
+        }
+    }
+    println(f"{count} numbers of {length} characters, {rounds} rounds: {total} characters out, checksum {check}");
+}

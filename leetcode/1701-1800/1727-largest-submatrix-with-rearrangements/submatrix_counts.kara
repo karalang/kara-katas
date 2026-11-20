@@ -1,0 +1,67 @@
+// LeetCode #1727: Largest Submatrix With Rearrangements -- the heights
+// counted.
+//
+// A height is at most the number of rows, so each row's heights are
+// counted into buckets, and a sum from the tallest bucket down gives, for
+// each height h, how many columns reach it: a submatrix h tall and that
+// many wide. O(m (n + m)).
+
+fn largest_submatrix(matrix: Vec[Vec[i32]]) -> i32 {
+    let m = matrix.len();
+    let n = matrix[0].len();
+    let mut heights: Vec[i64] = Vec.filled(n, 0);
+    let mut best = 0;
+    for row in matrix.iter() {
+        let mut buckets: Vec[i64] = Vec.filled(m + 1, 0);
+        for j in 0..n {
+            heights[j] = if row[j] == 1 { heights[j] + 1 } else { 0 };
+            buckets[heights[j]] += 1;
+        }
+        let mut wide = 0;
+        for h in (1..m + 1).rev() {
+            wide += buckets[h];
+            best = max(best, h * wide);
+        }
+    }
+    best as i32
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` matrices of 1 to `most` rows and 1 to `most` columns, each cell
+// a one with a chance of 3 in 4
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let m = next_random(mut seed) % most + 1;
+        let n = next_random(mut seed) % most + 1;
+        let mut matrix: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..m {
+            let row: Vec[i32] = (0..n).map(|_| if next_random(mut seed) % 4 == 0 { 0 } else { 1 }).collect();
+            matrix.push(row);
+        }
+        let answer = largest_submatrix(matrix);
+        sum += answer;
+        check = (check * 31 + answer + m * n) % 1000000007;
+    }
+    println(f"{count} matrices of up to {most} by {most}: areas sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then one zero, and 316 rows of 316 ones
+    println(largest_submatrix([[0, 0, 1], [1, 1, 1], [1, 0, 1]]));
+    println(largest_submatrix([[1, 0, 1, 0, 1]]));
+    println(largest_submatrix([[1, 1, 0], [1, 0, 1]]));
+    println(largest_submatrix([[0]]));
+    println(largest_submatrix(Vec.filled(316, Vec.filled(316, 1))));
+    let mut seed = 1727;
+    batch(3000, 5, mut seed);
+    batch(300, 50, mut seed);
+    batch(5, 316, mut seed);
+}

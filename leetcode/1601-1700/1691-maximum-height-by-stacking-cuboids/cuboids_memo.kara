@@ -1,0 +1,83 @@
+// LeetCode #1691: Maximum Height by Stacking Cuboids -- the stack above
+// each cuboid searched, each answer remembered.
+//
+// Sides sorted as in the ★ arm, but the cuboids left in their order:
+// above(i), the tallest stack with cuboid i at its bottom, is its height
+// plus the tallest above(j) over the cuboids j that fit on it. Two equal
+// cuboids each fit on the other, so j must also come first by index there,
+// which keeps the search from going round. O(n^2).
+
+fn fits_on(a: Vec[i32], b: Vec[i32]) -> bool {
+    a[0] <= b[0] and a[1] <= b[1] and a[2] <= b[2]
+}
+
+fn above(i: i64, boxes: Vec[Vec[i32]], memo: mut ref Vec[Option[i32]]) -> i32 {
+    if let Some(known) = memo[i] {
+        return known;
+    }
+    let mut best = 0;
+    for j in 0..boxes.len() {
+        if j != i and fits_on(boxes[j], boxes[i]) and (boxes[j] != boxes[i] or j < i) {
+            best = max(best, above(j, boxes, mut memo));
+        }
+    }
+    let answer = boxes[i][2] + best;
+    memo[i] = Some(answer);
+    answer
+}
+
+fn max_height(cuboids: Vec[Vec[i32]]) -> i32 {
+    let mut boxes: Vec[Vec[i32]] = Vec.new();
+    for c in cuboids.iter() {
+        let mut sides = c.clone();
+        sides.sort();
+        boxes.push(sides);
+    }
+    let mut memo = Vec.filled(boxes.len(), None);
+    let mut tallest = 0;
+    for i in 0..boxes.len() {
+        tallest = max(tallest, above(i, boxes, mut memo));
+    }
+    tallest
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random sets of 1 to `most` cuboids with sides 1 to `top`; the
+// answers summed, and a checksum of them
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let mut cuboids: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..n {
+            let mut sides: Vec[i32] = Vec.new();
+            for _ in 0..3 {
+                sides.push((next_random(mut seed) % top + 1) as i32);
+            }
+            cuboids.push(sides);
+        }
+        let answer = max_height(cuboids);
+        total += answer;
+        check = (check * 31 + answer) % 1000000007;
+    }
+    println(f"{count} sets of up to {most} cuboids up to {top}: answers sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, and one cuboid
+    println(max_height([[50, 45, 20], [95, 37, 53], [45, 23, 12]]));
+    println(max_height([[38, 25, 45], [76, 35, 3]]));
+    println(max_height([[7, 11, 17], [7, 17, 11], [11, 7, 17], [11, 17, 7], [17, 7, 11], [17, 11, 7]]));
+    println(max_height([[1, 2, 3]]));
+    let mut seed = 1691;
+    batch(3000, 6, 5, mut seed);
+    batch(300, 30, 50, mut seed);
+    batch(30, 100, 100, mut seed);
+}

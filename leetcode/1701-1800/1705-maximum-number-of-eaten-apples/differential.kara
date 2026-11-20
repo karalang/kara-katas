@@ -1,0 +1,270 @@
+// LeetCode #1705: Maximum Number of Eaten Apples -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random trees of
+// 1 to 6 days, each day 0 to 3 apples lasting 1 to 4 days.
+//
+// P1  the answer is the statement read literally
+// P2  a day with no apples put in front gives the same answer
+// P3  every crop lasting a day longer never gives fewer
+// P4  the answer is no more than the apples grown, nor than the day the
+//     last crop rots
+// P5  each arm agrees with at least two of the other three
+
+// ---- apples.kara: the ★ arm: each day an apple from the crop that rots first, by a PriorityQueue
+
+fn star_arm(apples: Vec[i32], days: Vec[i32]) -> i32 {
+    let n = apples.len();
+    let mut queue: PriorityQueue[(i64, i32)] = PriorityQueue.new();
+    let mut eaten = 0;
+    let mut day = 0;
+    while day < n or not queue.is_empty() {
+        if day < n and apples[day] > 0 {
+            queue.push((day + days[day], apples[day]));
+        }
+        while let Some((rot, _)) = queue.peek() {
+            if rot > day {
+                break;
+            }
+            queue.pop();
+        }
+        if let Some((rot, left)) = queue.pop() {
+            eaten += 1;
+            if left > 1 {
+                queue.push((rot, left - 1));
+            }
+        }
+        day += 1;
+    }
+    eaten
+}
+
+// ---- apples_sorted.kara: a SortedMap of apples by the day they rot
+
+fn sorted_arm(apples: Vec[i32], days: Vec[i32]) -> i32 {
+    let n = apples.len();
+    let mut by_rot: SortedMap[i64, i64] = SortedMap.new();
+    let mut eaten = 0;
+    let mut day = 0;
+    while day < n or not by_rot.is_empty() {
+        if day < n and apples[day] > 0 {
+            *by_rot.entry(day + days[day]).or_insert(0) += apples[day];
+        }
+        while let Some((rot, _)) = by_rot.first() {
+            if rot > day {
+                break;
+            }
+            by_rot.remove(rot);
+        }
+        if let Some((rot, left)) = by_rot.first() {
+            eaten += 1;
+            if left == 1 {
+                by_rot.remove(rot);
+            } else {
+                by_rot.insert(rot, left - 1);
+            }
+        }
+        day += 1;
+    }
+    eaten
+}
+
+// ---- apples_buckets.kara: a count for every rotting day, and a pointer to the soonest
+
+fn buckets_arm(apples: Vec[i32], days: Vec[i32]) -> i32 {
+    let n = apples.len();
+    let mut end = 0;
+    for i in 0..n {
+        end = max(end, i + days[i]);
+    }
+    let mut left: Vec[i64] = Vec.filled(end + 1, 0);
+    let mut soonest = end + 1;
+    let mut eaten = 0;
+    for day in 0..end {
+        if day < n and apples[day] > 0 {
+            let rot = day + days[day];
+            left[rot] += apples[day];
+            soonest = min(soonest, rot);
+        }
+        soonest = max(soonest, day + 1);
+        while soonest <= end and left[soonest] == 0 {
+            soonest += 1;
+        }
+        if soonest <= end {
+            left[soonest] -= 1;
+            eaten += 1;
+        }
+    }
+    eaten
+}
+
+// ---- apples_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn eaten_apples(apples: Vec[i32], days: Vec[i32]) -> i32 {
+        let n = apples.len();
+        let mut heap = PriorityQueue.new();
+        let mut ans = 0;
+        let mut i = 0;
+        while i < n or not heap.is_empty() {
+            if i < n and apples[i] > 0 {
+                heap.push((i + days[i], apples[i]));
+            }
+            while let Some((r, _)) = heap.peek().cloned() {
+                if r <= i {
+                    heap.pop();
+                } else {
+                    break;
+                }
+            }
+            if let Some((r, c)) = heap.pop() {
+                ans += 1;
+                if c > 1 {
+                    heap.push((r, c - 1));
+                }
+            }
+            i += 1;
+        }
+        ans
+    }
+}
+
+fn solution_arm(apples: Vec[i32], days: Vec[i32]) -> i32 {
+    SolutionArm.eaten_apples(apples, days)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: on each day, every apple grown by then
+// and not yet rotten may be eaten, one at most, or none; every way of
+// choosing is searched, day by day, until the last crop has rotted. The
+// most eaten. `state` is the day, then the apples left of each crop.
+fn literal(apples: Slice[i32], days: Slice[i32]) -> i64 {
+    let mut state: Vec[i64] = [0];
+    for a in apples.iter() {
+        state.push(a);
+    }
+    let mut memo: Map[Vec[i64], i64] = Map.new();
+    most_eaten(apples, days, state, mut memo)
+}
+
+fn most_eaten(apples: Slice[i32], days: Slice[i32], state: own Vec[i64], memo: mut ref Map[Vec[i64], i64]) -> i64 {
+    let day = state[0];
+    let n = apples.len();
+    if (0..n).all(|i| day >= i + days[i]) {
+        return 0;
+    }
+    if let Some(known) = memo.get(state) {
+        return known;
+    }
+    let mut next = state.clone();
+    next[0] = day + 1;
+    // eat nothing today
+    let mut best = most_eaten(apples, days, next.clone(), mut memo);
+    for i in 0..n {
+        if i <= day and day < i + days[i] and state[i + 1] > 0 {
+            let mut ate = next.clone();
+            ate[i + 1] -= 1;
+            best = max(best, 1 + most_eaten(apples, days, ate, mut memo));
+        }
+    }
+    memo.insert(state, best);
+    best
+}
+
+fn arm(a: i64, apples: Slice[i32], days: Slice[i32]) -> i64 {
+    let apples = apples.to_vec();
+    let days = days.to_vec();
+    match a {
+        0 => star_arm(apples, days),
+        1 => sorted_arm(apples, days),
+        2 => buckets_arm(apples, days),
+        _ => solution_arm(apples, days),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "sorted", "buckets", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1705;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i32], Vec[i32])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 6 + 1;
+        let mut apples: Vec[i32] = Vec.new();
+        let mut days: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            let grown = next_random(mut seed) % 4;
+            apples.push(grown as i32);
+            days.push(if grown == 0 { 0 } else { (next_random(mut seed) % 4 + 1) as i32 });
+        }
+        cases.push((apples, days));
+    }
+    for (p, (apples, days)) in cases.iter().enumerate() {
+        let n = apples.len();
+        let want = literal(apples, days);
+        check = (check * 31 + want + n) % 1000000007;
+        let mut later_apples: Vec[i32] = [0];
+        later_apples.extend(apples.iter());
+        let mut later_days: Vec[i32] = [0];
+        later_days.extend(days.iter());
+        let longer: Vec[i32] = (0..n).map(|i| if apples[i] > 0 { days[i] + 1 } else { 0 }).collect();
+        let grown: i64 = apples.iter().map(|a| a as i64).sum();
+        let last = (0..n).map(|i| i + days[i]).max().unwrap();
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, apples, days);
+            let failed = [
+                got != want,
+                arm(a, later_apples, later_days) != got,
+                arm(a, apples, longer) < got,
+                got > grown or got > last,
+            ];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({apples}, {days}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

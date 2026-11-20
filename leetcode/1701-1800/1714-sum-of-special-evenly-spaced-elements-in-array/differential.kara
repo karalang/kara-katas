@@ -1,0 +1,241 @@
+// LeetCode #1714: Sum Of Special Evenly-Spaced Elements In Array -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random problems
+// of 1 to 12 values, half of them up to 9 and half up to 10^9, and 1 to 6
+// queries of a start in the array and a step from 1 to one past its
+// length.
+//
+// P1  the answers are the statement read literally
+// P2  every value doubled doubles every answer, modulo 10^9 + 7
+// P3  a query whose step passes the end answers its start's value
+// P4  a query's answer is its start's value plus the answer of the query
+//     a step later, when that starts inside the array
+// P5  each arm agrees with at least two of the other three
+
+// ---- special.kara: the ★ arm: by step, small steps' sums built from the back
+
+fn star_arm(nums: Vec[i32], queries: Vec[Vec[i32]]) -> Vec[i32] {
+    let modulus = 1000000007;
+    let n = nums.len();
+    let small = n.isqrt();
+    let mut answer: Vec[i32] = Vec.filled(queries.len(), 0);
+    let mut order: Vec[i64] = (0..queries.len()).collect();
+    order.sort_by_key(|q| queries[q][1]);
+    let mut sums: Vec[i64] = Vec.filled(n, 0);
+    let mut built = 0;
+    for q in order.iter() {
+        let (x, y) = (queries[q][0], queries[q][1]);
+        if y <= small {
+            if y != built {
+                for j in (0..n).rev() {
+                    let after = if j + y < n { sums[j + y] } else { 0 };
+                    sums[j] = (nums[j] + after) % modulus;
+                }
+                built = y;
+            }
+            answer[q] = sums[x] as i32;
+        } else {
+            let mut total = 0;
+            let mut j = x;
+            while j < n {
+                total += nums[j];
+                j += y;
+            }
+            answer[q] = (total % modulus) as i32;
+        }
+    }
+    answer
+}
+
+// ---- special_direct.kara: every query walked
+
+fn direct_arm(nums: Vec[i32], queries: Vec[Vec[i32]]) -> Vec[i32] {
+    let n = nums.len();
+    let mut answer: Vec[i32] = Vec.with_capacity(queries.len());
+    for query in queries.iter() {
+        let (x, y) = (query[0], query[1]);
+        let mut total: i64 = 0;
+        let mut j = x;
+        while j < n {
+            total += nums[j];
+            j += y;
+        }
+        answer.push((total % 1000000007) as i32);
+    }
+    answer
+}
+
+// ---- special_step.kara: step_by over the values from x
+
+fn step_arm(nums: Vec[i32], queries: Vec[Vec[i32]]) -> Vec[i32] {
+    queries
+        .iter()
+        .map(|query| {
+            let total: i64 = nums[query[0]..].iter().step_by(query[1]).map(|v| v as i64).sum();
+            (total % 1000000007) as i32
+        })
+        .collect()
+}
+
+// ---- special_memo.kara: small steps' sums kept in a map as first asked
+
+fn memo_arm(nums: Vec[i32], queries: Vec[Vec[i32]]) -> Vec[i32] {
+    let n = nums.len();
+    let small = n.isqrt();
+    let mut kept: Map[i32, Vec[i64]] = Map.new();
+    let mut answer: Vec[i32] = Vec.new();
+    for query in queries.iter() {
+        let (x, y) = (query[0], query[1]);
+        if y <= small {
+            if not kept.contains_key(y) {
+                let mut sums: Vec[i64] = Vec.filled(n, 0);
+                for j in (0..n).rev() {
+                    sums[j] = nums[j];
+                    if j + y < n {
+                        sums[j] = (sums[j] + sums[j + y]) % 1000000007;
+                    }
+                }
+                kept.insert(y, sums);
+            }
+            answer.push(kept[y][x] as i32);
+        } else {
+            let mut total: i64 = 0;
+            let mut j = x;
+            while j < n {
+                total += nums[j];
+                j += y;
+            }
+            answer.push((total % 1000000007) as i32);
+        }
+    }
+    answer
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: for each query every j from x to the end
+// whose distance from x is divisible by y, its value added, the sum taken
+// modulo 10^9 + 7
+fn literal(nums: Slice[i32], queries: Slice[Vec[i32]]) -> Vec[i32] {
+    let mut answer: Vec[i32] = Vec.new();
+    for query in queries.iter() {
+        let (x, y) = (query[0], query[1]);
+        let mut total = 0;
+        for j in x..nums.len() {
+            if (j - x) % y == 0 {
+                total = (total + nums[j]) % 1000000007;
+            }
+        }
+        answer.push(total as i32);
+    }
+    answer
+}
+
+fn arm(a: i64, nums: Slice[i32], queries: Slice[Vec[i32]]) -> Vec[i32] {
+    let nums = nums.to_vec();
+    let queries = queries.to_vec();
+    match a {
+        0 => star_arm(nums, queries),
+        1 => direct_arm(nums, queries),
+        2 => step_arm(nums, queries),
+        _ => memo_arm(nums, queries),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "direct", "step", "memo"][a]
+}
+
+fn main() {
+    let mut seed = 1714;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i32], Vec[Vec[i32]])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 12 + 1;
+        // half the problems hold values near the modulus, so sums wrap
+        let top = if next_random(mut seed) % 2 == 0 { 9 } else { 1000000000 };
+        let nums: Vec[i32] = (0..n).map(|_| ((next_random(mut seed) * 32768 + next_random(mut seed)) % (top + 1)) as i32).collect();
+        let q = next_random(mut seed) % 6 + 1;
+        let queries: Vec[Vec[i32]] = (0..q).map(|_| [(next_random(mut seed) % n) as i32, (next_random(mut seed) % (n + 1) + 1) as i32]).collect();
+        cases.push((nums, queries));
+    }
+    for (p, (nums, queries)) in cases.iter().enumerate() {
+        let want = literal(nums, queries);
+        for w in want.iter() {
+            check = (check * 31 + w) % 1000000007;
+        }
+        check = (check * 31 + nums.len() + queries.len()) % 1000000007;
+        let doubled: Vec[i32] = nums.iter().map(|v| ((v as i64 * 2) % 1000000007) as i32).collect();
+        // each query followed by the one that starts a step later
+        let mut later: Vec[Vec[i32]] = Vec.new();
+        for query in queries.iter() {
+            later.push(query.clone());
+            later.push([query[0] + query[1], query[1]]);
+        }
+        let n = nums.len();
+        let mut answers: Vec[Vec[i32]] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, nums, queries);
+            let twice = arm(a, doubled, queries);
+            let p2 = (0..got.len()).any(|i| twice[i] != got[i] as i64 * 2 % 1000000007);
+            let p3 = (0..queries.len()).any(|i| queries[i][0] + queries[i][1] >= n and got[i] != nums[queries[i][0]]);
+            let chained = arm(a, nums, later.iter().filter(|q| q[0] < n).cloned().collect());
+            // the pairs whose later query is inside the array, in order
+            let mut k = 0;
+            let mut p4 = false;
+            for i in 0..queries.len() {
+                let here = chained[k];
+                k += 1;
+                if queries[i][0] + queries[i][1] < n {
+                    let next = chained[k];
+                    k += 1;
+                    p4 = p4 or here != (nums[queries[i][0]] as i64 + next as i64) % 1000000007;
+                }
+            }
+            let failed = [got != want, p2, p3, p4];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({nums}, {queries}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

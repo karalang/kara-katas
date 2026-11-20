@@ -1,0 +1,136 @@
+// LeetCode #1669: Merge In Between Linked Lists -- LeetCode's Rust
+// template (`Option<Box<ListNode>>` with `i32` values): `as_mut().unwrap()`
+// down to the node before the cut, `take()` of the rest, a walk over the
+// cut by moving out of each node, then list2 hung on and walked to its
+// end, carried by `karac fix`. The harness converts its `i64` values at
+// `build` and `values_of`.
+
+// Definition for singly-linked list.
+#[derive(PartialEq, Eq, Clone, Debug)]
+// pub struct ListNode {
+//   pub val: i32,
+//   pub next: Option<Box<ListNode>>
+// }
+//
+// impl ListNode {
+//   #[inline]
+//   fn new(val: i32) -> Self {
+//     ListNode {
+//       next: None,
+//       val
+//     }
+//   }
+// }
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct ListNode {
+    pub val: i32,
+    pub next: Option[ListNode],
+}
+
+impl ListNode {
+    #[inline]
+    fn new(val: i32) -> Self {
+        ListNode { next: None, val }
+    }
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn merge_in_between(list1: own Option[ListNode], a: i32, b: i32, list2: own Option[ListNode]) -> Option[ListNode] {
+        let mut list1 = list1;
+        let mut cur = list1.as_mut().unwrap();
+        for _ in 0..a - 1 {
+            cur = cur.next.as_mut().unwrap();
+        }
+        let mut rest = cur.next.take();
+        for _ in 0..b - a + 1 {
+            rest = rest.unwrap().next;
+        }
+        cur.next = list2;
+        while cur.next.is_some() {
+            cur = cur.next.as_mut().unwrap();
+        }
+        cur.next = rest;
+        list1
+    }
+}
+
+fn merge_in_between(list1: own Option[ListNode], a: i64, b: i64, list2: own Option[ListNode]) -> Option[ListNode] {
+    Solution.merge_in_between(list1, a as i32, b as i32, list2)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn build(values: Slice[i64]) -> Option[ListNode] {
+    let mut head: Option[ListNode] = None;
+    for v in values.iter().rev() {
+        head = Some(ListNode { val: v as i32, next: head });
+    }
+    head
+}
+
+fn values_of(head: Option[ListNode]) -> Vec[i64] {
+    let mut out = Vec.new();
+    let mut cur = head;
+    while let Some(node) = cur {
+        out.push(node.val as i64);
+        cur = ref node.next;
+    }
+    out
+}
+
+fn show(values: Slice[i64]) -> String {
+    let parts: Vec[String] = values.iter().map(|v| f"{v}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn merged(list1: Slice[i64], a: i64, b: i64, list2: Slice[i64]) -> Vec[i64] {
+    values_of(merge_in_between(build(list1), a, b, build(list2)))
+}
+
+// `count` problems with a first list of 3 to `longest` nodes and a second
+// of 1 to `longest`, values up to 10^6; the merged lengths summed, and a
+// checksum of every merged list
+fn batch(count: i64, longest: i64, seed: mut ref i64) {
+    let mut nodes = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % (longest - 2) + 3;
+        let m = next_random(mut seed) % longest + 1;
+        let a = next_random(mut seed) % (n - 2) + 1;
+        let b = a + next_random(mut seed) % (n - 1 - a);
+        let mut list1: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            list1.push(next_random(mut seed) % 1000001);
+        }
+        let mut list2: Vec[i64] = Vec.new();
+        for _ in 0..m {
+            list2.push(next_random(mut seed) % 1000001);
+        }
+        let got = merged(list1, a, b, list2);
+        nodes += got.len();
+        for v in got.iter() {
+            check = (check * 31 + v + 1) % 1000000007;
+        }
+    }
+    println(f"{count} problems of up to {longest} nodes: {nodes} nodes merged, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then the smallest first list with one
+    // node taken out, and the whole middle taken out
+    println(show(merged([10, 1, 13, 6, 9, 5], 3, 4, [1000000, 1000001, 1000002])));
+    println(show(merged([0, 1, 2, 3, 4, 5, 6], 2, 5, [1000000, 1000001, 1000002, 1000003, 1000004])));
+    println(show(merged([1, 2, 3], 1, 1, [9])));
+    println(show(merged([1, 2, 3, 4, 5], 1, 3, [7, 8])));
+    let mut seed = 1669;
+    batch(3000, 12, mut seed);
+    batch(300, 1000, mut seed);
+    batch(10, 10000, mut seed);
+}

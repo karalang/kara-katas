@@ -1,0 +1,231 @@
+// LeetCode #1717: Maximum Score From Removing Substrings -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random strings
+// of 1 to 9 letters, each `a` or `b` four times in nine and `x` once, and
+// points from 1 to 6.
+//
+// P1  the answer is the statement read literally
+// P2  every `a` and `b` swapped, with x and y swapped, gives the same answer
+// P3  the string reversed, with x and y swapped, gives the same answer
+// P4  the string twice with a `z` between gives twice the answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- score.kara: the ★ arm: the dearer pair first, with a stack
+
+fn star_remove(chars: Slice[char], first: char, second: char, points: i32) -> (Vec[char], i32) {
+    let mut kept: Vec[char] = Vec.new();
+    let mut gained: i32 = 0;
+    for c in chars.iter() {
+        if c == second and kept.last().cloned() == Some(first) {
+            kept.pop();
+            gained += points;
+        } else {
+            kept.push(c);
+        }
+    }
+    (kept, gained)
+}
+
+fn star_arm(s: String, x: i32, y: i32) -> i32 {
+    let chars: Vec[char] = s.chars().collect();
+    let (first, second, more, less) = if x >= y { ('a', 'b', x, y) } else { ('b', 'a', y, x) };
+    let (rest, a) = star_remove(chars, first, second, more);
+    let (_, b) = star_remove(rest, second, first, less);
+    a + b
+}
+
+// ---- score_counts.kara: counts in place of the stacks
+
+fn counts_arm(s: String, x: i32, y: i32) -> i32 {
+    // read so that `first` then `second` is the dearer pair
+    let (first, second, more, less) = if x >= y { ('a', 'b', x, y) } else { ('b', 'a', y, x) };
+    let mut total: i32 = 0;
+    let mut firsts: i32 = 0;
+    let mut seconds: i32 = 0;
+    for c in s.chars() {
+        if c == first {
+            firsts += 1;
+        } else if c == second {
+            if firsts > 0 {
+                firsts -= 1;
+                total += more;
+            } else {
+                seconds += 1;
+            }
+        } else {
+            total += min(firsts, seconds) * less;
+            firsts = 0;
+            seconds = 0;
+        }
+    }
+    total + min(firsts, seconds) * less
+}
+
+// ---- score_replace.kara: replace until no pair is left
+
+fn take_all(s: own String, pair: Str) -> (String, i64) {
+    let mut s = s;
+    let mut pairs = 0;
+    while s.contains(pair) {
+        let shorter = s.replace(pair, "");
+        pairs += (s.len() - shorter.len()) / 2;
+        s = shorter;
+    }
+    (s, pairs)
+}
+
+fn replace_arm(s: own String, x: i32, y: i32) -> i32 {
+    let (dear, cheap, more, less) = if x >= y { ("ab", "ba", x, y) } else { ("ba", "ab", y, x) };
+    let (rest, many) = take_all(s, dear);
+    let (_, few) = take_all(rest, cheap);
+    (many * more + few * less) as i32
+}
+
+// ---- score_solution.kara: LeetCode's Rust template, through karac fix
+
+struct Solution {}
+
+impl Solution {
+    pub fn maximum_gain(s: String, x: i32, y: i32) -> i32 {
+        let (first, second, hi, lo) = if x >= y { (b'a', b'b', x, y) } else { (b'b', b'a', y, x) };
+        let mut stack: Vec[u8] = Vec.new();
+        let mut ans: i32 = 0;
+        for c in s.bytes() {
+            if c == second and stack.last() == Some(ref first) {
+                stack.pop();
+                ans += hi;
+            } else {
+                stack.push(c);
+            }
+        }
+        let mut rest: Vec[u8] = Vec.new();
+        for c in stack.iter() {
+            if c == first and rest.last() == Some(ref second) {
+                rest.pop();
+                ans += lo;
+            } else {
+                rest.push(c);
+            }
+        }
+        ans
+    }
+}
+
+fn solution_arm(s: String, x: i32, y: i32) -> i32 {
+    Solution.maximum_gain(s, x, y)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: from each string every removal of an `ab`
+// or a `ba` wherever one stands, any number of times in any order, the
+// best of each string kept in a map once it is known
+fn literal(s: Str, x: i64, y: i64, best: mut ref Map[String, i64]) -> i64 {
+    if let Some(known) = best.get(s) {
+        return known;
+    }
+    let chars: Vec[char] = s.chars().collect();
+    let mut most = 0;
+    for i in 0..chars.len() - min(chars.len(), 1) {
+        let pair = (chars[i], chars[i + 1]);
+        let points = if pair == ('a', 'b') {
+            x
+        } else if pair == ('b', 'a') {
+            y
+        } else {
+            continue;
+        };
+        let rest: String = s[0..i].to_string() + s[i + 2..].to_string();
+        most = max(most, points + literal(rest, x, y, mut best));
+    }
+    best.insert(s.to_string(), most);
+    most
+}
+
+fn arm(a: i64, s: Str, x: i64, y: i64) -> i64 {
+    let s = s.to_string();
+    let (x, y) = (x as i32, y as i32);
+    match a {
+        0 => star_arm(s, x, y),
+        1 => counts_arm(s, x, y),
+        2 => replace_arm(s, x, y),
+        _ => solution_arm(s, x, y),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "counts", "replace", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1717;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(String, i64, i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 9 + 1;
+        let mut s = String.new();
+        for _ in 0..n {
+            let r = next_random(mut seed) % 9;
+            s.push(if r < 4 { 'a' } else if r < 8 { 'b' } else { 'x' });
+        }
+        let x = next_random(mut seed) % 6 + 1;
+        let y = next_random(mut seed) % 6 + 1;
+        cases.push((s, x, y));
+    }
+    for (p, (s, x, y)) in cases.iter().enumerate() {
+        let mut best: Map[String, i64] = Map.new();
+        let want = literal(s, x, y, mut best);
+        check = (check * 31 + want + s.len() + x * 7 + y) % 1000000007;
+        let swapped: String = s.chars().map(|c| if c == 'a' { 'b' } else if c == 'b' { 'a' } else { c }).collect();
+        let reversed: String = s.chars().rev().collect();
+        let twice = f"{s}z{s}";
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, s, x, y);
+            let failed = [got != want, arm(a, swapped, y, x) != got, arm(a, reversed, y, x) != got, arm(a, twice, x, y) != 2 * got];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({s}, x {x}, y {y}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

@@ -1,0 +1,81 @@
+// LeetCode #1703: Minimum Adjacent Swaps for K Consecutive Ones -- the
+// cost carried from window to window.
+//
+// With q[j] = p[j] - j, as in the ★ arm, the first window's cost is summed
+// outright. Sliding one on drops q[i] (it was q[m] - q[i] from the
+// median), adds q[i + k] (q[i + k] - q[m]), and moves the median on by
+// d = q[m + 1] - q[m]: the m - i values below gain d each, the new
+// median loses d and the i + k - m - 1 above lose d each, d * (2(m - i) -
+// k) in all, which is -d for an odd k and 0 for an even one. O(n).
+
+fn min_moves(nums: Vec[i32], k: i32) -> i32 {
+    let mut q: Vec[i64] = Vec.new();
+    let mut seen = 0;
+    for i in 0..nums.len() {
+        if nums[i] == 1 {
+            q.push(i - seen);
+            seen += 1;
+        }
+    }
+    let k = k as i64;
+    let mut m = k / 2;
+    let mut cost = 0;
+    for j in 0..k {
+        cost += (q[j] - q[m]).abs();
+    }
+    let mut best = cost;
+    for i in 0..q.len() - k {
+        cost -= q[m] - q[i];
+        cost += q[i + k] - q[m];
+        let d = q[m + 1] - q[m];
+        cost += d * (2 * (m - i) - k);
+        m += 1;
+        best = min(best, cost);
+    }
+    best as i32
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random arrays of 1 to `most` values, each a 1 with a chance of
+// its array's own from 0 to 10 in 10 and at least one 1, with k from 1 to
+// the count of 1s; the answers summed, and a checksum
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let lean = next_random(mut seed) % 11;
+        let mut nums: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            nums.push(if next_random(mut seed) % 10 < lean { 1 } else { 0 });
+        }
+        if nums.iter().all(|v| v == 0) {
+            nums[next_random(mut seed) % n] = 1;
+        }
+        let ones = nums.iter().filter(|v| v == 1).count();
+        let k = (next_random(mut seed) % ones + 1) as i32;
+        let answer = min_moves(nums, k) as i64;
+        sum += answer;
+        check = (check * 31 + answer + k) % 1000000007;
+    }
+    println(f"{count} arrays of up to {most} values: answers sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then k = 1, and three 1s a gap apart
+    println(min_moves([1, 0, 0, 1, 0, 1], 2));
+    println(min_moves([1, 0, 0, 0, 0, 0, 1, 1], 3));
+    println(min_moves([1, 1, 0, 1], 2));
+    println(min_moves([0, 0, 1, 0], 1));
+    println(min_moves([1, 0, 1, 0, 1], 3));
+    let mut seed = 1703;
+    batch(3000, 12, mut seed);
+    batch(300, 1000, mut seed);
+    batch(10, 100000, mut seed);
+}

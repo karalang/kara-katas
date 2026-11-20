@@ -1,0 +1,215 @@
+// LeetCode #1664: Ways to Make a Fair Array -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random arrays
+// of up to 8 values from 1 to 3.
+//
+// P1  the answer is the statement read literally
+// P2  the array reversed gives the same answer
+// P3  every value doubled gives the same answer
+// P4  the answer is between 0 and n
+// P5  each arm agrees with at least two of the other three
+
+// ---- fair.kara: the ★ arm: one pass with running sums
+
+fn star_arm(nums: Vec[i32]) -> i32 {
+    let mut total = [0, 0];
+    for (i, x) in nums.iter().enumerate() {
+        total[i % 2] += x;
+    }
+    let mut before = [0, 0];
+    let mut ways = 0;
+    for (i, x) in nums.iter().enumerate() {
+        let p = i % 2;
+        // what follows index i, by its parity before the removal
+        let mut after = [total[0] - before[0], total[1] - before[1]];
+        after[p] -= x;
+        // after the removal the values after i change parity
+        if before[0] + after[1] == before[1] + after[0] {
+            ways += 1;
+        }
+        before[p] += x;
+    }
+    ways
+}
+
+// ---- fair_prefix.kara: prefix sums by parity
+
+fn prefix_arm(nums: Vec[i32]) -> i32 {
+    let n = nums.len();
+    let mut even = Vec.filled(n + 1, 0);
+    let mut odd = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        even[i + 1] = even[i] + if i % 2 == 0 { nums[i] } else { 0 };
+        odd[i + 1] = odd[i] + if i % 2 == 1 { nums[i] } else { 0 };
+    }
+    (0..n)
+        .filter(|i| even[i] + odd[n] - odd[i + 1] == odd[i] + even[n] - even[i + 1])
+        .count() as i32
+}
+
+// ---- fair_signed.kara: one signed sum
+
+fn signed_arm(nums: Vec[i32]) -> i32 {
+    let signed = |i: i64, x: i32| if i % 2 == 0 { x as i64 } else { -(x as i64) };
+    let total: i64 = nums.iter().enumerate().map(|(i, x)| signed(i, x)).sum();
+    let mut before = 0;
+    let mut ways = 0;
+    for (i, x) in nums.iter().enumerate() {
+        let here = signed(i, x);
+        if before == total - before - here {
+            ways += 1;
+        }
+        before += here;
+    }
+    ways
+}
+
+// ---- fair_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn ways_to_make_fair(nums: Vec[i32]) -> i32 {
+        let n = nums.len();
+        let mut (even, odd) = (0, 0);
+        for i in 0..n {
+            if i % 2 == 0 {
+                even += nums[i];
+            } else {
+                odd += nums[i];
+            }
+        }
+        let mut (left_even, left_odd) = (0, 0);
+        let mut res = 0;
+        for i in 0..n {
+            if i % 2 == 0 {
+                even -= nums[i];
+            } else {
+                odd -= nums[i];
+            }
+            if left_even + odd == left_odd + even {
+                res += 1;
+            }
+            if i % 2 == 0 {
+                left_even += nums[i];
+            } else {
+                left_odd += nums[i];
+            }
+        }
+        res
+    }
+}
+
+fn solution_arm(nums: Vec[i32]) -> i32 {
+    SolutionArm.ways_to_make_fair(nums)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: each index removed in turn, the even-
+// and odd-indexed sums of what is left compared
+fn literal(nums: Slice[i32]) -> i32 {
+    let mut ways = 0;
+    for i in 0..nums.len() {
+        let mut left: Vec[i32] = nums.to_vec();
+        left.remove(i);
+        let mut even = 0;
+        let mut odd = 0;
+        for (j, x) in left.iter().enumerate() {
+            if j % 2 == 0 {
+                even += x;
+            } else {
+                odd += x;
+            }
+        }
+        if even == odd {
+            ways += 1;
+        }
+    }
+    ways
+}
+
+fn arm(a: i64, nums: Vec[i32]) -> i32 {
+    match a {
+        0 => star_arm(nums),
+        1 => prefix_arm(nums),
+        2 => signed_arm(nums),
+        _ => solution_arm(nums),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "prefix", "signed", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1664;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 8 + 1;
+        let mut nums: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            nums.push((next_random(mut seed) % 3 + 1) as i32);
+        }
+        cases.push(nums);
+    }
+    for (p, nums) in cases.iter().enumerate() {
+        let want = literal(nums);
+        check = (check * 31 + want + 1) % 1000000007;
+        let reversed: Vec[i32] = nums.iter().rev().collect();
+        let doubled: Vec[i32] = nums.iter().map(|x| 2 * x).collect();
+        let mut answers: Vec[i32] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, nums);
+            answers.push(got);
+            let failed = [
+                got != want,
+                arm(a, reversed) != got,
+                arm(a, doubled) != got,
+                got < 0 or got > nums.len(),
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({nums}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

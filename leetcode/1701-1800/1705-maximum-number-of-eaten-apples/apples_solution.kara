@@ -1,0 +1,82 @@
+// LeetCode #1705: Maximum Number of Eaten Apples -- a Rust solution as
+// LeetCode's Rust users write it: a `BinaryHeap` of `Reverse((rot, count))`
+// popped through `while let Some(&Reverse((r, _))) = heap.peek()`, with
+// `usize` days.
+
+struct Solution {}
+
+impl Solution {
+    pub fn eaten_apples(apples: Vec[i32], days: Vec[i32]) -> i32 {
+        let n = apples.len();
+        let mut heap = PriorityQueue.new();
+        let mut ans = 0;
+        let mut i = 0;
+        while i < n or not heap.is_empty() {
+            if i < n and apples[i] > 0 {
+                heap.push((i + days[i], apples[i]));
+            }
+            while let Some((r, _)) = heap.peek().cloned() {
+                if r <= i {
+                    heap.pop();
+                } else {
+                    break;
+                }
+            }
+            if let Some((r, c)) = heap.pop() {
+                ans += 1;
+                if c > 1 {
+                    heap.push((r, c - 1));
+                }
+            }
+            i += 1;
+        }
+        ans
+    }
+}
+
+fn eaten_apples(apples: Vec[i32], days: Vec[i32]) -> i32 {
+    Solution.eaten_apples(apples, days)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random trees of 1 to `most` days, each day 0 to `crop` apples
+// lasting 1 to `life` days (none when no apples grow); the answers
+// summed, and a checksum
+fn batch(count: i64, most: i64, crop: i64, life: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let mut apples: Vec[i32] = Vec.new();
+        let mut days: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            let grown = next_random(mut seed) % (crop + 1);
+            apples.push(grown as i32);
+            days.push(if grown == 0 { 0 } else { (next_random(mut seed) % life + 1) as i32 });
+        }
+        let answer = eaten_apples(apples, days) as i64;
+        sum += answer;
+        check = (check * 31 + answer + n) % 1000000007;
+    }
+    println(f"{count} trees of up to {most} days: answers sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then one apple, nothing grown, and a crop
+    // that outlasts the days it grows on
+    println(eaten_apples([1, 2, 3, 5, 2], [3, 2, 1, 4, 2]));
+    println(eaten_apples([3, 0, 0, 0, 0, 2], [3, 0, 0, 0, 0, 2]));
+    println(eaten_apples([1], [1]));
+    println(eaten_apples([0, 0], [0, 0]));
+    println(eaten_apples([10, 1], [6, 1]));
+    let mut seed = 1705;
+    batch(3000, 8, 5, 5, mut seed);
+    batch(300, 1000, 100, 100, mut seed);
+    batch(10, 20000, 20000, 20000, mut seed);
+}

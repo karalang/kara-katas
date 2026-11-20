@@ -1,0 +1,214 @@
+// LeetCode #1696: Jump Game VI -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random arrays
+// of 1 to 10 values from -5 to 5, each with a k from 1 to its length.
+//
+// P1  the answer is the statement read literally
+// P2  a k of at least n - 1 gives the first value, the last, and every
+//     positive one between
+// P3  k + 1 never gives less
+// P4  the array reversed gives the same answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- jump.kara: the ★ arm: a falling deque of the best scores in reach
+
+fn star_arm(nums: Vec[i32], k: i32) -> i32 {
+    let mut best = Vec.filled(nums.len(), 0);
+    best[0] = nums[0];
+    let mut reach: VecDeque[i64] = VecDeque.new();
+    reach.push_back(0);
+    for i in 1..nums.len() {
+        if reach[0] < i - k {
+            reach.pop_front();
+        }
+        best[i] = nums[i] + best[reach[0]];
+        while not reach.is_empty() and best[reach[reach.len() - 1]] <= best[i] {
+            reach.pop_back();
+        }
+        reach.push_back(i);
+    }
+    best[nums.len() - 1]
+}
+
+// ---- jump_heap.kara: the best score in reach from a heap
+
+fn heap_arm(nums: Vec[i32], k: i32) -> i32 {
+    let mut scores: PriorityQueue[(i32, i64)] = PriorityQueue.max_first();
+    scores.push((nums[0], 0));
+    let mut last = nums[0];
+    for i in 1..nums.len() {
+        while scores.peek().unwrap().1 < i - k {
+            scores.pop();
+        }
+        last = nums[i] + scores.peek().unwrap().0;
+        scores.push((last, i));
+    }
+    last
+}
+
+// ---- jump_table.kara: each score from the k before it
+
+fn table_arm(nums: Vec[i32], k: i32) -> i32 {
+    let n = nums.len();
+    let mut best: Vec[i32] = Vec.filled(n, 0);
+    best[0] = nums[0];
+    for i in 1..n {
+        let from = max(0, i - k);
+        best[i] = nums[i] + best[from..i].iter().max().unwrap();
+    }
+    best[n - 1]
+}
+
+// ---- jump_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn max_result(nums: Vec[i32], k: i32) -> i32 {
+        let n = nums.len();
+        let k = k as i64;
+        let mut dp = Vec.filled(n, 0);
+        dp[0] = nums[0];
+        let mut dq: VecDeque[i64] = VecDeque.new();
+        dq.push_back(0);
+        for i in 1..n {
+            while let Some(front) = dq.front().cloned() {
+                if front + k < i {
+                    dq.pop_front();
+                } else {
+                    break;
+                }
+            }
+            dp[i] = nums[i] + dp[*dq.front().unwrap()];
+            while let Some(back) = dq.back().cloned() {
+                if dp[back] <= dp[i] {
+                    dq.pop_back();
+                } else {
+                    break;
+                }
+            }
+            dq.push_back(i);
+        }
+        dp[n - 1]
+    }
+}
+
+fn solution_arm(nums: Vec[i32], k: i32) -> i32 {
+    SolutionArm.max_result(nums, k)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every way from index `at` to the last,
+// each jump 1 to k forward and never past the end, scored by the values
+// stood on; the best score from `at`
+fn paths(nums: Vec[i32], k: i64, at: i64) -> i32 {
+    if at == nums.len() - 1 {
+        return nums[at];
+    }
+    let mut best = i32.MIN;
+    for step in 1..=k {
+        if at + step < nums.len() {
+            best = max(best, nums[at] + paths(nums, k, at + step));
+        }
+    }
+    best
+}
+
+fn literal(nums: Vec[i32], k: i64) -> i32 {
+    paths(nums, k, 0)
+}
+
+fn arm(a: i64, nums: Vec[i32], k: i64) -> i32 {
+    let k = k as i32;
+    match a {
+        0 => star_arm(nums, k),
+        1 => heap_arm(nums, k),
+        2 => table_arm(nums, k),
+        _ => solution_arm(nums, k),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "heap", "table", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1696;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i32], i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 10 + 1;
+        let mut nums: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            nums.push((next_random(mut seed) % 11 - 5) as i32);
+        }
+        let k = next_random(mut seed) % n + 1;
+        cases.push((nums, k));
+    }
+    for (p, (nums, k)) in cases.iter().enumerate() {
+        let n = nums.len();
+        let want = literal(nums, k);
+        check = ((check * 31 + want + n + k) % 1000000007 + 1000000007) % 1000000007;
+        let reversed: Vec[i32] = nums.iter().rev().cloned().collect();
+        let mut open = nums[0];
+        if n > 1 {
+            open += nums[n - 1];
+            for i in 1..n - 1 {
+                open += max(nums[i], 0);
+            }
+        }
+        let mut answers: Vec[i32] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, nums, k);
+            let failed = [
+                got != want,
+                arm(a, nums, max(n - 1, 1)) != open,
+                arm(a, nums, k + 1) < got,
+                arm(a, reversed, k) != got,
+            ];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({nums}, k {k}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

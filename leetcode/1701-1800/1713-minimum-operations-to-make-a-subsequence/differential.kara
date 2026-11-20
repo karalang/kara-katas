@@ -1,0 +1,244 @@
+// LeetCode #1713: Minimum Operations to Make a Subsequence -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random problems:
+// a target of distinct values from a shuffle of 1 to between 1 and 8, and
+// an array of 1 to 10 values from 1 to two past the target's largest.
+//
+// P1  the answer is the statement read literally
+// P2  the target and the array both reversed give the same answer
+// P3  the array with the target put after it needs nothing inserted
+// P4  a value outside the target put at both ends of the array changes
+//     nothing
+// P5  each arm agrees with at least two of the other three
+
+// ---- operations.kara: the ★ arm: a map of places, the tails searched by partition_point
+
+fn star_arm(target: Vec[i32], arr: Vec[i32]) -> i32 {
+    let mut place: Map[i32, i64] = Map.new();
+    for (i, v) in target.iter().enumerate() {
+        place[v] = i;
+    }
+    let mut tails: Vec[i64] = Vec.new();
+    for a in arr.iter() {
+        if let Some(p) = place.get(a) {
+            let i = tails.partition_point(|t| t < p);
+            if i == tails.len() {
+                tails.push(p);
+            } else {
+                tails[i] = p;
+            }
+        }
+    }
+    (target.len() - tails.len()) as i32
+}
+
+// ---- operations_fenwick.kara: a Fenwick tree of the longest run ending below each place
+
+fn fenwick_arm(target: Vec[i32], arr: Vec[i32]) -> i32 {
+    let m = target.len();
+    let mut place: Map[i32, i64] = Map.new();
+    for (i, v) in target.iter().enumerate() {
+        place[v] = i + 1;
+    }
+    // tree[i] covers places i - (i & -i) + 1 to i, counted from 1
+    let mut tree: Vec[i64] = Vec.filled(m + 1, 0);
+    let mut longest = 0;
+    for a in arr.iter() {
+        let Some(p) = place.get(a) else {
+            continue;
+        };
+        let mut best = 0;
+        let mut i = p - 1;
+        while i > 0 {
+            best = max(best, tree[i]);
+            i -= i & -i;
+        }
+        let length = best + 1;
+        longest = max(longest, length);
+        let mut i = p;
+        while i <= m {
+            tree[i] = max(tree[i], length);
+            i += i & -i;
+        }
+    }
+    (m - longest) as i32
+}
+
+// ---- operations_sorted.kara: places from a sorted copy of the target, tails searched by hand
+
+fn sorted_arm(target: Vec[i32], arr: Vec[i32]) -> i32 {
+    let mut sorted: Vec[(i32, i64)] = target.iter().enumerate().map(|(i, v)| (v, i)).collect();
+    sorted.sort();
+    let mut tails: Vec[i64] = Vec.new();
+    for a in arr.iter() {
+        let at = sorted.partition_point(|s| s.0 < a);
+        if at == sorted.len() or sorted[at].0 != a {
+            continue;
+        }
+        let p = sorted[at].1;
+        let mut lo = 0;
+        let mut hi = tails.len();
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            if tails[mid] < p {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        if lo == tails.len() {
+            tails.push(p);
+        } else {
+            tails[lo] = p;
+        }
+    }
+    (target.len() - tails.len()) as i32
+}
+
+// ---- operations_solution.kara: LeetCode's Rust template, through karac fix
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_operations(target: Vec[i32], arr: Vec[i32]) -> i32 {
+        let pos: Map[i32, i64] = target.iter().enumerate().map(|(i, v)| (v, i)).collect();
+        let mut tails: Vec[i64] = Vec.new();
+        for a in arr {
+            if let Some(p) = pos.get(a).cloned() {
+                {
+                    let i = tails.partition_point(|y| y < p);
+                    if i < tails.len() and tails[i] == p {} else {
+                        if i == tails.len() {
+                            tails.push(p);
+                        } else {
+                            tails[i] = p;
+                        }
+                    }
+                }
+            }
+        }
+        (target.len() - tails.len()) as i32
+    }
+}
+
+fn solution_arm(target: Vec[i32], arr: Vec[i32]) -> i32 {
+    Solution.min_operations(target, arr)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: the target's values that some run of
+// insertions does not have to supply are a part of the target, in order,
+// that the array already holds as a subsequence; every such part of the
+// target tried, from all 2^m, the rest inserted
+fn literal(target: Slice[i32], arr: Slice[i32]) -> i64 {
+    let m = target.len();
+    let mut fewest = m;
+    for mask in 0..1 << m {
+        let kept: Vec[i32] = (0..m).filter(|i| mask >> i & 1 == 1).map(|i| target[i]).collect();
+        // is `kept` a subsequence of the array, taking each match as early
+        // as it comes
+        let mut k = 0;
+        for a in arr.iter() {
+            if k < kept.len() and a == kept[k] {
+                k += 1;
+            }
+        }
+        if k == kept.len() {
+            fewest = min(fewest, m - kept.len());
+        }
+    }
+    fewest
+}
+
+fn arm(a: i64, target: Slice[i32], arr: Slice[i32]) -> i64 {
+    let target = target.to_vec();
+    let arr = arr.to_vec();
+    match a {
+        0 => star_arm(target, arr),
+        1 => fenwick_arm(target, arr),
+        2 => sorted_arm(target, arr),
+        _ => solution_arm(target, arr),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "fenwick", "sorted", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1713;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i32], Vec[i32])] = Vec.new();
+    for _ in 0..problems {
+        let top = next_random(mut seed) % 8 + 1;
+        let mut values: Vec[i32] = (1..=top).map(|v| v as i32).collect();
+        for i in (1..top).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            values.swap(i, j);
+        }
+        let t = next_random(mut seed) % top + 1;
+        let n = next_random(mut seed) % 10 + 1;
+        let arr: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % (top + 2) + 1) as i32).collect();
+        cases.push((values[0..t].to_vec(), arr));
+    }
+    for (p, (target, arr)) in cases.iter().enumerate() {
+        let want = literal(target, arr);
+        check = (check * 31 + want + target.len() + arr.len()) % 1000000007;
+        let target_back: Vec[i32] = target.iter().rev().cloned().collect();
+        let arr_back: Vec[i32] = arr.iter().rev().cloned().collect();
+        let mut with_target = arr.clone();
+        with_target.extend(target.iter());
+        let mut padded: Vec[i32] = [100];
+        padded.extend(arr.iter());
+        padded.push(100);
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, target, arr);
+            let failed = [got != want, arm(a, target_back, arr_back) != got, arm(a, target, with_target) != 0, arm(a, target, padded) != got];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({target}, {arr}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

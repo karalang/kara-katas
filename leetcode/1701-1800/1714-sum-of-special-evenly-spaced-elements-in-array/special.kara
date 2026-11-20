@@ -1,0 +1,89 @@
+// LeetCode #1714: Sum Of Special Evenly-Spaced Elements In Array -- the ★
+// arm: the queries taken in order of their step; a small step's sums from
+// every start found once, from the back, and a large step's walked.
+//
+// A step y above the square root of n reaches at most sqrt(n) values, so
+// walking it is cheap; a step at or below it may be asked many times, so
+// `sums[j] = nums[j] + sums[j + y]` is filled once for every start, from
+// the back, and each query of that step reads one entry. Sorting the
+// queries by step lets one array serve each small step in turn.
+// O((n + q) sqrt(n)).
+
+fn solve(nums: Vec[i32], queries: Vec[Vec[i32]]) -> Vec[i32] {
+    let modulus = 1000000007;
+    let n = nums.len();
+    let small = n.isqrt();
+    let mut answer: Vec[i32] = Vec.filled(queries.len(), 0);
+    let mut order: Vec[i64] = (0..queries.len()).collect();
+    order.sort_by_key(|q| queries[q][1]);
+    let mut sums: Vec[i64] = Vec.filled(n, 0);
+    let mut built = 0;
+    for q in order.iter() {
+        let (x, y) = (queries[q][0], queries[q][1]);
+        if y <= small {
+            if y != built {
+                for j in (0..n).rev() {
+                    let after = if j + y < n { sums[j + y] } else { 0 };
+                    sums[j] = (nums[j] + after) % modulus;
+                }
+                built = y;
+            }
+            answer[q] = sums[x] as i32;
+        } else {
+            let mut total = 0;
+            let mut j = x;
+            while j < n {
+                total += nums[j];
+                j += y;
+            }
+            answer[q] = (total % modulus) as i32;
+        }
+    }
+    answer
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// `count` random problems of 1 to `most` values up to `top` and 1 to
+// `asked` queries, each step up to `steps`; the answers summed, and a
+// checksum
+fn batch(count: i64, most: i64, top: i64, asked: i64, steps: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let nums: Vec[i32] = (0..n).map(|_| (wide(mut seed) % (top + 1)) as i32).collect();
+        let q = next_random(mut seed) % asked + 1;
+        let queries: Vec[Vec[i32]] = (0..q).map(|_| [(wide(mut seed) % n) as i32, (wide(mut seed) % steps + 1) as i32]).collect();
+        let answer = solve(nums, queries);
+        for a in answer.iter() {
+            sum += a;
+            check = (check * 31 + a) % 1000000007;
+        }
+        check = (check * 31 + n + q) % 1000000007;
+    }
+    println(f"{count} problems of up to {most} values and {asked} queries: answers sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then one value, a step past the end, and
+    // the largest values summed past the modulus
+    println(solve([0, 1, 2, 3, 4, 5, 6, 7], [[0, 3], [5, 1], [4, 2]]));
+    println(solve([100, 200, 101, 201, 102, 202, 103, 203], [[0, 7]]));
+    println(solve([5], [[0, 1], [0, 50000]]));
+    println(solve([1, 2, 3], [[1, 5], [2, 1]]));
+    println(solve(Vec.filled(50000, 1000000000), [[0, 1], [1, 2], [49999, 1]]));
+    let mut seed = 1714;
+    batch(3000, 12, 9, 6, 6, mut seed);
+    batch(300, 1000, 1000000000, 300, 40, mut seed);
+    batch(10, 50000, 1000000000, 1000, 50000, mut seed);
+}

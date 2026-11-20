@@ -1,0 +1,277 @@
+// LeetCode #1733: Minimum Number of People to Teach -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random problems
+// of 1 to 4 languages and 2 to 6 users, each knowing 1 or 2 of them, each
+// pair of users friends with a chance of 1 in 2.
+//
+// P1  the answer is the statement read literally
+// P2  the users numbered from the other end give the same answer
+// P3  the languages numbered from the other end give the same answer
+// P4  a new user who knows every language, a friend of everyone, changes
+//     nothing
+// P5  each arm agrees with at least two of the other three
+
+// ---- teach.kara: the ★ arm: the stuck users in a `Set`
+
+fn star_arm(n: i32, languages: Vec[Vec[i32]], friendships: Vec[Vec[i32]]) -> i32 {
+    let known: Vec[Set[i32]] = languages.iter().map(|l| l.iter().cloned().collect()).collect();
+    let mut stuck: Set[i64] = Set.new();
+    for f in friendships.iter() {
+        let (u, v) = (f[0] as i64 - 1, f[1] as i64 - 1);
+        if known[u].is_disjoint(known[v]) {
+            stuck.insert(u);
+            stuck.insert(v);
+        }
+    }
+    let mut speakers: Vec[i32] = Vec.filled(n as i64 + 1, 0);
+    for u in stuck.iter() {
+        for l in known[u].iter() {
+            speakers[l] += 1;
+        }
+    }
+    stuck.len() as i32 - speakers.iter().max().unwrap()
+}
+
+// ---- teach_grid.kara: a table of who knows what
+
+fn grid_arm(n: i32, languages: Vec[Vec[i32]], friendships: Vec[Vec[i32]]) -> i32 {
+    let n = n as i64;
+    let users = languages.len();
+    let mut knows: Vec[Vec[bool]] = Vec.filled(users, Vec.filled(n + 1, false));
+    for (u, known) in languages.iter().enumerate() {
+        for l in known.iter() {
+            knows[u][l] = true;
+        }
+    }
+    let mut stuck: Vec[bool] = Vec.filled(users, false);
+    for f in friendships.iter() {
+        let (u, v) = (f[0] - 1, f[1] - 1);
+        if not (1..=n).any(|l| knows[u][l] and knows[v][l]) {
+            stuck[u] = true;
+            stuck[v] = true;
+        }
+    }
+    let total = stuck.iter().filter(|s| *s).count();
+    let mut best = 0;
+    for l in 1..=n {
+        best = max(best, (0..users).filter(|u| stuck[u] and knows[u][l]).count());
+    }
+    (total - best) as i32
+}
+
+// ---- teach_sorted.kara: sorted lists of languages merged
+
+fn sorted_shares(a: Slice[i32], b: Slice[i32]) -> bool {
+    let mut (i, j) = (0, 0);
+    while i < a.len() and j < b.len() {
+        if a[i] == b[j] {
+            return true;
+        } else if a[i] < b[j] {
+            i += 1;
+        } else {
+            j += 1;
+        }
+    }
+    false
+}
+
+fn sorted_arm(n: i32, languages: Vec[Vec[i32]], friendships: Vec[Vec[i32]]) -> i32 {
+    let mut sorted = languages.clone();
+    for known in sorted.iter_mut() {
+        known.sort();
+    }
+    let mut stuck: Vec[bool] = Vec.filled(sorted.len(), false);
+    for f in friendships.iter() {
+        let (u, v) = (f[0] as i64 - 1, f[1] as i64 - 1);
+        if not sorted_shares(sorted[u], sorted[v]) {
+            stuck[u] = true;
+            stuck[v] = true;
+        }
+    }
+    let mut spoken: Vec[i32] = Vec.new();
+    let mut total: i32 = 0;
+    for (u, known) in sorted.iter().enumerate() {
+        if stuck[u] {
+            total += 1;
+            spoken.extend(known.iter().cloned());
+        }
+    }
+    spoken.sort();
+    let mut best: i32 = 0;
+    let mut run: i32 = 0;
+    for i in 0..spoken.len() {
+        run = if i > 0 and spoken[i] == spoken[i - 1] { run + 1 } else { 1 };
+        best = max(best, run);
+    }
+    total - best
+}
+
+// ---- teach_solution.kara: the Rust solution carried by `karac fix`
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn minimum_teachings(n: i32, languages: Vec[Vec[i32]], friendships: Vec[Vec[i32]]) -> i32 {
+        let langs: Vec[Set[i32]] = languages.clone().into_iter().map(|v| v.into_iter().collect()).collect();
+        let mut need: Set[i64] = Set.new();
+        for f in ref friendships {
+            let (a, b) = (f[0] as i64 - 1, f[1] as i64 - 1);
+            if langs[a].is_disjoint(langs[b]) {
+                need.insert(a);
+                need.insert(b);
+            }
+        }
+        let mut cnt = Vec.filled(n as i64 + 1, 0i32);
+        for u in ref need {
+            for l in ref langs[u] {
+                cnt[l] += 1;
+            }
+        }
+        need.len() as i32 - *cnt.iter().max().unwrap()
+    }
+}
+
+fn solution_arm(n: i32, languages: Vec[Vec[i32]], friendships: Vec[Vec[i32]]) -> i32 {
+    SolutionArm.minimum_teachings(n, languages, friendships)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: for every language and every set of
+// users, those users taught that language; the smallest set after which
+// every pair of friends shares a language
+fn literal(n: i32, languages: Slice[Vec[i32]], friendships: Slice[Vec[i32]]) -> i32 {
+    let users = languages.len();
+    let mut best = users;
+    for l in 1..=n {
+        for taught in 0..(1 << users) {
+            let size = (0..users).filter(|u| taught >> u & 1 == 1).count();
+            if size >= best {
+                continue;
+            }
+            let speaks = |u: i64, x: i32| languages[u].contains(x) or (taught >> u & 1 == 1 and x == l);
+            let all = friendships.iter().all(|f| (1..=n).any(|x| speaks(f[0] - 1, x) and speaks(f[1] - 1, x)));
+            if all {
+                best = size;
+            }
+        }
+    }
+    best as i32
+}
+
+fn arm(a: i64, n: i32, languages: Slice[Vec[i32]], friendships: Slice[Vec[i32]]) -> i32 {
+    let (languages, friendships) = (languages.to_vec(), friendships.to_vec());
+    match a {
+        0 => star_arm(n, languages, friendships),
+        1 => grid_arm(n, languages, friendships),
+        2 => sorted_arm(n, languages, friendships),
+        _ => solution_arm(n, languages, friendships),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "grid", "sorted", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1733;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(i32, Vec[Vec[i32]], Vec[Vec[i32]])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 4 + 1;
+        let users = next_random(mut seed) % 5 + 2;
+        let mut languages: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..users {
+            let k = next_random(mut seed) % min(n, 2) + 1;
+            let mut known: Vec[i32] = Vec.new();
+            while known.len() < k {
+                let l = (next_random(mut seed) % n + 1) as i32;
+                if not known.contains(l) {
+                    known.push(l);
+                }
+            }
+            languages.push(known);
+        }
+        let mut friendships: Vec[Vec[i32]] = Vec.new();
+        for u in 0..users {
+            for v in u + 1..users {
+                if next_random(mut seed) % 2 == 0 {
+                    friendships.push([(u + 1) as i32, (v + 1) as i32]);
+                }
+            }
+        }
+        if friendships.is_empty() {
+            friendships.push([1, 2]);
+        }
+        cases.push((n as i32, languages, friendships));
+    }
+    for (p, (n, languages, friendships)) in cases.iter().enumerate() {
+        let want = literal(n, languages, friendships);
+        let users = languages.len();
+        check = (check * 31 + want + users) % 1000000007;
+        // P2: users numbered from the other end
+        let flipped_users: Vec[Vec[i32]] = languages.iter().rev().cloned().collect();
+        let flipped_pairs: Vec[Vec[i32]] = friendships.iter().map(|f| [users as i32 + 1 - f[0], users as i32 + 1 - f[1]]).collect();
+        // P3: languages numbered from the other end
+        let renamed: Vec[Vec[i32]] = languages.iter().map(|known| known.iter().map(|l| n + 1 - l).collect()).collect();
+        // P4: a new user who knows every language, friends with everyone
+        let mut joined = languages.clone();
+        joined.push((1..=n).collect());
+        let mut more_pairs = friendships.clone();
+        for u in 1..=users {
+            more_pairs.push([u as i32, users as i32 + 1]);
+        }
+        let mut answers: Vec[i32] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, n, languages, friendships);
+            let failed = [
+                got != want,
+                arm(a, n, flipped_users, flipped_pairs) != got,
+                arm(a, n, renamed, friendships) != got,
+                arm(a, n, joined, more_pairs) != got,
+            ];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} (n {n}, {languages}, {friendships}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

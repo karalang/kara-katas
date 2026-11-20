@@ -1,0 +1,90 @@
+// LeetCode #1687: Delivering Boxes from Storage to Ports -- the ★ arm: the
+// cheapest start of the last trip, kept in a monotone deque.
+//
+// trips[i] is the fewest trips for the first i boxes. A last trip carrying
+// boxes j..i - 1 costs 2 plus the port changes among them, changes[i - 1]
+// less changes[j], so trips[i] is the least trips[j] - changes[j] over the
+// starts j the caps allow, plus changes[i - 1] + 2. The allowed starts
+// slide forward, so a deque holds them with rising trips[j] - changes[j]:
+// a new start drops the ones behind it that cost no less, and the front
+// drops the ones the caps no longer allow. O(n).
+
+fn deliver(boxes: Vec[Vec[i32]], ports_count: i32, max_boxes: i32, max_weight: i32) -> i32 {
+    let n = boxes.len();
+    // changes[k]: the port changes among boxes 0..=k; weight[k]: the first k boxes' weight
+    let mut changes = Vec.filled(n, 0i32);
+    let mut weight = Vec.filled(n + 1, 0);
+    for k in 0..n {
+        weight[k + 1] = weight[k] + boxes[k][1];
+        if k > 0 {
+            changes[k] = changes[k - 1] + if boxes[k][0] != boxes[k - 1][0] { 1 } else { 0 };
+        }
+    }
+    let mut trips = Vec.filled(n + 1, 0i32);
+    let mut starts: VecDeque[i64] = VecDeque.new();
+    for i in 1..=n {
+        let j = i - 1;
+        let cost = trips[j] - changes[j];
+        while let Some(back) = starts.back() {
+            if trips[back] - changes[back] >= cost {
+                starts.pop_back();
+            } else {
+                break;
+            }
+        }
+        starts.push_back(j);
+        while let Some(front) = starts.front() {
+            if i - front > max_boxes or weight[i] - weight[front] > max_weight {
+                starts.pop_front();
+            } else {
+                break;
+            }
+        }
+        let front = starts.front().unwrap();
+        trips[i] = trips[front] - changes[front] + changes[i - 1] + 2;
+    }
+    trips[n]
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random problems of 1 to `most` boxes, up to `ports` ports and up
+// to `limit` for each of the two caps; the trips summed, and a checksum
+fn batch(count: i64, most: i64, ports: i64, limit: i64, seed: mut ref i64) {
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let ports_count = next_random(mut seed) % ports + 1;
+        let max_boxes = next_random(mut seed) % limit + 1;
+        let max_weight = next_random(mut seed) % limit + 1;
+        let mut boxes: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..n {
+            let port = next_random(mut seed) % ports_count + 1;
+            let weight = next_random(mut seed) % max_weight + 1;
+            boxes.push([port as i32, weight as i32]);
+        }
+        let answer = deliver(boxes, ports_count as i32, max_boxes as i32, max_weight as i32);
+        total += answer;
+        check = (check * 31 + answer) % 1000000007;
+    }
+    println(f"{count} problems of up to {most} boxes, {ports} ports, caps up to {limit}: {total} trips, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, one box, and four for one port in one trip
+    println(deliver([[1, 1], [2, 1], [1, 1]], 2, 3, 3));
+    println(deliver([[1, 2], [3, 3], [3, 1], [3, 1], [2, 4]], 3, 3, 6));
+    println(deliver([[1, 4], [1, 2], [2, 1], [2, 1], [3, 2], [3, 4]], 3, 6, 7));
+    println(deliver([[1, 1]], 1, 1, 1));
+    println(deliver([[5, 1], [5, 1], [5, 1], [5, 1]], 5, 4, 4));
+    let mut seed = 1687;
+    batch(3000, 10, 3, 5, mut seed);
+    batch(300, 1000, 10, 50, mut seed);
+    batch(10, 100000, 100000, 100000, mut seed);
+}

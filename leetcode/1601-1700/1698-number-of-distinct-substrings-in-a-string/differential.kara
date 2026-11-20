@@ -1,0 +1,231 @@
+// LeetCode #1698: Number of Distinct Substrings in a String -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random strings
+// of 1 to 10 letters from the first 1 to 4 of the alphabet.
+//
+// P1  the answer is the statement read literally
+// P2  the string reversed gives the same answer
+// P3  the letters renamed, each a to d to another of them, give the same
+//     answer
+// P4  a letter not in the string put at the end adds the string's length
+//     plus one
+// P5  each arm agrees with at least two of the other three
+
+// ---- distinct.kara: the ★ arm: every suffix put in a trie, one node per distinct substring
+
+fn star_arm(s: Str) -> i32 {
+    let letters = s.bytes();
+    let mut children: Vec[Vec[i64]] = [Vec.filled(26, 0)];
+    let mut made = 0;
+    for start in 0..letters.len() {
+        let mut node = 0;
+        for c in letters[start..].iter() {
+            let edge = (c - b'a') as i64;
+            if children[node][edge] == 0 {
+                children.push(Vec.filled(26, 0));
+                children[node][edge] = children.len() - 1;
+                made += 1;
+            }
+            node = children[node][edge];
+        }
+    }
+    made
+}
+
+// ---- distinct_set.kara: every substring in a `Set`
+
+fn set_arm(s: Str) -> i32 {
+    let mut seen: Set[String] = Set.new();
+    for start in 0..s.len() {
+        for end in start + 1..=s.len() {
+            seen.insert(s[start..end].to_string());
+        }
+    }
+    seen.len() as i32
+}
+
+// ---- distinct_lcp.kara: the sorted suffixes and their common prefixes
+
+fn lcp_arm(s: Str) -> i32 {
+    let n = s.len();
+    let mut suffixes: Vec[Str] = (0..n).map(|i| s[i..]).collect();
+    suffixes.sort();
+    let mut total = n * (n + 1) / 2;
+    for i in 1..n {
+        let a = suffixes[i - 1].bytes();
+        let b = suffixes[i].bytes();
+        let mut common = 0;
+        while common < a.len() and common < b.len() and a[common] == b[common] {
+            common += 1;
+        }
+        total -= common;
+    }
+    total as i32
+}
+
+// ---- distinct_automaton.kara: a suffix automaton
+
+struct State {
+    len: i64,
+    link: i64,
+    next: Vec[i64],
+}
+
+fn automaton_arm(s: Str) -> i32 {
+    let mut states: Vec[State] = [State { len: 0, link: -1, next: Vec.filled(26, -1) }];
+    let mut last = 0;
+    for b in s.bytes().iter() {
+        let c = (b - b'a') as i64;
+        let current = states.len();
+        states.push(State { len: states[last].len + 1, link: 0, next: Vec.filled(26, -1) });
+        let mut p = last;
+        while p != -1 and states[p].next[c] == -1 {
+            states[p].next[c] = current;
+            p = states[p].link;
+        }
+        if p != -1 {
+            let q = states[p].next[c];
+            if states[p].len + 1 == states[q].len {
+                states[current].link = q;
+            } else {
+                let copy = states.len();
+                states.push(State { len: states[p].len + 1, link: states[q].link, next: states[q].next.clone() });
+                while p != -1 and states[p].next[c] == q {
+                    states[p].next[c] = copy;
+                    p = states[p].link;
+                }
+                states[q].link = copy;
+                states[current].link = copy;
+            }
+        }
+        last = current;
+    }
+    let mut total = 0;
+    for v in 1..states.len() {
+        total += states[v].len - states[states[v].link].len;
+    }
+    total as i32
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every substring, from every start to every
+// end, counted unless the same letters were met at an earlier start and
+// end, compared letter by letter
+fn literal(s: Str) -> i32 {
+    let letters = s.bytes();
+    let n = letters.len();
+    let mut count: i32 = 0;
+    for i in 0..n {
+        for j in i + 1..=n {
+            let mut met = false;
+            for i2 in 0..n {
+                for j2 in i2 + 1..=n {
+                    let earlier = i2 < i or (i2 == i and j2 < j);
+                    if earlier and j2 - i2 == j - i and (0..j - i).all(|t| letters[i2 + t] == letters[i + t]) {
+                        met = true;
+                    }
+                }
+            }
+            if not met {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+fn arm(a: i64, s: Str) -> i32 {
+    match a {
+        0 => star_arm(s),
+        1 => set_arm(s),
+        2 => lcp_arm(s),
+        _ => automaton_arm(s),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "set", "lcp", "automaton"][a]
+}
+
+fn main() {
+    let mut seed = 1698;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let alphabet = "abcd";
+    let renamed = "cadb";
+    let mut cases: Vec[String] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 10 + 1;
+        let used = next_random(mut seed) % 4 + 1;
+        let mut s = String.new();
+        for _ in 0..n {
+            let pick = next_random(mut seed) % used;
+            s.push_str(alphabet.substring(pick, pick + 1));
+        }
+        cases.push(s);
+    }
+    for (p, s) in cases.iter().enumerate() {
+        let want = literal(s);
+        check = (check * 31 + want + s.len()) % 1000000007;
+        let reversed: String = s.chars().rev().collect();
+        let mut other = String.new();
+        for b in s.bytes().iter() {
+            let at = (b - b'a') as i64;
+            other.push_str(renamed.substring(at, at + 1));
+        }
+        let longer = f"{s}z";
+        let mut answers: Vec[i32] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, s);
+            let failed = [
+                got != want,
+                arm(a, reversed) != got,
+                arm(a, other) != got,
+                arm(a, longer) != got + s.len() as i32 + 1,
+            ];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} (\"{s}\"), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

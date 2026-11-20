@@ -1,0 +1,78 @@
+// LeetCode #1707: Maximum XOR With an Element From Array -- the answer's
+// bits chosen highest first, each a range searched in the sorted values.
+//
+// With the bits above `bit` of the chosen value fixed as `prefix`, the
+// values that start so are one stretch of the sorted array, [prefix,
+// prefix + 2^(bit+1)), and those that also take the other bit from x at
+// `bit` the upper or lower half of it. A half holds a value no larger
+// than m when its first value, found by `partition_point`, is. O(n log n
+// + q * 30 * log n).
+
+fn maximize_xor(nums: Vec[i32], queries: Vec[Vec[i32]]) -> Vec[i32] {
+    let mut values: Vec[i64] = nums.iter().map(|v| v as i64).collect();
+    values.sort();
+    // the first value at least `low`, if it is below `high` and no larger than m
+    let fits = |low: i64, high: i64, m: i64| {
+        let at = values.partition_point(|v| v < low);
+        at < values.len() and values[at] < high and values[at] <= m
+    };
+    let mut answer: Vec[i32] = Vec.new();
+    for query in queries.iter() {
+        let (x, m) = (query[0] as i64, query[1] as i64);
+        if values[0] > m {
+            answer.push(-1);
+            continue;
+        }
+        let mut prefix = 0;
+        for bit in (0..30).rev() {
+            let want = (x >> bit & 1) ^ 1;
+            let low = prefix | want << bit;
+            prefix = if fits(low, low + (1 << bit), m) { low } else { prefix | (want ^ 1) << bit };
+        }
+        answer.push((prefix ^ x) as i32);
+    }
+    answer
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random value below `top`, from two draws so that it can pass 2^15
+fn value(top: i64, seed: mut ref i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % top
+}
+
+// `count` random problems of 1 to `most` values and 1 to `most` queries,
+// every number below `top`; the answers summed, and a checksum
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let q = next_random(mut seed) % most + 1;
+        let nums: Vec[i32] = (0..n).map(|_| value(top, mut seed) as i32).collect();
+        let queries: Vec[Vec[i32]] = (0..q).map(|_| [value(top, mut seed) as i32, value(top, mut seed) as i32]).collect();
+        let answer = maximize_xor(nums, queries);
+        for a in answer.iter() {
+            sum += a;
+            check = (check * 31 + a + 1) % 1000000007;
+        }
+    }
+    println(f"{count} problems of up to {most} values below {top}: answers sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then no value small enough, and the largest
+    println(maximize_xor([0, 1, 2, 3, 4], [[3, 1], [1, 3], [5, 6]]));
+    println(maximize_xor([5, 2, 4, 6, 6, 3], [[12, 4], [8, 1], [6, 3]]));
+    println(maximize_xor([7, 8], [[1, 6], [0, 0]]));
+    println(maximize_xor([1000000000, 0], [[536870911, 1000000000]]));
+    let mut seed = 1707;
+    batch(3000, 8, 16, mut seed);
+    batch(300, 1000, 1000000000, mut seed);
+    batch(3, 100000, 1000000000, mut seed);
+}

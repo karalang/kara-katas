@@ -1,0 +1,133 @@
+// LeetCode #1670: Design Front Middle Back Queue -- one VecDeque.
+//
+// The values in one `VecDeque`, front first: the ends are O(1) both, and
+// the middle is an `insert` or `remove` at index n / 2 or (n - 1) / 2,
+// which shifts the values after it. O(n) per call at the middle.
+
+struct FrontMiddleBackQueue {
+    values: VecDeque[i32],
+}
+
+impl FrontMiddleBackQueue {
+    fn new() -> FrontMiddleBackQueue {
+        FrontMiddleBackQueue { values: VecDeque.new() }
+    }
+
+    fn push_front(mut ref self, val: i32) {
+        self.values.insert(0, val);
+    }
+
+    fn push_middle(mut ref self, val: i32) {
+        let at = self.values.len() / 2;
+        self.values.insert(at, val);
+    }
+
+    fn push_back(mut ref self, val: i32) {
+        self.values.push_back(val);
+    }
+
+    fn pop_front(mut ref self) -> i32 {
+        if self.values.is_empty() {
+            return -1;
+        }
+        self.values.remove(0)
+    }
+
+    fn pop_middle(mut ref self) -> i32 {
+        if self.values.is_empty() {
+            return -1;
+        }
+        self.values.remove((self.values.len() - 1) / 2)
+    }
+
+    fn pop_back(mut ref self) -> i32 {
+        self.values.pop_back().unwrap_or(-1)
+    }
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// one call: 0 to 2 push at the front, the middle and the back, 3 to 5 pop
+// from them; a pop's answer, or 0 for a push
+fn call(queue: mut ref FrontMiddleBackQueue, op: i64, val: i32) -> i32 {
+    match op {
+        0 => {
+            queue.push_front(val);
+            0
+        }
+        1 => {
+            queue.push_middle(val);
+            0
+        }
+        2 => {
+            queue.push_back(val);
+            0
+        }
+        3 => queue.pop_front(),
+        4 => queue.pop_middle(),
+        _ => queue.pop_back(),
+    }
+}
+
+// `count` random runs of `calls` calls each, a push half the time, values
+// up to 10^9; the pops that found the queue empty, and a checksum of every
+// pop's answer
+fn batch(count: i64, calls: i64, seed: mut ref i64) {
+    let mut empty = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let mut queue = FrontMiddleBackQueue.new();
+        for _ in 0..calls {
+            let op = next_random(mut seed) % 6;
+            let val = ((next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000 + 1) as i32;
+            let got = call(mut queue, op, val);
+            if op >= 3 {
+                if got == -1 {
+                    empty += 1;
+                }
+                check = (check * 31 + got + 1) % 1000000007;
+            }
+        }
+    }
+    println(f"{count} runs of {calls} calls: {empty} pops on an empty queue, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's example
+    let mut q = FrontMiddleBackQueue.new();
+    q.push_front(1);
+    q.push_back(2);
+    q.push_middle(3);
+    q.push_middle(4);
+    println([q.pop_front(), q.pop_middle(), q.pop_middle(), q.pop_back(), q.pop_front()]);
+    // the middle of 1 to 6, then of 1 to 5, each pushed and popped
+    let mut q = FrontMiddleBackQueue.new();
+    for v in 1..=6 {
+        q.push_back(v);
+    }
+    q.push_middle(7);
+    let mut even = Vec.new();
+    for _ in 0..8 {
+        even.push(q.pop_middle());
+    }
+    println(even);
+    let mut q = FrontMiddleBackQueue.new();
+    for v in 1..=5 {
+        q.push_back(v);
+    }
+    q.push_middle(7);
+    let mut odd = Vec.new();
+    for _ in 0..7 {
+        odd.push(q.pop_back());
+    }
+    println(odd);
+    let mut seed = 1670;
+    batch(3000, 20, mut seed);
+    batch(300, 1000, mut seed);
+    batch(3, 100000, mut seed);
+}

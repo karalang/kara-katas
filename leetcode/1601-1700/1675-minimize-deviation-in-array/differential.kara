@@ -1,0 +1,252 @@
+// LeetCode #1675: Minimize Deviation in Array -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random arrays
+// of 2 to 5 values from 1 to between 1 and 48.
+//
+// P1  the answer is the statement read literally
+// P2  the array reversed gives the same answer
+// P3  each odd value doubled, the largest it can reach, gives the same answer
+// P4  every value times 3 gives 3 times the answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- deviation.kara: the ★ arm: a max-first priority queue
+
+fn star_arm(nums: Vec[i32]) -> i32 {
+    let mut queue = PriorityQueue.max_first();
+    let mut smallest = i32.MAX;
+    for x in nums.iter() {
+        let start = if x % 2 == 1 { x * 2 } else { x };
+        queue.push(start);
+        smallest = min(smallest, start);
+    }
+    let mut best = i32.MAX;
+    loop {
+        let top = queue.pop().unwrap();
+        best = min(best, top - smallest);
+        if top % 2 == 1 {
+            break;
+        }
+        smallest = min(smallest, top / 2);
+        queue.push(top / 2);
+    }
+    best
+}
+
+// ---- deviation_sorted.kara: an ordered set
+
+fn sorted_arm(nums: Vec[i32]) -> i32 {
+    let mut values: SortedSet[(i32, i64)] = SortedSet.new();
+    for (i, x) in nums.iter().enumerate() {
+        values.insert((if x % 2 == 1 { x * 2 } else { x }, i));
+    }
+    let mut best = i32.MAX;
+    loop {
+        let (top, i) = values.max().unwrap();
+        let (bottom, _) = values.min().unwrap();
+        best = min(best, top - bottom);
+        if top % 2 == 1 {
+            break;
+        }
+        values.remove((top, i));
+        values.insert((top / 2, i));
+    }
+    best
+}
+
+// ---- deviation_window.kara: the narrowest window over every reachable value
+
+fn window_arm(nums: Vec[i32]) -> i32 {
+    let n = nums.len();
+    let mut reach: Vec[(i32, i64)] = Vec.new();
+    for (i, x) in nums.iter().enumerate() {
+        let mut v = if x % 2 == 1 { x * 2 } else { x };
+        reach.push((v, i));
+        while v % 2 == 0 {
+            v /= 2;
+            reach.push((v, i));
+        }
+    }
+    reach.sort();
+    let mut seen = Vec.filled(n, 0);
+    let mut covered = 0;
+    let mut start = 0;
+    let mut best = i32.MAX;
+    for (value, i) in reach.iter() {
+        if seen[i] == 0 {
+            covered += 1;
+        }
+        seen[i] += 1;
+        while covered == n {
+            let (first, j) = reach[start];
+            best = min(best, value - first);
+            seen[j] -= 1;
+            if seen[j] == 0 {
+                covered -= 1;
+            }
+            start += 1;
+        }
+    }
+    best
+}
+
+// ---- deviation_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn minimum_deviation(nums: Vec[i32]) -> i32 {
+        let mut heap = PriorityQueue.max_first();
+        let mut min_val = i32.MAX;
+        for num in ref nums {
+            let n = if num % 2 == 1 { num * 2 } else { num };
+            heap.push(n);
+            min_val = min_val.min(n);
+        }
+        let mut ans = i32.MAX;
+        while let Some(max_val) = heap.pop() {
+            ans = ans.min(max_val - min_val);
+            if max_val % 2 == 1 {
+                break;
+            }
+            let half = max_val / 2;
+            min_val = min_val.min(half);
+            heap.push(half);
+        }
+        ans
+    }
+}
+
+fn solution_arm(nums: Vec[i32]) -> i32 {
+    SolutionArm.minimum_deviation(nums)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// every value one reaches by the two operations, applied as long as
+// either gives a value not yet seen: an even value divided by 2, an odd
+// one multiplied by 2
+fn reachable(x: i32) -> Vec[i32] {
+    let mut found = [x];
+    let mut next = 0;
+    while next < found.len() {
+        let v = found[next];
+        let w = if v % 2 == 0 { v / 2 } else { v * 2 };
+        if not found.contains(w) {
+            found.push(w);
+        }
+        next += 1;
+    }
+    found
+}
+
+// the statement read literally: every choice of one reachable value for
+// each position, the largest less the smallest of it; the least of those
+fn literal(nums: Slice[i32]) -> i64 {
+    let options: Vec[Vec[i32]] = nums.iter().map(|x| reachable(x)).collect();
+    let n = nums.len();
+    let mut pick = Vec.filled(n, 0);
+    let mut best = i64.MAX;
+    loop {
+        let chosen: Vec[i32] = (0..n).map(|i| options[i][pick[i]]).collect();
+        let deviation = chosen.iter().max().unwrap() - chosen.iter().min().unwrap();
+        best = min(best, deviation);
+        // the next choice, the first position counting fastest
+        let mut i = 0;
+        while i < n and pick[i] + 1 == options[i].len() {
+            pick[i] = 0;
+            i += 1;
+        }
+        if i == n {
+            break;
+        }
+        pick[i] += 1;
+    }
+    best
+}
+
+fn arm(a: i64, nums: Slice[i32]) -> i64 {
+    let nums = nums.to_vec();
+    match a {
+        0 => star_arm(nums),
+        1 => sorted_arm(nums),
+        2 => window_arm(nums),
+        _ => solution_arm(nums),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "sorted", "window", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1675;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 4 + 2;
+        let most = next_random(mut seed) % 48 + 1;
+        let nums: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % most + 1) as i32).collect();
+        cases.push(nums);
+    }
+    for (p, nums) in cases.iter().enumerate() {
+        let n = nums.len();
+        let want = literal(nums);
+        check = (check * 31 + want + n) % 1000000007;
+        let reversed: Vec[i32] = nums.iter().rev().collect();
+        let raised: Vec[i32] = nums.iter().map(|x| if x % 2 == 1 { x * 2 } else { x }).collect();
+        let tripled: Vec[i32] = nums.iter().map(|x| x * 3).collect();
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, nums);
+            answers.push(got);
+            let failed = [
+                got != want,
+                arm(a, reversed) != got,
+                arm(a, raised) != got,
+                arm(a, tripled) != 3 * got,
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({nums}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

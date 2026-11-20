@@ -1,0 +1,101 @@
+// LeetCode #1722: Minimize Hamming Distance After Swap Operations -- a
+// Rust solution as LeetCode's Rust users write it: a recursive `find`
+// with path compression over a `Vec<usize>`, a `HashMap<usize,
+// HashMap<i32, i32>>` of each group's source counts filled with
+// `entry().or_insert_with(HashMap::new)`, and `get_mut` with `if let`
+// to take a target value from them.
+
+fn find(p: mut ref Vec[i64], x: i64) -> i64 {
+    if p[x] != x {
+        let r = find(mut p, p[x]);
+        p[x] = r;
+    }
+    p[x]
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_hamming_distance(source: Vec[i32], target: Vec[i32], allowed_swaps: Vec[Vec[i32]]) -> i32 {
+        let n = source.len();
+        let mut p: Vec[i64] = (0..n).collect();
+        for s in ref allowed_swaps {
+            let a = find(mut p, s[0]);
+            let b = find(mut p, s[1]);
+            p[a] = b;
+        }
+        let mut groups: Map[i64, Map[i32, i32]] = Map.new();
+        for i in 0..n {
+            let r = find(mut p, i);
+            *groups.entry(r).or_insert_with(Map.new).entry(source[i]).or_insert(0) += 1;
+        }
+        let mut res = 0;
+        for i in 0..n {
+            let r = find(mut p, i);
+            let g = groups.get_mut(r).unwrap();
+            if let Some(c) = g.get_mut(target[i]) {
+                if *c > 0 {
+                    *c -= 1;
+                    continue;
+                }
+            }
+            res += 1;
+        }
+        res
+    }
+}
+
+fn minimum_hamming_distance(source: Vec[i32], target: Vec[i32], allowed_swaps: Vec[Vec[i32]]) -> i32 {
+    Solution.minimum_hamming_distance(source, target, allowed_swaps)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// `count` problems of 1 to `most` values from 1 to `top` in each array,
+// and up to `swaps` allowed swaps of two different places
+fn batch(count: i64, most: i64, top: i64, swaps: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let source: Vec[i32] = (0..n).map(|_| (wide(mut seed) % top + 1) as i32).collect();
+        let target: Vec[i32] = (0..n).map(|_| (wide(mut seed) % top + 1) as i32).collect();
+        let m = if n > 1 { next_random(mut seed) % (swaps + 1) } else { 0 };
+        let mut allowed: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..m {
+            let a = wide(mut seed) % n;
+            let mut b = wide(mut seed) % (n - 1);
+            if b >= a {
+                b += 1;
+            }
+            allowed.push([a as i32, b as i32]);
+        }
+        let answer = minimum_hamming_distance(source, target, allowed);
+        sum += answer;
+        check = (check * 31 + answer + n + m) % 1000000007;
+    }
+    println(f"{count} problems of up to {most} values up to {top}: distances sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then one value, and swaps that join
+    // everything
+    println(minimum_hamming_distance([1, 2, 3, 4], [2, 1, 4, 5], [[0, 1], [2, 3]]));
+    println(minimum_hamming_distance([1, 2, 3, 4], [1, 3, 2, 4], []));
+    println(minimum_hamming_distance([5, 1, 2, 4, 3], [1, 5, 4, 2, 3], [[0, 4], [4, 2], [1, 3], [1, 4]]));
+    println(minimum_hamming_distance([7], [8], []));
+    println(minimum_hamming_distance([3, 2, 1], [1, 2, 3], [[0, 1], [1, 2]]));
+    let mut seed = 1722;
+    batch(3000, 8, 4, 6, mut seed);
+    batch(300, 1000, 20, 800, mut seed);
+    batch(10, 100000, 100000, 100000, mut seed);
+}

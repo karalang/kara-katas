@@ -1,0 +1,84 @@
+// LeetCode #1680: Concatenation of Consecutive Binary Numbers -- a matrix
+// power for each run of numbers of one bit length.
+//
+// For the numbers from 2^(b-1) to 2^b - 1, all b bits long, one step
+// takes (value, i, 1) to (value * 2^b + i, i + 1, 1), a fixed 3 by 3
+// matrix; the whole run is that matrix raised to the run's length, by
+// squaring. O(log^2 n).
+
+fn concatenated_binary(n: i32) -> i32 {
+    let modulus = 1000000007;
+    let n = n as i64;
+    let mut value = 0;
+    let mut bits = 1;
+    while (1 << (bits - 1)) <= n {
+        let first = 1 << (bits - 1);
+        let last = min(n, (1 << bits) - 1);
+        let step: Array[Array[i64, 3], 3] = [[(1 << bits) % modulus, 1, 0], [0, 1, 1], [0, 0, 1]];
+        let run = power(step, last - first + 1, modulus);
+        // the state is (value, first, 1) going in
+        value = (run[0][0] * value + run[0][1] * first + run[0][2]) % modulus;
+        bits += 1;
+    }
+    value as i32
+}
+
+fn multiply(a: Array[Array[i64, 3], 3], b: Array[Array[i64, 3], 3], modulus: i64) -> Array[Array[i64, 3], 3] {
+    let mut c = [[0; 3]; 3];
+    for i in 0..3 {
+        for j in 0..3 {
+            for k in 0..3 {
+                c[i][j] = (c[i][j] + a[i][k] * b[k][j]) % modulus;
+            }
+        }
+    }
+    c
+}
+
+fn power(m: Array[Array[i64, 3], 3], e: i64, modulus: i64) -> Array[Array[i64, 3], 3] {
+    let mut result: Array[Array[i64, 3], 3] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+    let mut base = m;
+    let mut e = e;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = multiply(result, base, modulus);
+        }
+        base = multiply(base, base, modulus);
+        e /= 2;
+    }
+    result
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random n from 1 to `most`; the answers summed, and a checksum
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = ((next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1) as i32;
+        let answer = concatenated_binary(n);
+        total += answer;
+        check = (check * 31 + answer + n) % 1000000007;
+    }
+    println(f"{count} values of n up to {most}: answers sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then the first n whose answer wraps, and
+    // the largest n
+    println(concatenated_binary(1));
+    println(concatenated_binary(3));
+    println(concatenated_binary(12));
+    println(concatenated_binary(11));
+    println(concatenated_binary(100000));
+    let mut seed = 1680;
+    batch(3000, 100, mut seed);
+    batch(300, 10000, mut seed);
+    batch(10, 100000, mut seed);
+}

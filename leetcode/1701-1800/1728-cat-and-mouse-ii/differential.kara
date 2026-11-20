@@ -1,0 +1,520 @@
+// LeetCode #1728: Cat and Mouse II -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random
+// problems: a grid of 1 to 3 rows and columns, at least three cells, a
+// wall in each with a chance of 1 in 4, the cat, the mouse and the food
+// on three different cells, and jumps of 1 to 3.
+//
+// P1  the answer is the statement read literally
+// P2  the grid mirrored left to right gives the same answer
+// P3  the grid turned upside down gives the same answer
+// P4  the grid transposed, rows made columns, gives the same answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- mouse.kara: the ★ arm: the game solved backwards from its ends
+
+// the cells reachable in one move from `at` with jumps up to `jump`:
+// staying, or up to `jump` cells in a line, stopped by a wall or the edge
+fn star_reach(marks: Slice[Vec[char]], at: i64, jump: i32) -> Vec[i64] {
+    let rows = marks.len();
+    let cols = marks[0].len();
+    let (r, c) = (at / cols, at % cols);
+    let mut cells: Vec[i64] = [at];
+    for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+        for k in 1..jump as i64 + 1 {
+            let (nr, nc) = (r + dr * k, c + dc * k);
+            if nr < 0 or nr >= rows or nc < 0 or nc >= cols or marks[nr][nc] == '#' {
+                break;
+            }
+            cells.push(nr * cols + nc);
+        }
+    }
+    cells
+}
+
+fn star_arm(grid: Vec[String], cat_jump: i32, mouse_jump: i32) -> bool {
+    let marks: Vec[Vec[char]] = grid.iter().map(|row| row.chars().collect()).collect();
+    let cols = marks[0].len();
+    let cells = marks.len() * cols;
+    let mut (mouse, cat, food) = (0, 0, 0);
+    for at in 0..cells {
+        match marks[at / cols][at % cols] {
+            'M' => mouse = at,
+            'C' => cat = at,
+            'F' => food = at,
+            _ => {}
+        }
+    }
+    let open: Vec[bool] = (0..cells).map(|at| marks[at / cols][at % cols] != '#').collect();
+    let mouse_moves: Vec[Vec[i64]] = (0..cells).map(|at| if open[at] { star_reach(marks, at, mouse_jump) } else { Vec.new() }).collect();
+    let cat_moves: Vec[Vec[i64]] = (0..cells).map(|at| if open[at] { star_reach(marks, at, cat_jump) } else { Vec.new() }).collect();
+    // state (m, c, turn) at (m * cells + c) * 2 + turn; turn 0 is the
+    // mouse's move. 0 undecided, 1 the mouse wins, 2 the cat wins.
+    let state = |m: i64, c: i64, turn: i64| (m * cells + c) * 2 + turn;
+    let mut result: Vec[i32] = Vec.filled(cells * cells * 2, 0);
+    let mut left: Vec[i64] = Vec.filled(cells * cells * 2, 0);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    for m in 0..cells {
+        for c in 0..cells {
+            if not open[m] or not open[c] {
+                continue;
+            }
+            left[state(m, c, 0)] = mouse_moves[m].len();
+            left[state(m, c, 1)] = cat_moves[c].len();
+            let end = if m == c or c == food { 2 } else if m == food { 1 } else { 0 };
+            if end != 0 {
+                for turn in 0..2 {
+                    result[state(m, c, turn)] = end;
+                    queue.push_back(state(m, c, turn));
+                }
+            }
+        }
+    }
+    while let Some(s) = queue.pop_front() {
+        let turn = s % 2;
+        let m = s / 2 / cells;
+        let c = s / 2 % cells;
+        let won = result[s];
+        // the move into s was made by the other player
+        if turn == 0 {
+            for before in cat_moves[c].iter() {
+                let p = state(m, before, 1);
+                if result[p] != 0 {
+                    continue;
+                }
+                if won == 2 {
+                    result[p] = 2;
+                    queue.push_back(p);
+                } else {
+                    left[p] -= 1;
+                    if left[p] == 0 {
+                        result[p] = 1;
+                        queue.push_back(p);
+                    }
+                }
+            }
+        } else {
+            for before in mouse_moves[m].iter() {
+                let p = state(before, c, 0);
+                if result[p] != 0 {
+                    continue;
+                }
+                if won == 1 {
+                    result[p] = 1;
+                    queue.push_back(p);
+                } else {
+                    left[p] -= 1;
+                    if left[p] == 0 {
+                        result[p] = 2;
+                        queue.push_back(p);
+                    }
+                }
+            }
+        }
+    }
+    result[state(mouse, cat, 0)] == 1
+}
+
+// ---- mouse_rounds.kara: the mouse's wins grown round by round
+
+// the cells reachable in one move from `at` with jumps up to `jump`:
+// staying, or up to `jump` cells in a line, stopped by a wall or the edge
+fn rounds_reach(marks: Slice[Vec[char]], at: i64, jump: i32) -> Vec[i64] {
+    let rows = marks.len();
+    let cols = marks[0].len();
+    let (r, c) = (at / cols, at % cols);
+    let mut cells: Vec[i64] = [at];
+    for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+        for k in 1..jump as i64 + 1 {
+            let (nr, nc) = (r + dr * k, c + dc * k);
+            if nr < 0 or nr >= rows or nc < 0 or nc >= cols or marks[nr][nc] == '#' {
+                break;
+            }
+            cells.push(nr * cols + nc);
+        }
+    }
+    cells
+}
+
+fn rounds_arm(grid: Vec[String], cat_jump: i32, mouse_jump: i32) -> bool {
+    let marks: Vec[Vec[char]] = grid.iter().map(|row| row.chars().collect()).collect();
+    let cols = marks[0].len();
+    let cells = marks.len() * cols;
+    let mut mouse = 0;
+    let mut cat = 0;
+    let mut food = 0;
+    for at in 0..cells {
+        let mark = marks[at / cols][at % cols];
+        if mark == 'M' {
+            mouse = at;
+        } else if mark == 'C' {
+            cat = at;
+        } else if mark == 'F' {
+            food = at;
+        }
+    }
+    let open: Vec[bool] = (0..cells).map(|at| marks[at / cols][at % cols] != '#').collect();
+    let mouse_moves: Vec[Vec[i64]] = (0..cells).map(|at| if open[at] { rounds_reach(marks, at, mouse_jump) } else { Vec.new() }).collect();
+    let cat_moves: Vec[Vec[i64]] = (0..cells).map(|at| if open[at] { rounds_reach(marks, at, cat_jump) } else { Vec.new() }).collect();
+    // wins[m][c][turn], turn 0 the mouse's move
+    let mut wins: Vec[Vec[Array[bool, 2]]] = Vec.filled(cells, Vec.filled(cells, [false, false]));
+    for c in 0..cells {
+        if open[c] and c != food {
+            wins[food][c] = [true, true];
+        }
+    }
+    let mut grew = true;
+    while grew {
+        grew = false;
+        for m in 0..cells {
+            for c in 0..cells {
+                if not open[m] or not open[c] or m == c or m == food or c == food {
+                    continue;
+                }
+                if not wins[m][c][0] and mouse_moves[m].iter().any(|to| wins[to][c][1]) {
+                    wins[m][c][0] = true;
+                    grew = true;
+                }
+                if not wins[m][c][1] and cat_moves[c].iter().all(|to| wins[m][to][0]) {
+                    wins[m][c][1] = true;
+                    grew = true;
+                }
+            }
+        }
+    }
+    wins[mouse][cat][0]
+}
+
+// ---- mouse_turns.kara: the game played back from the thousandth turn
+
+// the cells reachable in one move from `at` with jumps up to `jump`:
+// staying, or up to `jump` cells in a line, stopped by a wall or the edge
+fn turns_reach(marks: Slice[Vec[char]], at: i64, jump: i32) -> Vec[i64] {
+    let rows = marks.len();
+    let cols = marks[0].len();
+    let (r, c) = (at / cols, at % cols);
+    let mut cells: Vec[i64] = [at];
+    for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+        for k in 1..jump as i64 + 1 {
+            let (nr, nc) = (r + dr * k, c + dc * k);
+            if nr < 0 or nr >= rows or nc < 0 or nc >= cols or marks[nr][nc] == '#' {
+                break;
+            }
+            cells.push(nr * cols + nc);
+        }
+    }
+    cells
+}
+
+fn turns_arm(grid: Vec[String], cat_jump: i32, mouse_jump: i32) -> bool {
+    let marks: Vec[Vec[char]] = grid.iter().map(|row| row.chars().collect()).collect();
+    let cols = marks[0].len();
+    let cells = marks.len() * cols;
+    let find = |mark: char| (0..cells).find(|at| marks[at / cols][at % cols] == mark).unwrap();
+    let (mouse, cat, food) = (find('M'), find('C'), find('F'));
+    let open: Vec[bool] = (0..cells).map(|at| marks[at / cols][at % cols] != '#').collect();
+    let mouse_moves: Vec[Vec[i64]] = (0..cells).map(|at| if open[at] { turns_reach(marks, at, mouse_jump) } else { Vec.new() }).collect();
+    let cat_moves: Vec[Vec[i64]] = (0..cells).map(|at| if open[at] { turns_reach(marks, at, cat_jump) } else { Vec.new() }).collect();
+    // the state's own end, if it has one: 1 the mouse won, 2 the cat
+    let end = |m: i64, c: i64| if m == c or c == food { 2 } else if m == food { 1 } else { 0 };
+    let limit = 1000;
+    // later[m * cells + c]: whether the mouse wins with t + 1 moves made;
+    // after the last move it has lost unless the cells say otherwise
+    let mut later: Vec[bool] = Vec.filled(cells * cells, false);
+    let mut two_later: Vec[bool] = Vec.new();
+    for m in 0..cells {
+        for c in 0..cells {
+            later[m * cells + c] = end(m, c) == 1;
+        }
+    }
+    let mut t = limit - 1;
+    loop {
+        let mut now: Vec[bool] = Vec.filled(cells * cells, false);
+        for m in 0..cells {
+            for c in 0..cells {
+                if not open[m] or not open[c] {
+                    continue;
+                }
+                let e = end(m, c);
+                now[m * cells + c] = if e != 0 {
+                    e == 1
+                } else if t % 2 == 0 {
+                    mouse_moves[m].iter().any(|to| later[to * cells + c])
+                } else {
+                    cat_moves[c].iter().all(|to| later[m * cells + to])
+                };
+            }
+        }
+        if t == 0 {
+            return now[mouse * cells + cat];
+        }
+        if now == two_later and t % 2 == 0 {
+            return now[mouse * cells + cat];
+        }
+        two_later = later;
+        later = now;
+        t -= 1;
+    }
+}
+
+// ---- mouse_solution.kara: LeetCode's Rust template, through karac fix
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn can_mouse_win(grid: Vec[String], cat_jump: i32, mouse_jump: i32) -> bool {
+        let g: Vec[Vec[u8]] = grid.iter().map(|s| s.bytes().to_vec()).collect();
+        let rows = g.len();
+        let cols = g[0].len();
+        let mut mouse = 0;
+        let mut cat = 0;
+        let mut floors = 0;
+        for i in 0..rows {
+            for j in 0..cols {
+                match g[i][j] {
+                    b'M' => mouse = i * cols + j,
+                    b'C' => cat = i * cols + j,
+                    _ => {}
+                }
+                if g[i][j] != b'#' {
+                    floors += 1;
+                }
+            }
+        }
+        let limit = floors * 2;
+        let mut memo = Vec.filled(limit + 1, Vec.filled(rows * cols, Vec.filled(rows * cols, -1i8)));
+        SolutionArm.dfs(g, 0, mouse, cat, limit, cat_jump, mouse_jump, mut memo)
+    }
+
+    fn dfs(
+        g: Vec[Vec[u8]],
+        turn: i64,
+        mouse: i64,
+        cat: i64,
+        limit: i64,
+        cat_jump: i64,
+        mouse_jump: i64,
+        memo: mut ref Vec[Vec[Vec[i8]]],
+    ) -> bool {
+        if turn == limit {
+            return false;
+        }
+        if memo[turn][mouse][cat] != -1 {
+            return memo[turn][mouse][cat] == 1;
+        }
+        let rows = g.len() as i32;
+        let cols = g[0].len() as i32;
+        let dirs = [(0, 1), (1, 0), (0, -1), (-1, 0)];
+        let mouse_turn = turn % 2 == 0;
+        let (pos, jump) = if mouse_turn { (mouse, mouse_jump) } else { (cat, cat_jump) };
+        let r = (pos / g[0].len()) as i32;
+        let c = (pos % g[0].len()) as i32;
+        let mut result = not mouse_turn;
+        'outer: for (dr, dc) in dirs.iter() {
+            for k in 0..=jump as i32 {
+                let nr = r + dr * k;
+                let nc = c + dc * k;
+                if nr < 0 or nr >= rows or nc < 0 or nc >= cols or g[nr][nc] == b'#' {
+                    break;
+                }
+                let next = nr * cols + nc;
+                let ch = g[nr][nc];
+                if mouse_turn {
+                    if ch == b'F' {
+                        result = true;
+                        break 'outer;
+                    }
+                    if next != cat and SolutionArm.dfs(g, turn + 1, next, cat, limit, cat_jump, mouse_jump, mut memo) {
+                        result = true;
+                        break 'outer;
+                    }
+                } else {
+                    if ch == b'F' or next == mouse {
+                        result = false;
+                        break 'outer;
+                    }
+                    if not SolutionArm.dfs(g, turn + 1, mouse, next, limit, cat_jump, mouse_jump, mut memo) {
+                        result = false;
+                        break 'outer;
+                    }
+                }
+            }
+        }
+        memo[turn][mouse][cat] = if result { 1 } else { 0 };
+        result
+    }
+}
+
+fn solution_arm(grid: Vec[String], cat_jump: i32, mouse_jump: i32) -> bool {
+    SolutionArm.can_mouse_win(grid, cat_jump, mouse_jump)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: the game played back from its thousandth
+// turn, every one of the 1000 moves, the mouse's and the cat's in turn.
+// A move goes up to the player's jump in one of four directions, stopped
+// by a wall or the edge, or stays; the cat on the mouse or on the food
+// wins for the cat, the mouse on the food for the mouse, and a mouse that
+// has not reached the food after the 1000th move has lost.
+fn literal(grid: Slice[String], cat_jump: i32, mouse_jump: i32) -> bool {
+    let marks: Vec[Vec[char]] = grid.iter().map(|row| row.chars().collect()).collect();
+    let rows = marks.len();
+    let cols = marks[0].len();
+    let cells = rows * cols;
+    let mut mouse = 0;
+    let mut cat = 0;
+    let mut food = 0;
+    for r in 0..rows {
+        for c in 0..cols {
+            match marks[r][c] {
+                'M' => mouse = r * cols + c,
+                'C' => cat = r * cols + c,
+                'F' => food = r * cols + c,
+                _ => {}
+            }
+        }
+    }
+    let moves = |at: i64, jump: i32| {
+        let mut cells: Vec[i64] = [at];
+        for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let mut r = at / cols;
+            let mut c = at % cols;
+            for _ in 0..jump {
+                r += dr;
+                c += dc;
+                if r < 0 or r >= rows or c < 0 or c >= cols or marks[r][c] == '#' {
+                    break;
+                }
+                cells.push(r * cols + c);
+            }
+        }
+        cells
+    };
+    // wins[m][c] after the moves made so far: after the 1000th, only the
+    // mouse already on the food (and the cat not on it or on the mouse)
+    let over = |m: i64, c: i64| m == c or c == food;
+    let mut wins: Vec[Vec[bool]] = Vec.filled(cells, Vec.filled(cells, false));
+    for m in 0..cells {
+        for c in 0..cells {
+            wins[m][c] = m == food and not over(m, c);
+        }
+    }
+    for made in (0..1000).rev() {
+        let mut before: Vec[Vec[bool]] = Vec.filled(cells, Vec.filled(cells, false));
+        for m in 0..cells {
+            for c in 0..cells {
+                if marks[m / cols][m % cols] == '#' or marks[c / cols][c % cols] == '#' {
+                    continue;
+                }
+                before[m][c] = if over(m, c) {
+                    false
+                } else if m == food {
+                    true
+                } else if made % 2 == 0 {
+                    moves(m, mouse_jump).iter().any(|to| wins[to][c])
+                } else {
+                    moves(c, cat_jump).iter().all(|to| wins[m][to])
+                };
+            }
+        }
+        wins = before;
+    }
+    wins[mouse][cat]
+}
+
+fn arm(a: i64, grid: Slice[String], cat_jump: i32, mouse_jump: i32) -> bool {
+    let grid = grid.to_vec();
+    match a {
+        0 => star_arm(grid, cat_jump, mouse_jump),
+        1 => rounds_arm(grid, cat_jump, mouse_jump),
+        2 => turns_arm(grid, cat_jump, mouse_jump),
+        _ => solution_arm(grid, cat_jump, mouse_jump),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "rounds", "turns", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1728;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[String], i32, i32)] = Vec.new();
+    for _ in 0..problems {
+        let mut rows = next_random(mut seed) % 3 + 1;
+        let cols = next_random(mut seed) % 3 + 1;
+        while rows * cols < 3 {
+            rows += 1;
+        }
+        let cells = rows * cols;
+        let mut marks: Vec[char] = (0..cells).map(|_| if next_random(mut seed) % 4 == 0 { '#' } else { '.' }).collect();
+        let mut places: Vec[i64] = (0..cells).collect();
+        for i in 0..3 {
+            let j = i + next_random(mut seed) % (cells - i);
+            places.swap(i, j);
+        }
+        marks[places[0]] = 'C';
+        marks[places[1]] = 'M';
+        marks[places[2]] = 'F';
+        let grid: Vec[String] = (0..rows).map(|r| marks[r * cols..(r + 1) * cols].iter().collect()).collect();
+        let cat_jump = (next_random(mut seed) % 3 + 1) as i32;
+        let mouse_jump = (next_random(mut seed) % 3 + 1) as i32;
+        cases.push((grid, cat_jump, mouse_jump));
+    }
+    for (p, (grid, cat_jump, mouse_jump)) in cases.iter().enumerate() {
+        let want = literal(grid, cat_jump, mouse_jump);
+        check = (check * 31 + if want { 2 } else { 1 } + grid.len() * grid[0].len()) % 1000000007;
+        let mirrored: Vec[String] = grid.iter().map(|row| row.chars().rev().collect()).collect();
+        let upside: Vec[String] = grid.iter().rev().cloned().collect();
+        let width = grid[0].len();
+        let turned: Vec[String] = (0..width).map(|c| grid.iter().map(|row| row.chars().nth(c).unwrap()).collect()).collect();
+        let mut answers: Vec[bool] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, grid, cat_jump, mouse_jump);
+            let failed = [got != want, arm(a, mirrored, cat_jump, mouse_jump) != got, arm(a, upside, cat_jump, mouse_jump) != got, arm(a, turned, cat_jump, mouse_jump) != got];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({grid}, cat {cat_jump}, mouse {mouse_jump}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

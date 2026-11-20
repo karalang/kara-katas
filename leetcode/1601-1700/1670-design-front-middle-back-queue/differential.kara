@@ -1,0 +1,483 @@
+// LeetCode #1670: Design Front Middle Back Queue -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random runs of
+// 1 to 30 calls, a push half the time. Each arm's queue is renamed, and a
+// `run_<arm>` replays a run on a new queue of that arm, then empties it
+// one of three ways.
+//
+// P1  every pop's answer is the statement read literally
+// P2  what is left, popped from the front, is the literal queue in order
+// P3  what is left, popped from the back, is the literal queue reversed
+// P4  what is left, popped from the middle, is the literal middle order
+// P5  each arm agrees with at least two of the other three
+
+// ---- queue.kara: the ★ arm: two deques
+
+struct StarQueue {
+    front: VecDeque[i32],
+    back: VecDeque[i32],
+}
+
+impl StarQueue {
+    fn new() -> StarQueue {
+        StarQueue { front: VecDeque.new(), back: VecDeque.new() }
+    }
+
+    // the back half as long as the front or one longer
+    fn balance(mut ref self) {
+        if self.front.len() > self.back.len() {
+            self.back.push_front(self.front.pop_back().unwrap());
+        } else if self.back.len() > self.front.len() + 1 {
+            self.front.push_back(self.back.pop_front().unwrap());
+        }
+    }
+
+    fn push_front(mut ref self, val: i32) {
+        self.front.push_front(val);
+        self.balance();
+    }
+
+    fn push_middle(mut ref self, val: i32) {
+        self.front.push_back(val);
+        self.balance();
+    }
+
+    fn push_back(mut ref self, val: i32) {
+        self.back.push_back(val);
+        self.balance();
+    }
+
+    fn pop_front(mut ref self) -> i32 {
+        let val = match self.front.pop_front() {
+            Some(v) => v,
+            None => match self.back.pop_front() {
+                Some(v) => v,
+                None => return -1,
+            },
+        };
+        self.balance();
+        val
+    }
+
+    fn pop_middle(mut ref self) -> i32 {
+        let taken = if self.front.len() == self.back.len() {
+            self.front.pop_back()
+        } else {
+            self.back.pop_front()
+        };
+        let Some(val) = taken else {
+            return -1;
+        };
+        self.balance();
+        val
+    }
+
+    fn pop_back(mut ref self) -> i32 {
+        let Some(val) = self.back.pop_back() else {
+            return -1;
+        };
+        self.balance();
+        val
+    }
+}
+
+fn run_star(calls: Slice[(i64, i32)], drain: i64) -> Vec[i32] {
+    let mut queue = StarQueue.new();
+    let mut out = Vec.new();
+    for (op, val) in calls.iter() {
+        match op {
+            0 => queue.push_front(val),
+            1 => queue.push_middle(val),
+            2 => queue.push_back(val),
+            3 => out.push(queue.pop_front()),
+            4 => out.push(queue.pop_middle()),
+            _ => out.push(queue.pop_back()),
+        }
+    }
+    out.push(0);
+    loop {
+        let v = match drain {
+            0 => queue.pop_front(),
+            1 => queue.pop_back(),
+            _ => queue.pop_middle(),
+        };
+        if v == -1 {
+            break;
+        }
+        out.push(v);
+    }
+    out
+}
+
+// ---- queue_vec.kara: one Vec
+
+struct VecQueue {
+    values: Vec[i32],
+}
+
+impl VecQueue {
+    fn new() -> VecQueue {
+        VecQueue { values: Vec.new() }
+    }
+
+    fn push_front(mut ref self, val: i32) {
+        self.values.insert(0, val);
+    }
+
+    fn push_middle(mut ref self, val: i32) {
+        let at = self.values.len() / 2;
+        self.values.insert(at, val);
+    }
+
+    fn push_back(mut ref self, val: i32) {
+        self.values.push(val);
+    }
+
+    fn pop_front(mut ref self) -> i32 {
+        if self.values.is_empty() {
+            return -1;
+        }
+        self.values.remove(0)
+    }
+
+    fn pop_middle(mut ref self) -> i32 {
+        if self.values.is_empty() {
+            return -1;
+        }
+        self.values.remove((self.values.len() - 1) / 2)
+    }
+
+    fn pop_back(mut ref self) -> i32 {
+        self.values.pop().unwrap_or(-1)
+    }
+}
+
+fn run_vec(calls: Slice[(i64, i32)], drain: i64) -> Vec[i32] {
+    let mut queue = VecQueue.new();
+    let mut out = Vec.new();
+    for (op, val) in calls.iter() {
+        match op {
+            0 => queue.push_front(val),
+            1 => queue.push_middle(val),
+            2 => queue.push_back(val),
+            3 => out.push(queue.pop_front()),
+            4 => out.push(queue.pop_middle()),
+            _ => out.push(queue.pop_back()),
+        }
+    }
+    out.push(0);
+    loop {
+        let v = match drain {
+            0 => queue.pop_front(),
+            1 => queue.pop_back(),
+            _ => queue.pop_middle(),
+        };
+        if v == -1 {
+            break;
+        }
+        out.push(v);
+    }
+    out
+}
+
+// ---- queue_deque.kara: one VecDeque
+
+struct DequeQueue {
+    values: VecDeque[i32],
+}
+
+impl DequeQueue {
+    fn new() -> DequeQueue {
+        DequeQueue { values: VecDeque.new() }
+    }
+
+    fn push_front(mut ref self, val: i32) {
+        self.values.insert(0, val);
+    }
+
+    fn push_middle(mut ref self, val: i32) {
+        let at = self.values.len() / 2;
+        self.values.insert(at, val);
+    }
+
+    fn push_back(mut ref self, val: i32) {
+        self.values.push_back(val);
+    }
+
+    fn pop_front(mut ref self) -> i32 {
+        if self.values.is_empty() {
+            return -1;
+        }
+        self.values.remove(0)
+    }
+
+    fn pop_middle(mut ref self) -> i32 {
+        if self.values.is_empty() {
+            return -1;
+        }
+        self.values.remove((self.values.len() - 1) / 2)
+    }
+
+    fn pop_back(mut ref self) -> i32 {
+        self.values.pop_back().unwrap_or(-1)
+    }
+}
+
+fn run_deque(calls: Slice[(i64, i32)], drain: i64) -> Vec[i32] {
+    let mut queue = DequeQueue.new();
+    let mut out = Vec.new();
+    for (op, val) in calls.iter() {
+        match op {
+            0 => queue.push_front(val),
+            1 => queue.push_middle(val),
+            2 => queue.push_back(val),
+            3 => out.push(queue.pop_front()),
+            4 => out.push(queue.pop_middle()),
+            _ => out.push(queue.pop_back()),
+        }
+    }
+    out.push(0);
+    loop {
+        let v = match drain {
+            0 => queue.pop_front(),
+            1 => queue.pop_back(),
+            _ => queue.pop_middle(),
+        };
+        if v == -1 {
+            break;
+        }
+        out.push(v);
+    }
+    out
+}
+
+// ---- queue_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionQueue {
+    left: VecDeque[i32],
+    right: VecDeque[i32],
+}
+
+/**
+ * `&self` means the method takes an immutable reference.
+ * If you need a mutable reference, change it to `&mut self` instead.
+ */
+impl SolutionQueue {
+    fn new() -> Self {
+        SolutionQueue { left: VecDeque.new(), right: VecDeque.new() }
+    }
+
+    fn rebalance(mut ref self) {
+        while self.left.len() > self.right.len() {
+            let x = self.left.pop_back().unwrap();
+            self.right.push_front(x);
+        }
+        while self.right.len() > self.left.len() + 1 {
+            let x = self.right.pop_front().unwrap();
+            self.left.push_back(x);
+        }
+    }
+
+    fn push_front(mut ref self, val: i32) {
+        self.left.push_front(val);
+        self.rebalance();
+    }
+
+    fn push_middle(mut ref self, val: i32) {
+        self.left.push_back(val);
+        self.rebalance();
+    }
+
+    fn push_back(mut ref self, val: i32) {
+        self.right.push_back(val);
+        self.rebalance();
+    }
+
+    fn pop_front(mut ref self) -> i32 {
+        let res = if not self.left.is_empty() { self.left.pop_front() } else { self.right.pop_front() };
+        self.rebalance();
+        res.unwrap_or(-1)
+    }
+
+    fn pop_middle(mut ref self) -> i32 {
+        let res = if self.left.len() == self.right.len() { self.left.pop_back() } else { self.right.pop_front() };
+        self.rebalance();
+        res.unwrap_or(-1)
+    }
+
+    fn pop_back(mut ref self) -> i32 {
+        let res = self.right.pop_back();
+        self.rebalance();
+        res.unwrap_or(-1)
+    }
+}
+
+/**
+ * Your SolutionQueue object will be instantiated and called as such:
+ * let obj = SolutionQueue::new();
+ * obj.push_front(val);
+ * obj.push_middle(val);
+ * obj.push_back(val);
+ * let ret_4: i32 = obj.pop_front();
+ * let ret_5: i32 = obj.pop_middle();
+ * let ret_6: i32 = obj.pop_back();
+ */
+
+fn run_solution(calls: Slice[(i64, i32)], drain: i64) -> Vec[i32] {
+    let mut queue = SolutionQueue.new();
+    let mut out = Vec.new();
+    for (op, val) in calls.iter() {
+        match op {
+            0 => queue.push_front(val),
+            1 => queue.push_middle(val),
+            2 => queue.push_back(val),
+            3 => out.push(queue.pop_front()),
+            4 => out.push(queue.pop_middle()),
+            _ => out.push(queue.pop_back()),
+        }
+    }
+    out.push(0);
+    loop {
+        let v = match drain {
+            0 => queue.pop_front(),
+            1 => queue.pop_back(),
+            _ => queue.pop_middle(),
+        };
+        if v == -1 {
+            break;
+        }
+        out.push(v);
+    }
+    out
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally, on a `Vec` front first: a push into the
+// middle lands at the frontmost middle of the queue it makes, index
+// n / 2 of n + 1; a pop from the middle takes the frontmost middle of the
+// queue it finds, index (n - 1) / 2; a pop from an empty queue is -1.
+// The pops' answers, a 0, then what is left emptied as `run_<arm>` does
+fn literal(calls: Slice[(i64, i32)], drain: i64) -> Vec[i32] {
+    let mut queue: Vec[i32] = Vec.new();
+    let mut out = Vec.new();
+    for (op, val) in calls.iter() {
+        let n = queue.len();
+        if op <= 2 {
+            let at = match op {
+                0 => 0,
+                1 => (n + 1 - 1) / 2,
+                _ => n,
+            };
+            queue.insert(at, val);
+        } else if n == 0 {
+            out.push(-1);
+        } else {
+            let at = match op {
+                3 => 0,
+                4 => (n - 1) / 2,
+                _ => n - 1,
+            };
+            out.push(queue.remove(at));
+        }
+    }
+    out.push(0);
+    while not queue.is_empty() {
+        let n = queue.len();
+        let at = match drain {
+            0 => 0,
+            1 => n - 1,
+            _ => (n - 1) / 2,
+        };
+        out.push(queue.remove(at));
+    }
+    out
+}
+
+fn run(arm: i64, calls: Slice[(i64, i32)], drain: i64) -> Vec[i32] {
+    match arm {
+        0 => run_star(calls, drain),
+        1 => run_vec(calls, drain),
+        2 => run_deque(calls, drain),
+        _ => run_solution(calls, drain),
+    }
+}
+
+fn arm_name(arm: i64) -> Str {
+    ["the ★ arm", "vec", "deque", "solution"][arm]
+}
+
+fn main() {
+    let mut seed = 1670;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[Vec[(i64, i32)]] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 30 + 1;
+        let mut calls: Vec[(i64, i32)] = Vec.new();
+        for _ in 0..n {
+            let op = next_random(mut seed) % 6;
+            let val = (next_random(mut seed) % 1000 + 1) as i32;
+            calls.push((op, val));
+        }
+        cases.push(calls);
+    }
+    for (p, calls) in cases.iter().enumerate() {
+        let wants = [literal(calls, 0), literal(calls, 1), literal(calls, 2)];
+        for v in wants[0].iter() {
+            check = (check * 31 + v + 1) % 1000000007;
+        }
+        let pops = wants[0].iter().position(|v| v == 0).unwrap();
+        let mut answers: Vec[Vec[i32]] = Vec.new();
+        for k in 0..4 {
+            let gots = [run(k, calls, 0), run(k, calls, 1), run(k, calls, 2)];
+            let failed = [
+                gots[0][..pops] != wants[0][..pops],
+                gots[0] != wants[0],
+                gots[1] != wants[1],
+                gots[2] != wants[2],
+            ];
+            answers.push(gots[0].clone());
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({calls}), {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for k in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[k]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

@@ -1,0 +1,322 @@
+// LeetCode #1676: Lowest Common Ancestor of a Binary Tree IV -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random trees of
+// 1 to 10 nodes, each asked about 1 to all of its nodes.
+//
+// P1  the answer is the statement read literally
+// P2  the nodes in reverse order give the same answer
+// P3  the answer's own node added to the nodes gives the same answer
+// P4  the tree mirrored gives the same answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- lca.kara: the ★ arm: #236 widened to a set
+
+fn star_arm(root: Option[TreeNode], nodes: Vec[TreeNode]) -> Option[TreeNode] {
+    let wanted: Set[i32] = nodes.iter().map(|n| n.val).collect();
+    search(root, wanted)
+}
+
+fn search(node: Option[TreeNode], wanted: Set[i32]) -> Option[TreeNode] {
+    let n = node?;
+    if wanted.contains(n.val) {
+        return Some(n);
+    }
+    match (search(n.left, wanted), search(n.right, wanted)) {
+        (Some(_), Some(_)) => Some(n),
+        (Some(l), None) => Some(l),
+        (None, r) => r,
+    }
+}
+
+// ---- lca_count.kara: counting what each subtree holds
+
+fn count_arm(root: Option[TreeNode], nodes: Vec[TreeNode]) -> Option[TreeNode] {
+    let wanted: Set[i32] = nodes.iter().map(|n| n.val).collect();
+    let mut found = None;
+    count_below(root, wanted, mut found);
+    found
+}
+
+// how many of `wanted` are in the subtree at `node`
+fn count_below(node: Option[TreeNode], wanted: Set[i32], found: mut ref Option[TreeNode]) -> i64 {
+    match node {
+        None => 0,
+        Some(n) => {
+            let here = if wanted.contains(n.val) { 1 } else { 0 };
+            let count = count_below(n.left, wanted, mut found) + count_below(n.right, wanted, mut found) + here;
+            if count == wanted.len() and found.is_none() {
+                *found = Some(n);
+            }
+            count
+        }
+    }
+}
+
+// ---- lca_pairwise.kara: #236 folded over the nodes
+
+fn pairwise_arm(root: Option[TreeNode], nodes: Vec[TreeNode]) -> Option[TreeNode] {
+    let mut ancestor = nodes[0];
+    for node in nodes.iter().skip(1) {
+        ancestor = of_two(root, ancestor.val, node.val).unwrap();
+    }
+    Some(ancestor)
+}
+
+// #236: the first of `p` and `q` met answers for its subtree, and a node
+// with an answer on both sides is the ancestor
+fn of_two(node: Option[TreeNode], p: i32, q: i32) -> Option[TreeNode] {
+    let n = node?;
+    if n.val == p or n.val == q {
+        return Some(n);
+    }
+    let left = of_two(n.left, p, q);
+    let right = of_two(n.right, p, q);
+    if left.is_some() and right.is_some() {
+        Some(n)
+    } else if left.is_some() {
+        left
+    } else {
+        right
+    }
+}
+
+// ---- lca_parents.kara: climbing by parents
+
+fn parents_arm(root: Option[TreeNode], nodes: Vec[TreeNode]) -> Option[TreeNode] {
+    let mut parent: Map[i32, TreeNode] = Map.new();
+    let mut depth: Map[i32, i64] = Map.new();
+    let top = root?;
+    depth[top.val] = 0;
+    let mut stack = [top];
+    while let Some(node) = stack.pop() {
+        for child in [node.left, node.right] {
+            if let Some(c) = child {
+                parent[c.val] = node;
+                depth[c.val] = depth[node.val] + 1;
+                stack.push(c);
+            }
+        }
+    }
+    let mut at = nodes.clone();
+    let shallowest = at.iter().map(|n| depth[n.val]).min().unwrap();
+    for i in 0..at.len() {
+        while depth[at[i].val] > shallowest {
+            at[i] = parent[at[i].val];
+        }
+    }
+    while at.iter().any(|n| n.val != at[0].val) {
+        for i in 0..at.len() {
+            at[i] = parent[at[i].val];
+        }
+    }
+    Some(at[0])
+}
+
+// ---- the harness ----------------------------------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn leaf(val: i32) -> TreeNode {
+    TreeNode { val: val, left: None, right: None }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` nodes holding 0 to n - 1 shuffled, each hung from a random node
+// already placed, down a random walk to the first free child; every node,
+// the root first
+fn random_tree(n: i64, seed: mut ref i64) -> Vec[TreeNode] {
+    let mut values: Vec[i32] = (0..n).map(|v| v as i32).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        values.swap(i, j);
+    }
+    let mut nodes: Vec[TreeNode] = Vec.new();
+    for i in 0..n {
+        let node = leaf(values[i]);
+        if i > 0 {
+            let mut at = nodes[next_random(mut seed) % i];
+            loop {
+                if next_random(mut seed) % 2 == 0 {
+                    match at.left {
+                        Some(child) => at = child,
+                        None => {
+                            at.left = Some(node);
+                            break;
+                        }
+                    }
+                } else {
+                    match at.right {
+                        Some(child) => at = child,
+                        None => {
+                            at.right = Some(node);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        nodes.push(node);
+    }
+    nodes
+}
+
+// every value in the subtree at `node`
+fn below(node: Option[TreeNode], into: mut ref Vec[i32]) {
+    if let Some(n) = node {
+        into.push(n.val);
+        below(n.left, mut into);
+        below(n.right, mut into);
+    }
+}
+
+// the statement read literally: every node whose subtree holds every one
+// of `values` (a node is its own descendant) is a common ancestor, and the
+// lowest is the one furthest from the root
+fn literal(root: TreeNode, values: Slice[i32]) -> i64 {
+    let mut best = -1;
+    let mut best_depth = -1;
+    let mut stack = [(root, 0)];
+    while let Some((node, depth)) = stack.pop() {
+        let mut held: Vec[i32] = Vec.new();
+        below(Some(node), mut held);
+        if values.iter().all(|v| held.contains(v)) and depth > best_depth {
+            best = node.val;
+            best_depth = depth;
+        }
+        for child in [node.left, node.right] {
+            if let Some(c) = child {
+                stack.push((c, depth + 1));
+            }
+        }
+    }
+    best
+}
+
+// a copy of the tree with every node's children swapped
+fn mirror(node: Option[TreeNode]) -> Option[TreeNode] {
+    let n = node?;
+    Some(TreeNode { val: n.val, left: mirror(n.right), right: mirror(n.left) })
+}
+
+// the nodes of the tree at `root` holding `values`, in that order
+fn at_values(root: TreeNode, values: Slice[i32]) -> Vec[TreeNode] {
+    let mut found: Vec[TreeNode] = Vec.new();
+    for v in values.iter() {
+        let mut stack = [root];
+        while let Some(node) = stack.pop() {
+            if node.val == v {
+                found.push(node);
+                break;
+            }
+            for child in [node.left, node.right] {
+                if let Some(c) = child {
+                    stack.push(c);
+                }
+            }
+        }
+    }
+    found
+}
+
+fn arm(a: i64, root: TreeNode, values: Slice[i32]) -> i64 {
+    let nodes = at_values(root, values);
+    let found = match a {
+        0 => star_arm(Some(root), nodes),
+        1 => count_arm(Some(root), nodes),
+        2 => pairwise_arm(Some(root), nodes),
+        _ => parents_arm(Some(root), nodes),
+    };
+    match found {
+        Some(node) => node.val,
+        None => -1,
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "count", "pairwise", "parents"][a]
+}
+
+fn main() {
+    let mut seed = 1676;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    // each case: a tree, and the values of 1 to n of its nodes
+    let mut cases: Vec[(TreeNode, Vec[i32])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 10 + 1;
+        let nodes = random_tree(n, mut seed);
+        let k = next_random(mut seed) % n + 1;
+        let mut values: Vec[i32] = (0..n).map(|v| v as i32).collect();
+        for i in 0..k {
+            let j = i + next_random(mut seed) % (n - i);
+            values.swap(i, j);
+        }
+        values.truncate(k);
+        cases.push((nodes[0], values));
+    }
+    for (p, (root, values)) in cases.iter().enumerate() {
+        let want = literal(root, values);
+        check = (check * 31 + want + values.len()) % 1000000007;
+        let reversed: Vec[i32] = values.iter().rev().collect();
+        let mirrored = mirror(Some(root)).unwrap();
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, root, values);
+            answers.push(got);
+            let mut with_answer = values.to_vec();
+            if got >= 0 and not with_answer.contains(got as i32) {
+                with_answer.push(got as i32);
+            }
+            let failed = [
+                got != want,
+                arm(a, root, reversed) != got,
+                arm(a, root, with_answer) != got,
+                arm(a, mirrored, values) != got,
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({values}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

@@ -1,0 +1,75 @@
+// LeetCode #1727: Largest Submatrix With Rearrangements -- the columns
+// kept in order of height, row to row.
+//
+// No sort: the columns ordered by height at one row stay in that order
+// at the next among those that grow, since each grows by one, and the
+// columns that fall to zero go to the end. So each row's order comes from
+// the last in one pass, and the k-th column in it, from the tallest, is
+// at least as short as all before it: a submatrix k + 1 wide of its
+// height. O(m n).
+
+fn largest_submatrix(matrix: Vec[Vec[i32]]) -> i32 {
+    let n = matrix[0].len();
+    let mut heights: Vec[i32] = Vec.filled(n, 0);
+    let mut order: Vec[i64] = (0..n).collect();
+    let mut best = 0;
+    for row in matrix.iter() {
+        let mut next: Vec[i64] = Vec.new();
+        let mut fallen: Vec[i64] = Vec.new();
+        for j in order.iter() {
+            if row[j] == 1 {
+                heights[j] += 1;
+                next.push(j);
+            } else {
+                heights[j] = 0;
+                fallen.push(j);
+            }
+        }
+        next.extend(fallen);
+        order = next;
+        for k in 0..n {
+            best = max(best, heights[order[k]] * (k + 1) as i32);
+        }
+    }
+    best
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` matrices of 1 to `most` rows and 1 to `most` columns, each cell
+// a one with a chance of 3 in 4
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let m = next_random(mut seed) % most + 1;
+        let n = next_random(mut seed) % most + 1;
+        let mut matrix: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..m {
+            let row: Vec[i32] = (0..n).map(|_| if next_random(mut seed) % 4 == 0 { 0 } else { 1 }).collect();
+            matrix.push(row);
+        }
+        let answer = largest_submatrix(matrix);
+        sum += answer;
+        check = (check * 31 + answer + m * n) % 1000000007;
+    }
+    println(f"{count} matrices of up to {most} by {most}: areas sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then one zero, and 316 rows of 316 ones
+    println(largest_submatrix([[0, 0, 1], [1, 1, 1], [1, 0, 1]]));
+    println(largest_submatrix([[1, 0, 1, 0, 1]]));
+    println(largest_submatrix([[1, 1, 0], [1, 0, 1]]));
+    println(largest_submatrix([[0]]));
+    println(largest_submatrix(Vec.filled(316, Vec.filled(316, 1))));
+    let mut seed = 1727;
+    batch(3000, 5, mut seed);
+    batch(300, 50, mut seed);
+    batch(5, 316, mut seed);
+}

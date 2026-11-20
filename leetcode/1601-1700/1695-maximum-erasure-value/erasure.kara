@@ -1,0 +1,60 @@
+// LeetCode #1695: Maximum Erasure Value -- the ★ arm: each value's last
+// place and the prefix sums.
+//
+// The window ending at i starts just after the last place any value in it
+// was seen before, so it only moves right; its sum is a difference of
+// prefix sums. The last place of each value is kept in a vector over the
+// values, which are at most 10^4. O(n).
+
+fn maximum_unique_subarray(nums: Vec[i32]) -> i32 {
+    let mut last: Vec[i64] = Vec.filled(10001, -1);
+    let mut prefix: Vec[i32] = Vec.filled(nums.len() + 1, 0);
+    let mut start = 0;
+    let mut best = 0;
+    for (i, v) in nums.iter().enumerate() {
+        prefix[i + 1] = prefix[i] + v;
+        start = max(start, last[v] + 1);
+        last[v] = i;
+        best = max(best, prefix[i + 1] - prefix[start]);
+    }
+    best
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random arrays of 1 to `most` values from 1 to `top`; the
+// answers summed, and a checksum of them
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let mut nums: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            nums.push((next_random(mut seed) % top + 1) as i32);
+        }
+        let answer = maximum_unique_subarray(nums);
+        total += answer;
+        check = (check * 31 + answer) % 1000000007;
+    }
+    println(f"{count} arrays of up to {most} values up to {top}: answers sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then one value, one value three times, and
+    // five that differ
+    println(maximum_unique_subarray([4, 2, 4, 5, 6]));
+    println(maximum_unique_subarray([5, 2, 1, 2, 5, 2, 1, 2, 5]));
+    println(maximum_unique_subarray([1]));
+    println(maximum_unique_subarray([3, 3, 3]));
+    println(maximum_unique_subarray([1, 2, 3, 4, 5]));
+    let mut seed = 1695;
+    batch(3000, 12, 5, mut seed);
+    batch(300, 1000, 100, mut seed);
+    batch(10, 100000, 10000, mut seed);
+}

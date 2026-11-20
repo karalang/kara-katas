@@ -1,0 +1,82 @@
+// LeetCode #1717: Maximum Score From Removing Substrings -- counts in
+// place of the stacks.
+//
+// Between other letters each run of `a`s and `b`s is scored alone. Within
+// a run, with `ab` the dearer pair, a `b` that meets an unpaired `a` before
+// it pairs with it; the `a`s and `b`s still unpaired at the run's end make
+// as many `ba`s as the smaller count. The stack of the ★ arm only ever
+// holds `b`s under `a`s here, so its two counts are all it needs. O(n).
+
+fn maximum_gain(s: String, x: i32, y: i32) -> i32 {
+    // read so that `first` then `second` is the dearer pair
+    let (first, second, more, less) = if x >= y { ('a', 'b', x, y) } else { ('b', 'a', y, x) };
+    let mut total: i32 = 0;
+    let mut firsts: i32 = 0;
+    let mut seconds: i32 = 0;
+    for c in s.chars() {
+        if c == first {
+            firsts += 1;
+        } else if c == second {
+            if firsts > 0 {
+                firsts -= 1;
+                total += more;
+            } else {
+                seconds += 1;
+            }
+        } else {
+            total += min(firsts, seconds) * less;
+            firsts = 0;
+            seconds = 0;
+        }
+    }
+    total + min(firsts, seconds) * less
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random strings of 1 to `most` letters, each `a` or `b` but one
+// in `other` from the rest of the alphabet, and points from 1 to `top`;
+// the answers summed, and a checksum
+fn batch(count: i64, most: i64, other: i64, top: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let mut s = String.new();
+        for _ in 0..n {
+            let c = if next_random(mut seed) % other == 0 {
+                (b'c' + (next_random(mut seed) % 24) as u8) as char
+            } else if next_random(mut seed) % 2 == 0 {
+                'a'
+            } else {
+                'b'
+            };
+            s.push(c);
+        }
+        let x = (next_random(mut seed) % top + 1) as i32;
+        let y = (next_random(mut seed) % top + 1) as i32;
+        let answer = maximum_gain(s, x, y) as i64;
+        sum += answer;
+        check = (check * 31 + answer + n) % 1000000007;
+    }
+    println(f"{count} strings of up to {most} letters: answers sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then no pair, equal points, and pairs that
+    // only appear once others are gone
+    println(maximum_gain("cdbcbbaaabab", 4, 5));
+    println(maximum_gain("aabbaaxybbaabb", 5, 4));
+    println(maximum_gain("xyz", 1, 1));
+    println(maximum_gain("abab", 3, 3));
+    println(maximum_gain("aabbba", 1, 10));
+    let mut seed = 1717;
+    batch(3000, 12, 6, 5, mut seed);
+    batch(300, 1000, 20, 10000, mut seed);
+    batch(10, 100000, 1000, 10000, mut seed);
+}

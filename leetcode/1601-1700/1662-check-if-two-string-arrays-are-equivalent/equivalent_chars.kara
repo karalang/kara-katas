@@ -1,0 +1,101 @@
+// LeetCode #1662: Check If Two String Arrays are Equivalent -- the
+// letters of each array as one stream.
+//
+// Each array's words flattened into their letters, lazily, and the two
+// streams compared letter by letter; the first difference, or one
+// stream ending first, settles it. O(n) time, O(1) space.
+
+fn array_strings_are_equal(word1: Vec[String], word2: Vec[String]) -> bool {
+    word1.iter().flat_map(|w| w.chars()).eq(word2.iter().flat_map(|w| w.chars()))
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` letters drawn from the first `kinds` of the alphabet
+fn random_text(n: i64, kinds: i64, seed: mut ref i64) -> String {
+    let mut text = String.new();
+    for _ in 0..n {
+        let letter = (b'a' + (next_random(mut seed) % kinds) as u8) as char;
+        text.push(letter);
+    }
+    text
+}
+
+// `text` cut into words of at least one letter, each cut taken with
+// probability one in `gap`
+fn cut(text: Str, gap: i64, seed: mut ref i64) -> Vec[String] {
+    let mut words = Vec.new();
+    let mut start = 0;
+    for i in 1..text.len() {
+        if next_random(mut seed) % gap == 0 {
+            words.push(text[start..i].to_string());
+            start = i;
+        }
+    }
+    words.push(text[start..].to_string());
+    words
+}
+
+// one letter of `text` changed, or one dropped, or one added at the end
+fn spoil(text: Str, seed: mut ref i64) -> String {
+    let at = next_random(mut seed) % text.len();
+    match next_random(mut seed) % 3 {
+        0 => {
+            let old = text.bytes()[at];
+            let new = if old == b'a' { b'b' } else { b'a' };
+            let mut bytes = text.bytes().to_vec();
+            bytes[at] = new;
+            String.from_utf8(bytes).unwrap()
+        }
+        1 if text.len() > 1 => f"{text[..at]}{text[at + 1..]}",
+        _ => f"{text}a",
+    }
+}
+
+// `count` pairs of word arrays of up to `longest` letters in all, half of
+// them spelling the same text and half one letter apart; the equal ones
+// counted, and a checksum of every answer
+fn batch(count: i64, longest: i64, gap: i64, seed: mut ref i64) {
+    let mut equal = 0;
+    let mut check = 0;
+    let mut letters = 0;
+    for k in 0..count {
+        let n = next_random(mut seed) % longest + 1;
+        let kinds = next_random(mut seed) % 3 + 1;
+        let text = random_text(n, kinds, mut seed);
+        let other = if k % 2 == 0 { text.clone() } else { spoil(text, mut seed) };
+        let word1 = cut(text, gap, mut seed);
+        let word2 = cut(other, gap, mut seed);
+        letters += text.len() + other.len();
+        let answer = array_strings_are_equal(word1, word2);
+        if answer {
+            equal += 1;
+        }
+        check = (check * 31 + (if answer { 2 } else { 1 }) + word1.len() + word2.len()) % 1000000007;
+    }
+    println(f"{count} pairs of up to {longest} letters ({letters} in all): {equal} equal, checksum {check}");
+}
+
+fn words(list: Slice[Str]) -> Vec[String] {
+    list.iter().map(|w| w.to_string()).collect()
+}
+
+fn main() {
+    // LeetCode's three examples, then a word against its letters, a
+    // longer second array, and one letter apart at the very end
+    println(array_strings_are_equal(words(["ab", "c"]), words(["a", "bc"])));
+    println(array_strings_are_equal(words(["a", "cb"]), words(["ab", "c"])));
+    println(array_strings_are_equal(words(["abc", "d", "defg"]), words(["abcddefg"])));
+    println(array_strings_are_equal(words(["kara"]), words(["k", "a", "r", "a"])));
+    println(array_strings_are_equal(words(["ab"]), words(["a", "b", "c"])));
+    println(array_strings_are_equal(words(["xyz", "w"]), words(["xy", "zv"])));
+    let mut seed = 1662;
+    batch(3000, 12, 3, mut seed);
+    batch(300, 1000, 50, mut seed);
+    batch(10, 100000, 1000, mut seed);
+}

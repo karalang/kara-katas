@@ -1,0 +1,171 @@
+// LeetCode #1716: Calculate Money in Leetcode Bank -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random n from 1
+// to 1000.
+//
+// P1  the answer is the statement read literally
+// P2  the nth day's deposit, the answer less the one before it, is one
+//     more than the day before's, or on a Monday than the Monday before's
+// P3  a week more adds the first week's 28 and a dollar for each day:
+//     the answer for n + 7 is the answer for n plus 28 plus n
+// P4  every day puts something in: the answer rises with n
+// P5  each arm agrees with at least two of the other three
+
+// ---- money.kara: the ★ arm: whole weeks and the days left in closed form
+
+fn star_arm(n: i32) -> i32 {
+    let weeks = n / 7;
+    let days = n % 7;
+    28 * weeks + 7 * weeks * (weeks - 1) / 2 + days * (weeks + 1) + days * (days - 1) / 2
+}
+
+// ---- money_days.kara: day by day
+
+fn days_arm(n: i32) -> i32 {
+    let mut total = 0;
+    let mut monday = 0;
+    let mut today = 0;
+    for day in 0..n {
+        if day % 7 == 0 {
+            monday += 1;
+            today = monday;
+        } else {
+            today += 1;
+        }
+        total += today;
+    }
+    total
+}
+
+// ---- money_weeks.kara: a week at a time
+
+fn weeks_arm(n: i32) -> i32 {
+    let mut total: i32 = 0;
+    let mut monday: i32 = 1;
+    let mut left = n;
+    while left >= 7 {
+        total += 7 * monday + 21;
+        monday += 1;
+        left -= 7;
+    }
+    for d in 0..left {
+        total += monday + d;
+    }
+    total
+}
+
+// ---- money_solution.kara: LeetCode's Rust template, through karac fix
+
+struct Solution {}
+
+impl Solution {
+    pub fn total_money(n: i32) -> i32 {
+        (1..=n).map(|i| (i - 1) / 7 + (i - 1) % 7 + 1).sum()
+    }
+}
+
+fn solution_arm(n: i32) -> i32 {
+    Solution.total_money(n)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: a calendar walked a day at a time from a
+// Monday, the weekday counted 0 to 6, the first Monday's dollar, each later
+// Monday's one more than the Monday before, each other day's one more
+// than the day before
+fn literal(n: i64) -> i64 {
+    let mut total = 0;
+    let mut weekday = 0;
+    let mut last_monday = 0;
+    let mut yesterday = 0;
+    for _ in 0..n {
+        let deposit = if weekday == 0 { last_monday + 1 } else { yesterday + 1 };
+        if weekday == 0 {
+            last_monday = deposit;
+        }
+        total += deposit;
+        yesterday = deposit;
+        weekday = (weekday + 1) % 7;
+    }
+    total
+}
+
+fn arm(a: i64, n: i64) -> i64 {
+    let n = n as i32;
+    match a {
+        0 => star_arm(n),
+        1 => days_arm(n),
+        2 => weeks_arm(n),
+        _ => solution_arm(n),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "days", "weeks", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1716;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let cases: Vec[i64] = (0..problems).map(|_| next_random(mut seed) % 1000 + 1).collect();
+    for (p, n) in cases.iter().enumerate() {
+        let want = literal(n);
+        check = (check * 31 + want + n) % 1000000007;
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, n);
+            // that day's deposit, and the day's a week before
+            let deposit = got - arm(a, n - 1);
+            let monday = (n - 1) % 7 == 0;
+            let p2 = if monday {
+                n > 7 and deposit != arm(a, n - 7) - arm(a, n - 8) + 1
+            } else {
+                deposit != arm(a, n - 1) - arm(a, n - 2) + 1
+            };
+            let failed = [got != want, p2, arm(a, n + 7) != got + arm(a, 7) + n, got <= arm(a, n - 1)];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} (n {n}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

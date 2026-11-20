@@ -1,0 +1,103 @@
+// LeetCode #1721: Swapping Nodes in a Linked List -- the length counted
+// first, then each node walked to.
+//
+// With n the length, the kth node from the end is node n - k + 1 from the
+// front. One walk counts n, two more stop at the two nodes, whose values
+// swap. O(n), in place.
+
+shared struct ListNode {
+    mut val: i64,
+    mut next: Option[ListNode],
+}
+
+// the node `steps` places after `head`
+fn walk(head: ListNode, steps: i64) -> ListNode {
+    let mut node = head;
+    for _ in 0..steps {
+        node = node.next.unwrap();
+    }
+    node
+}
+
+fn swap_nodes(head: Option[ListNode], k: i64) -> Option[ListNode] {
+    let start = head.unwrap();
+    let mut n = 0;
+    let mut cur = head;
+    while let Some(node) = cur {
+        n += 1;
+        cur = node.next;
+    }
+    let front = walk(start, k - 1);
+    let back = walk(start, n - k);
+    let value = front.val;
+    front.val = back.val;
+    back.val = value;
+    head
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn build(values: Slice[i64]) -> Option[ListNode] {
+    let mut head: Option[ListNode] = None;
+    for v in values.iter().rev() {
+        head = Some(ListNode { val: v, next: head });
+    }
+    head
+}
+
+fn values_of(head: Option[ListNode]) -> Vec[i64] {
+    let mut out = Vec.new();
+    let mut cur = head;
+    while let Some(node) = cur {
+        out.push(node.val);
+        cur = node.next;
+    }
+    out
+}
+
+fn show(values: Slice[i64]) -> String {
+    let parts: Vec[String] = values.iter().map(|v| f"{v}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn swapped(values: Slice[i64], k: i64) -> Vec[i64] {
+    values_of(swap_nodes(build(values), k))
+}
+
+// `count` lists of 1 to `longest` nodes of values up to 100, and a k from
+// 1 to the length; the lists' lengths summed, and a checksum of every
+// list swapped
+fn batch(count: i64, longest: i64, seed: mut ref i64) {
+    let mut nodes = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % longest + 1;
+        let k = next_random(mut seed) % n + 1;
+        let values: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 101).collect();
+        let got = swapped(values, k);
+        nodes += got.len();
+        for v in got.iter() {
+            check = (check * 31 + v + 1) % 1000000007;
+        }
+    }
+    println(f"{count} lists of up to {longest} nodes: {nodes} nodes, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then one node, two nodes, and the middle
+    // node of an odd list swapped with itself
+    println(show(swapped([1, 2, 3, 4, 5], 2)));
+    println(show(swapped([7, 9, 6, 6, 7, 8, 3, 0, 9, 5], 5)));
+    println(show(swapped([1], 1)));
+    println(show(swapped([1, 2], 1)));
+    println(show(swapped([1, 2, 3], 2)));
+    let mut seed = 1721;
+    batch(3000, 12, mut seed);
+    batch(300, 1000, mut seed);
+    batch(10, 100000, mut seed);
+}

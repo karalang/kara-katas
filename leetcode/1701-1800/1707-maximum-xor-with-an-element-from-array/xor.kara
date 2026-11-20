@@ -1,0 +1,93 @@
+// LeetCode #1707: Maximum XOR With an Element From Array -- the ★ arm: the
+// queries answered offline, by limit, against a binary trie.
+//
+// The values are sorted, and the queries in order of their limit m. Before
+// each query every value up to m goes into a trie of 30 bits, highest
+// first, so the trie holds exactly the values allowed; the query then
+// walks down taking the other bit wherever it can. O((n + q) * 30) after
+// the sorts.
+
+fn maximize_xor(nums: Vec[i32], queries: Vec[Vec[i32]]) -> Vec[i32] {
+    let mut values = nums.clone();
+    values.sort();
+    let mut order: Vec[i64] = (0..queries.len()).collect();
+    order.sort_by_key(|i| queries[i][1]);
+    // children of each node, 0 for none: the root is node 0
+    let mut trie: Vec[Array[i64, 2]] = [[0, 0]];
+    let mut next = 0;
+    let mut answer: Vec[i32] = Vec.filled(queries.len(), -1);
+    for i in order.iter() {
+        let (x, m) = (queries[i][0], queries[i][1]);
+        while next < values.len() and values[next] <= m {
+            let mut node = 0;
+            for bit in (0..30).rev() {
+                let b = values[next] >> bit & 1;
+                if trie[node][b] == 0 {
+                    trie.push([0, 0]);
+                    trie[node][b] = trie.len() - 1;
+                }
+                node = trie[node][b];
+            }
+            next += 1;
+        }
+        if next == 0 {
+            continue;
+        }
+        let mut node = 0;
+        let mut best = 0;
+        for bit in (0..30).rev() {
+            let want = (x >> bit & 1) ^ 1;
+            if trie[node][want] != 0 {
+                best |= 1 << bit;
+                node = trie[node][want];
+            } else {
+                node = trie[node][want ^ 1];
+            }
+        }
+        answer[i] = best;
+    }
+    answer
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random value below `top`, from two draws so that it can pass 2^15
+fn value(top: i64, seed: mut ref i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % top
+}
+
+// `count` random problems of 1 to `most` values and 1 to `most` queries,
+// every number below `top`; the answers summed, and a checksum
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let q = next_random(mut seed) % most + 1;
+        let nums: Vec[i32] = (0..n).map(|_| value(top, mut seed) as i32).collect();
+        let queries: Vec[Vec[i32]] = (0..q).map(|_| [value(top, mut seed) as i32, value(top, mut seed) as i32]).collect();
+        let answer = maximize_xor(nums, queries);
+        for a in answer.iter() {
+            sum += a;
+            check = (check * 31 + a + 1) % 1000000007;
+        }
+    }
+    println(f"{count} problems of up to {most} values below {top}: answers sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then no value small enough, and the largest
+    println(maximize_xor([0, 1, 2, 3, 4], [[3, 1], [1, 3], [5, 6]]));
+    println(maximize_xor([5, 2, 4, 6, 6, 3], [[12, 4], [8, 1], [6, 3]]));
+    println(maximize_xor([7, 8], [[1, 6], [0, 0]]));
+    println(maximize_xor([1000000000, 0], [[536870911, 1000000000]]));
+    let mut seed = 1707;
+    batch(3000, 8, 16, mut seed);
+    batch(300, 1000, 1000000000, mut seed);
+    batch(3, 100000, 1000000000, mut seed);
+}

@@ -1,0 +1,275 @@
+// LeetCode #1682: Longest Palindromic Subsequence II -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random strings
+// of 1 to 12 letters from the first 1 to 4 of the alphabet.
+//
+// P1  the answer is the statement read literally
+// P2  the string reversed gives the same answer
+// P3  every letter moved along the alphabet by one shift gives the same answer
+// P4  a `z`, which the string does not hold, at both ends gives two more
+// P5  each arm agrees with at least two of the other three
+
+// ---- palindrome.kara: the ★ arm: a table over every stretch and every outer letter
+
+fn star_arm(s: String) -> i32 {
+    let letters: Vec[i64] = s.bytes().iter().map(|b| (b - b'a') as i64).collect();
+    let n = letters.len();
+    let mut best: Vec[Vec[Array[i32, 26]]] = Vec.filled(n, Vec.filled(n, [0; 26]));
+    for i in (0..n).rev() {
+        for j in i + 1..n {
+            for c in 0..26 {
+                best[i][j][c] = if letters[i] == c and letters[j] == c {
+                    let mut inside = 0;
+                    if i + 1 < j - 1 {
+                        for d in 0..26 {
+                            if d != c {
+                                inside = max(inside, best[i + 1][j - 1][d]);
+                            }
+                        }
+                    }
+                    inside + 2
+                } else {
+                    max(best[i + 1][j][c], best[i][j - 1][c])
+                };
+            }
+        }
+    }
+    if n == 0 {
+        return 0;
+    }
+    best[0][n - 1].iter().max().unwrap()
+}
+
+// ---- palindrome_memo.kara: a memoized search that drops an end at a time
+
+fn memo_arm(s: String) -> i32 {
+    let letters: Vec[i64] = s.bytes().iter().map(|b| (b - b'a') as i64).collect();
+    let n = letters.len();
+    let mut memo: Vec[i32] = Vec.filled(n * n * 27, -1);
+    if n == 0 {
+        return 0;
+    }
+    longest(letters, 0, n - 1, 26, mut memo)
+}
+
+fn longest(letters: Slice[i64], i: i64, j: i64, outer: i64, memo: mut ref Vec[i32]) -> i32 {
+    if i >= j {
+        return 0;
+    }
+    let n = letters.len();
+    let key = (i * n + j) * 27 + outer;
+    if memo[key] >= 0 {
+        return memo[key];
+    }
+    let found = if letters[i] == letters[j] and letters[i] != outer {
+        2 + longest(letters, i + 1, j - 1, letters[i], mut memo)
+    } else {
+        max(longest(letters, i + 1, j, outer, mut memo), longest(letters, i, j - 1, outer, mut memo))
+    };
+    memo[key] = found;
+    found
+}
+
+// ---- palindrome_outermost.kara: the outermost pair of each letter
+
+fn outermost_arm(s: String) -> i32 {
+    let letters: Vec[i64] = s.bytes().iter().map(|b| (b - b'a') as i64).collect();
+    let n = letters.len();
+    // next[i][c]: the first place at or after i holding c, n if none;
+    // prev[i][c]: the last place at or before i holding c, -1 if none
+    let mut next: Vec[Array[i64, 26]] = Vec.filled(n + 1, [n; 26]);
+    for i in (0..n).rev() {
+        next[i] = next[i + 1];
+        next[i][letters[i]] = i;
+    }
+    let mut prev: Vec[Array[i64, 26]] = Vec.filled(n + 1, [-1; 26]);
+    for i in 0..n {
+        prev[i + 1] = prev[i];
+        prev[i + 1][letters[i]] = i;
+    }
+    let mut memo: Map[(i64, i64, i64), i32] = Map.new();
+    widest(0, n - 1, 26, next, prev, mut memo)
+}
+
+// the longest in s[lo..=hi] whose outer letter is not `outer`
+fn widest(lo: i64, hi: i64, outer: i64, next: Slice[Array[i64, 26]], prev: Slice[Array[i64, 26]], memo: mut ref Map[(i64, i64, i64), i32]) -> i32 {
+    if lo >= hi {
+        return 0;
+    }
+    if let Some(known) = memo.get((lo, hi, outer)) {
+        return known;
+    }
+    let mut best = 0;
+    for c in 0..26 {
+        if c == outer {
+            continue;
+        }
+        let (i, j) = (next[lo][c], prev[hi + 1][c]);
+        if i < j {
+            best = max(best, 2 + widest(i + 1, j - 1, c, next, prev, mut memo));
+        }
+    }
+    memo.insert((lo, hi, outer), best);
+    best
+}
+
+// ---- palindrome_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn longest_palindrome_subseq(s: String) -> i32 {
+        let s = s.bytes();
+        let n = s.len();
+        let mut dp = Vec.filled(n, Vec.filled(n, Vec.filled(26, 0i32)));
+        for i in (0..n).rev() {
+            for j in i + 1..n {
+                for c in 0..26 {
+                    if (s[i] - b'a') == c and (s[j] - b'a') == c {
+                        let mut inner: i32 = 0;
+                        if i + 1 < j {
+                            for d in 0..26 {
+                                if d != c {
+                                    inner = inner.max(dp[i + 1][j - 1][d]);
+                                }
+                            }
+                        }
+                        dp[i][j][c] = inner + 2;
+                    } else {
+                        dp[i][j][c] = dp[i + 1][j][c].max(dp[i][j - 1][c]);
+                    }
+                }
+            }
+        }
+        if n == 0 {
+            return 0;
+        }
+        *dp[0][n - 1].iter().max().unwrap()
+    }
+}
+
+fn solution_arm(s: String) -> i32 {
+    SolutionArm.longest_palindrome_subseq(s)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every subsequence, from all 2^n choices
+// of letters kept, is tried; a good one reads the same backwards, has an
+// even length, and has no two equal letters side by side but the middle
+// two. The longest good one's length.
+fn literal(s: Str) -> i64 {
+    let letters: Vec[char] = s.chars().collect();
+    let n = letters.len();
+    let mut best = 0;
+    for keep in 0..(1 << n) {
+        let t: Vec[char] = (0..n).filter(|i| keep >> i & 1 == 1).map(|i| letters[i]).collect();
+        let m = t.len();
+        if m % 2 != 0 or m <= best {
+            continue;
+        }
+        let palindrome = (0..m).all(|i| t[i] == t[m - 1 - i]);
+        let apart = (0..m - 1).all(|i| i == m / 2 - 1 or t[i] != t[i + 1]);
+        if palindrome and apart {
+            best = m;
+        }
+    }
+    best
+}
+
+fn arm(a: i64, s: Str) -> i64 {
+    let s = s.to_string();
+    match a {
+        0 => star_arm(s),
+        1 => memo_arm(s),
+        2 => outermost_arm(s),
+        _ => solution_arm(s),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "memo", "outermost", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1682;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let alphabet = "abcdefghijklmnopqrstuvwxyz";
+    // each case: a string, and a shift of the alphabet to rename it by
+    let mut cases: Vec[(String, i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 12 + 1;
+        let letters = next_random(mut seed) % 4 + 1;
+        let mut s = String.new();
+        for _ in 0..n {
+            let at = next_random(mut seed) % letters;
+            s.push_str(alphabet[at..at + 1]);
+        }
+        let shift = next_random(mut seed) % 20 + 1;
+        cases.push((s, shift));
+    }
+    for (p, (s, shift)) in cases.iter().enumerate() {
+        let want = literal(s);
+        check = (check * 31 + want + s.len()) % 1000000007;
+        let reversed: String = s.chars().rev().collect();
+        let mut renamed = String.new();
+        for c in s.chars() {
+            let at = (c as i64 - 'a' as i64 + shift) % 26;
+            renamed.push_str(alphabet[at..at + 1]);
+        }
+        let wrapped = f"z{s}z";
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, s);
+            answers.push(got);
+            let failed = [
+                got != want,
+                arm(a, reversed) != got,
+                arm(a, renamed) != got,
+                arm(a, wrapped) != got + 2,
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({s}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

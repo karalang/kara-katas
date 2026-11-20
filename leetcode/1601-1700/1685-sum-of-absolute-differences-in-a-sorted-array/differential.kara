@@ -1,0 +1,200 @@
+// LeetCode #1685: Sum of Absolute Differences in a Sorted Array -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random sorted
+// arrays of 2 to 12 values.
+//
+// P1  the answer is the statement read literally
+// P2  every value raised by the same amount gives the same answer
+// P3  the array mirrored (v to top + 1 - v) gives the answer reversed
+// P4  every value written twice gives every answer doubled, twice
+// P5  each arm agrees with at least two of the other three
+
+// ---- absolute.kara: the ★ arm: the sums on either side
+
+fn star_arm(nums: Vec[i32]) -> Vec[i32] {
+    let n = nums.len();
+    let total = nums.iter().sum();
+    let mut before: i32 = 0;
+    let mut result: Vec[i32] = Vec.with_capacity(n);
+    for i in 0..n {
+        let x = nums[i];
+        let after = total - before - x;
+        result.push((x * i - before + after - x * (n - 1 - i)) as i32);
+        before += x;
+    }
+    result
+}
+
+// ---- absolute_steps.kara: each answer from the one before
+
+fn steps_arm(nums: Vec[i32]) -> Vec[i32] {
+    let n = nums.len();
+    let mut result = Vec.filled(n, 0);
+    result[0] = nums.iter().sum() - n as i32 * nums[0];
+    for i in 1..n {
+        let d = nums[i] - nums[i - 1];
+        result[i] = result[i - 1] + d * (2 * i as i32 - n as i32);
+    }
+    result
+}
+
+// ---- absolute_prefix.kara: a prefix-sum table
+
+fn prefix_arm(nums: Vec[i32]) -> Vec[i32] {
+    let n = nums.len();
+    let prefix: Vec[i32] = once(0)
+        .chain(nums.iter().scan(0i32, |sum, x| {
+            let sum = sum + x;
+            Some((sum, sum))
+        }))
+        .collect();
+    nums.iter()
+        .enumerate()
+        .map(|(i, x)| (x * i - prefix[i] + (prefix[n] - prefix[i + 1]) - x * (n - 1 - i)) as i32)
+        .collect()
+}
+
+// ---- absolute_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn get_sum_absolute_differences(nums: Vec[i32]) -> Vec[i32] {
+        let n = nums.len() as i32;
+        let total: i32 = nums.iter().sum();
+        let mut left: i32 = 0;
+        nums.iter()
+            .enumerate()
+            .map(|(i, x)| {
+                let i = i as i32;
+                let r = x * i - left + (total - left - x) - x * (n - i - 1);
+                left += x;
+                r
+            })
+            .collect()
+    }
+}
+
+fn solution_arm(nums: Vec[i32]) -> Vec[i32] {
+    SolutionArm.get_sum_absolute_differences(nums)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: for each i, |nums[i] - nums[j]| summed
+// over every j
+fn literal(nums: Vec[i32]) -> Vec[i32] {
+    let mut result: Vec[i32] = Vec.new();
+    for x in nums.iter() {
+        let mut sum: i32 = 0;
+        for y in nums.iter() {
+            sum += (x - y).abs();
+        }
+        result.push(sum);
+    }
+    result
+}
+
+fn arm(a: i64, nums: Vec[i32]) -> Vec[i32] {
+    match a {
+        0 => star_arm(nums),
+        1 => steps_arm(nums),
+        2 => prefix_arm(nums),
+        _ => solution_arm(nums),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "steps", "prefix", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1685;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    // 2 to 12 values from 1 to `top`, sorted, and an amount to raise them by
+    let mut cases: Vec[(Vec[i32], i32, i32)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 11 + 2;
+        let top = next_random(mut seed) % 20 + 1;
+        let mut nums: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            nums.push((next_random(mut seed) % top + 1) as i32);
+        }
+        nums.sort();
+        let raise = (next_random(mut seed) % 100 + 1) as i32;
+        cases.push((nums, top as i32, raise));
+    }
+    for (p, (nums, top, raise)) in cases.iter().enumerate() {
+        let want = literal(nums);
+        for v in want.iter() {
+            check = (check * 31 + v) % 1000000007;
+        }
+        check = (check * 31 + nums.len()) % 1000000007;
+        let raised: Vec[i32] = nums.iter().map(|v| v + raise).collect();
+        let mirrored: Vec[i32] = nums.iter().rev().map(|v| top + 1 - v).collect();
+        let mut twice: Vec[i32] = Vec.new();
+        for v in nums.iter() {
+            twice.push(v);
+            twice.push(v);
+        }
+        let mut answers: Vec[Vec[i32]] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, nums);
+            let reversed: Vec[i32] = got.iter().rev().cloned().collect();
+            let mut doubled: Vec[i32] = Vec.new();
+            for v in got.iter() {
+                doubled.push(2 * v);
+                doubled.push(2 * v);
+            }
+            let failed = [
+                got != want,
+                arm(a, raised) != got,
+                arm(a, mirrored) != reversed,
+                arm(a, twice) != doubled,
+            ];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({nums}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

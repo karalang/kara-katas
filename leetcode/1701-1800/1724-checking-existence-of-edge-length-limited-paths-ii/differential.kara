@@ -1,0 +1,440 @@
+// LeetCode #1724: Checking Existence of Edge Length Limited Paths II --
+// the differential.
+//
+// Four arms against the statement read literally, on 3000 random
+// problems: a graph of 2 to 6 nodes and up to 8 edges of weight 1 to 5
+// between two different nodes, asked 6 questions of two different nodes
+// and a limit of 1 to 6.
+//
+// P1  the answers are the statement read literally
+// P2  the edges listed in reverse, each turned round, give the same
+//     answers
+// P3  every weight doubled, and every limit L made 2L - 1, give the same
+//     answers
+// P4  each question asked from q to p gives the same answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- dist.kara: the ★ arm: a union-find that remembers when each link was made
+
+struct StarPaths {
+    parent: Vec[i64],
+    joined: Vec[i32],
+}
+
+fn star_root(parent: Slice[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        x = parent[x];
+    }
+    x
+}
+
+impl StarPaths {
+    fn new(n: i32, edge_list: Vec[Vec[i32]]) -> StarPaths {
+        let mut edges = edge_list.clone();
+        edges.sort_by_key(|e| e[2]);
+        let mut parent: Vec[i64] = (0..n as i64).collect();
+        let mut joined: Vec[i32] = Vec.filled(n, i32.MAX);
+        let mut rank: Vec[i64] = Vec.filled(n, 0);
+        for e in edges.iter() {
+            let mut a = star_root(parent, e[0]);
+            let mut b = star_root(parent, e[1]);
+            if a == b {
+                continue;
+            }
+            if rank[a] < rank[b] {
+                a, b = b, a;
+            }
+            parent[b] = a;
+            joined[b] = e[2];
+            if rank[a] == rank[b] {
+                rank[a] += 1;
+            }
+        }
+        StarPaths { parent, joined }
+    }
+
+    // the star_root of x's component when only edges lighter than `limit` count
+    fn root_below(self, x: i64, limit: i32) -> i64 {
+        let mut x = x;
+        while self.joined[x] < limit {
+            x = self.parent[x];
+        }
+        x
+    }
+
+    fn query(self, p: i32, q: i32, limit: i32) -> bool {
+        self.root_below(p, limit) == self.root_below(q, limit)
+    }
+}
+
+// ---- dist_search.kara: a breadth-first search for each query
+
+struct SearchPaths {
+    near: Vec[Vec[(i64, i32)]],
+}
+
+impl SearchPaths {
+    fn new(n: i32, edge_list: Vec[Vec[i32]]) -> SearchPaths {
+        let mut near: Vec[Vec[(i64, i32)]] = Vec.filled(n, Vec.new());
+        for e in edge_list.iter() {
+            near[e[0]].push((e[1] as i64, e[2]));
+            near[e[1]].push((e[0] as i64, e[2]));
+        }
+        SearchPaths { near }
+    }
+
+    fn query(self, p: i32, q: i32, limit: i32) -> bool {
+        let mut seen: Vec[bool] = Vec.filled(self.near.len(), false);
+        let mut queue: VecDeque[i64] = VecDeque.new();
+        seen[p] = true;
+        queue.push_back(p);
+        while let Some(v) = queue.pop_front() {
+            if v == q {
+                return true;
+            }
+            for (u, w) in self.near[v].iter() {
+                if w < limit and not seen[u] {
+                    seen[u] = true;
+                    queue.push_back(u);
+                }
+            }
+        }
+        false
+    }
+}
+
+// ---- dist_lifting.kara: a minimum spanning forest and binary lifting of its heaviest edges
+
+struct LiftingPaths {
+    tree: Vec[i64],
+    depth: Vec[i64],
+    up: Vec[Vec[i64]],
+    most: Vec[Vec[i32]],
+}
+
+fn lifting_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+impl LiftingPaths {
+    fn new(n: i32, edge_list: Vec[Vec[i32]]) -> LiftingPaths {
+        let n = n as i64;
+        let mut edges = edge_list.clone();
+        edges.sort_by_key(|e| e[2]);
+        let mut parent: Vec[i64] = (0..n).collect();
+        let mut near: Vec[Vec[(i64, i32)]] = Vec.filled(n, Vec.new());
+        for e in edges.iter() {
+            let a = lifting_find(mut parent, e[0]);
+            let b = lifting_find(mut parent, e[1]);
+            if a != b {
+                parent[a] = b;
+                near[e[0]].push((e[1] as i64, e[2]));
+                near[e[1]].push((e[0] as i64, e[2]));
+            }
+        }
+        let mut levels = 1;
+        while 1 << levels < n {
+            levels += 1;
+        }
+        let mut tree: Vec[i64] = Vec.filled(n, -1);
+        let mut depth: Vec[i64] = Vec.filled(n, 0);
+        let mut up: Vec[Vec[i64]] = Vec.filled(levels, (0..n).collect());
+        let mut most: Vec[Vec[i32]] = Vec.filled(levels, Vec.filled(n, 0));
+        for start in 0..n {
+            if tree[start] >= 0 {
+                continue;
+            }
+            tree[start] = start;
+            let mut queue: VecDeque[i64] = VecDeque.new();
+            queue.push_back(start);
+            while let Some(v) = queue.pop_front() {
+                for (u, w) in near[v].iter() {
+                    if tree[u] < 0 {
+                        tree[u] = start;
+                        depth[u] = depth[v] + 1;
+                        up[0][u] = v;
+                        most[0][u] = w;
+                        queue.push_back(u);
+                    }
+                }
+            }
+        }
+        for j in 1..levels {
+            for v in 0..n {
+                let half = up[j - 1][v];
+                up[j][v] = up[j - 1][half];
+                most[j][v] = max(most[j - 1][v], most[j - 1][half]);
+            }
+        }
+        LiftingPaths { tree, depth, up, most }
+    }
+
+    fn query(self, p: i32, q: i32, limit: i32) -> bool {
+        let mut (a, b) = (p as i64, q as i64);
+        if self.tree[a] != self.tree[b] {
+            return false;
+        }
+        if self.depth[a] < self.depth[b] {
+            a, b = b, a;
+        }
+        let mut heaviest = 0;
+        let mut rise = self.depth[a] - self.depth[b];
+        let mut j = 0;
+        while rise > 0 {
+            if rise & 1 == 1 {
+                heaviest = max(heaviest, self.most[j][a]);
+                a = self.up[j][a];
+            }
+            rise >>= 1;
+            j += 1;
+        }
+        if a != b {
+            for j in (0..self.up.len()).rev() {
+                if self.up[j][a] != self.up[j][b] {
+                    heaviest = max(heaviest, max(self.most[j][a], self.most[j][b]));
+                    a = self.up[j][a];
+                    b = self.up[j][b];
+                }
+            }
+            heaviest = max(heaviest, max(self.most[0][a], self.most[0][b]));
+        }
+        heaviest < limit
+    }
+}
+
+// ---- dist_tree.kara: a Kruskal reconstruction tree and binary lifting
+
+struct TreePaths {
+    weight: Vec[i32],
+    up: Vec[Vec[i64]],
+}
+
+fn tree_find(top: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while top[x] != x {
+        top[x] = top[top[x]];
+        x = top[x];
+    }
+    x
+}
+
+impl TreePaths {
+    fn new(n: i32, edge_list: Vec[Vec[i32]]) -> TreePaths {
+        let n = n as i64;
+        let mut edges = edge_list.clone();
+        edges.sort_by_key(|e| e[2]);
+        let size = 2 * n - 1;
+        let mut top: Vec[i64] = (0..size).collect();
+        let mut over: Vec[i64] = (0..size).collect();
+        let mut weight: Vec[i32] = Vec.filled(size, 0);
+        let mut next = n;
+        for e in edges.iter() {
+            let a = tree_find(mut top, e[0]);
+            let b = tree_find(mut top, e[1]);
+            if a == b {
+                continue;
+            }
+            weight[next] = e[2];
+            top[a] = next;
+            top[b] = next;
+            over[a] = next;
+            over[b] = next;
+            next += 1;
+        }
+        let mut levels = 1;
+        while 1 << levels < size {
+            levels += 1;
+        }
+        let mut up: Vec[Vec[i64]] = Vec.filled(levels, over);
+        for j in 1..levels {
+            for v in 0..size {
+                up[j][v] = up[j - 1][up[j - 1][v]];
+            }
+        }
+        TreePaths { weight, up }
+    }
+
+    // x's highest ancestor whose weight is below `limit`
+    fn highest(self, x: i64, limit: i32) -> i64 {
+        let mut x = x;
+        for j in (0..self.up.len()).rev() {
+            let above = self.up[j][x];
+            if self.weight[above] < limit {
+                x = above;
+            }
+        }
+        x
+    }
+
+    fn query(self, p: i32, q: i32, limit: i32) -> bool {
+        self.highest(p, limit) == self.highest(q, limit)
+    }
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: a path from p to q whose every edge is
+// strictly lighter than the limit, sought by trying every path that
+// visits no node twice, edge by edge
+fn reaches(v: i64, q: i64, limit: i32, edges: Slice[Vec[i32]], visited: mut ref Vec[bool]) -> bool {
+    if v == q {
+        return true;
+    }
+    visited[v] = true;
+    for e in edges.iter() {
+        if e[2] >= limit {
+            continue;
+        }
+        for (from, to) in [(e[0], e[1]), (e[1], e[0])] {
+            if from == v and not visited[to] and reaches(to, q, limit, edges, mut visited) {
+                visited[v] = false;
+                return true;
+            }
+        }
+    }
+    visited[v] = false;
+    false
+}
+
+fn literal(n: i32, edges: Slice[Vec[i32]], queries: Slice[(i32, i32, i32)]) -> Vec[bool] {
+    let mut answers: Vec[bool] = Vec.new();
+    for (p, q, limit) in queries.iter() {
+        let mut visited: Vec[bool] = Vec.filled(n, false);
+        answers.push(reaches(p, q, limit, edges, mut visited));
+    }
+    answers
+}
+
+fn arm(a: i64, n: i32, edges: Slice[Vec[i32]], queries: Slice[(i32, i32, i32)]) -> Vec[bool] {
+    let edges = edges.to_vec();
+    let mut answers: Vec[bool] = Vec.new();
+    match a {
+        0 => {
+            let graph = StarPaths.new(n, edges);
+            for (p, q, limit) in queries.iter() {
+                answers.push(graph.query(p, q, limit));
+            }
+        }
+        1 => {
+            let graph = SearchPaths.new(n, edges);
+            for (p, q, limit) in queries.iter() {
+                answers.push(graph.query(p, q, limit));
+            }
+        }
+        2 => {
+            let graph = LiftingPaths.new(n, edges);
+            for (p, q, limit) in queries.iter() {
+                answers.push(graph.query(p, q, limit));
+            }
+        }
+        _ => {
+            let graph = TreePaths.new(n, edges);
+            for (p, q, limit) in queries.iter() {
+                answers.push(graph.query(p, q, limit));
+            }
+        }
+    }
+    answers
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "search", "lifting", "tree"][a]
+}
+
+fn fold(check: i64, answers: Slice[bool]) -> i64 {
+    let mut check = check;
+    for answer in answers.iter() {
+        check = (check * 31 + if answer { 2 } else { 1 }) % 1000000007;
+    }
+    check
+}
+
+fn main() {
+    let mut seed = 1724;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(i32, Vec[Vec[i32]], Vec[(i32, i32, i32)])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 5 + 2;
+        let m = next_random(mut seed) % 9;
+        let mut edges: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..m {
+            let u = next_random(mut seed) % n;
+            let mut v = next_random(mut seed) % (n - 1);
+            if v >= u {
+                v += 1;
+            }
+            edges.push([u as i32, v as i32, (next_random(mut seed) % 5 + 1) as i32]);
+        }
+        let mut queries: Vec[(i32, i32, i32)] = Vec.new();
+        for _ in 0..6 {
+            let p = next_random(mut seed) % n;
+            let mut q = next_random(mut seed) % (n - 1);
+            if q >= p {
+                q += 1;
+            }
+            queries.push((p as i32, q as i32, (next_random(mut seed) % 6 + 1) as i32));
+        }
+        cases.push((n as i32, edges, queries));
+    }
+    for (p, (n, edges, queries)) in cases.iter().enumerate() {
+        let want = literal(n, edges, queries);
+        check = fold((check * 31 + n + edges.len()) % 1000000007, want);
+        let turned: Vec[Vec[i32]] = edges.iter().rev().map(|e| [e[1], e[0], e[2]]).collect();
+        let doubled: Vec[Vec[i32]] = edges.iter().map(|e| [e[0], e[1], 2 * e[2]]).collect();
+        let below: Vec[(i32, i32, i32)] = queries.iter().map(|(a, b, limit)| (a, b, 2 * limit - 1)).collect();
+        let swapped: Vec[(i32, i32, i32)] = queries.iter().map(|(a, b, limit)| (b, a, limit)).collect();
+        let mut answers: Vec[Vec[bool]] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, n, edges, queries);
+            let failed = [got != want, arm(a, n, turned, queries) != got, arm(a, n, doubled, below) != got, arm(a, n, edges, swapped) != got];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} (n {n}, {edges}, {queries}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

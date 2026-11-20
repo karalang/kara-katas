@@ -1,0 +1,291 @@
+// LeetCode #1687: Delivering Boxes from Storage to Ports -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random problems
+// of 1 to 10 boxes.
+//
+// P1  the answer is the statement read literally
+// P2  the ports renumbered, p to portsCount + 1 - p, give the same answer
+// P3  both caps raised by one never give more trips
+// P4  the boxes split in two never take fewer trips than the whole
+// P5  each arm agrees with at least two of the other three
+
+// ---- boxes.kara: the ★ arm: the cheapest start of the last trip, kept in a monotone deque
+
+fn star_arm(boxes: Vec[Vec[i32]], ports_count: i32, max_boxes: i32, max_weight: i32) -> i32 {
+    let n = boxes.len();
+    // changes[k]: the port changes among boxes 0..=k; weight[k]: the first k boxes' weight
+    let mut changes = Vec.filled(n, 0i32);
+    let mut weight = Vec.filled(n + 1, 0);
+    for k in 0..n {
+        weight[k + 1] = weight[k] + boxes[k][1];
+        if k > 0 {
+            changes[k] = changes[k - 1] + if boxes[k][0] != boxes[k - 1][0] { 1 } else { 0 };
+        }
+    }
+    let mut trips = Vec.filled(n + 1, 0i32);
+    let mut starts: VecDeque[i64] = VecDeque.new();
+    for i in 1..=n {
+        let j = i - 1;
+        let cost = trips[j] - changes[j];
+        while let Some(back) = starts.back() {
+            if trips[back] - changes[back] >= cost {
+                starts.pop_back();
+            } else {
+                break;
+            }
+        }
+        starts.push_back(j);
+        while let Some(front) = starts.front() {
+            if i - front > max_boxes or weight[i] - weight[front] > max_weight {
+                starts.pop_front();
+            } else {
+                break;
+            }
+        }
+        let front = starts.front().unwrap();
+        trips[i] = trips[front] - changes[front] + changes[i - 1] + 2;
+    }
+    trips[n]
+}
+
+// ---- boxes_window.kara: every start of the last trip tried
+
+fn window_arm(boxes: Vec[Vec[i32]], ports_count: i32, max_boxes: i32, max_weight: i32) -> i32 {
+    let n = boxes.len();
+    let mut trips = Vec.filled(n + 1, 0i32);
+    for i in 1..=n {
+        let mut best = i32.MAX;
+        let mut load = 0;
+        let mut changes: i32 = 0;
+        let mut j = i;
+        while j > 0 and i - j < max_boxes {
+            j -= 1;
+            load += boxes[j][1];
+            if load > max_weight {
+                break;
+            }
+            if j + 1 < i and boxes[j][0] != boxes[j + 1][0] {
+                changes += 1;
+            }
+            best = min(best, trips[j] + changes + 2);
+        }
+        trips[i] = best;
+    }
+    trips[n]
+}
+
+// ---- boxes_heap.kara: the cheapest start from a min-first priority queue
+
+fn heap_arm(boxes: Vec[Vec[i32]], ports_count: i32, max_boxes: i32, max_weight: i32) -> i32 {
+    let n = boxes.len();
+    let mut changes: Vec[i32] = Vec.filled(n, 0);
+    let mut weight: Vec[i64] = Vec.filled(n + 1, 0);
+    for k in 0..n {
+        weight[k + 1] = weight[k] + boxes[k][1];
+        if k > 0 and boxes[k][0] != boxes[k - 1][0] {
+            changes[k] = changes[k - 1] + 1;
+        } else if k > 0 {
+            changes[k] = changes[k - 1];
+        }
+    }
+    let mut trips: Vec[i32] = Vec.filled(n + 1, 0);
+    let mut starts = PriorityQueue.new();
+    for i in 1..=n {
+        starts.push((trips[i - 1] - changes[i - 1], i - 1));
+        loop {
+            let (_, j) = starts.peek().unwrap();
+            if i - j > max_boxes or weight[i] - weight[j] > max_weight {
+                starts.pop();
+            } else {
+                break;
+            }
+        }
+        let (cost, _) = starts.peek().unwrap();
+        trips[i] = cost + changes[i - 1] + 2;
+    }
+    trips[n]
+}
+
+// ---- boxes_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn box_delivering(boxes: Vec[Vec[i32]], _ports_count: i32, max_boxes: i32, max_weight: i32) -> i32 {
+        let n = boxes.len();
+        let mut neg = Vec.filled(n, 0i32);
+        let mut w = Vec.filled(n + 1, 0);
+        for i in 0..n {
+            w[i + 1] = w[i] + boxes[i][1];
+            if i > 0 {
+                neg[i] = neg[i - 1] + (boxes[i][0] != boxes[i - 1][0]) as i32;
+            }
+        }
+        let mut dp = Vec.filled(n + 1, 0i32);
+        let mut q: VecDeque[i64] = VecDeque.new();
+        q.push_back(0);
+        for i in 1..=n {
+            while let Some(j) = q.front().cloned() {
+                if i - j > max_boxes or w[i] - w[j] > max_weight {
+                    q.pop_front();
+                } else {
+                    break;
+                }
+            }
+            let j = *q.front().unwrap();
+            dp[i] = dp[j] - neg[j] + neg[i - 1] + 2;
+            if i < n {
+                let v = dp[i] - neg[i];
+                while let Some(k) = q.back().cloned() {
+                    if dp[k] - neg[k] >= v {
+                        q.pop_back();
+                    } else {
+                        break;
+                    }
+                }
+                q.push_back(i);
+            }
+        }
+        dp[n]
+    }
+}
+
+fn solution_arm(boxes: Vec[Vec[i32]], ports_count: i32, max_boxes: i32, max_weight: i32) -> i32 {
+    SolutionArm.box_delivering(boxes, ports_count, max_boxes, max_weight)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every way to cut the boxes, in order, into
+// trips that keep both caps, each trip played out: the ship sails to a
+// box's port unless it is there already, and back to storage at the end;
+// the fewest trips over all the cuts
+fn literal(boxes: Vec[Vec[i32]], max_boxes: i32, max_weight: i32) -> i32 {
+    let n = boxes.len();
+    let mut fewest = i32.MAX;
+    // bit k of `cuts`: a trip ends after box k
+    for cuts in 0..(1 << (n - 1)) {
+        let mut trips = 0;
+        let mut ok = true;
+        let mut start = 0;
+        for k in 0..n {
+            if k == n - 1 or cuts >> k & 1 == 1 {
+                let mut load = 0;
+                let mut at = 0;
+                for b in start..=k {
+                    load += boxes[b][1];
+                    if boxes[b][0] != at {
+                        trips += 1;
+                        at = boxes[b][0];
+                    }
+                }
+                trips += 1;
+                if k + 1 - start > max_boxes or load > max_weight {
+                    ok = false;
+                }
+                start = k + 1;
+            }
+        }
+        if ok {
+            fewest = min(fewest, trips);
+        }
+    }
+    fewest
+}
+
+fn arm(a: i64, boxes: Vec[Vec[i32]], ports_count: i32, max_boxes: i32, max_weight: i32) -> i32 {
+    match a {
+        0 => star_arm(boxes, ports_count, max_boxes, max_weight),
+        1 => window_arm(boxes, ports_count, max_boxes, max_weight),
+        2 => heap_arm(boxes, ports_count, max_boxes, max_weight),
+        _ => solution_arm(boxes, ports_count, max_boxes, max_weight),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "window", "heap", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1687;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    // 1 to 10 boxes, 1 to 4 ports, each cap 1 to 6, and a place to split at
+    let mut cases: Vec[(Vec[Vec[i32]], i32, i32, i32, i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 10 + 1;
+        let ports_count = next_random(mut seed) % 4 + 1;
+        let max_boxes = next_random(mut seed) % 6 + 1;
+        let max_weight = next_random(mut seed) % 6 + 1;
+        let mut boxes: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..n {
+            let port = next_random(mut seed) % ports_count + 1;
+            let weight = next_random(mut seed) % max_weight + 1;
+            boxes.push([port as i32, weight as i32]);
+        }
+        let split = next_random(mut seed) % n;
+        cases.push((boxes, ports_count as i32, max_boxes as i32, max_weight as i32, split));
+    }
+    for (p, (boxes, ports_count, max_boxes, max_weight, split)) in cases.iter().enumerate() {
+        let want = literal(boxes, max_boxes, max_weight);
+        check = (check * 31 + want) % 1000000007;
+        check = (check * 31 + boxes.len()) % 1000000007;
+        let renumbered: Vec[Vec[i32]] = boxes.iter().map(|b| [ports_count + 1 - b[0], b[1]]).collect();
+        let first: Vec[Vec[i32]] = boxes[..split + 1].to_vec();
+        let rest: Vec[Vec[i32]] = boxes[split + 1..].to_vec();
+        let mut answers: Vec[i32] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, boxes, ports_count, max_boxes, max_weight);
+            let apart = arm(a, first, ports_count, max_boxes, max_weight)
+                + if rest.is_empty() { 0 } else { arm(a, rest, ports_count, max_boxes, max_weight) };
+            let failed = [
+                got != want,
+                arm(a, renumbered, ports_count, max_boxes, max_weight) != got,
+                arm(a, boxes, ports_count, max_boxes + 1, max_weight + 1) > got,
+                apart < got,
+            ];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({boxes} {max_boxes} {max_weight}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

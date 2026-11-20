@@ -1,0 +1,64 @@
+// LeetCode #1686: Stone Game VI -- a max-first priority queue of the
+// stones.
+//
+// Each stone goes in as (alice + bob, alice, bob); the players pop the
+// heaviest in turn, Alice adding her worth, Bob his, and the two totals
+// are compared. O(n log n).
+
+fn stone_game(alice: Vec[i32], bob: Vec[i32]) -> i32 {
+    let mut heap = PriorityQueue.max_first();
+    for i in 0..alice.len() {
+        heap.push((alice[i] + bob[i], alice[i], bob[i]));
+    }
+    let mut totals = [0, 0];
+    let mut turn = 0;
+    while let Some((_, a, b)) = heap.pop() {
+        totals[turn] += if turn == 0 { a } else { b };
+        turn = 1 - turn;
+    }
+    match totals[0].cmp(totals[1]) {
+        Ordering.Greater => 1,
+        Ordering.Less => -1,
+        Ordering.Equal => 0,
+    }
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random games of 1 to `most` stones worth 1 to `top` to each
+// player; the outcomes counted, and a checksum of them
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut wins = [0, 0, 0];
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let mut alice: Vec[i32] = Vec.new();
+        let mut bob: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            alice.push((next_random(mut seed) % top + 1) as i32);
+            bob.push((next_random(mut seed) % top + 1) as i32);
+        }
+        let answer = stone_game(alice, bob);
+        wins[answer + 1] += 1;
+        check = (check * 31 + answer + 2) % 1000000007;
+    }
+    println(f"{count} games of up to {most} stones up to {top}: Alice {wins[2]}, Bob {wins[0]}, draws {wins[1]}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, one stone, and two stones alike
+    println(stone_game([1, 3], [2, 1]));
+    println(stone_game([1, 2], [3, 1]));
+    println(stone_game([2, 4, 3], [1, 6, 7]));
+    println(stone_game([5], [5]));
+    println(stone_game([1, 1], [1, 1]));
+    let mut seed = 1686;
+    batch(3000, 10, 5, mut seed);
+    batch(300, 1000, 100, mut seed);
+    batch(10, 100000, 100, mut seed);
+}

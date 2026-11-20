@@ -1,0 +1,77 @@
+// LeetCode #1723: Find Minimum Time to Finish All Jobs -- the ★ arm:
+// each job, the longest first, tried on every worker by backtracking, a
+// branch cut once it cannot beat the best finish found.
+//
+// Putting the long jobs first finds a good finish early, so the cut,
+// a worker's load plus the job reaching the best so far, prunes most of
+// the tree. Workers with nothing yet are all alike, so a job goes to the
+// first idle one and never to a later one. O(k^n) at worst, far less in
+// practice for n up to 12.
+
+fn place(jobs: Slice[i32], i: i64, loads: mut ref Vec[i32], best: mut ref i32) {
+    if i == jobs.len() {
+        *best = loads.iter().max().unwrap();
+        return;
+    }
+    for w in 0..loads.len() {
+        if loads[w] + jobs[i] < *best {
+            loads[w] += jobs[i];
+            place(jobs, i + 1, mut loads, mut best);
+            loads[w] -= jobs[i];
+        }
+        if loads[w] == 0 {
+            break;
+        }
+    }
+}
+
+fn minimum_time_required(jobs: Vec[i32], k: i32) -> i32 {
+    let mut order = jobs.clone();
+    order.sort_by(|a, b| b.cmp(a));
+    let total: i32 = order.iter().sum();
+    let mut loads: Vec[i32] = Vec.filled(k, 0);
+    let mut best = total + 1;
+    place(order, 0, mut loads, mut best);
+    best
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// `count` problems of `least` to `most` jobs of 1 to `top` each, and 1 to
+// as many workers as jobs
+fn batch(count: i64, least: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut sum: i64 = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = least + next_random(mut seed) % (most - least + 1);
+        let jobs: Vec[i32] = (0..n).map(|_| (wide(mut seed) % top + 1) as i32).collect();
+        let k = (next_random(mut seed) % n + 1) as i32;
+        let answer = minimum_time_required(jobs, k);
+        sum += answer;
+        check = (check * 31 + answer + n + k) % 1000000007;
+    }
+    println(f"{count} problems of {least} to {most} jobs up to {top}: answers sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then one job, twelve equal jobs for twelve
+    // workers, and the same for one
+    println(minimum_time_required([3, 2, 3], 3));
+    println(minimum_time_required([1, 2, 4, 7, 8], 2));
+    println(minimum_time_required([5], 1));
+    println(minimum_time_required(Vec.filled(12, 10000000), 12));
+    println(minimum_time_required(Vec.filled(12, 10000000), 1));
+    let mut seed = 1723;
+    batch(3000, 1, 6, 10, mut seed);
+    batch(300, 1, 10, 10000000, mut seed);
+    batch(20, 12, 12, 10000000, mut seed);
+}

@@ -1,0 +1,215 @@
+// LeetCode #1726: Tuple with Same Product -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random
+// problems of 1 to 7 distinct values from 1 to 12.
+//
+// P1  the answer is the statement read literally
+// P2  the values in reverse order give the same answer
+// P3  every value doubled gives the same answer
+// P4  401, a prime above any product of two values, appended gives the
+//     same answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- products.kara: the ★ arm: each pair's product counted in a Map as it comes
+
+fn star_arm(nums: Vec[i32]) -> i32 {
+    let mut counts: Map[i32, i32] = Map.new();
+    let mut tuples: i32 = 0;
+    for i in 0..nums.len() {
+        for j in i + 1..nums.len() {
+            let seen = counts.entry(nums[i] * nums[j]).or_insert(0);
+            tuples += 8 * *seen;
+            *seen += 1;
+        }
+    }
+    tuples
+}
+
+// ---- products_sorted.kara: every product in a list, sorted, each run counted
+
+fn sorted_arm(nums: Vec[i32]) -> i32 {
+    let n = nums.len();
+    let mut products: Vec[i32] = Vec.new();
+    for i in 0..n {
+        for j in i + 1..n {
+            products.push(nums[i] * nums[j]);
+        }
+    }
+    products.sort();
+    let mut tuples: i32 = 0;
+    let mut start = 0;
+    while start < products.len() {
+        let mut end = start;
+        while end < products.len() and products[end] == products[start] {
+            end += 1;
+        }
+        let k = (end - start) as i32;
+        tuples += 4 * k * (k - 1);
+        start = end;
+    }
+    tuples
+}
+
+// ---- products_nested.kara: each pair matched inside the pairs that span it
+
+fn nested_arm(nums: Vec[i32]) -> i32 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let n = sorted.len();
+    let mut nests = 0;
+    for i in 0..n {
+        for j in i + 3..n {
+            let target = sorted[i] * sorted[j];
+            let mut lo = i + 1;
+            let mut hi = j - 1;
+            while lo < hi {
+                let product = sorted[lo] * sorted[hi];
+                if product < target {
+                    lo += 1;
+                } else if product > target {
+                    hi -= 1;
+                } else {
+                    nests += 1;
+                    lo += 1;
+                    hi -= 1;
+                }
+            }
+        }
+    }
+    8 * nests
+}
+
+// ---- products_solution.kara: LeetCode's Rust template, through karac fix
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn tuple_same_product(nums: Vec[i32]) -> i32 {
+        let mut map: Map[i32, i32] = Map.new();
+        let n = nums.len();
+        for i in 0..n {
+            for j in i + 1..n {
+                *map.entry(nums[i] * nums[j]).or_insert(0) += 1;
+            }
+        }
+        map.values().map(|c| c * (c - 1) / 2 * 8).sum()
+    }
+}
+
+fn solution_arm(nums: Vec[i32]) -> i32 {
+    SolutionArm.tuple_same_product(nums)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every tuple (a, b, c, d) of four places,
+// all different, whose values give a * b == c * d
+fn literal(nums: Slice[i32]) -> i32 {
+    let n = nums.len();
+    let mut tuples = 0;
+    for a in 0..n {
+        for b in 0..n {
+            for c in 0..n {
+                for d in 0..n {
+                    let places = [a, b, c, d];
+                    let mut distinct = true;
+                    for x in 0..4 {
+                        for y in x + 1..4 {
+                            if places[x] == places[y] {
+                                distinct = false;
+                            }
+                        }
+                    }
+                    if distinct and nums[a] * nums[b] == nums[c] * nums[d] {
+                        tuples += 1;
+                    }
+                }
+            }
+        }
+    }
+    tuples
+}
+
+fn arm(a: i64, nums: Slice[i32]) -> i32 {
+    let nums = nums.to_vec();
+    match a {
+        0 => star_arm(nums),
+        1 => sorted_arm(nums),
+        2 => nested_arm(nums),
+        _ => solution_arm(nums),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "sorted", "nested", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1726;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 7 + 1;
+        let mut pool: Vec[i32] = (1..13).collect();
+        for i in 0..n {
+            let j = i + next_random(mut seed) % (12 - i);
+            pool.swap(i, j);
+        }
+        cases.push(pool[0..n].to_vec());
+    }
+    for (p, nums) in cases.iter().enumerate() {
+        let want = literal(nums);
+        check = (check * 31 + want + nums.len()) % 1000000007;
+        let reversed: Vec[i32] = nums.iter().rev().cloned().collect();
+        let doubled: Vec[i32] = nums.iter().map(|v| 2 * v).collect();
+        let mut prime = nums.to_vec();
+        prime.push(401);
+        let mut answers: Vec[i32] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, nums);
+            let failed = [got != want, arm(a, reversed) != got, arm(a, doubled) != got, arm(a, prime) != got];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({nums}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

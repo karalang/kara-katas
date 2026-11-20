@@ -1,0 +1,272 @@
+// LeetCode #1691: Maximum Height by Stacking Cuboids -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random sets of
+// 1 to 5 cuboids.
+//
+// P1  the answer is the statement read literally
+// P2  the cuboids in reverse order give the same answer
+// P3  each cuboid's sides listed in another order give the same answer
+// P4  every side doubled doubles the answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- cuboids.kara: the ★ arm: sides sorted, cuboids sorted, the tallest stack ending at each
+
+fn star_arm(cuboids: Vec[Vec[i32]]) -> i32 {
+    let mut boxes: Vec[Vec[i32]] = cuboids
+        .iter()
+        .map(|c| {
+            let mut sides = c.clone();
+            sides.sort();
+            sides
+        })
+        .collect();
+    boxes.sort();
+    let n = boxes.len();
+    let mut best: Vec[i32] = Vec.filled(n, 0);
+    let mut tallest = 0;
+    for i in 0..n {
+        best[i] = boxes[i][2];
+        for j in 0..i {
+            if boxes[j][0] <= boxes[i][0] and boxes[j][1] <= boxes[i][1] and boxes[j][2] <= boxes[i][2] {
+                best[i] = max(best[i], best[j] + boxes[i][2]);
+            }
+        }
+        tallest = max(tallest, best[i]);
+    }
+    tallest
+}
+
+// ---- cuboids_memo.kara: the stack above each cuboid searched, each answer remembered
+
+fn fits_on(a: Vec[i32], b: Vec[i32]) -> bool {
+    a[0] <= b[0] and a[1] <= b[1] and a[2] <= b[2]
+}
+
+fn above(i: i64, boxes: Vec[Vec[i32]], memo: mut ref Vec[Option[i32]]) -> i32 {
+    if let Some(known) = memo[i] {
+        return known;
+    }
+    let mut best = 0;
+    for j in 0..boxes.len() {
+        if j != i and fits_on(boxes[j], boxes[i]) and (boxes[j] != boxes[i] or j < i) {
+            best = max(best, above(j, boxes, mut memo));
+        }
+    }
+    let answer = boxes[i][2] + best;
+    memo[i] = Some(answer);
+    answer
+}
+
+fn memo_arm(cuboids: Vec[Vec[i32]]) -> i32 {
+    let mut boxes: Vec[Vec[i32]] = Vec.new();
+    for c in cuboids.iter() {
+        let mut sides = c.clone();
+        sides.sort();
+        boxes.push(sides);
+    }
+    let mut memo = Vec.filled(boxes.len(), None);
+    let mut tallest = 0;
+    for i in 0..boxes.len() {
+        tallest = max(tallest, above(i, boxes, mut memo));
+    }
+    tallest
+}
+
+// ---- cuboids_kahn.kara: the longest path in the graph of fits, in Kahn's order
+
+fn kahn_arm(cuboids: Vec[Vec[i32]]) -> i32 {
+    let n = cuboids.len();
+    let mut boxes: Vec[Vec[i32]] = cuboids.clone();
+    for sides in boxes.iter_mut() {
+        sides.sort();
+    }
+    let mut under: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    let mut waiting: Vec[i64] = Vec.filled(n, 0);
+    for j in 0..n {
+        for i in 0..n {
+            let fits = boxes[j][0] <= boxes[i][0] and boxes[j][1] <= boxes[i][1] and boxes[j][2] <= boxes[i][2];
+            if i != j and fits and (boxes[j] != boxes[i] or j < i) {
+                under[j].push(i);
+                waiting[i] += 1;
+            }
+        }
+    }
+    let mut ready: VecDeque[i64] = VecDeque.new();
+    for i in 0..n {
+        if waiting[i] == 0 {
+            ready.push_back(i);
+        }
+    }
+    let mut best: Vec[i32] = boxes.iter().map(|b| b[2]).collect();
+    while let Some(j) = ready.pop_front() {
+        for i in under[j].iter() {
+            best[i] = max(best[i], best[j] + boxes[i][2]);
+            waiting[i] -= 1;
+            if waiting[i] == 0 {
+                ready.push_back(i);
+            }
+        }
+    }
+    best.iter().max().unwrap()
+}
+
+// ---- cuboids_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn max_height(cuboids: own Vec[Vec[i32]]) -> i32 {
+        let mut cuboids = cuboids;
+        for c in cuboids.iter_mut() {
+            c.sort();
+        }
+        cuboids.sort();
+        let n = cuboids.len();
+        let mut dp = Vec.filled(n, 0);
+        for i in 0..n {
+            dp[i] = cuboids[i][2];
+            for j in 0..i {
+                if cuboids[j][0] <= cuboids[i][0] and cuboids[j][1] <= cuboids[i][1] and cuboids[j][2] <= cuboids[i][2] {
+                    dp[i] = dp[i].max(dp[j] + cuboids[i][2]);
+                }
+            }
+        }
+        *dp.iter().max().unwrap()
+    }
+}
+
+fn solution_arm(cuboids: Vec[Vec[i32]]) -> i32 {
+    SolutionArm.max_height(cuboids.clone())
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the six ways to stand a cuboid: its sides in each order, as width,
+// length and height
+fn turns(c: Vec[i32]) -> Vec[Vec[i32]] {
+    let orders = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+    orders.iter().map(|o| [c[o[0]], c[o[1]], c[o[2]]]).collect()
+}
+
+// the statement read literally: the tallest stack that can go on `top`
+// (its width, length and height as it stands) from the cuboids not in
+// `used`, each turned any of its six ways and placed only where its width,
+// length and height are each no more than the one below; `at` is
+// `top`'s cuboid and turn, so the answer is kept for it
+fn stack_on(top: Vec[i32], at: i64, used: i64, cuboids: Vec[Vec[i32]], memo: mut ref Vec[Option[i32]]) -> i32 {
+    let key = used * 64 + at;
+    if let Some(known) = memo[key] {
+        return known;
+    }
+    let mut best = 0;
+    for k in 0..cuboids.len() {
+        if used >> k & 1 == 0 {
+            for (t, turned) in turns(cuboids[k]).iter().enumerate() {
+                if turned[0] <= top[0] and turned[1] <= top[1] and turned[2] <= top[2] {
+                    best = max(best, turned[2] + stack_on(turned, k * 6 + t, used | 1 << k, cuboids, mut memo));
+                }
+            }
+        }
+    }
+    memo[key] = Some(best);
+    best
+}
+
+fn literal(cuboids: Vec[Vec[i32]]) -> i32 {
+    let mut memo: Vec[Option[i32]] = Vec.filled(64 * (1 << cuboids.len()), None);
+    stack_on([i32.MAX, i32.MAX, i32.MAX], 63, 0, cuboids, mut memo)
+}
+
+fn arm(a: i64, cuboids: Vec[Vec[i32]]) -> i32 {
+    match a {
+        0 => star_arm(cuboids),
+        1 => memo_arm(cuboids),
+        2 => kahn_arm(cuboids),
+        _ => solution_arm(cuboids),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "memo", "kahn", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1691;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    // 1 to 5 cuboids with sides from 1 to between 1 and 6
+    let mut cases: Vec[Vec[Vec[i32]]] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 5 + 1;
+        let top = next_random(mut seed) % 6 + 1;
+        let mut cuboids: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..n {
+            let mut sides: Vec[i32] = Vec.new();
+            for _ in 0..3 {
+                sides.push((next_random(mut seed) % top + 1) as i32);
+            }
+            cuboids.push(sides);
+        }
+        cases.push(cuboids);
+    }
+    for (p, cuboids) in cases.iter().enumerate() {
+        let want = literal(cuboids);
+        check = (check * 31 + want) % 1000000007;
+        check = (check * 31 + cuboids.len()) % 1000000007;
+        let reversed: Vec[Vec[i32]] = cuboids.iter().rev().cloned().collect();
+        let rotated: Vec[Vec[i32]] = cuboids.iter().map(|c| [c[1], c[2], c[0]]).collect();
+        let doubled: Vec[Vec[i32]] = cuboids.iter().map(|c| [2 * c[0], 2 * c[1], 2 * c[2]]).collect();
+        let mut answers: Vec[i32] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, cuboids);
+            let failed = [
+                got != want,
+                arm(a, reversed) != got,
+                arm(a, rotated) != got,
+                arm(a, doubled) != 2 * got,
+            ];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({cuboids}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

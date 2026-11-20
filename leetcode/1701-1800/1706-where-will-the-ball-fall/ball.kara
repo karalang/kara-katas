@@ -1,0 +1,71 @@
+// LeetCode #1706: Where Will the Ball Fall -- the ★ arm: each ball
+// followed down, a row at a time.
+//
+// In row r at column c the board sends the ball one column along, to c +
+// grid[r][c]. It gets there only if that column is inside the box and its
+// board slopes the same way; a wall or a V stops it. O(m * n) for all n
+// balls.
+
+fn find_ball(grid: Vec[Vec[i32]]) -> Vec[i32] {
+    let n = grid[0].len();
+    let mut answer: Vec[i32] = Vec.new();
+    for start in 0..n {
+        let mut c = start;
+        for row in grid.iter() {
+            let next = c + row[c];
+            if next < 0 or next >= n or row[next] != row[c] {
+                c = -1;
+                break;
+            }
+            c = next;
+        }
+        answer.push(c as i32);
+    }
+    answer
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random boxes of 1 to `most` rows by 1 to `most` columns, each
+// board 1 with a chance of its box's own; the balls that fall out, and a
+// checksum of every answer
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut out = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let m = next_random(mut seed) % most + 1;
+        let n = next_random(mut seed) % most + 1;
+        let lean = next_random(mut seed) % 11;
+        let mut grid: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..m {
+            let row: Vec[i32] = (0..n).map(|_| if next_random(mut seed) % 10 < lean { 1 } else { -1 }).collect();
+            grid.push(row);
+        }
+        let answer = find_ball(grid);
+        for a in answer.iter() {
+            if a >= 0 {
+                out += 1;
+            }
+            check = (check * 31 + a + 2) % 1000000007;
+        }
+    }
+    println(f"{count} boxes of up to {most} by {most}: {out} balls out, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then one cell each way and a V
+    println(find_ball([[1, 1, 1, -1, -1], [1, 1, 1, -1, -1], [-1, -1, -1, 1, 1], [1, 1, 1, 1, -1], [-1, -1, -1, -1, -1]]));
+    println(find_ball([[-1]]));
+    println(find_ball([[1, 1, 1, 1, 1, 1], [-1, -1, -1, -1, -1, -1], [1, 1, 1, 1, 1, 1], [-1, -1, -1, -1, -1, -1]]));
+    println(find_ball([[1, -1]]));
+    println(find_ball([[-1, -1, 1, 1]]));
+    let mut seed = 1706;
+    batch(3000, 6, mut seed);
+    batch(300, 30, mut seed);
+    batch(100, 100, mut seed);
+}

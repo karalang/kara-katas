@@ -1,0 +1,289 @@
+// LeetCode #1707: Maximum XOR With an Element From Array -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random problems
+// of 1 to 6 values and 1 to 6 queries, every number below 32.
+//
+// P1  the answer is the statement read literally
+// P2  the values in reverse order give the same answers
+// P3  a value above every limit added changes nothing
+// P4  every answer but -1 is x XOR some value no larger than m
+// P5  each arm agrees with at least two of the other three
+
+// ---- xor.kara: the ★ arm: the queries offline by limit, against a binary trie
+
+fn star_arm(nums: Vec[i32], queries: Vec[Vec[i32]]) -> Vec[i32] {
+    let mut values = nums.clone();
+    values.sort();
+    let mut order: Vec[i64] = (0..queries.len()).collect();
+    order.sort_by_key(|i| queries[i][1]);
+    // children of each node, 0 for none: the root is node 0
+    let mut trie: Vec[Array[i64, 2]] = [[0, 0]];
+    let mut next = 0;
+    let mut answer: Vec[i32] = Vec.filled(queries.len(), -1);
+    for i in order.iter() {
+        let (x, m) = (queries[i][0], queries[i][1]);
+        while next < values.len() and values[next] <= m {
+            let mut node = 0;
+            for bit in (0..30).rev() {
+                let b = values[next] >> bit & 1;
+                if trie[node][b] == 0 {
+                    trie.push([0, 0]);
+                    trie[node][b] = trie.len() - 1;
+                }
+                node = trie[node][b];
+            }
+            next += 1;
+        }
+        if next == 0 {
+            continue;
+        }
+        let mut node = 0;
+        let mut best = 0;
+        for bit in (0..30).rev() {
+            let want = (x >> bit & 1) ^ 1;
+            if trie[node][want] != 0 {
+                best |= 1 << bit;
+                node = trie[node][want];
+            } else {
+                node = trie[node][want ^ 1];
+            }
+        }
+        answer[i] = best;
+    }
+    answer
+}
+
+// ---- xor_online.kara: an online trie whose every node knows its smallest value
+
+struct OnlineNode {
+    child: Array[i64, 2],
+    least: i64,
+}
+
+fn online_arm(nums: Vec[i32], queries: Vec[Vec[i32]]) -> Vec[i32] {
+    let mut trie: Vec[OnlineNode] = [OnlineNode { child: [0, 0], least: i64.MAX }];
+    for v in nums.iter() {
+        let mut node = 0;
+        trie[0].least = min(trie[0].least, v);
+        for bit in (0..30).rev() {
+            let b = v >> bit & 1;
+            if trie[node].child[b] == 0 {
+                trie.push(OnlineNode { child: [0, 0], least: i64.MAX });
+                trie[node].child[b] = trie.len() - 1;
+            }
+            node = trie[node].child[b];
+            trie[node].least = min(trie[node].least, v);
+        }
+    }
+    let mut answer: Vec[i32] = Vec.new();
+    for query in queries.iter() {
+        let (x, m) = (query[0], query[1]);
+        if trie[0].least > m {
+            answer.push(-1);
+            continue;
+        }
+        let mut node = 0;
+        let mut best = 0;
+        for bit in (0..30).rev() {
+            let want = (x >> bit & 1) ^ 1;
+            let other = trie[node].child[want];
+            if other != 0 and trie[other].least <= m {
+                best |= 1 << bit;
+                node = other;
+            } else {
+                node = trie[node].child[want ^ 1];
+            }
+        }
+        answer.push(best);
+    }
+    answer
+}
+
+// ---- xor_ranges.kara: the bits chosen highest first, each a range searched in the sorted values
+
+fn ranges_arm(nums: Vec[i32], queries: Vec[Vec[i32]]) -> Vec[i32] {
+    let mut values: Vec[i64] = nums.iter().map(|v| v as i64).collect();
+    values.sort();
+    // the first value at least `low`, if it is below `high` and no larger than m
+    let fits = |low: i64, high: i64, m: i64| {
+        let at = values.partition_point(|v| v < low);
+        at < values.len() and values[at] < high and values[at] <= m
+    };
+    let mut answer: Vec[i32] = Vec.new();
+    for query in queries.iter() {
+        let (x, m) = (query[0] as i64, query[1] as i64);
+        if values[0] > m {
+            answer.push(-1);
+            continue;
+        }
+        let mut prefix = 0;
+        for bit in (0..30).rev() {
+            let want = (x >> bit & 1) ^ 1;
+            let low = prefix | want << bit;
+            prefix = if fits(low, low + (1 << bit), m) { low } else { prefix | (want ^ 1) << bit };
+        }
+        answer.push((prefix ^ x) as i32);
+    }
+    answer
+}
+
+// ---- xor_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn maximize_xor(nums: own Vec[i32], queries: Vec[Vec[i32]]) -> Vec[i32] {
+        let mut nums = nums;
+        nums.sort();
+        let mut idx: Vec[i64] = (0..queries.len()).collect();
+        idx.sort_by_key(|i| queries[i][1]);
+        let mut trie: Vec[Array[i64, 2]] = [[0, 0]];
+        let mut ans = Vec.filled(queries.len(), -1);
+        let mut j = 0;
+        for i in ref idx {
+            let (x, m) = (queries[i][0], queries[i][1]);
+            while j < nums.len() and nums[j] <= m {
+                let mut cur = 0;
+                for b in (0..30).rev() {
+                    let bit = ((nums[j] >> b) & 1) as i64;
+                    if trie[cur][bit] == 0 {
+                        trie.push([0, 0]);
+                        let len = trie.len();
+                        trie[cur][bit] = len - 1;
+                    }
+                    cur = trie[cur][bit];
+                }
+                j += 1;
+            }
+            if j == 0 {
+                continue;
+            }
+            let mut cur = 0;
+            let mut res = 0;
+            for b in (0..30).rev() {
+                let bit = ((x >> b) & 1) as i64;
+                if trie[cur][bit ^ 1] != 0 {
+                    res |= 1 << b;
+                    cur = trie[cur][bit ^ 1];
+                } else {
+                    cur = trie[cur][bit];
+                }
+            }
+            ans[i] = res;
+        }
+        ans
+    }
+}
+
+fn solution_arm(nums: own Vec[i32], queries: Vec[Vec[i32]]) -> Vec[i32] {
+    SolutionArm.maximize_xor(nums, queries)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: for each query, every value of nums
+// that does not exceed m, XORed with x; the largest, -1 when none is
+// small enough
+fn literal(nums: Slice[i32], queries: Slice[Vec[i32]]) -> Vec[i64] {
+    let mut answer: Vec[i64] = Vec.new();
+    for query in queries.iter() {
+        let mut best = -1;
+        for v in nums.iter() {
+            if v <= query[1] {
+                best = max(best, (v ^ query[0]) as i64);
+            }
+        }
+        answer.push(best);
+    }
+    answer
+}
+
+fn arm(a: i64, nums: Slice[i32], queries: Slice[Vec[i32]]) -> Vec[i64] {
+    let nums = nums.to_vec();
+    let queries = queries.to_vec();
+    let got = match a {
+        0 => star_arm(nums, queries),
+        1 => online_arm(nums, queries),
+        2 => ranges_arm(nums, queries),
+        _ => solution_arm(nums, queries),
+    };
+    got.iter().map(|v| v as i64).collect()
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "online", "ranges", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1707;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i32], Vec[Vec[i32]])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 6 + 1;
+        let q = next_random(mut seed) % 6 + 1;
+        let nums: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % 32) as i32).collect();
+        let queries: Vec[Vec[i32]] = (0..q).map(|_| [(next_random(mut seed) % 32) as i32, (next_random(mut seed) % 32) as i32]).collect();
+        cases.push((nums, queries));
+    }
+    for (p, (nums, queries)) in cases.iter().enumerate() {
+        let want = literal(nums, queries);
+        for w in want.iter() {
+            check = (check * 31 + w + 1) % 1000000007;
+        }
+        check = (check * 31 + nums.len()) % 1000000007;
+        let reversed: Vec[i32] = nums.iter().rev().collect();
+        let mut bigger = nums.to_vec();
+        bigger.push(1000);
+        let mut answers: Vec[Vec[i64]] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, nums, queries);
+            let reached = (0..queries.len()).all(|i| {
+                got[i] == -1 or nums.iter().any(|v| v <= queries[i][1] and (v ^ queries[i][0]) == got[i])
+            });
+            let failed = [got != want, arm(a, reversed, queries) != got, arm(a, bigger, queries) != got, not reached];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({nums}, {queries}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

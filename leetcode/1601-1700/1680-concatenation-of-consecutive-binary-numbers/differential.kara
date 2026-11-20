@@ -1,0 +1,224 @@
+// LeetCode #1680: Concatenation of Consecutive Binary Numbers -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random n, half
+// up to 20 and half up to 2000.
+//
+// P1  the answer is the statement read literally
+// P2  the answer for n is the answer for n - 1 shifted past n's bits, plus n
+// P3  the answer is below 10^9 + 7, and for n up to 10, which does not
+//     wrap, its binary is the concatenation itself
+// P4  the answer for m < n shifted past the bits of m + 1 to n, plus their
+//     value, is the answer for n
+// P5  each arm agrees with at least two of the other three
+
+// ---- concat.kara: the ★ arm: one running value
+
+fn star_arm(n: i32) -> i32 {
+    let modulus = 1000000007;
+    let mut value = 0;
+    let mut bits = 0;
+    for i in 1..=n as i64 {
+        if i & (i - 1) == 0 {
+            bits += 1;
+        }
+        value = ((value << bits) + i) % modulus;
+    }
+    value as i32
+}
+
+// ---- concat_string.kara: every number written in binary
+
+fn string_arm(n: i32) -> i32 {
+    let modulus = 1000000007;
+    let mut value: i64 = 0;
+    for i in 1..=n {
+        for digit in f"{i:b}".chars() {
+            value = (value * 2 + if digit == '1' { 1 } else { 0 }) % modulus;
+        }
+    }
+    value as i32
+}
+
+// ---- concat_blocks.kara: a matrix power for each run of one bit length
+
+fn blocks_arm(n: i32) -> i32 {
+    let modulus = 1000000007;
+    let n = n as i64;
+    let mut value = 0;
+    let mut bits = 1;
+    while (1 << (bits - 1)) <= n {
+        let first = 1 << (bits - 1);
+        let last = min(n, (1 << bits) - 1);
+        let step: Array[Array[i64, 3], 3] = [[(1 << bits) % modulus, 1, 0], [0, 1, 1], [0, 0, 1]];
+        let run = power(step, last - first + 1, modulus);
+        // the state is (value, first, 1) going in
+        value = (run[0][0] * value + run[0][1] * first + run[0][2]) % modulus;
+        bits += 1;
+    }
+    value as i32
+}
+
+fn multiply(a: Array[Array[i64, 3], 3], b: Array[Array[i64, 3], 3], modulus: i64) -> Array[Array[i64, 3], 3] {
+    let mut c = [[0; 3]; 3];
+    for i in 0..3 {
+        for j in 0..3 {
+            for k in 0..3 {
+                c[i][j] = (c[i][j] + a[i][k] * b[k][j]) % modulus;
+            }
+        }
+    }
+    c
+}
+
+fn power(m: Array[Array[i64, 3], 3], e: i64, modulus: i64) -> Array[Array[i64, 3], 3] {
+    let mut result: Array[Array[i64, 3], 3] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+    let mut base = m;
+    let mut e = e;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = multiply(result, base, modulus);
+        }
+        base = multiply(base, base, modulus);
+        e /= 2;
+    }
+    result
+}
+
+// ---- concat_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn concatenated_binary(n: i32) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let mut res: i64 = 0;
+        for i in 1..=n as i64 {
+            let len = 64 - i.leading_zeros();
+            res = ((res << len) | i) % MOD;
+        }
+        res as i32
+    }
+}
+
+fn solution_arm(n: i32) -> i32 {
+    SolutionArm.concatenated_binary(n)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the binary representations of `from` to `to` concatenated, as text
+fn concatenation(from: i64, to: i64) -> String {
+    let mut text = String.new();
+    for i in from..=to {
+        text.push_str(f"{i:b}");
+    }
+    text
+}
+
+// the value of a binary text modulo 10^9 + 7, and 2 to its length, the
+// factor that shifts a value past it, modulo the same
+fn read(text: Str) -> (i64, i64) {
+    let mut value = 0;
+    let mut shift = 1;
+    for c in text.chars() {
+        value = (value * 2 + if c == '1' { 1 } else { 0 }) % 1000000007;
+        shift = shift * 2 % 1000000007;
+    }
+    (value, shift)
+}
+
+// the statement read literally: the binary representations of 1 to n
+// concatenated, read as one number, modulo 10^9 + 7
+fn literal(n: i64) -> i64 {
+    read(concatenation(1, n)).0
+}
+
+fn arm(a: i64, n: i64) -> i64 {
+    let n = n as i32;
+    match a {
+        0 => star_arm(n),
+        1 => string_arm(n),
+        2 => blocks_arm(n),
+        _ => solution_arm(n),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "string", "blocks", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1680;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    // each case: n, and a point m below it to split 1..n at
+    let mut cases: Vec[(i64, i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = if next_random(mut seed) % 2 == 0 {
+            next_random(mut seed) % 20 + 1
+        } else {
+            next_random(mut seed) % 2000 + 1
+        };
+        let m = next_random(mut seed) % n;
+        cases.push((n, m));
+    }
+    for (p, (n, m)) in cases.iter().enumerate() {
+        let want = literal(n);
+        check = (check * 31 + want + n) % 1000000007;
+        let (tail, shift) = read(concatenation(m + 1, n));
+        let whole = concatenation(1, n);
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, n);
+            answers.push(got);
+            let before = if m == 0 { 0 } else { arm(a, m) };
+            let failed = [
+                got != want,
+                n > 1 and got != (arm(a, n - 1) * read(f"{n:b}").1 + n) % 1000000007,
+                got < 0 or got >= 1000000007 or (n <= 10 and f"{got:b}" != whole),
+                got != (before * shift + tail) % 1000000007,
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} (n {n}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

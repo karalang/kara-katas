@@ -1,0 +1,62 @@
+// LeetCode #1718: Construct the Lexicographically Largest Valid Sequence --
+// the numbers left as the bits of a mask.
+//
+// The same search as the ★ arm, but the numbers still free are the set
+// bits of an `i64`, handed down the recursion by value, so undoing a
+// choice is only the slots; the mask goes back by itself.
+
+fn fill(seq: mut ref Vec[i32], free: i64, at: i64) -> bool {
+    if at == seq.len() {
+        return true;
+    }
+    if seq[at] != 0 {
+        return fill(mut seq, free, at + 1);
+    }
+    let mut v = 63 - free.leading_zeros();
+    while v >= 1 {
+        if free >> v & 1 == 1 and (v == 1 or (at + v < seq.len() and seq[at + v] == 0)) {
+            seq[at] = v as i32;
+            if v > 1 {
+                seq[at + v] = v as i32;
+            }
+            if fill(mut seq, free & ~(1 << v), at + 1) {
+                return true;
+            }
+            seq[at] = 0;
+            if v > 1 {
+                seq[at + v] = 0;
+            }
+        }
+        v -= 1;
+    }
+    false
+}
+
+fn construct_distanced_sequence(n: i32) -> Vec[i32] {
+    let mut seq: Vec[i32] = Vec.filled(2 * n - 1, 0);
+    // bits 1 to n
+    let free = (1 << (n + 1)) - 2;
+    fill(mut seq, free, 0);
+    seq
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn main() {
+    // LeetCode's two examples, then the smallest two and the largest
+    println(construct_distanced_sequence(3));
+    println(construct_distanced_sequence(5));
+    println(construct_distanced_sequence(1));
+    println(construct_distanced_sequence(2));
+    println(construct_distanced_sequence(20));
+    // every n the constraints allow
+    let mut values = 0;
+    let mut check = 0;
+    for n in 1..=20 {
+        for v in construct_distanced_sequence(n).iter() {
+            values += 1;
+            check = (check * 31 + v) % 1000000007;
+        }
+    }
+    println(f"every n from 1 to 20: {values} values, checksum {check}");
+}

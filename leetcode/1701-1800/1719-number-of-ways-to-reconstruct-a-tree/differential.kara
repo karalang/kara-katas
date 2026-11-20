@@ -1,0 +1,410 @@
+// LeetCode #1719: Number Of Ways To Reconstruct A Tree -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random problems
+// over 2 to 5 nodes labelled from 1 to 9: half the ancestor pairs of a
+// random tree, kept, with one pair dropped or with one added, and half
+// random pairs.
+//
+// P1  the answer is the statement read literally
+// P2  every label v written 501 - v gives the same answer
+// P3  the pairs listed in reverse give the same answer
+// P4  when some tree fits, a new node paired with every node makes two
+// P5  each arm agrees with at least two of the other three
+
+// ---- ways.kara: the ★ arm: by degree, each node under its last earlier neighbour
+
+fn star_arm(pairs: Vec[Vec[i32]]) -> i32 {
+    let size = 501;
+    let mut linked: Vec[Vec[bool]] = Vec.filled(size, Vec.filled(size, false));
+    let mut degree: Vec[i64] = Vec.filled(size, 0);
+    for pair in pairs.iter() {
+        let (x, y) = (pair[0], pair[1]);
+        linked[x][y] = true;
+        linked[y][x] = true;
+        degree[x] += 1;
+        degree[y] += 1;
+    }
+    let mut nodes: Vec[i64] = (0..size).filter(|v| degree[v] > 0).collect();
+    let n = nodes.len();
+    nodes.sort_by_key(|v| -degree[v]);
+    if degree[nodes[0]] != n - 1 {
+        return 0;
+    }
+    let mut ways = 1;
+    for i in 1..n {
+        let v = nodes[i];
+        // the earlier neighbour with the fewest pairs
+        let mut parent = -1;
+        for j in (0..i).rev() {
+            if linked[v][nodes[j]] {
+                parent = nodes[j];
+                break;
+            }
+        }
+        if parent < 0 {
+            return 0;
+        }
+        for u in nodes.iter() {
+            if u != parent and linked[v][u] and not linked[parent][u] {
+                return 0;
+            }
+        }
+        if degree[parent] == degree[v] {
+            ways = 2;
+        }
+    }
+    ways
+}
+
+// ---- ways_sets.kara: each node's neighbours as a Set in a Map
+
+fn sets_arm(pairs: Vec[Vec[i32]]) -> i32 {
+    let mut near: Map[i32, Set[i32]] = Map.new();
+    for pair in pairs.iter() {
+        near.entry(pair[0]).or_insert(Set.new()).insert(pair[1]);
+        near.entry(pair[1]).or_insert(Set.new()).insert(pair[0]);
+    }
+    let n = near.len();
+    // exactly one root, or a tie that the parents below show
+    if not near.values().any(|s| s.len() == n - 1) {
+        return 0;
+    }
+    let mut ways = 1;
+    for (v, mine) in near.iter() {
+        let degree = mine.len();
+        if degree == n - 1 {
+            // a root; a second one shows as a tie with its parent below
+            continue;
+        }
+        let mut parent = 0;
+        let mut fewest = n;
+        for u in mine.iter() {
+            let d = near[u].len();
+            if d >= degree and d < fewest {
+                parent = u;
+                fewest = d;
+            }
+        }
+        if fewest == n {
+            return 0;
+        }
+        for u in mine.iter() {
+            if u != parent and not near[parent].contains(u) {
+                return 0;
+            }
+        }
+        if fewest == degree {
+            ways = 2;
+        }
+    }
+    if near.values().filter(|s| s.len() == n - 1).count() > 1 {
+        ways = 2;
+    }
+    ways
+}
+
+// ---- ways_bits.kara: each node's neighbours as the bits of eight words
+
+fn bits_arm(pairs: Vec[Vec[i32]]) -> i32 {
+    let words = 8;
+    let mut near: Vec[Vec[u64]] = Vec.filled(501, Vec.filled(words, 0u64));
+    for pair in pairs.iter() {
+        let (x, y) = (pair[0], pair[1]);
+        near[x][y / 64] |= 1u64 << (y % 64);
+        near[y][x / 64] |= 1u64 << (x % 64);
+    }
+    let degree: Vec[i64] = near.iter().map(|bits| bits.iter().map(|w| w.count_ones()).sum()).collect();
+    let nodes: Vec[i64] = (0..501).filter(|v| degree[v] > 0).collect();
+    let n = nodes.len();
+    let mut roots = 0;
+    let mut ways = 1;
+    for v in nodes.iter() {
+        if degree[v] == n - 1 {
+            roots += 1;
+            continue;
+        }
+        // the neighbour with the fewest pairs among those with as many
+        let mut parent = -1;
+        for u in nodes.iter() {
+            if near[v][u / 64] >> (u % 64) & 1 == 1 and degree[u] >= degree[v] {
+                if parent < 0 or degree[u] < degree[parent] {
+                    parent = u;
+                }
+            }
+        }
+        if parent < 0 {
+            return 0;
+        }
+        for w in 0..words {
+            let mut allowed = near[parent][w];
+            if parent / 64 == w {
+                allowed |= 1u64 << (parent % 64);
+            }
+            if near[v][w] & ~allowed != 0 {
+                return 0;
+            }
+        }
+        if degree[parent] == degree[v] {
+            ways = 2;
+        }
+    }
+    if roots == 0 {
+        return 0;
+    }
+    if roots > 1 {
+        ways = 2;
+    }
+    ways
+}
+
+// ---- ways_solution.kara: LeetCode's Rust template, through karac fix
+
+struct Solution {}
+
+impl Solution {
+    pub fn check_ways(pairs: Vec[Vec[i32]]) -> i32 {
+        let mut adj: Map[i32, Set[i32]] = Map.new();
+        for p in ref pairs {
+            adj.entry(p[0]).or_insert(Set.new()).insert(p[1]);
+            adj.entry(p[1]).or_insert(Set.new()).insert(p[0]);
+        }
+        let n = adj.len();
+        let mut nodes: Vec[i32] = adj.keys().cloned().collect();
+        nodes.sort_by(|a, b| adj[b].len().cmp(adj[a].len()));
+        if adj[nodes[0]].len() != n - 1 {
+            return 0;
+        }
+        let mut res = 1;
+        for node in nodes[1..] {
+            let deg = adj[node].len();
+            let mut parent = -1;
+            let mut parent_deg = i64.MAX;
+            for nb in ref adj[node] {
+                let d = adj[nb].len();
+                if d >= deg and d < parent_deg {
+                    parent = nb;
+                    parent_deg = d;
+                }
+            }
+            if parent == -1 {
+                return 0;
+            }
+            for nb in ref adj[node] {
+                if nb != parent and not adj[parent].contains(nb) {
+                    return 0;
+                }
+            }
+            if parent_deg == deg {
+                res = 2;
+            }
+        }
+        res
+    }
+}
+
+fn solution_arm(pairs: Vec[Vec[i32]]) -> i32 {
+    Solution.check_ways(pairs)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A random problem over 2 to 5 nodes labelled from 1 to 9: half the time
+// the ancestor pairs of a random tree, kept, with one pair dropped, or
+// with one added, and half the time random pairs.
+fn draw(seed: mut ref i64) -> Vec[Vec[i32]] {
+    let k = 2 + next_random(mut seed) % 4;
+    let mut labels: Vec[i32] = (1..=9).collect();
+    for i in 0..k {
+        let j = i + next_random(mut seed) % (9 - i);
+        labels.swap(i, j);
+    }
+    let mut have: Vec[Vec[bool]] = Vec.filled(k, Vec.filled(k, false));
+    if next_random(mut seed) % 2 == 0 {
+        let mut parent: Vec[i64] = Vec.filled(k, -1);
+        for i in 1..k {
+            parent[i] = next_random(mut seed) % i;
+        }
+        for i in 1..k {
+            let mut a = parent[i];
+            while a >= 0 {
+                have[i][a] = true;
+                have[a][i] = true;
+                a = parent[a];
+            }
+        }
+        let mode = next_random(mut seed) % 3;
+        let i = next_random(mut seed) % k;
+        let j = next_random(mut seed) % k;
+        if i != j and mode > 0 {
+            have[i][j] = mode == 2;
+            have[j][i] = mode == 2;
+        }
+    } else {
+        for i in 0..k {
+            for j in i + 1..k {
+                if next_random(mut seed) % 2 == 0 {
+                    have[i][j] = true;
+                    have[j][i] = true;
+                }
+            }
+        }
+    }
+    let mut pairs: Vec[Vec[i32]] = Vec.new();
+    for i in 0..k {
+        for j in i + 1..k {
+            if have[i][j] {
+                pairs.push([min(labels[i], labels[j]), max(labels[i], labels[j])]);
+            }
+        }
+    }
+    if pairs.is_empty() {
+        pairs.push([min(labels[0], labels[1]), max(labels[0], labels[1])]);
+    }
+    pairs
+}
+
+// the statement read literally: every rooted tree on the nodes, one root
+// and each other node a parent among the rest, kept when its pairs of an
+// ancestor and a descendant are exactly the pairs given; 0, 1, or 2 for
+// more than one
+fn literal(pairs: Slice[Vec[i32]]) -> i32 {
+    let mut nodes: Vec[i32] = Vec.new();
+    for pair in pairs.iter() {
+        for v in pair.iter() {
+            if not nodes.contains(v) {
+                nodes.push(v);
+            }
+        }
+    }
+    let k = nodes.len();
+    let mut given: Vec[Vec[bool]] = Vec.filled(k, Vec.filled(k, false));
+    for pair in pairs.iter() {
+        let i = nodes.iter().position(|v| v == pair[0]).unwrap();
+        let j = nodes.iter().position(|v| v == pair[1]).unwrap();
+        given[i][j] = true;
+        given[j][i] = true;
+    }
+    let mut trees = 0;
+    for root in 0..k {
+        // each other node's parent as a digit from 0 to k - 1
+        let mut parent: Vec[i64] = Vec.filled(k, 0);
+        loop {
+            let fine = (0..k).all(|i| i == root or parent[i] != i);
+            if fine {
+                let mut paired: Vec[Vec[bool]] = Vec.filled(k, Vec.filled(k, false));
+                let mut acyclic = true;
+                for i in 0..k {
+                    let mut a = i;
+                    let mut steps = 0;
+                    while a != root and acyclic {
+                        a = parent[a];
+                        steps += 1;
+                        if steps > k {
+                            acyclic = false;
+                        } else {
+                            paired[i][a] = true;
+                            paired[a][i] = true;
+                        }
+                    }
+                }
+                if acyclic and paired == given {
+                    trees += 1;
+                }
+            }
+            // the next choice of parents, the root's digit left at 0
+            let mut i = 0;
+            while i < k and (i == root or parent[i] == k - 1) {
+                if i != root {
+                    parent[i] = 0;
+                }
+                i += 1;
+            }
+            if i == k {
+                break;
+            }
+            parent[i] += 1;
+        }
+    }
+    min(trees, 2)
+}
+
+fn arm(a: i64, pairs: Slice[Vec[i32]]) -> i32 {
+    let pairs = pairs.to_vec();
+    match a {
+        0 => star_arm(pairs),
+        1 => sets_arm(pairs),
+        2 => bits_arm(pairs),
+        _ => solution_arm(pairs),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "sets", "bits", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1719;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let cases: Vec[Vec[Vec[i32]]] = (0..problems).map(|_| draw(mut seed)).collect();
+    for (p, pairs) in cases.iter().enumerate() {
+        let want = literal(pairs);
+        check = (check * 31 + want + pairs.len()) % 1000000007;
+        let mirrored: Vec[Vec[i32]] = pairs.iter().map(|pair| [501 - pair[1], 501 - pair[0]]).collect();
+        let reversed: Vec[Vec[i32]] = pairs.iter().rev().cloned().collect();
+        let mut nodes: Vec[i32] = pairs.iter().flat_map(|pair| pair.iter().cloned()).collect();
+        nodes.sort();
+        nodes.dedup();
+        let mut above = pairs.clone();
+        for v in nodes.iter() {
+            above.push([v, 500]);
+        }
+        let mut answers: Vec[i32] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, pairs);
+            let failed = [got != want, arm(a, mirrored) != got, arm(a, reversed) != got, got != 0 and arm(a, above) != 2];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({pairs}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

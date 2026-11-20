@@ -1,0 +1,91 @@
+// LeetCode #1730: Shortest Path to Get Food -- the search run backwards,
+// from every food at once.
+//
+// A path from you to a food, walked the other way, is a path from that
+// food to you over the same cells. So every food cell starts the queue at
+// distance 0, and the distance at which the search first reaches you is
+// the shortest way to any of them. O(m n).
+
+fn get_food(grid: Vec[Vec[char]]) -> i32 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut distance: Vec[Vec[i32]] = Vec.filled(rows, Vec.filled(cols, -1));
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    for r in 0..rows {
+        for c in 0..cols {
+            if grid[r][c] == '#' {
+                distance[r][c] = 0;
+                queue.push_back((r, c));
+            }
+        }
+    }
+    while let Some((r, c)) = queue.pop_front() {
+        if grid[r][c] == '*' {
+            return distance[r][c];
+        }
+        for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr >= 0 and nr < rows and nc >= 0 and nc < cols and grid[nr][nc] != 'X' and distance[nr][nc] < 0 {
+                distance[nr][nc] = distance[r][c] + 1;
+                queue.push_back((nr, nc));
+            }
+        }
+    }
+    -1
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn rows_of(lines: Slice[Str]) -> Vec[Vec[char]] {
+    lines.iter().map(|line| line.chars().collect()).collect()
+}
+
+// `count` grids of 1 to `most` rows and columns, each cell an obstacle
+// with a chance of 1 in 4, food 1 in 10, free otherwise, then you on one
+// cell
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut found = 0;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let rows = next_random(mut seed) % most + 1;
+        let cols = next_random(mut seed) % most + 1;
+        let mut grid: Vec[Vec[char]] = Vec.new();
+        for _ in 0..rows {
+            let row: Vec[char] = (0..cols)
+                .map(|_| {
+                    let r = next_random(mut seed) % 20;
+                    if r < 5 { 'X' } else if r < 7 { '#' } else { 'O' }
+                })
+                .collect();
+            grid.push(row);
+        }
+        let at = next_random(mut seed) % (rows * cols);
+        grid[at / cols][at % cols] = '*';
+        let answer = get_food(grid);
+        if answer >= 0 {
+            found += 1;
+            sum += answer;
+        }
+        check = (check * 31 + answer + 1 + rows * cols) % 1000000007;
+    }
+    println(f"{count} grids of up to {most} by {most}: food reached {found} times, steps sum to {sum}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then you alone, and a long way round
+    println(get_food(rows_of(["XXXXXX", "X*OOOX", "XOO#OX", "XXXXXX"])));
+    println(get_food(rows_of(["XXXXX", "X*XOX", "XOX#X", "XXXXX"])));
+    println(get_food(rows_of(["XXXXXXXX", "X*OXO#OX", "XOOXOOXX", "XOOOO#OX", "XXXXXXXX"])));
+    println(get_food(rows_of(["*"])));
+    println(get_food(rows_of(["*OOOO", "XXXXO", "#OOOO"])));
+    let mut seed = 1730;
+    batch(3000, 5, mut seed);
+    batch(300, 50, mut seed);
+    batch(5, 200, mut seed);
+}

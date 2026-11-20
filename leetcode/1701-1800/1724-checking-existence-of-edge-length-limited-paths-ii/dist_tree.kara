@@ -1,0 +1,141 @@
+// LeetCode #1724: Checking Existence of Edge Length Limited Paths II --
+// a Kruskal reconstruction tree.
+//
+// The edges joined in order of weight, each join that merges two
+// components making a new node, weighted by the edge, above the two
+// components' tops. A node's ancestors then grow in weight, and the nodes
+// p reaches over edges lighter than the limit are the leaves under its
+// highest ancestor lighter than the limit. Binary lifting finds that
+// ancestor for p and for q, and the answer is whether they are the same.
+// O(m log m + n log n) to build, O(log n) a query.
+
+struct DistanceLimitedPathsExist {
+    weight: Vec[i32],
+    up: Vec[Vec[i64]],
+}
+
+fn find(top: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while top[x] != x {
+        top[x] = top[top[x]];
+        x = top[x];
+    }
+    x
+}
+
+impl DistanceLimitedPathsExist {
+    fn new(n: i32, edge_list: Vec[Vec[i32]]) -> DistanceLimitedPathsExist {
+        let n = n as i64;
+        let mut edges = edge_list.clone();
+        edges.sort_by_key(|e| e[2]);
+        let size = 2 * n - 1;
+        let mut top: Vec[i64] = (0..size).collect();
+        let mut over: Vec[i64] = (0..size).collect();
+        let mut weight: Vec[i32] = Vec.filled(size, 0);
+        let mut next = n;
+        for e in edges.iter() {
+            let a = find(mut top, e[0]);
+            let b = find(mut top, e[1]);
+            if a == b {
+                continue;
+            }
+            weight[next] = e[2];
+            top[a] = next;
+            top[b] = next;
+            over[a] = next;
+            over[b] = next;
+            next += 1;
+        }
+        let mut levels = 1;
+        while 1 << levels < size {
+            levels += 1;
+        }
+        let mut up: Vec[Vec[i64]] = Vec.filled(levels, over);
+        for j in 1..levels {
+            for v in 0..size {
+                up[j][v] = up[j - 1][up[j - 1][v]];
+            }
+        }
+        DistanceLimitedPathsExist { weight, up }
+    }
+
+    // x's highest ancestor whose weight is below `limit`
+    fn highest(self, x: i64, limit: i32) -> i64 {
+        let mut x = x;
+        for j in (0..self.up.len()).rev() {
+            let above = self.up[j][x];
+            if self.weight[above] < limit {
+                x = above;
+            }
+        }
+        x
+    }
+
+    fn query(self, p: i32, q: i32, limit: i32) -> bool {
+        self.highest(p, limit) == self.highest(q, limit)
+    }
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// `count` graphs of 2 to `nodes` nodes and up to `edges` edges of weight
+// 1 to `top` between two different nodes, each asked `queries` questions
+// of two different nodes and a limit of 1 to `top` + 1; every answer
+// folded in
+fn batch(count: i64, nodes: i64, edges: i64, top: i64, queries: i64, seed: mut ref i64) {
+    let mut yes = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % (nodes - 1) + 2;
+        let m = wide(mut seed) % (edges + 1);
+        let mut edge_list: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..m {
+            let u = wide(mut seed) % n;
+            let mut v = wide(mut seed) % (n - 1);
+            if v >= u {
+                v += 1;
+            }
+            edge_list.push([u as i32, v as i32, (wide(mut seed) % top + 1) as i32]);
+        }
+        let graph = DistanceLimitedPathsExist.new(n as i32, edge_list);
+        for _ in 0..queries {
+            let p = wide(mut seed) % n;
+            let mut q = wide(mut seed) % (n - 1);
+            if q >= p {
+                q += 1;
+            }
+            let limit = wide(mut seed) % (top + 1) + 1;
+            let answer = graph.query(p as i32, q as i32, limit as i32);
+            if answer {
+                yes += 1;
+            }
+            check = (check * 31 + if answer { 2 } else { 1 }) % 1000000007;
+        }
+    }
+    println(f"{count} graphs of up to {nodes} nodes and {edges} edges, {queries} queries each: {yes} paths, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's example, then the same graph asked at a limit equal to an
+    // edge's weight and just above it
+    let graph = DistanceLimitedPathsExist.new(6, [[0, 2, 4], [0, 3, 2], [1, 2, 3], [2, 3, 1], [4, 5, 5]]);
+    println(graph.query(2, 3, 2));
+    println(graph.query(1, 3, 3));
+    println(graph.query(2, 0, 3));
+    println(graph.query(0, 5, 6));
+    println(graph.query(4, 5, 5));
+    println(graph.query(4, 5, 6));
+    let mut seed = 1724;
+    batch(3000, 8, 10, 6, 10, mut seed);
+    batch(100, 1000, 1500, 1000000000, 100, mut seed);
+    batch(4, 3000, 10000, 1000000000, 1000, mut seed);
+}

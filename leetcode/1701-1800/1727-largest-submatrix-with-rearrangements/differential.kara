@@ -1,0 +1,250 @@
+// LeetCode #1727: Largest Submatrix With Rearrangements -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random
+// matrices of 1 to 4 rows and 1 to 4 columns, each cell a one with a
+// chance of 2 in 3.
+//
+// P1  the answer is the statement read literally
+// P2  the columns in reverse order give the same answer
+// P3  the rows in reverse order give the same answer
+// P4  every row repeated, twice in a row, doubles the answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- submatrix.kara: the ★ arm: each row's column heights, sorted
+
+fn star_arm(matrix: Vec[Vec[i32]]) -> i32 {
+    let n = matrix[0].len();
+    let mut heights: Vec[i32] = Vec.filled(n, 0);
+    let mut best = 0;
+    for row in matrix.iter() {
+        for j in 0..n {
+            heights[j] = if row[j] == 1 { heights[j] + 1 } else { 0 };
+        }
+        let mut sorted = heights.clone();
+        sorted.sort();
+        for k in 0..n {
+            best = max(best, sorted[k] * (n - k) as i32);
+        }
+    }
+    best
+}
+
+// ---- submatrix_order.kara: the columns kept in order of height, row to row
+
+fn order_arm(matrix: Vec[Vec[i32]]) -> i32 {
+    let n = matrix[0].len();
+    let mut heights: Vec[i32] = Vec.filled(n, 0);
+    let mut order: Vec[i64] = (0..n).collect();
+    let mut best = 0;
+    for row in matrix.iter() {
+        let mut next: Vec[i64] = Vec.new();
+        let mut fallen: Vec[i64] = Vec.new();
+        for j in order.iter() {
+            if row[j] == 1 {
+                heights[j] += 1;
+                next.push(j);
+            } else {
+                heights[j] = 0;
+                fallen.push(j);
+            }
+        }
+        next.extend(fallen);
+        order = next;
+        for k in 0..n {
+            best = max(best, heights[order[k]] * (k + 1) as i32);
+        }
+    }
+    best
+}
+
+// ---- submatrix_counts.kara: the heights counted into buckets
+
+fn counts_arm(matrix: Vec[Vec[i32]]) -> i32 {
+    let m = matrix.len();
+    let n = matrix[0].len();
+    let mut heights: Vec[i64] = Vec.filled(n, 0);
+    let mut best = 0;
+    for row in matrix.iter() {
+        let mut buckets: Vec[i64] = Vec.filled(m + 1, 0);
+        for j in 0..n {
+            heights[j] = if row[j] == 1 { heights[j] + 1 } else { 0 };
+            buckets[heights[j]] += 1;
+        }
+        let mut wide = 0;
+        for h in (1..m + 1).rev() {
+            wide += buckets[h];
+            best = max(best, h * wide);
+        }
+    }
+    best as i32
+}
+
+// ---- submatrix_solution.kara: LeetCode's Rust template, through karac fix
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn largest_submatrix(matrix: own Vec[Vec[i32]]) -> i32 {
+        let mut matrix = matrix;
+        let m = matrix.len();
+        let n = matrix[0].len();
+        for i in 1..m {
+            for j in 0..n {
+                if matrix[i][j] == 1 {
+                    matrix[i][j] += matrix[i - 1][j];
+                }
+            }
+        }
+        let mut ans: i32 = 0;
+        for row in matrix.iter_mut() {
+            row.sort_by(|a, b| b.cmp(a));
+            for (j, h) in row.iter().enumerate() {
+                ans = ans.max(h * (j as i32 + 1));
+            }
+        }
+        ans
+    }
+}
+
+fn solution_arm(matrix: own Vec[Vec[i32]]) -> i32 {
+    SolutionArm.largest_submatrix(matrix)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// every order of the columns, built by swapping each place with every
+// later one in turn
+fn orders(at: i64, order: mut ref Vec[i64], all: mut ref Vec[Vec[i64]]) {
+    if at == order.len() {
+        all.push(order.clone());
+        return;
+    }
+    for k in at..order.len() {
+        order.swap(at, k);
+        orders(at + 1, mut order, mut all);
+        order.swap(at, k);
+    }
+}
+
+// the statement read literally: every order of the columns, and in each
+// every submatrix, rows r1 to r2 and columns c1 to c2, whose cells are
+// all ones; the largest area among them
+fn literal(matrix: Slice[Vec[i32]]) -> i32 {
+    let m = matrix.len();
+    let n = matrix[0].len();
+    let mut order: Vec[i64] = (0..n).collect();
+    let mut all: Vec[Vec[i64]] = Vec.new();
+    orders(0, mut order, mut all);
+    let mut best = 0;
+    for columns in all.iter() {
+        for r1 in 0..m {
+            for r2 in r1..m {
+                for c1 in 0..n {
+                    for c2 in c1..n {
+                        let mut ones = true;
+                        for r in r1..r2 + 1 {
+                            for c in c1..c2 + 1 {
+                                if matrix[r][columns[c]] != 1 {
+                                    ones = false;
+                                }
+                            }
+                        }
+                        if ones {
+                            best = max(best, (r2 - r1 + 1) * (c2 - c1 + 1));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    best as i32
+}
+
+fn arm(a: i64, matrix: Slice[Vec[i32]]) -> i32 {
+    let matrix = matrix.to_vec();
+    match a {
+        0 => star_arm(matrix),
+        1 => order_arm(matrix),
+        2 => counts_arm(matrix),
+        _ => solution_arm(matrix),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "order", "counts", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1727;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[Vec[Vec[i32]]] = Vec.new();
+    for _ in 0..problems {
+        let m = next_random(mut seed) % 4 + 1;
+        let n = next_random(mut seed) % 4 + 1;
+        let mut matrix: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..m {
+            let row: Vec[i32] = (0..n).map(|_| if next_random(mut seed) % 3 == 0 { 0 } else { 1 }).collect();
+            matrix.push(row);
+        }
+        cases.push(matrix);
+    }
+    for (p, matrix) in cases.iter().enumerate() {
+        let want = literal(matrix);
+        check = (check * 31 + want + matrix.len() * matrix[0].len()) % 1000000007;
+        let mirrored: Vec[Vec[i32]] = matrix.iter().map(|row| row.iter().rev().cloned().collect()).collect();
+        let upside: Vec[Vec[i32]] = matrix.iter().rev().cloned().collect();
+        let mut doubled: Vec[Vec[i32]] = Vec.new();
+        for row in matrix.iter() {
+            doubled.push(row.clone());
+            doubled.push(row.clone());
+        }
+        let mut answers: Vec[i32] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, matrix);
+            let failed = [got != want, arm(a, mirrored) != got, arm(a, upside) != got, arm(a, doubled) != 2 * got];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({matrix}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

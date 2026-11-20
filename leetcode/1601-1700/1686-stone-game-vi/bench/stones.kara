@@ -1,0 +1,56 @@
+// LeetCode #1686: Stone Game VI -- the bench: the ★ arm on 50 random games
+// of 100000 stones, all drawn first, each answered 10 times.
+//
+// Taking a stone gains its worth to the taker and keeps its worth from the
+// other, so a stone weighs alice + bob to whoever moves, and both take the
+// heaviest left. The indexes sorted by that weight, heaviest first, are
+// taken in turn. O(n log n).
+
+fn stone_game(alice: Vec[i32], bob: Vec[i32]) -> i32 {
+    let n = alice.len();
+    let mut order: Vec[i64] = (0..n).collect();
+    order.sort_by_key(|i| -(alice[i] + bob[i]));
+    let mut difference: i32 = 0;
+    for (turn, i) in order.iter().enumerate() {
+        if turn % 2 == 0 {
+            difference += alice[i];
+        } else {
+            difference -= bob[i];
+        }
+    }
+    difference.signum()
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 50;
+    let size = 100000;
+    let rounds = 10;
+    let mut seed = 1686;
+    let mut games: Vec[(Vec[i32], Vec[i32])] = Vec.new();
+    for _ in 0..count {
+        let mut alice: Vec[i32] = Vec.new();
+        let mut bob: Vec[i32] = Vec.new();
+        for _ in 0..size {
+            alice.push((next_random(mut seed) % 100 + 1) as i32);
+            bob.push((next_random(mut seed) % 100 + 1) as i32);
+        }
+        games.push((alice, bob));
+    }
+    let mut wins = [0, 0, 0];
+    let mut check = 0;
+    for r in 0..rounds {
+        for (alice, bob) in games.iter() {
+            let answer = stone_game(alice, bob);
+            wins[answer + 1] += 1;
+            check = (check * 31 + answer + 2 + r) % 1000000007;
+        }
+    }
+    println(f"{count} games of {size} stones, {rounds} rounds: Alice {wins[2]}, Bob {wins[0]}, draws {wins[1]}, checksum {check}");
+}

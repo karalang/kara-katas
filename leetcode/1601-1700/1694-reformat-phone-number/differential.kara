@@ -1,0 +1,266 @@
+// LeetCode #1694: Reformat Phone Number -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random numbers
+// of 2 to 14 digits, spaces and dashes, at least two of them digits.
+//
+// P1  the answer is the statement read literally
+// P2  the answer's digits are the number's, in order
+// P3  every block is 2 or 3 long, at most two are 2, and none of 3 follows one of 2
+// P4  the digits alone, each followed by a space, give the same answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- phone.kara: the ★ arm: the digits, then blocks of three while more than four are left
+
+fn star_arm(number: Str) -> String {
+    let digits: String = number.chars().filter(|c| c.is_ascii_digit()).collect();
+    let mut blocks: Vec[Str] = Vec.new();
+    let mut at = 0;
+    while digits.len() - at > 4 {
+        blocks.push(digits[at..at + 3]);
+        at += 3;
+    }
+    if digits.len() - at == 4 {
+        blocks.push(digits[at..at + 2]);
+        blocks.push(digits[at + 2..]);
+    } else {
+        blocks.push(digits[at..]);
+    }
+    blocks.join("-")
+}
+
+// ---- phone_sizes.kara: the block sizes from the count
+
+fn sizes_arm(number: Str) -> String {
+    let digits: Vec[u8] = number.bytes().iter().filter(|b| b.is_ascii_digit()).collect();
+    let d = digits.len();
+    let mut sizes: Vec[i64] = match d % 3 {
+        0 => Vec.filled(d / 3, 3),
+        1 => Vec.filled((d - 4) / 3, 3),
+        _ => Vec.filled(d / 3, 3),
+    };
+    match d % 3 {
+        1 => sizes.extend([2, 2]),
+        2 => sizes.push(2),
+        _ => {}
+    }
+    let mut out = String.new();
+    let mut at = 0;
+    for (i, size) in sizes.iter().enumerate() {
+        if i > 0 {
+            out.push('-');
+        }
+        for b in digits[at..at + size].iter() {
+            out.push(b as char);
+        }
+        at += size;
+    }
+    out
+}
+
+// ---- phone_recursive.kara: the blocks cut by recursion
+
+fn recursive_blocks(digits: Str) -> String {
+    match digits.len() {
+        0..=3 => digits.to_string(),
+        4 => f"{digits[..2]}-{digits[2..]}",
+        _ => f"{digits[..3]}-{recursive_blocks(digits[3..])}",
+    }
+}
+
+fn recursive_arm(number: Str) -> String {
+    let mut digits = String.new();
+    for c in number.chars() {
+        if c != ' ' and c != '-' {
+            digits.push(c);
+        }
+    }
+    recursive_blocks(digits)
+}
+
+// ---- phone_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn reformat_number(number: String) -> String {
+        let digits: Vec[char] = number.chars().filter(|c| c.is_ascii_digit()).collect();
+        let n = digits.len();
+        let mut res = String.new();
+        let mut i = 0;
+        while n - i > 4 {
+            res.extend(digits[i..i + 3].iter());
+            res.push('-');
+            i += 3;
+        }
+        if n - i == 4 {
+            res.extend(digits[i..i + 2].iter());
+            res.push('-');
+            res.extend(digits[i + 2..].iter());
+        } else {
+            res.extend(digits[i..].iter());
+        }
+        res
+    }
+}
+
+fn solution_arm(number: String) -> String {
+    SolutionArm.reformat_number(number)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// every way to cut `left` digits into blocks of 2 and 3, the sizes so far
+// in `sizes`, each one kept in `ways`
+fn cuts(left: i64, sizes: mut ref Vec[i64], ways: mut ref Vec[Vec[i64]]) {
+    if left == 0 {
+        ways.push(sizes.clone());
+        return;
+    }
+    for size in [2, 3] {
+        if size <= left {
+            sizes.push(size);
+            cuts(left - size, mut sizes, mut ways);
+            sizes.pop();
+        }
+    }
+}
+
+// the statement read literally: the spaces and dashes removed, the digits
+// cut into blocks so that none is 1 long, at most two are 2 long, and the
+// blocks of 3 come first, as cutting them from the left until 4 or fewer
+// digits are left does; of every cut into 2s and 3s exactly one is so
+fn literal(number: Str) -> String {
+    let digits: Vec[char] = number.chars().filter(|c| c != ' ' and c != '-').collect();
+    let mut ways: Vec[Vec[i64]] = Vec.new();
+    let mut sizes: Vec[i64] = Vec.new();
+    cuts(digits.len(), mut sizes, mut ways);
+    let mut chosen: Vec[Vec[i64]] = Vec.new();
+    for way in ways.iter() {
+        let twos = way.iter().filter(|s| s == 2).count();
+        let threes_first = (1..way.len()).all(|i| not (way[i - 1] == 2 and way[i] == 3));
+        if twos <= 2 and threes_first {
+            chosen.push(way.clone());
+        }
+    }
+    assert(chosen.len() == 1);
+    let mut out = String.new();
+    let mut at = 0;
+    for size in chosen[0].iter() {
+        if at > 0 {
+            out.push('-');
+        }
+        for i in at..at + size {
+            out.push(digits[i]);
+        }
+        at += size;
+    }
+    out
+}
+
+// every block of the answer 2 or 3 long, at most two of them 2, and none
+// of 3 after one of 2
+fn well_cut(answer: Str) -> bool {
+    let sizes: Vec[i64] = answer.split("-").map(|b| b.len()).collect();
+    let twos = sizes.iter().filter(|s| s == 2).count();
+    let ordered = (1..sizes.len()).all(|i| not (sizes[i - 1] == 2 and sizes[i] == 3));
+    sizes.iter().all(|s| s == 2 or s == 3) and twos <= 2 and ordered
+}
+
+fn arm(a: i64, number: Str) -> String {
+    match a {
+        0 => star_arm(number),
+        1 => sizes_arm(number),
+        2 => recursive_arm(number),
+        _ => solution_arm(number.to_string()),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "sizes", "recursive", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1694;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let alphabet = "0123456789 -";
+    // 2 to 14 characters, two of them digits, the rest digits, spaces or
+    // dashes
+    let mut cases: Vec[String] = Vec.new();
+    for _ in 0..problems {
+        let length = next_random(mut seed) % 13 + 2;
+        let first = next_random(mut seed) % length;
+        let second = (first + 1 + next_random(mut seed) % (length - 1)) % length;
+        let mut number = String.new();
+        for i in 0..length {
+            let pick = if i == first or i == second { next_random(mut seed) % 10 } else { next_random(mut seed) % 12 };
+            number.push_str(alphabet.substring(pick, pick + 1));
+        }
+        cases.push(number);
+    }
+    for (p, number) in cases.iter().enumerate() {
+        let want = literal(number);
+        for b in want.bytes().iter() {
+            check = (check * 31 + b) % 1000000007;
+        }
+        check = (check * 31 + number.len()) % 1000000007;
+        let digits: String = number.chars().filter(|c| c.is_ascii_digit()).collect();
+        let mut spaced = String.new();
+        for c in digits.chars() {
+            spaced.push(c);
+            spaced.push(' ');
+        }
+        let mut answers: Vec[String] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, number);
+            let kept: String = got.chars().filter(|c| c != '-').collect();
+            let failed = [
+                got != want,
+                kept != digits,
+                not well_cut(got),
+                arm(a, spaced) != got,
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} (\"{number}\"), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+            answers.push(got);
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

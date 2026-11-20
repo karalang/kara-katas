@@ -1,0 +1,104 @@
+// LeetCode #1676: Lowest Common Ancestor of a Binary Tree IV -- the bench:
+// the ★ arm on one tree of 10000 nodes, LeetCode's largest, asked about
+// 500 sets of 1 to 50 nodes, all drawn first, each asked 10 times.
+
+fn lowest_common_ancestor(root: Option[TreeNode], nodes: Vec[TreeNode]) -> Option[TreeNode] {
+    let wanted: Set[i32] = nodes.iter().map(|n| n.val).collect();
+    search(root, wanted)
+}
+
+fn search(node: Option[TreeNode], wanted: Set[i32]) -> Option[TreeNode] {
+    let n = node?;
+    if wanted.contains(n.val) {
+        return Some(n);
+    }
+    match (search(n.left, wanted), search(n.right, wanted)) {
+        (Some(_), Some(_)) => Some(n),
+        (Some(l), None) => Some(l),
+        (None, r) => r,
+    }
+}
+
+// ---- the harness ----------------------------------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn leaf(val: i32) -> TreeNode {
+    TreeNode { val: val, left: None, right: None }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` nodes holding 0 to n - 1 shuffled, each hung from a random node
+// already placed, down a random walk to the first free child; every node,
+// the root first
+fn random_tree(n: i64, seed: mut ref i64) -> Vec[TreeNode] {
+    let mut values: Vec[i32] = (0..n).map(|v| v as i32).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        values.swap(i, j);
+    }
+    let mut nodes: Vec[TreeNode] = Vec.new();
+    for i in 0..n {
+        let node = leaf(values[i]);
+        if i > 0 {
+            let mut at = nodes[next_random(mut seed) % i];
+            loop {
+                if next_random(mut seed) % 2 == 0 {
+                    match at.left {
+                        Some(child) => at = child,
+                        None => {
+                            at.left = Some(node);
+                            break;
+                        }
+                    }
+                } else {
+                    match at.right {
+                        Some(child) => at = child,
+                        None => {
+                            at.right = Some(node);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        nodes.push(node);
+    }
+    nodes
+}
+
+fn main() {
+    let n = 10000;
+    let queries = 500;
+    let rounds = 10;
+    let mut seed = 1676;
+    let mut nodes = random_tree(n, mut seed);
+    let root = Some(nodes[0]);
+    let mut sets: Vec[Vec[TreeNode]] = Vec.new();
+    for _ in 0..queries {
+        let k = next_random(mut seed) % 50 + 1;
+        for i in 0..k {
+            let j = i + next_random(mut seed) % (n - i);
+            nodes.swap(i, j);
+        }
+        sets.push(nodes[..k].to_vec());
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for set in sets.iter() {
+            let found = lowest_common_ancestor(root, set).unwrap().val;
+            total += found;
+            check = (check * 31 + found + r) % 1000000007;
+        }
+    }
+    println(f"{n} nodes, {queries} sets, {rounds} rounds: answers sum to {total}, checksum {check}");
+}

@@ -1,0 +1,156 @@
+// LeetCode #1728: Cat and Mouse II -- a Rust solution as LeetCode's Rust
+// users write it, carried to Kāra by `karac fix`.
+//
+// A search from the start with a memo on (turn, mouse, cat), the turns
+// cut at twice the open cells: the mouse that has not won by then never
+// will, so the cat wins.
+
+struct Solution {}
+
+impl Solution {
+    pub fn can_mouse_win(grid: Vec[String], cat_jump: i32, mouse_jump: i32) -> bool {
+        let g: Vec[Vec[u8]] = grid.iter().map(|s| s.bytes().to_vec()).collect();
+        let rows = g.len();
+        let cols = g[0].len();
+        let mut mouse = 0;
+        let mut cat = 0;
+        let mut floors = 0;
+        for i in 0..rows {
+            for j in 0..cols {
+                match g[i][j] {
+                    b'M' => mouse = i * cols + j,
+                    b'C' => cat = i * cols + j,
+                    _ => {}
+                }
+                if g[i][j] != b'#' {
+                    floors += 1;
+                }
+            }
+        }
+        let limit = floors * 2;
+        let mut memo = Vec.filled(limit + 1, Vec.filled(rows * cols, Vec.filled(rows * cols, -1i8)));
+        Solution.dfs(g, 0, mouse, cat, limit, cat_jump, mouse_jump, mut memo)
+    }
+
+    fn dfs(
+        g: Vec[Vec[u8]],
+        turn: i64,
+        mouse: i64,
+        cat: i64,
+        limit: i64,
+        cat_jump: i64,
+        mouse_jump: i64,
+        memo: mut ref Vec[Vec[Vec[i8]]],
+    ) -> bool {
+        if turn == limit {
+            return false;
+        }
+        if memo[turn][mouse][cat] != -1 {
+            return memo[turn][mouse][cat] == 1;
+        }
+        let rows = g.len() as i32;
+        let cols = g[0].len() as i32;
+        let dirs = [(0, 1), (1, 0), (0, -1), (-1, 0)];
+        let mouse_turn = turn % 2 == 0;
+        let (pos, jump) = if mouse_turn { (mouse, mouse_jump) } else { (cat, cat_jump) };
+        let r = (pos / g[0].len()) as i32;
+        let c = (pos % g[0].len()) as i32;
+        let mut result = not mouse_turn;
+        'outer: for (dr, dc) in dirs.iter() {
+            for k in 0..=jump as i32 {
+                let nr = r + dr * k;
+                let nc = c + dc * k;
+                if nr < 0 or nr >= rows or nc < 0 or nc >= cols or g[nr][nc] == b'#' {
+                    break;
+                }
+                let next = nr * cols + nc;
+                let ch = g[nr][nc];
+                if mouse_turn {
+                    if ch == b'F' {
+                        result = true;
+                        break 'outer;
+                    }
+                    if next != cat and Solution.dfs(g, turn + 1, next, cat, limit, cat_jump, mouse_jump, mut memo) {
+                        result = true;
+                        break 'outer;
+                    }
+                } else {
+                    if ch == b'F' or next == mouse {
+                        result = false;
+                        break 'outer;
+                    }
+                    if not Solution.dfs(g, turn + 1, mouse, next, limit, cat_jump, mouse_jump, mut memo) {
+                        result = false;
+                        break 'outer;
+                    }
+                }
+            }
+        }
+        memo[turn][mouse][cat] = if result { 1 } else { 0 };
+        result
+    }
+}
+
+fn can_mouse_win(grid: Vec[String], cat_jump: i32, mouse_jump: i32) -> bool {
+    Solution.can_mouse_win(grid, cat_jump, mouse_jump)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a grid of `rows` by `cols`, a wall in each cell with a chance of 1 in
+// 4, then the cat, the mouse and the food on three different cells
+fn draw(rows: i64, cols: i64, seed: mut ref i64) -> Vec[String] {
+    let cells = rows * cols;
+    let mut marks: Vec[char] = (0..cells).map(|_| if next_random(mut seed) % 4 == 0 { '#' } else { '.' }).collect();
+    let mut places: Vec[i64] = (0..cells).collect();
+    for i in 0..3 {
+        let j = i + next_random(mut seed) % (cells - i);
+        places.swap(i, j);
+    }
+    marks[places[0]] = 'C';
+    marks[places[1]] = 'M';
+    marks[places[2]] = 'F';
+    (0..rows).map(|r| marks[r * cols..(r + 1) * cols].iter().collect()).collect()
+}
+
+// `count` grids of 1 to `most` rows and columns, at least three cells,
+// and jumps of 1 to `most`
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut wins = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let mut rows = next_random(mut seed) % most + 1;
+        let cols = next_random(mut seed) % most + 1;
+        while rows * cols < 3 {
+            rows += 1;
+        }
+        let grid = draw(rows, cols, mut seed);
+        let cat_jump = (next_random(mut seed) % most + 1) as i32;
+        let mouse_jump = (next_random(mut seed) % most + 1) as i32;
+        let answer = can_mouse_win(grid, cat_jump, mouse_jump);
+        if answer {
+            wins += 1;
+        }
+        check = (check * 31 + if answer { 2 } else { 1 } + rows * cols) % 1000000007;
+    }
+    println(f"{count} grids of up to {most} by {most}: the mouse wins {wins}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then a mouse beside the food, and a cat
+    // between them in a corridor
+    println(can_mouse_win(["####F", "#C...", "M...."], 1, 2));
+    println(can_mouse_win(["M.C...F"], 1, 4));
+    println(can_mouse_win(["M.C...F"], 1, 3));
+    println(can_mouse_win(["MF", "C."], 8, 1));
+    println(can_mouse_win(["M.C.F"], 1, 1));
+    let mut seed = 1728;
+    batch(3000, 3, mut seed);
+    batch(300, 5, mut seed);
+    batch(20, 8, mut seed);
+}

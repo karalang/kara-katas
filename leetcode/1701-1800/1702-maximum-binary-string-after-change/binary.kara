@@ -1,0 +1,73 @@
+// LeetCode #1702: Maximum Binary String After Change -- the ★ arm: one 0
+// is left, as far right as the zeros allow.
+//
+// The 1s before the first 0 stay. From there "10" -> "01" brings every
+// later 0 back next to the first, and "00" -> "10" turns a run of k zeros
+// into k - 1 ones and a 0. So with the first 0 at f and z zeros in all,
+// the answer is all 1s but a 0 at f + z - 1. O(n).
+
+fn maximum_binary_string(binary: own String) -> String {
+    let digits = binary.bytes();
+    let mut first = -1;
+    let mut zeros = 0;
+    for (i, b) in digits.iter().enumerate() {
+        if b == b'0' {
+            if first < 0 {
+                first = i;
+            }
+            zeros += 1;
+        }
+    }
+    if zeros == 0 {
+        return binary;
+    }
+    let mut out = String.with_capacity(digits.len());
+    for i in 0..digits.len() {
+        out.push(if i == first + zeros - 1 { '0' } else { '1' });
+    }
+    out
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random strings of 1 to `most` digits, each a 1 with a chance of
+// its string's own from 0 to 10 in 10; the zeros left in the answers, and
+// a checksum of every answer's digits
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut zeros = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let lean = next_random(mut seed) % 11;
+        let mut binary = String.new();
+        for _ in 0..n {
+            binary.push(if next_random(mut seed) % 10 < lean { '1' } else { '0' });
+        }
+        let answer = maximum_binary_string(binary);
+        for b in answer.bytes().iter() {
+            if b == b'0' {
+                zeros += 1;
+            }
+            check = (check * 31 + b) % 1000000007;
+        }
+    }
+    println(f"{count} strings of up to {most} digits: {zeros} zeros left, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then a lone 1, four zeros, and no zero
+    println(maximum_binary_string("000110"));
+    println(maximum_binary_string("01"));
+    println(maximum_binary_string("1"));
+    println(maximum_binary_string("0000"));
+    println(maximum_binary_string("1111"));
+    let mut seed = 1702;
+    batch(3000, 12, mut seed);
+    batch(300, 1000, mut seed);
+    batch(10, 100000, mut seed);
+}

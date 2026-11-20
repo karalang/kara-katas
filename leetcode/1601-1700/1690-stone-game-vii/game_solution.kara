@@ -1,0 +1,63 @@
+// LeetCode #1690: Stone Game VII -- a Rust solution as LeetCode's Rust users
+// write it: prefix sums in `vec![0; n + 1]`, a `vec![vec![0; n]; n]`
+// table filled from the right, and `max` as a method.
+
+struct Solution {}
+
+impl Solution {
+    pub fn stone_game_vii(stones: Vec[i32]) -> i32 {
+        let n = stones.len();
+        let mut pre = Vec.filled(n + 1, 0i32);
+        for i in 0..n {
+            pre[i + 1] = pre[i] + stones[i];
+        }
+        let mut dp = Vec.filled(n, Vec.filled(n, 0i32));
+        for i in (0..n).rev() {
+            for j in i + 1..n {
+                dp[i][j] = (pre[j + 1] - pre[i + 1] - dp[i + 1][j]).max(pre[j] - pre[i] - dp[i][j - 1]);
+            }
+        }
+        dp[0][n - 1]
+    }
+}
+
+fn stone_game(stones: Vec[i32]) -> i32 {
+    Solution.stone_game_vii(stones)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random rows of 2 to `most` stones from 1 to `top`; the answers
+// summed, and a checksum of them
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % (most - 1) + 2;
+        let mut stones: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            stones.push((next_random(mut seed) % top + 1) as i32);
+        }
+        let answer = stone_game(stones);
+        total += answer;
+        check = (check * 31 + answer) % 1000000007;
+    }
+    println(f"{count} rows of up to {most} stones up to {top}: answers sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, two stones alike, and two far apart
+    println(stone_game([5, 3, 1, 4, 2]));
+    println(stone_game([7, 90, 5, 1, 100, 10, 10, 2]));
+    println(stone_game([1, 1]));
+    println(stone_game([1000, 1]));
+    let mut seed = 1690;
+    batch(3000, 10, 10, mut seed);
+    batch(300, 100, 1000, mut seed);
+    batch(30, 1000, 1000, mut seed);
+}

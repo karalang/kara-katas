@@ -1,0 +1,74 @@
+// LeetCode #1694: Reformat Phone Number -- the ★ arm: the digits, then
+// blocks of three while more than four are left.
+//
+// The spaces and dashes go first. While more than four digits are left a
+// block of three is cut; four left make two blocks of two, and two or
+// three one block. O(n).
+
+fn reformat_number(number: Str) -> String {
+    let digits: String = number.chars().filter(|c| c.is_ascii_digit()).collect();
+    let mut blocks: Vec[Str] = Vec.new();
+    let mut at = 0;
+    while digits.len() - at > 4 {
+        blocks.push(digits[at..at + 3]);
+        at += 3;
+    }
+    if digits.len() - at == 4 {
+        blocks.push(digits[at..at + 2]);
+        blocks.push(digits[at + 2..]);
+    } else {
+        blocks.push(digits[at..]);
+    }
+    blocks.join("-")
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random numbers of 2 to `most` characters, each a digit, a space
+// or a dash, at least two of them digits; the dashes in the answers
+// summed, and a checksum of every answer's bytes
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let alphabet = "0123456789 -";
+    let mut dashes = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let length = next_random(mut seed) % (most - 1) + 2;
+        let mut number = String.new();
+        // two digits somewhere, the rest drawn from all twelve
+        let first = next_random(mut seed) % length;
+        let second = (first + 1 + next_random(mut seed) % (length - 1)) % length;
+        for i in 0..length {
+            let pick = if i == first or i == second { next_random(mut seed) % 10 } else { next_random(mut seed) % 12 };
+            number.push_str(alphabet.substring(pick, pick + 1));
+        }
+        let answer = reformat_number(number);
+        for b in answer.bytes().iter() {
+            if b == b'-' {
+                dashes += 1;
+            }
+            check = (check * 31 + b) % 1000000007;
+        }
+    }
+    println(f"{count} numbers of up to {most} characters: {dashes} dashes, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then two digits, four, five, and seven
+    // among spaces and dashes
+    println(reformat_number("1-23-45 6"));
+    println(reformat_number("123 4-567"));
+    println(reformat_number("123 4-5678"));
+    println(reformat_number("12"));
+    println(reformat_number("1234"));
+    println(reformat_number("12345"));
+    println(reformat_number("--1 2 3 - 4 5 6 7--"));
+    let mut seed = 1694;
+    batch(3000, 12, mut seed);
+    batch(300, 100, mut seed);
+    batch(10, 100000, mut seed);
+}

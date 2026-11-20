@@ -1,0 +1,218 @@
+// LeetCode #1666: Change the Root of a Binary Tree -- up from the leaf.
+//
+// One walk from the leaf to the root, each node in turn let go by its
+// parent, its left child (if any) moved to the right, and its parent hung
+// on its left. Each node's parent link is set to the node below it on the
+// path, the one it now hangs from, and the old root ends the walk. O(h)
+// for a path of h nodes.
+
+fn flip_binary_tree(root: Node, leaf: Node) -> Node {
+    let mut cur = leaf;
+    let mut below: Option[Node] = None;
+    loop {
+        let above = cur.parent;
+        cur.parent = below;
+        let Some(p) = above else {
+            break;
+        };
+        if p.left.is_some_and(|l| l.ref_eq(cur)) {
+            p.left = None;
+        } else {
+            p.right = None;
+        }
+        if cur.left.is_some() {
+            cur.right = cur.left;
+        }
+        cur.left = Some(p);
+        below = Some(cur);
+        cur = p;
+    }
+    leaf
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+shared struct Node {
+    mut val: i32,
+    mut left: Option[Node],
+    mut right: Option[Node],
+    mut parent: weak Node,
+}
+
+fn leaf(val: i32) -> Node {
+    Node { val: val, left: None, right: None, parent: None }
+}
+
+// the tree LeetCode's level-order list describes, `None` for null, each
+// node's parent set
+fn from_level_order(items: Slice[Option[i32]]) -> Vec[Node] {
+    let root = leaf(items[0].unwrap());
+    let mut nodes = [root];
+    let mut queue = VecDeque.new();
+    queue.push_back(root);
+    let mut i = 1;
+    while i < items.len() {
+        let node = queue.pop_front().unwrap();
+        for side in 0..2 {
+            if i < items.len() {
+                if let Some(v) = items[i] {
+                    let child = leaf(v);
+                    child.parent = node;
+                    if side == 0 {
+                        node.left = Some(child);
+                    } else {
+                        node.right = Some(child);
+                    }
+                    queue.push_back(child);
+                    nodes.push(child);
+                }
+                i += 1;
+            }
+        }
+    }
+    nodes
+}
+
+// LeetCode's level-order form of a tree, trailing nulls dropped
+fn written(root: Node) -> String {
+    let mut items: Vec[String] = Vec.new();
+    let mut queue: VecDeque[Option[Node]] = VecDeque.new();
+    queue.push_back(Some(root));
+    while let Some(slot) = queue.pop_front() {
+        match slot {
+            Some(node) => {
+                items.push(f"{node.val}");
+                queue.push_back(node.left);
+                queue.push_back(node.right);
+            }
+            None => items.push("null"),
+        }
+    }
+    while items.last() == Some("null") {
+        items.pop();
+    }
+    "[" + items.join(",") + "]"
+}
+
+// the nodes of the tree under `root` in level order, or None if some
+// node's parent link does not name the node above it
+fn level_order(root: Node) -> Option[Vec[i32]] {
+    if root.parent.is_some() {
+        return None;
+    }
+    let mut values = Vec.new();
+    let mut queue = VecDeque.new();
+    queue.push_back(root);
+    while let Some(node) = queue.pop_front() {
+        values.push(node.val);
+        for child in [node.left, node.right] {
+            if let Some(c) = child {
+                match c.parent {
+                    Some(p) if p.ref_eq(node) => queue.push_back(c),
+                    _ => return None,
+                }
+            }
+        }
+    }
+    Some(values)
+}
+
+fn find(nodes: Slice[Node], val: i32) -> Node {
+    for n in nodes.iter() {
+        if n.val == val {
+            return n;
+        }
+    }
+    panic("no such node");
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` nodes holding 0 to n - 1 shuffled, each hung from a random node
+// already placed, down a random walk to the first free child; the nodes
+// in the order placed, the root first
+fn random_tree(n: i64, seed: mut ref i64) -> Vec[Node] {
+    let mut values: Vec[i32] = (0..n).map(|v| v as i32).collect();
+    for i in (1..n).rev() {
+        let j = (next_random(mut seed) * 32768 + next_random(mut seed)) % (i + 1);
+        values.swap(i, j);
+    }
+    let mut nodes: Vec[Node] = Vec.new();
+    for i in 0..n {
+        let node = leaf(values[i]);
+        if i > 0 {
+            let mut at = nodes[(next_random(mut seed) * 32768 + next_random(mut seed)) % i];
+            loop {
+                if next_random(mut seed) % 2 == 0 {
+                    match at.left {
+                        Some(child) => at = child,
+                        None => {
+                            node.parent = at;
+                            at.left = Some(node);
+                            break;
+                        }
+                    }
+                } else {
+                    match at.right {
+                        Some(child) => at = child,
+                        None => {
+                            node.parent = at;
+                            at.right = Some(node);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        nodes.push(node);
+    }
+    nodes
+}
+
+// `count` random trees of 2 to `most` nodes, each turned to hang from a
+// random leaf; the trees whose parent links no longer match counted, and
+// a checksum of the new trees in level order
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut broken = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % (most - 1) + 2;
+        let nodes = random_tree(n, mut seed);
+        let leaves: Vec[Node] = nodes[1..]
+            .iter()
+            .filter(|v| v.left.is_none() and v.right.is_none())
+            .collect();
+        let pick = leaves[(next_random(mut seed) * 32768 + next_random(mut seed)) % leaves.len()];
+        let root = flip_binary_tree(nodes[0], pick);
+        match level_order(root) {
+            Some(values) => {
+                for v in values {
+                    check = (check * 31 + v + 1) % 1000000007;
+                }
+            }
+            None => broken += 1,
+        }
+    }
+    println(f"{count} trees of up to {most} nodes: {broken} with broken parent links, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then a path of two and a leaf two levels
+    // down a left spine
+    let items = [Some(3), Some(5), Some(1), Some(6), Some(2), Some(0), Some(8), None, None, Some(7), Some(4)];
+    let tree = from_level_order(items);
+    println(written(flip_binary_tree(tree[0], find(tree, 7))));
+    let tree = from_level_order(items);
+    println(written(flip_binary_tree(tree[0], find(tree, 0))));
+    let tree = from_level_order([Some(1), Some(2)]);
+    println(written(flip_binary_tree(tree[0], tree[1])));
+    let tree = from_level_order([Some(1), Some(2), Some(3), Some(4), Some(5)]);
+    println(written(flip_binary_tree(tree[0], find(tree, 4))));
+    let mut seed = 1666;
+    batch(3000, 8, mut seed);
+    batch(300, 1000, mut seed);
+    batch(30, 100000, mut seed);
+}

@@ -1,0 +1,64 @@
+// LeetCode #1704: Determine if String Halves Are Alike -- the bench: the
+// ★ arm on 1000 random strings of 1000 letters, LeetCode's longest, all
+// drawn first, each answered 400 times.
+//
+// One pass: a vowel in the first half counted up and in the second down;
+// the halves are alike when the count comes back to 0. O(n).
+
+fn halves_are_alike(s: String) -> bool {
+    let bytes = s.bytes();
+    let half = bytes.len() / 2;
+    let mut balance = 0;
+    for (i, b) in bytes.iter().enumerate() {
+        match b {
+            b'a' | b'e' | b'i' | b'o' | b'u' | b'A' | b'E' | b'I' | b'O' | b'U' => {
+                balance += if i < half { 1 } else { -1 };
+            }
+            _ => {}
+        }
+    }
+    balance == 0
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 1000;
+    let rounds = 400;
+    let n = 1000;
+    let mut seed = 1704;
+    let vowels = "aeiouAEIOU".bytes();
+    let consonants = "bcdfghjklmnpqrstvwxyzBCDFGHJKLMNPQRSTVWXYZ".bytes();
+    let mut strings: Vec[String] = Vec.new();
+    for _ in 0..count {
+        // each letter a vowel with a chance of its string's own, 0 to 10 in 10
+        let lean = next_random(mut seed) % 11;
+        let mut s = String.with_capacity(n);
+        for _ in 0..n {
+            let b = if next_random(mut seed) % 10 < lean {
+                vowels[next_random(mut seed) % vowels.len()]
+            } else {
+                consonants[next_random(mut seed) % consonants.len()]
+            };
+            s.push(b as char);
+        }
+        strings.push(s);
+    }
+    let mut alike = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for s in strings.iter() {
+            let answer = halves_are_alike(s);
+            if answer {
+                alike += 1;
+            }
+            check = (check * 31 + (if answer { 1 } else { 2 }) + r) % 1000000007;
+        }
+    }
+    println(f"{count} strings of {n} letters, {rounds} rounds: {alike} alike, checksum {check}");
+}

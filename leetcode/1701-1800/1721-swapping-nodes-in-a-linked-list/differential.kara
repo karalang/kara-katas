@@ -1,0 +1,284 @@
+// LeetCode #1721: Swapping Nodes in a Linked List -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random lists
+// of 1 to 12 nodes of values up to 100 (often equal, so a wrong swap can
+// pass unseen; the values are the node's place where it matters, P2) and
+// a k from 1 to the length. The ★, length and handles arms share the
+// `shared struct ListNode`; the solution arm keeps LeetCode's plain
+// `ListNode` with `i32` values, here `BoxNode`.
+//
+// P1  the answer is the statement read literally
+// P2  a list of 1 to n, its places, comes back with places k and
+//     n + 1 - k swapped
+// P3  the list reversed gives the answer reversed
+// P4  k and n + 1 - k give the same answer
+// P5  each arm agrees with at least two of the other three
+
+shared struct ListNode {
+    mut val: i64,
+    mut next: Option[ListNode],
+}
+
+// ---- swap.kara: the ★ arm: a runner from the kth node drags a cursor from the head
+
+fn star_arm(head: Option[ListNode], k: i64) -> Option[ListNode] {
+    let mut first = head.unwrap();
+    for _ in 1..k {
+        first = first.next.unwrap();
+    }
+    let mut second = head.unwrap();
+    let mut runner = first;
+    while let Some(next) = runner.next {
+        runner = next;
+        second = second.next.unwrap();
+    }
+    let value = first.val;
+    first.val = second.val;
+    second.val = value;
+    head
+}
+
+// ---- swap_length.kara: the length counted, then each node walked to
+
+// the node `steps` places after `head`
+fn walk(head: ListNode, steps: i64) -> ListNode {
+    let mut node = head;
+    for _ in 0..steps {
+        node = node.next.unwrap();
+    }
+    node
+}
+
+fn length_arm(head: Option[ListNode], k: i64) -> Option[ListNode] {
+    let start = head.unwrap();
+    let mut n = 0;
+    let mut cur = head;
+    while let Some(node) = cur {
+        n += 1;
+        cur = node.next;
+    }
+    let front = walk(start, k - 1);
+    let back = walk(start, n - k);
+    let value = front.val;
+    front.val = back.val;
+    back.val = value;
+    head
+}
+
+// ---- swap_handles.kara: every node's handle in a vector
+
+fn handles_arm(head: Option[ListNode], k: i64) -> Option[ListNode] {
+    let mut nodes: Vec[ListNode] = Vec.new();
+    let mut cur = head;
+    while let Some(node) = cur {
+        nodes.push(node);
+        cur = node.next;
+    }
+    let n = nodes.len();
+    let value = nodes[k - 1].val;
+    nodes[k - 1].val = nodes[n - k].val;
+    nodes[n - k].val = value;
+    head
+}
+
+// ---- swap_solution.kara: LeetCode's Rust template as karac fix left it
+
+// Definition for singly-linked list.
+// #[derive(PartialEq, Eq, Clone, Debug)]
+// pub struct BoxNode {
+//   pub val: i32,
+//   pub next: Option<Box<BoxNode>>
+// }
+//
+// impl BoxNode {
+//   #[inline]
+//   fn new(val: i32) -> Self {
+//     BoxNode {
+//       next: None,
+//       val
+//     }
+//   }
+// }
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct BoxNode {
+    pub val: i32,
+    pub next: Option[BoxNode],
+}
+
+impl BoxNode {
+    #[inline]
+    fn new(val: i32) -> Self {
+        BoxNode { next: None, val }
+    }
+}
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn swap_nodes(head: Option[BoxNode], k: i32) -> Option[BoxNode] {
+        let mut vals = Vec.new();
+        let mut cur = ref head;
+        while let Some(node) = cur {
+            vals.push(node.val);
+            cur = ref node.next;
+        }
+        let n = vals.len();
+        let k = k as i64;
+        vals.swap(k - 1, n - k);
+        let mut dummy = BoxNode.new(0);
+        let mut tail = mut ref dummy;
+        for v in vals {
+            tail.next = Some(BoxNode.new(v));
+            tail = tail.next.as_mut().unwrap();
+        }
+        dummy.next
+    }
+}
+
+fn solution_arm(head: Option[BoxNode], k: i64) -> Option[BoxNode] {
+    SolutionArm.swap_nodes(head, k as i32)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn build(values: Slice[i64]) -> Option[ListNode] {
+    let mut head: Option[ListNode] = None;
+    for v in values.iter().rev() {
+        head = Some(ListNode { val: v, next: head });
+    }
+    head
+}
+
+fn values_of(head: Option[ListNode]) -> Vec[i64] {
+    let mut out = Vec.new();
+    let mut cur = head;
+    while let Some(node) = cur {
+        out.push(node.val);
+        cur = node.next;
+    }
+    out
+}
+
+fn build_box(values: Slice[i64]) -> Option[BoxNode] {
+    let mut head: Option[BoxNode] = None;
+    for v in values.iter().rev() {
+        head = Some(BoxNode { val: v as i32, next: head });
+    }
+    head
+}
+
+fn values_of_box(head: Option[BoxNode]) -> Vec[i64] {
+    let mut out = Vec.new();
+    let mut cur = ref head;
+    while let Some(node) = cur {
+        out.push(node.val as i64);
+        cur = ref node.next;
+    }
+    out
+}
+
+// the statement read literally: each node counted from the beginning and
+// from the end, the kth from the beginning given the value of the kth
+// from the end and the kth from the end the value of the kth from the
+// beginning, every other node keeping its own
+fn literal(values: Slice[i64], k: i64) -> Vec[i64] {
+    let n = values.len();
+    let mut out = Vec.new();
+    for i in 0..n {
+        let from_start = i + 1;
+        let from_end = n - i;
+        if from_start == k {
+            out.push(values[n - k]);
+        } else if from_end == k {
+            out.push(values[k - 1]);
+        } else {
+            out.push(values[i]);
+        }
+    }
+    out
+}
+
+fn answer(arm: i64, values: Slice[i64], k: i64) -> Vec[i64] {
+    match arm {
+        0 => values_of(star_arm(build(values), k)),
+        1 => values_of(length_arm(build(values), k)),
+        2 => values_of(handles_arm(build(values), k)),
+        _ => values_of_box(solution_arm(build_box(values), k)),
+    }
+}
+
+fn arm_name(arm: i64) -> Str {
+    ["the ★ arm", "length", "handles", "solution"][arm]
+}
+
+fn main() {
+    let mut seed = 1721;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 12 + 1;
+        let k = next_random(mut seed) % n + 1;
+        let values: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 101).collect();
+        cases.push((values, k));
+    }
+    for (p, (values, k)) in cases.iter().enumerate() {
+        let n = values.len();
+        let want = literal(values, k);
+        for v in want.iter() {
+            check = (check * 31 + v + 1) % 1000000007;
+        }
+        check = (check * 31 + k) % 1000000007;
+        let places: Vec[i64] = (1..=n).collect();
+        let mut moved = places.clone();
+        moved.swap(k - 1, n - k);
+        let reversed: Vec[i64] = values.iter().rev().cloned().collect();
+        let mut answers: Vec[Vec[i64]] = Vec.new();
+        for a in 0..4 {
+            let got = answer(a, values, k);
+            let back: Vec[i64] = got.iter().rev().cloned().collect();
+            let failed = [got != want, answer(a, places, k) != moved, answer(a, reversed, k) != back, answer(a, values, n + 1 - k) != got];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({values}, k {k}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

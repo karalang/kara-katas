@@ -1,0 +1,345 @@
+// LeetCode #1681: Minimum Incompatibility -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random arrays
+// of n values from 1 to n, n from 1 to 8, each with a k that divides n.
+//
+// P1  the answer is the statement read literally
+// P2  the array reversed gives the same answer
+// P3  every value v written n + 1 - v gives the same answer
+// P4  the answer is -1 exactly when some value appears more than k times
+// P5  each arm agrees with at least two of the other three
+
+// ---- incompatibility.kara: the ★ arm: a table over the indexes placed, a subset at a time
+
+fn star_arm(nums: Vec[i32], k: i32) -> i32 {
+    let n = nums.len();
+    let size = n / k;
+    let full = (1 << n) - 1;
+    // the cost of every possible subset, -1 where it has a repeated value
+    let mut cost = Vec.filled(1 << n, -1);
+    for s in 0..=full {
+        if s.count_ones() != size {
+            continue;
+        }
+        let mut seen = 0;
+        let mut lo = i32.MAX;
+        let mut hi = i32.MIN;
+        let mut ok = true;
+        for i in 0..n {
+            if s >> i & 1 == 1 {
+                let bit = 1 << nums[i];
+                if seen & bit != 0 {
+                    ok = false;
+                    break;
+                }
+                seen |= bit;
+                lo = min(lo, nums[i]);
+                hi = max(hi, nums[i]);
+            }
+        }
+        if ok {
+            cost[s] = hi - lo;
+        }
+    }
+    let unreached = i32.MAX;
+    let mut best = Vec.filled(1 << n, unreached);
+    best[0] = 0;
+    for m in 0..full {
+        if best[m] == unreached or m.count_ones() % size != 0 {
+            continue;
+        }
+        let free = full ^ m;
+        let lowest = free & -free;
+        // every subset of the free indexes that holds the lowest one
+        let mut s = free;
+        while s > 0 {
+            if s & lowest != 0 and cost[s] >= 0 {
+                best[m | s] = min(best[m | s], best[m] + cost[s]);
+            }
+            s = (s - 1) & free;
+        }
+    }
+    if best[full] == unreached { -1 } else { best[full] }
+}
+
+// ---- incompatibility_sequential.kara: one value at a time, rising within each subset
+
+fn sequential_arm(nums: Vec[i32], k: i32) -> i32 {
+    let mut values = nums.clone();
+    values.sort();
+    let n = values.len();
+    let size = n / k;
+    let full = (1 << n) - 1;
+    let unreached = i32.MAX;
+    let mut best: Vec[Vec[i32]] = Vec.filled(1 << n, Vec.filled(n, unreached));
+    for i in 0..n {
+        best[1 << i][i] = 0;
+    }
+    for m in 1..full {
+        let placed = m.count_ones();
+        for last in 0..n {
+            let here = best[m][last];
+            if here == unreached {
+                continue;
+            }
+            for j in 0..n {
+                if m >> j & 1 == 1 {
+                    continue;
+                }
+                let next = m | 1 << j;
+                if placed % size == 0 {
+                    best[next][j] = min(best[next][j], here);
+                } else if values[j] > values[last] {
+                    best[next][j] = min(best[next][j], here + values[j] - values[last]);
+                }
+            }
+        }
+    }
+    let answer = best[full].iter().min().unwrap();
+    if answer == unreached { -1 } else { answer }
+}
+
+// ---- incompatibility_memo.kara: a memoized search over what is left
+
+fn memo_arm(nums: Vec[i32], k: i32) -> i32 {
+    let n = nums.len();
+    let size = n / k;
+    let mut memo: Map[i64, i32] = Map.new();
+    let answer = solve((1 << n) - 1, nums, size, mut memo);
+    if answer == i32.MAX { -1 } else { answer }
+}
+
+// the least cost of splitting the indexes in `left`, `i32.MAX` if none
+fn solve(left: i64, nums: Slice[i32], size: i64, memo: mut ref Map[i64, i32]) -> i32 {
+    if left == 0 {
+        return 0;
+    }
+    if let Some(known) = memo.get(left) {
+        return known;
+    }
+    let first = left.trailing_zeros();
+    let mut best = i32.MAX;
+    let mut chosen = [first];
+    companions(left, first + 1, nums, size, mut chosen, mut memo, mut best);
+    memo.insert(left, best);
+    best
+}
+
+// every way to fill `chosen` up to `size` with later indexes of `left`
+// whose values are all new, each one costed and the rest solved
+fn companions(left: i64, from: i64, nums: Slice[i32], size: i64, chosen: mut ref Vec[i64], memo: mut ref Map[i64, i32], best: mut ref i32) {
+    if chosen.len() == size {
+        let lo = chosen.iter().map(|i| nums[i]).min().unwrap();
+        let hi = chosen.iter().map(|i| nums[i]).max().unwrap();
+        let mut rest = left;
+        for i in chosen.iter() {
+            rest ^= 1 << i;
+        }
+        let after = solve(rest, nums, size, mut memo);
+        if after != i32.MAX {
+            *best = min(*best, hi - lo + after);
+        }
+        return;
+    }
+    for i in from..nums.len() {
+        if left >> i & 1 == 1 and chosen.iter().all(|c| nums[c] != nums[i]) {
+            chosen.push(i);
+            companions(left, i + 1, nums, size, mut chosen, mut memo, mut best);
+            chosen.pop();
+        }
+    }
+}
+
+// ---- incompatibility_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn minimum_incompatibility(nums: Vec[i32], k: i32) -> i32 {
+        let n = nums.len();
+        let m = n / k;
+        let mut value = Vec.filled(1 << n, -1i32);
+        for mask in 0..(1 << n) {
+            if mask.count_ones() != m {
+                continue;
+            }
+            let mut used = 0u32;
+            let mut (lo, hi) = (i32.MAX, i32.MIN);
+            let mut ok = true;
+            for i in 0..n {
+                if mask >> i & 1 == 1 {
+                    if used >> nums[i] & 1 == 1 {
+                        ok = false;
+                        break;
+                    }
+                    used |= 1 << nums[i];
+                    lo = lo.min(nums[i]);
+                    hi = hi.max(nums[i]);
+                }
+            }
+            if ok {
+                value[mask] = hi - lo;
+            }
+        }
+        let mut dp = Vec.filled(1 << n, i32.MAX);
+        dp[0] = 0;
+        for mask in 0..(1 << n) {
+            if dp[mask] == i32.MAX or mask.count_ones() % m != 0 {
+                continue;
+            }
+            let rest = ((1 << n) - 1) ^ mask;
+            let mut sub = rest;
+            while sub > 0 {
+                if value[sub] != -1 {
+                    dp[mask | sub] = dp[mask | sub].min(dp[mask] + value[sub]);
+                }
+                sub = (sub - 1) & rest;
+            }
+        }
+        if dp[(1 << n) - 1] == i32.MAX { -1 } else { dp[(1 << n) - 1] }
+    }
+}
+
+fn solution_arm(nums: Vec[i32], k: i32) -> i32 {
+    SolutionArm.minimum_incompatibility(nums, k)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every way to split the indexes into
+// groups, each index in turn joining a group so far or starting a new one
+// while there are fewer than k; a split counts when it has k groups of
+// equal size and no group repeats a value, and costs the sum over its
+// groups of the largest less the smallest. The least cost, -1 if none.
+fn literal(nums: Slice[i32], k: i64) -> i64 {
+    let mut groups: Vec[Vec[i32]] = Vec.new();
+    let mut best = -1;
+    split(nums, 0, k, mut groups, mut best);
+    best
+}
+
+fn split(nums: Slice[i32], i: i64, k: i64, groups: mut ref Vec[Vec[i32]], best: mut ref i64) {
+    if i == nums.len() {
+        if groups.len() != k {
+            return;
+        }
+        let size = nums.len() / k;
+        let mut cost = 0;
+        for g in groups.iter() {
+            if g.len() != size {
+                return;
+            }
+            for a in 0..g.len() {
+                for b in a + 1..g.len() {
+                    if g[a] == g[b] {
+                        return;
+                    }
+                }
+            }
+            cost += g.iter().max().unwrap() - g.iter().min().unwrap();
+        }
+        if *best < 0 or cost < *best {
+            *best = cost;
+        }
+        return;
+    }
+    for g in 0..groups.len() {
+        groups[g].push(nums[i]);
+        split(nums, i + 1, k, mut groups, mut best);
+        groups[g].pop();
+    }
+    if groups.len() < k {
+        groups.push([nums[i]]);
+        split(nums, i + 1, k, mut groups, mut best);
+        groups.pop();
+    }
+}
+
+fn arm(a: i64, nums: Slice[i32], k: i64) -> i64 {
+    let nums = nums.to_vec();
+    let k = k as i32;
+    match a {
+        0 => star_arm(nums, k),
+        1 => sequential_arm(nums, k),
+        2 => memo_arm(nums, k),
+        _ => solution_arm(nums, k),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "sequential", "memo", "solution"][a]
+}
+
+fn main() {
+    let mut seed = 1681;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[(Vec[i32], i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 8 + 1;
+        let nums: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % n + 1) as i32).collect();
+        let divisors: Vec[i64] = (1..=n).filter(|d| n % d == 0).collect();
+        let k = divisors[next_random(mut seed) % divisors.len()];
+        cases.push((nums, k));
+    }
+    for (p, (nums, k)) in cases.iter().enumerate() {
+        let n = nums.len();
+        let want = literal(nums, k);
+        check = (check * 31 + want + 1 + n + k) % 1000000007;
+        let reversed: Vec[i32] = nums.iter().rev().collect();
+        let flipped: Vec[i32] = nums.iter().map(|v| n as i32 + 1 - v).collect();
+        let crowded = nums.iter().any(|v| nums.iter().filter(|w| w == v).count() > k);
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, nums, k);
+            answers.push(got);
+            let failed = [
+                got != want,
+                arm(a, reversed, k) != got,
+                arm(a, flipped, k) != got,
+                (got == -1) != crowded,
+            ];
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({nums}, k {k}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

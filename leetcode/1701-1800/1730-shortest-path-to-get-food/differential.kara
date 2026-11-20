@@ -1,0 +1,301 @@
+// LeetCode #1730: Shortest Path to Get Food -- the differential.
+//
+// Four arms against the statement read literally, on 3000 random grids
+// of 1 to 5 rows and columns, each cell an obstacle with a chance of 3 in
+// 10, food 1 in 10, free otherwise, then you on one cell.
+//
+// P1  the answer is the statement read literally
+// P2  the grid mirrored left to right gives the same answer
+// P3  the grid transposed, rows made columns, gives the same answer
+// P4  a border of obstacles put round the grid gives the same answer
+// P5  each arm agrees with at least two of the other three
+
+// ---- food.kara: the ★ arm: a breadth-first search from you
+
+fn star_arm(grid: Vec[Vec[char]]) -> i32 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut distance: Vec[Vec[i32]] = Vec.filled(rows, Vec.filled(cols, -1));
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    for r in 0..rows {
+        for c in 0..cols {
+            if grid[r][c] == '*' {
+                distance[r][c] = 0;
+                queue.push_back((r, c));
+            }
+        }
+    }
+    while let Some((r, c)) = queue.pop_front() {
+        if grid[r][c] == '#' {
+            return distance[r][c];
+        }
+        for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr < 0 or nr >= rows or nc < 0 or nc >= cols {
+                continue;
+            }
+            if grid[nr][nc] != 'X' and distance[nr][nc] < 0 {
+                distance[nr][nc] = distance[r][c] + 1;
+                queue.push_back((nr, nc));
+            }
+        }
+    }
+    -1
+}
+
+// ---- food_levels.kara: the search a level at a time
+
+fn levels_arm(grid: Vec[Vec[char]]) -> i32 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut seen: Vec[bool] = Vec.filled(rows * cols, false);
+    let mut level: Vec[i64] = Vec.new();
+    for at in 0..rows * cols {
+        if grid[at / cols][at % cols] == '*' {
+            level.push(at);
+            seen[at] = true;
+        }
+    }
+    let mut steps = 0;
+    while not level.is_empty() {
+        if level.iter().any(|at| grid[at / cols][at % cols] == '#') {
+            return steps;
+        }
+        let mut next: Vec[i64] = Vec.new();
+        for at in level.iter() {
+            let (r, c) = (at / cols, at % cols);
+            let mut near: Vec[i64] = Vec.new();
+            if r > 0 {
+                near.push(at - cols);
+            }
+            if r + 1 < rows {
+                near.push(at + cols);
+            }
+            if c > 0 {
+                near.push(at - 1);
+            }
+            if c + 1 < cols {
+                near.push(at + 1);
+            }
+            for to in near.iter() {
+                if not seen[to] and grid[to / cols][to % cols] != 'X' {
+                    seen[to] = true;
+                    next.push(to);
+                }
+            }
+        }
+        level = next;
+        steps += 1;
+    }
+    -1
+}
+
+// ---- food_reverse.kara: the search backwards from every food at once
+
+fn reverse_arm(grid: Vec[Vec[char]]) -> i32 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut distance: Vec[Vec[i32]] = Vec.filled(rows, Vec.filled(cols, -1));
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    for r in 0..rows {
+        for c in 0..cols {
+            if grid[r][c] == '#' {
+                distance[r][c] = 0;
+                queue.push_back((r, c));
+            }
+        }
+    }
+    while let Some((r, c)) = queue.pop_front() {
+        if grid[r][c] == '*' {
+            return distance[r][c];
+        }
+        for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr >= 0 and nr < rows and nc >= 0 and nc < cols and grid[nr][nc] != 'X' and distance[nr][nc] < 0 {
+                distance[nr][nc] = distance[r][c] + 1;
+                queue.push_back((nr, nc));
+            }
+        }
+    }
+    -1
+}
+
+// ---- food_dijkstra.kara: Dijkstra's search with a priority queue
+
+fn dijkstra_arm(grid: Vec[Vec[char]]) -> i32 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut best: Vec[i32] = Vec.filled(rows * cols, i32.MAX);
+    let mut heap: PriorityQueue[(i32, i64)] = PriorityQueue.new();
+    for at in 0..rows * cols {
+        if grid[at / cols][at % cols] == '*' {
+            best[at] = 0;
+            heap.push((0, at));
+        }
+    }
+    while let Some((d, at)) = heap.pop() {
+        if d > best[at] {
+            continue;
+        }
+        let (r, c) = (at / cols, at % cols);
+        if grid[r][c] == '#' {
+            return d;
+        }
+        for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr < 0 or nr >= rows or nc < 0 or nc >= cols or grid[nr][nc] == 'X' {
+                continue;
+            }
+            let to = nr * cols + nc;
+            if d + 1 < best[to] {
+                best[to] = d + 1;
+                heap.push((d + 1, to));
+            }
+        }
+    }
+    -1
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: the cells you can stand on after k steps,
+// any k, each step to an adjacent cell that is not an obstacle; the first
+// k at which some food cell is among them, or -1 when the cells stop
+// growing first
+fn literal(grid: Slice[Vec[char]]) -> i32 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut here: Vec[Vec[bool]] = Vec.filled(rows, Vec.filled(cols, false));
+    for r in 0..rows {
+        for c in 0..cols {
+            here[r][c] = grid[r][c] == '*';
+        }
+    }
+    let mut k = 0;
+    loop {
+        for r in 0..rows {
+            for c in 0..cols {
+                if here[r][c] and grid[r][c] == '#' {
+                    return k;
+                }
+            }
+        }
+        let mut next = here.clone();
+        for r in 0..rows {
+            for c in 0..cols {
+                if not here[r][c] {
+                    continue;
+                }
+                for (nr, nc) in [(r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)] {
+                    if nr >= 0 and nr < rows and nc >= 0 and nc < cols and grid[nr][nc] != 'X' {
+                        next[nr][nc] = true;
+                    }
+                }
+            }
+        }
+        if next == here {
+            return -1;
+        }
+        here = next;
+        k += 1;
+    }
+}
+
+fn arm(a: i64, grid: Slice[Vec[char]]) -> i32 {
+    let grid = grid.to_vec();
+    match a {
+        0 => star_arm(grid),
+        1 => levels_arm(grid),
+        2 => reverse_arm(grid),
+        _ => dijkstra_arm(grid),
+    }
+}
+
+fn arm_name(a: i64) -> Str {
+    ["the ★ arm", "levels", "reverse", "dijkstra"][a]
+}
+
+fn main() {
+    let mut seed = 1730;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut cases: Vec[Vec[Vec[char]]] = Vec.new();
+    for _ in 0..problems {
+        let rows = next_random(mut seed) % 5 + 1;
+        let cols = next_random(mut seed) % 5 + 1;
+        let mut grid: Vec[Vec[char]] = Vec.new();
+        for _ in 0..rows {
+            let row: Vec[char] = (0..cols)
+                .map(|_| {
+                    let r = next_random(mut seed) % 20;
+                    if r < 6 { 'X' } else if r < 8 { '#' } else { 'O' }
+                })
+                .collect();
+            grid.push(row);
+        }
+        let at = next_random(mut seed) % (rows * cols);
+        grid[at / cols][at % cols] = '*';
+        cases.push(grid);
+    }
+    for (p, grid) in cases.iter().enumerate() {
+        let want = literal(grid);
+        check = (check * 31 + want + 1 + grid.len() * grid[0].len()) % 1000000007;
+        let mirrored: Vec[Vec[char]] = grid.iter().map(|row| row.iter().rev().cloned().collect()).collect();
+        let transposed: Vec[Vec[char]] = (0..grid[0].len()).map(|c| grid.iter().map(|row| row[c]).collect()).collect();
+        let width = grid[0].len() + 2;
+        let mut walled: Vec[Vec[char]] = [Vec.filled(width, 'X')];
+        for row in grid.iter() {
+            let mut line: Vec[char] = ['X'];
+            line.extend(row.iter().cloned());
+            line.push('X');
+            walled.push(line);
+        }
+        walled.push(Vec.filled(width, 'X'));
+        let mut answers: Vec[i32] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, grid);
+            let failed = [got != want, arm(a, mirrored) != got, arm(a, transposed) != got, arm(a, walled) != got];
+            answers.push(got);
+            for q in 0..4 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({grid}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P5
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|y| y == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[5] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P5");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..6 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

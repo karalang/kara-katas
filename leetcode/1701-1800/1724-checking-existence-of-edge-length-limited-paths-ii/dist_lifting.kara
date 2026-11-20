@@ -1,0 +1,176 @@
+// LeetCode #1724: Checking Existence of Edge Length Limited Paths II --
+// a minimum spanning forest and the heaviest edge on its paths.
+//
+// Kruskal's forest keeps, between any two nodes, a path whose heaviest
+// edge is as light as any path's. So p and q are joined under the limit
+// when they share a tree and the heaviest edge on the tree path between
+// them is lighter than the limit. Each tree is rooted by a breadth-first
+// walk, and binary lifting keeps each node's 2^j-th ancestor and the
+// heaviest edge on the way to it. O(m log m + n log n) to build,
+// O(log n) a query.
+
+struct DistanceLimitedPathsExist {
+    tree: Vec[i64],
+    depth: Vec[i64],
+    up: Vec[Vec[i64]],
+    most: Vec[Vec[i32]],
+}
+
+fn find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+impl DistanceLimitedPathsExist {
+    fn new(n: i32, edge_list: Vec[Vec[i32]]) -> DistanceLimitedPathsExist {
+        let n = n as i64;
+        let mut edges = edge_list.clone();
+        edges.sort_by_key(|e| e[2]);
+        let mut parent: Vec[i64] = (0..n).collect();
+        let mut near: Vec[Vec[(i64, i32)]] = Vec.filled(n, Vec.new());
+        for e in edges.iter() {
+            let a = find(mut parent, e[0]);
+            let b = find(mut parent, e[1]);
+            if a != b {
+                parent[a] = b;
+                near[e[0]].push((e[1] as i64, e[2]));
+                near[e[1]].push((e[0] as i64, e[2]));
+            }
+        }
+        let mut levels = 1;
+        while 1 << levels < n {
+            levels += 1;
+        }
+        let mut tree: Vec[i64] = Vec.filled(n, -1);
+        let mut depth: Vec[i64] = Vec.filled(n, 0);
+        let mut up: Vec[Vec[i64]] = Vec.filled(levels, (0..n).collect());
+        let mut most: Vec[Vec[i32]] = Vec.filled(levels, Vec.filled(n, 0));
+        for start in 0..n {
+            if tree[start] >= 0 {
+                continue;
+            }
+            tree[start] = start;
+            let mut queue: VecDeque[i64] = VecDeque.new();
+            queue.push_back(start);
+            while let Some(v) = queue.pop_front() {
+                for (u, w) in near[v].iter() {
+                    if tree[u] < 0 {
+                        tree[u] = start;
+                        depth[u] = depth[v] + 1;
+                        up[0][u] = v;
+                        most[0][u] = w;
+                        queue.push_back(u);
+                    }
+                }
+            }
+        }
+        for j in 1..levels {
+            for v in 0..n {
+                let half = up[j - 1][v];
+                up[j][v] = up[j - 1][half];
+                most[j][v] = max(most[j - 1][v], most[j - 1][half]);
+            }
+        }
+        DistanceLimitedPathsExist { tree, depth, up, most }
+    }
+
+    fn query(self, p: i32, q: i32, limit: i32) -> bool {
+        let mut (a, b) = (p as i64, q as i64);
+        if self.tree[a] != self.tree[b] {
+            return false;
+        }
+        if self.depth[a] < self.depth[b] {
+            a, b = b, a;
+        }
+        let mut heaviest = 0;
+        let mut rise = self.depth[a] - self.depth[b];
+        let mut j = 0;
+        while rise > 0 {
+            if rise & 1 == 1 {
+                heaviest = max(heaviest, self.most[j][a]);
+                a = self.up[j][a];
+            }
+            rise >>= 1;
+            j += 1;
+        }
+        if a != b {
+            for j in (0..self.up.len()).rev() {
+                if self.up[j][a] != self.up[j][b] {
+                    heaviest = max(heaviest, max(self.most[j][a], self.most[j][b]));
+                    a = self.up[j][a];
+                    b = self.up[j][b];
+                }
+            }
+            heaviest = max(heaviest, max(self.most[0][a], self.most[0][b]));
+        }
+        heaviest < limit
+    }
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// `count` graphs of 2 to `nodes` nodes and up to `edges` edges of weight
+// 1 to `top` between two different nodes, each asked `queries` questions
+// of two different nodes and a limit of 1 to `top` + 1; every answer
+// folded in
+fn batch(count: i64, nodes: i64, edges: i64, top: i64, queries: i64, seed: mut ref i64) {
+    let mut yes = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % (nodes - 1) + 2;
+        let m = wide(mut seed) % (edges + 1);
+        let mut edge_list: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..m {
+            let u = wide(mut seed) % n;
+            let mut v = wide(mut seed) % (n - 1);
+            if v >= u {
+                v += 1;
+            }
+            edge_list.push([u as i32, v as i32, (wide(mut seed) % top + 1) as i32]);
+        }
+        let graph = DistanceLimitedPathsExist.new(n as i32, edge_list);
+        for _ in 0..queries {
+            let p = wide(mut seed) % n;
+            let mut q = wide(mut seed) % (n - 1);
+            if q >= p {
+                q += 1;
+            }
+            let limit = wide(mut seed) % (top + 1) + 1;
+            let answer = graph.query(p as i32, q as i32, limit as i32);
+            if answer {
+                yes += 1;
+            }
+            check = (check * 31 + if answer { 2 } else { 1 }) % 1000000007;
+        }
+    }
+    println(f"{count} graphs of up to {nodes} nodes and {edges} edges, {queries} queries each: {yes} paths, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's example, then the same graph asked at a limit equal to an
+    // edge's weight and just above it
+    let graph = DistanceLimitedPathsExist.new(6, [[0, 2, 4], [0, 3, 2], [1, 2, 3], [2, 3, 1], [4, 5, 5]]);
+    println(graph.query(2, 3, 2));
+    println(graph.query(1, 3, 3));
+    println(graph.query(2, 0, 3));
+    println(graph.query(0, 5, 6));
+    println(graph.query(4, 5, 5));
+    println(graph.query(4, 5, 6));
+    let mut seed = 1724;
+    batch(3000, 8, 10, 6, 10, mut seed);
+    batch(100, 1000, 1500, 1000000000, 100, mut seed);
+    batch(4, 3000, 10000, 1000000000, 1000, mut seed);
+}

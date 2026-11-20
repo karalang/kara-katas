@@ -1,0 +1,91 @@
+// LeetCode #1682: Longest Palindromic Subsequence II -- the outermost pair
+// of each letter.
+//
+// A layer of letter c is best taken as far out as it can go: the first c
+// at or after the stretch's start and the last c at or before its end,
+// since a wider inside can only hold more. So each stretch tries every
+// letter but the one around it at its first and last place, from tables
+// of the next and previous place of each letter. Each (start, end, outer)
+// is solved once, in a `Map`. O(n^2 * 26) states at worst.
+
+fn longest_palindrome_subseq(s: String) -> i32 {
+    let letters: Vec[i64] = s.bytes().iter().map(|b| (b - b'a') as i64).collect();
+    let n = letters.len();
+    // next[i][c]: the first place at or after i holding c, n if none;
+    // prev[i][c]: the last place at or before i holding c, -1 if none
+    let mut next: Vec[Array[i64, 26]] = Vec.filled(n + 1, [n; 26]);
+    for i in (0..n).rev() {
+        next[i] = next[i + 1];
+        next[i][letters[i]] = i;
+    }
+    let mut prev: Vec[Array[i64, 26]] = Vec.filled(n + 1, [-1; 26]);
+    for i in 0..n {
+        prev[i + 1] = prev[i];
+        prev[i + 1][letters[i]] = i;
+    }
+    let mut memo: Map[(i64, i64, i64), i32] = Map.new();
+    widest(0, n - 1, 26, next, prev, mut memo)
+}
+
+// the longest in s[lo..=hi] whose outer letter is not `outer`
+fn widest(lo: i64, hi: i64, outer: i64, next: Slice[Array[i64, 26]], prev: Slice[Array[i64, 26]], memo: mut ref Map[(i64, i64, i64), i32]) -> i32 {
+    if lo >= hi {
+        return 0;
+    }
+    if let Some(known) = memo.get((lo, hi, outer)) {
+        return known;
+    }
+    let mut best = 0;
+    for c in 0..26 {
+        if c == outer {
+            continue;
+        }
+        let (i, j) = (next[lo][c], prev[hi + 1][c]);
+        if i < j {
+            best = max(best, 2 + widest(i + 1, j - 1, c, next, prev, mut memo));
+        }
+    }
+    memo.insert((lo, hi, outer), best);
+    best
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random strings of 1 to `longest` letters from the first
+// `letters` of the alphabet; the answers summed, and a checksum
+fn batch(count: i64, longest: i64, letters: i64, seed: mut ref i64) {
+    let alphabet = "abcdefghijklmnopqrstuvwxyz";
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % longest + 1;
+        let mut s = String.new();
+        for _ in 0..n {
+            let at = next_random(mut seed) % letters;
+            s.push_str(alphabet[at..at + 1]);
+        }
+        let answer = longest_palindrome_subseq(s);
+        total += answer;
+        check = (check * 31 + answer + n) % 1000000007;
+    }
+    println(f"{count} strings of up to {longest} letters from {letters}: answers sum to {total}, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then one letter, one letter repeated, and
+    // a palindrome whose layers alternate
+    println(longest_palindrome_subseq("bbabab"));
+    println(longest_palindrome_subseq("dcbccacdb"));
+    println(longest_palindrome_subseq("a"));
+    println(longest_palindrome_subseq("aaaa"));
+    println(longest_palindrome_subseq("abababba"));
+    let mut seed = 1682;
+    batch(3000, 10, 3, mut seed);
+    batch(300, 60, 4, mut seed);
+    batch(10, 250, 26, mut seed);
+}

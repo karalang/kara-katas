@@ -1,0 +1,50 @@
+// LeetCode #1664 bench: the ★ arm, one pass with running sums.
+//
+// 20 arrays of 10^5 values from 1 to 2, LeetCode's largest length, drawn
+// first; then each is answered 50 times.
+
+fn ways_to_make_fair(nums: &[i32]) -> i32 {
+    let mut total = [0i32, 0];
+    for (i, &x) in nums.iter().enumerate() {
+        total[i % 2] += x;
+    }
+    let mut before = [0i32, 0];
+    let mut ways = 0;
+    for (i, &x) in nums.iter().enumerate() {
+        let p = i % 2;
+        let mut after = [total[0] - before[0], total[1] - before[1]];
+        after[p] -= x;
+        if before[0] + after[1] == before[1] + after[0] {
+            ways += 1;
+        }
+        before[p] += x;
+    }
+    ways
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 20;
+    let n = 100000;
+    let rounds = 50i64;
+    let mut seed = 1664i64;
+    let mut arrays: Vec<Vec<i32>> = Vec::new();
+    for _ in 0..count {
+        let nums: Vec<i32> = (0..n).map(|_| (next_random(&mut seed) % 2 + 1) as i32).collect();
+        arrays.push(nums);
+    }
+    let mut total = 0i64;
+    let mut check = 0i64;
+    for r in 0..rounds {
+        for nums in arrays.iter() {
+            let answer = ways_to_make_fair(nums) as i64;
+            total += answer;
+            check = (check * 31 + answer + r) % 1000000007;
+        }
+    }
+    println!("{count} arrays of {n} values, {rounds} rounds: {total} fair removals, checksum {check}");
+}
