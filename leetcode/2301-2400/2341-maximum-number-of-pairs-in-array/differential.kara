@@ -1,0 +1,244 @@
+// LeetCode #2341: Maximum Number of Pairs in Array -- the differential.
+// The six arms, against the statement read literally: two equal values
+// found and removed, again and again while any two are equal, the
+// removals counted and what remains left over. No counts and no parity.
+// 300 random cases of 1 to 20 values below a spread of 1 to 10; then 30
+// of up to 100 values from 0 to 100; then 30 of up to 100 values below a
+// spread of 1 to 3. Every case is drawn before any arm answers.
+//
+// P1  up to 20 values, the answer is the literal reading's
+// P2  twice the pairs and the leftovers make all the values, and no
+//     more are left over than there are distinct values
+// P3  the values reversed: the same answer
+// P4  two more of the first value: one pair more and the same left over
+// P5  one more of the first value: one more left over, or one pair more
+//     and one fewer left over
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn pairs_literally(nums: Vec[i64]) -> Vec[i64] {
+    let mut rest = nums.clone();
+    let mut pairs = 0;
+    loop {
+        let mut found = (-1, -1);
+        for i in 0..rest.len() {
+            for j in i + 1..rest.len() {
+                if found.0 < 0 and rest[i] == rest[j] {
+                    found = (i, j);
+                }
+            }
+        }
+        let (i, j) = found;
+        if i < 0 {
+            break;
+        }
+        rest.remove(j);
+        rest.remove(i);
+        pairs += 1;
+    }
+    [pairs, rest.len()].to_vec()
+}
+
+// ---- star (pairs.kara) ---------------------------------------------------
+
+fn star_number_of_pairs(nums: Vec[i64]) -> Vec[i64] {
+    let mut counts: Vec[i64] = Vec.filled(101, 0);
+    for x in nums {
+        counts[x] += 1;
+    }
+    let mut pairs = 0;
+    let mut left = 0;
+    for c in counts {
+        pairs += c / 2;
+        left += c % 2;
+    }
+    [pairs, left].to_vec()
+}
+
+// ---- sorted (pairs_sorted.kara) ------------------------------------------
+
+fn sorted_number_of_pairs(nums: Vec[i64]) -> Vec[i64] {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut pairs = 0;
+    let mut left = 0;
+    let mut i = 0;
+    while i < sorted.len() {
+        if i + 1 < sorted.len() and sorted[i] == sorted[i + 1] {
+            pairs += 1;
+            i += 2;
+        } else {
+            left += 1;
+            i += 1;
+        }
+    }
+    [pairs, left].to_vec()
+}
+
+// ---- set (pairs_set.kara) ------------------------------------------------
+
+fn set_number_of_pairs(nums: Vec[i64]) -> Vec[i64] {
+    let mut waiting: Set[i64] = Set.new();
+    let mut pairs = 0;
+    for x in nums {
+        if waiting.contains(x) {
+            waiting.remove(x);
+            pairs += 1;
+        } else {
+            waiting.insert(x);
+        }
+    }
+    [pairs, waiting.len()].to_vec()
+}
+
+// ---- map (pairs_map.kara) ------------------------------------------------
+
+fn map_number_of_pairs(nums: Vec[i64]) -> Vec[i64] {
+    let mut counts: Map[i64, i64] = Map.new();
+    for x in nums {
+        counts[x] = counts.get(x).unwrap_or(0) + 1;
+    }
+    let mut pairs = 0;
+    let mut left = 0;
+    for (_, count) in counts {
+        let mut rest = count;
+        while rest >= 2 {
+            rest -= 2;
+            pairs += 1;
+        }
+        left += rest;
+    }
+    [pairs, left].to_vec()
+}
+
+// ---- iter (pairs_iter.kara) ----------------------------------------------
+
+fn iter_number_of_pairs(nums: Vec[i64]) -> Vec[i64] {
+    let (pairs, left) = (0..=100)
+        .map(|v| nums.iter().filter(|x| x == v).count())
+        .fold((0, 0), |(pairs, left), c| (pairs + c / 2, left + c % 2));
+    [pairs, left].to_vec()
+}
+
+// ---- solution (pairs_solution.kara) --------------------------------------
+
+impl Solution {
+    pub fn number_of_pairs(nums: Vec[i32]) -> Vec[i32] {
+        let mut cnt = [0; 101];
+        for x in ref nums {
+            cnt[x as usize] += 1;
+        }
+        let pairs: i32 = cnt.iter().map(|c| c / 2).sum();
+        let left = nums.len() as i32 - 2 * pairs;
+        [pairs, left]
+    }
+}
+
+struct Solution {}
+
+fn solution_number_of_pairs(nums: Vec[i64]) -> Vec[i64] {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.number_of_pairs(nums).iter().map(|x| x as i64).collect()
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64]) -> Vec[i64] {
+    match arm {
+        0 => star_number_of_pairs(nums),
+        1 => sorted_number_of_pairs(nums),
+        2 => set_number_of_pairs(nums),
+        3 => map_number_of_pairs(nums),
+        4 => iter_number_of_pairs(nums),
+        _ => solution_number_of_pairs(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "sorted", "set", "map", "iter", "solution"];
+    let mut seed = 2341;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..360 {
+        let (most, spread) = if c < 300 {
+            (20, 1 + next_random(mut seed) % 10)
+        } else if c < 330 {
+            (100, 101)
+        } else {
+            (100, 1 + next_random(mut seed) % 3)
+        };
+        let n = 1 + next_random(mut seed) % most;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            nums.push(next_random(mut seed) % spread);
+        }
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let nums = cases[c].clone();
+        let small = c < 300;
+        let truth = if small { pairs_literally(nums) } else { [-1, -1].to_vec() };
+        if small {
+            check = (check * 31 + truth[0] * 101 + truth[1]) % 1000000007;
+        }
+        let values: SortedSet[i64] = nums.iter().cloned().collect();
+        let distinct = values.len();
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let mut two_more = nums.clone();
+        two_more.push(nums[0]);
+        two_more.push(nums[0]);
+        let mut one_more = nums.clone();
+        one_more.push(nums[0]);
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let (pairs, left) = (value[0], value[1]);
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let after_two = answer(arm, two_more);
+            let after_one = answer(arm, one_more);
+            let verdicts = [
+                not small or value == truth,
+                2 * pairs + left == nums.len() and left >= 0 and left <= distinct,
+                answer(arm, reversed) == value,
+                after_two[0] == pairs + 1 and after_two[1] == left,
+                (after_one[0] == pairs and after_one[1] == left + 1) or (after_one[0] == pairs + 1 and after_one[1] == left - 1),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave [{pairs}, {left}], literal [{truth[0]}, {truth[1]}]");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,64 @@
+// LeetCode #2341: Maximum Number of Pairs in Array -- the operation done:
+// a `Map` from each value to its count, then for each value the pairs
+// removed one at a time while two remain, and what is left of each
+// summed. O(n).
+
+fn number_of_pairs(nums: Vec[i64]) -> Vec[i64] {
+    let mut counts: Map[i64, i64] = Map.new();
+    for x in nums {
+        counts[x] = counts.get(x).unwrap_or(0) + 1;
+    }
+    let mut pairs = 0;
+    let mut left = 0;
+    for (_, count) in counts {
+        let mut rest = count;
+        while rest >= 2 {
+            rest -= 2;
+            pairs += 1;
+        }
+        left += rest;
+    }
+    [pairs, left].to_vec()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(answer: Vec[i64]) -> String {
+    f"[{answer[0]}, {answer[1]}]"
+}
+
+fn main() {
+    // LeetCode's three examples; then 100 of one value, 99 of it, every
+    // value from 0 to 99 once, and both ends of the range in pairs
+    println(show(number_of_pairs([1, 3, 2, 1, 3, 2, 2].to_vec())));
+    println(show(number_of_pairs([1, 1].to_vec())));
+    println(show(number_of_pairs([0].to_vec())));
+    println(show(number_of_pairs(Vec.filled(100, 7))));
+    println(show(number_of_pairs(Vec.filled(99, 7))));
+    println(show(number_of_pairs((0..100).collect())));
+    println(show(number_of_pairs([100, 0, 100, 0, 50].to_vec())));
+    // 2000 random cases of 1 to 100 values, each from 0 below a spread of
+    // 1 to 101
+    let mut seed = 2341;
+    let mut check = 0;
+    let mut total_pairs = 0;
+    let mut total_left = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 100;
+        let spread = 1 + next_random(mut seed) % 101;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            nums.push(next_random(mut seed) % spread);
+        }
+        let answer = number_of_pairs(nums);
+        check = (check * 31 + answer[0] * 101 + answer[1]) % 1000000007;
+        total_pairs += answer[0];
+        total_left += answer[1];
+    }
+    println(f"2000 cases: checksum {check}, pairs {total_pairs}, left over {total_left}");
+}
