@@ -1,0 +1,386 @@
+// LeetCode #2288: Apply Discount to Prices -- the differential. The six
+// arms, against the statement read literally: a word is a price when it
+// is `$` and then one or more digits; its digits, as written, are
+// multiplied by `100 - discount` by hand, digit by digit as on paper,
+// and the decimal point is set two places from the right. No integer
+// wider than a digit times 100, no division of the price, no floats.
+// 300 random sentences, then 30 of ten-digit prices, then 30 of words
+// that are nearly prices. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the answer has as many words, and every word that is not a price
+//     is unchanged
+// P3  each word on its own gives the same word as in the sentence
+// P4  a discount of 100: every price reads `$0.00`
+// P5  a discount of 0: every price reads as its own value and `.00`
+// P6  each arm agrees with at least three of the other five
+
+// ---- discount.kara: the ★ arm, integer cents
+fn star_is_price(word: Str) -> bool {
+    word.len() > 1 and word.starts_with("$") and word.bytes().iter().skip(1).all(|b| b.is_ascii_digit())
+}
+
+fn star_discount_prices(sentence: Str, discount: i64) -> String {
+    let mut words: Vec[String] = Vec.new();
+    for word in sentence.split(" ") {
+        if star_is_price(word) {
+            let price = i64.parse(word[1..]).unwrap();
+            let cents = price * (100 - discount);
+            words.push(f"${cents / 100}.{cents % 100:02}");
+        } else {
+            words.push(word.to_string());
+        }
+    }
+    words.join(" ")
+}
+
+// ---- discount_naive.kara: a byte walk, the value read digit by digit
+fn naive_discount_prices(sentence: Str, discount: i64) -> String {
+    let bytes = sentence.bytes();
+    let mut out = String.new();
+    let mut start = 0;
+    let n = bytes.len();
+    for i in 0..n + 1 {
+        if i < n and bytes[i] != b' ' {
+            continue;
+        }
+        if start > 0 {
+            out.push(' ');
+        }
+        let mut price = true;
+        let mut value = 0;
+        if i - start < 2 or bytes[start] != b'$' {
+            price = false;
+        }
+        let mut j = start + 1;
+        while price and j < i {
+            if bytes[j] < b'0' or bytes[j] > b'9' {
+                price = false;
+            } else {
+                value = value * 10 + (bytes[j] - b'0');
+            }
+            j += 1;
+        }
+        if price {
+            let cents = value * (100 - discount);
+            out.push_str(f"${cents / 100}.{cents % 100:02}");
+        } else {
+            out.push_str(sentence[start..i]);
+        }
+        start = i + 1;
+    }
+    out
+}
+
+// ---- discount_float.kara: an f64 and `{:.2}`
+fn float_discount_prices(sentence: Str, discount: i64) -> String {
+    let factor = (100 - discount) as f64 / 100.0;
+    let mut out: Vec[String] = Vec.new();
+    for word in sentence.split(" ") {
+        let digits = word.len() > 1 and word.starts_with("$") and word[1..].chars().all(|c| c.is_ascii_digit());
+        if digits {
+            let price = f64.parse(word[1..]).unwrap();
+            out.push(f"${price * factor:.2}");
+        } else {
+            out.push(word.to_string());
+        }
+    }
+    out.join(" ")
+}
+
+// ---- discount_struct.kara: `struct Cents` with Display, `enum Token`
+struct StructCents {
+    value: i64,
+}
+
+impl StructCents {
+    fn discounted(self, discount: i64) -> StructCents {
+        StructCents { value: self.value * (100 - discount) / 100 }
+    }
+}
+
+impl Display for StructCents {
+    fn to_string(self) -> String {
+        f"${self.value / 100}.{self.value % 100:02}"
+    }
+}
+
+enum StructToken {
+    Price(StructCents),
+    Text(String),
+}
+
+impl StructToken {
+    fn read(word: Str) -> StructToken {
+        if word.len() < 2 or not word.starts_with("$") {
+            return StructToken.Text(word.to_string());
+        }
+        match u64.parse(word[1..]) {
+            Ok(_) if word[1..].bytes().iter().all(|b| b.is_ascii_digit()) => StructToken.Price(StructCents { value: i64.parse(word[1..]).unwrap() * 100 }),
+            _ => StructToken.Text(word.to_string()),
+        }
+    }
+
+    fn show(self, discount: i64) -> String {
+        match self {
+            StructToken.Price(c) => c.discounted(discount).to_string(),
+            StructToken.Text(t) => t.clone(),
+        }
+    }
+}
+
+fn struct_discount_prices(sentence: Str, discount: i64) -> String {
+    let mut out: Vec[String] = Vec.new();
+    for word in sentence.split(" ") {
+        out.push(StructToken.read(word).show(discount));
+    }
+    out.join(" ")
+}
+
+// ---- discount_iter.kara: `split`, `map`, `collect`, `join`
+fn iter_discount_prices(sentence: Str, discount: i64) -> String {
+    let words: Vec[String] = sentence
+        .split(" ")
+        .map(|word| {
+            let tail = if word.starts_with("$") { word[1..] } else { "" };
+            if not tail.is_empty() and tail.bytes().iter().all(|b| b.is_ascii_digit()) {
+                let cents = i64.parse(tail).unwrap() * (100 - discount);
+                f"${cents / 100}.{cents % 100:02}"
+            } else {
+                word.to_string()
+            }
+        })
+        .collect();
+    words.join(" ")
+}
+
+// ---- discount_solution.kara: LeetCode's Rust template
+struct Solution {}
+
+impl Solution {
+    pub fn discount_prices(sentence: String, discount: i32) -> String {
+        let factor = (100 - discount) as f64 / 100.0;
+        Vec[String].from_iter(sentence
+            .split_whitespace()
+            .map(|w| {
+                if w.len() > 1 and w.starts_with("$") and w[1..].chars().all(|c| c.is_ascii_digit()) {
+                    let price: f64 = f64.parse(w[1..]).unwrap();
+                    f"${price * factor:.2}"
+                } else {
+                    w.to_string()
+                }
+            }))
+            .join(" ")
+    }
+}
+
+fn solution_discount_prices(sentence: Str, discount: i64) -> String {
+    Solution.discount_prices(sentence.to_string(), discount as i32)
+}
+
+// ---- the statement read literally
+
+fn literal_is_price(word: Str) -> bool {
+    if word.len() < 2 or not word.starts_with("$") {
+        return false;
+    }
+    for c in word[1..].chars() {
+        if c < '0' or c > '9' {
+            return false;
+        }
+    }
+    true
+}
+
+// the digits after a `$`, times `by`, on paper: from the right, each
+// digit times `by` plus the carry; then the point two places in
+fn times(digits: Str, by: i64) -> String {
+    let mut out: Vec[char] = Vec.new();
+    let mut carry = 0;
+    for c in digits.chars().rev() {
+        let here = (c as i64 - '0' as i64) * by + carry;
+        out.push(('0' as i64 + here % 10) as u8 as char);
+        carry = here / 10;
+    }
+    while carry > 0 {
+        out.push(('0' as i64 + carry % 10) as u8 as char);
+        carry /= 10;
+    }
+    // at least three digits, so there is a whole part before the point
+    while out.len() < 3 {
+        out.push('0');
+    }
+    // no leading zeros in the whole part
+    while out.len() > 3 and out[out.len() - 1] == '0' {
+        out.pop();
+    }
+    let mut text = String.new();
+    for i in (0..out.len()).rev() {
+        if i == 1 {
+            text.push('.');
+        }
+        text.push(out[i]);
+    }
+    text
+}
+
+fn literal(sentence: Str, discount: i64) -> String {
+    let mut out = String.new();
+    let mut first = true;
+    for word in sentence.split(" ") {
+        if not first {
+            out.push(' ');
+        }
+        first = false;
+        if literal_is_price(word) {
+            out.push('$');
+            out.push_str(times(word[1..], 100 - discount));
+        } else {
+            out.push_str(word);
+        }
+    }
+    out
+}
+
+fn answer(arm: i64, sentence: Str, discount: i64) -> String {
+    match arm {
+        0 => star_discount_prices(sentence, discount),
+        1 => naive_discount_prices(sentence, discount),
+        2 => float_discount_prices(sentence, discount),
+        3 => struct_discount_prices(sentence, discount),
+        4 => iter_discount_prices(sentence, discount),
+        _ => solution_discount_prices(sentence, discount),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// as the arms' harness draws a word
+fn word(seed: mut ref i64) -> String {
+    let kind = next_random(mut seed) % 8;
+    let len = next_random(mut seed) % 10 + 1;
+    let mut w = String.new();
+    if kind < 4 or kind == 5 {
+        w.push('$');
+    }
+    if kind == 4 {
+        return "$";
+    }
+    for i in 0..len {
+        let digit = (b'0' + (next_random(mut seed) % 10) as u8) as char;
+        let letter = (b'a' + (next_random(mut seed) % 26) as u8) as char;
+        w.push(if kind < 4 or kind == 7 { digit } else if kind == 5 and i == len - 1 { 'e' } else if kind == 5 { digit } else { letter });
+    }
+    w
+}
+
+// a word that is nearly a price: `$` twice, a `$` at the end, a letter
+// or a `.5` after the digits, a sign, or a price of leading zeros
+fn near(seed: mut ref i64) -> String {
+    let digits = f"{next_random(mut seed) % 100000}";
+    match next_random(mut seed) % 6 {
+        0 => f"$${digits}",
+        1 => f"{digits}$",
+        2 => f"${digits}x",
+        3 => f"${digits}.5",
+        4 => f"$00{digits}",
+        _ => f"$-{digits}",
+    }
+}
+
+fn main() {
+    let names = ["star", "naive", "float", "struct", "iter", "solution"];
+    let mut seed = 2288;
+    let mut cases: Vec[(String, i64)] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 12 + 1;
+        let discount = next_random(mut seed) % 101;
+        let mut words: Vec[String] = Vec.new();
+        for _ in 0..n {
+            if c < 300 {
+                words.push(word(mut seed));
+            } else if c < 330 {
+                // ten digits, the first not zero
+                let mut w = f"${next_random(mut seed) % 9 + 1}";
+                for _ in 0..9 {
+                    w.push((b'0' + (next_random(mut seed) % 10) as u8) as char);
+                }
+                words.push(w);
+            } else {
+                words.push(near(mut seed));
+            }
+        }
+        cases.push((words.join(" "), discount));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (sentence, discount) in cases.iter() {
+        let truth = literal(sentence, discount);
+        for b in truth.bytes().iter() {
+            check = (check * 31 + b as i64) % 1000000007;
+        }
+        let words: Vec[Str] = sentence.split(" ").collect();
+        let got: Vec[String] = (0..6).map(|arm| answer(arm, sentence, discount)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let parts: Vec[Str] = value.split(" ").collect();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let free = answer(arm, sentence, 100);
+            let full = answer(arm, sentence, 0);
+            let free_parts: Vec[Str] = free.split(" ").collect();
+            let full_parts: Vec[Str] = full.split(" ").collect();
+            let mut kept = parts.len() == words.len();
+            let mut alone = parts.len() == words.len();
+            let mut zero = free_parts.len() == words.len();
+            let mut whole = full_parts.len() == words.len();
+            for i in 0..words.len().min(parts.len()) {
+                let w = words[i];
+                let price = literal_is_price(w);
+                if not price and parts[i] != w {
+                    kept = false;
+                }
+                if answer(arm, w, discount) != parts[i] {
+                    alone = false;
+                }
+                if price and i < free_parts.len() and free_parts[i] != "$0.00" {
+                    zero = false;
+                }
+                if price and i < full_parts.len() and full_parts[i] != f"${i64.parse(w[1..]).unwrap()}.00" {
+                    whole = false;
+                }
+            }
+            let verdicts = [value == truth, kept, alone, zero, whole, same >= 3];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"[{sentence}] {discount} arm {names[arm]}: P{q + 1} fails, gave [{value}], literal [{truth}]");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
