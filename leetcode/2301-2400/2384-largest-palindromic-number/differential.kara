@@ -1,0 +1,366 @@
+// LeetCode #2384: Largest Palindromic Number -- the differential. The six
+// arms, against the statement read literally: every palindrome of up to
+// as many digits as the string, with no 0 leading but 0 itself, built
+// from each possible left half, kept when the string holds its digits,
+// and the largest kept. No counting from 9 down. 300 random strings of 1
+// to 6 digits, which the literal reading answers; then 30 of up to 300;
+// then 30 of up to 300 nearly all 0s. Every case is drawn before any arm
+// answers.
+//
+// P1  up to 6 digits, the answer is the literal reading's
+// P2  a palindrome, with no 0 leading unless it is 0, its digits drawn
+//     from the string's
+// P3  the string reversed: the same answer
+// P4  two 9s added: the answer with a 9 at each end, when it has more
+//     than one digit
+// P5  the answer as the string: the same answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn counts(b: Vec[u8]) -> Vec[i64] {
+    let mut count: Vec[i64] = Vec.filled(10, 0);
+    for c in b.iter() {
+        count[c - b'0'] += 1;
+    }
+    count
+}
+
+fn holds(have: Vec[i64], b: Vec[u8]) -> bool {
+    let need = counts(b);
+    for d in 0..10 {
+        if need[d] > have[d] {
+            return false;
+        }
+    }
+    true
+}
+
+fn larger(a: Vec[u8], b: Vec[u8]) -> bool {
+    if a.len() != b.len() {
+        return a.len() > b.len();
+    }
+    for i in 0..a.len() {
+        if a[i] != b[i] {
+            return a[i] > b[i];
+        }
+    }
+    false
+}
+
+fn palindrome_literally(num: String) -> String {
+    let have = counts(num.bytes().to_vec());
+    let mut best: Vec[u8] = Vec.new();
+    for len in 1..num.len() + 1 {
+        let h = (len + 1) / 2;
+        let mut high = 1;
+        for _ in 0..h {
+            high *= 10;
+        }
+        let low = if len == 1 { 0 } else { high / 10 };
+        for v in low..high {
+            let half: Vec[u8] = f"{v}".bytes().to_vec();
+            let mut full = half.clone();
+            for i in (0..h - len % 2).rev() {
+                full.push(half[i]);
+            }
+            if holds(have, full) and larger(full, best) {
+                best = full;
+            }
+        }
+    }
+    String.from_utf8(best).unwrap()
+}
+
+// ---- star (palindrome.kara) ----------------------------------------------
+
+fn star_largest_palindromic(num: String) -> String {
+    let mut count: Vec[i64] = Vec.filled(10, 0);
+    for c in num.bytes().iter() {
+        count[c - b'0'] += 1;
+    }
+    let mut half: Vec[u8] = Vec.new();
+    for d in (0..10).rev() {
+        if d == 0 and half.is_empty() {
+            break;
+        }
+        for _ in 0..count[d] / 2 {
+            half.push(b'0' + d as u8);
+        }
+    }
+    let mut out = half.clone();
+    for d in (0..10).rev() {
+        if count[d] % 2 == 1 {
+            out.push(b'0' + d as u8);
+            break;
+        }
+    }
+    if out.is_empty() {
+        return "0".to_string();
+    }
+    for i in (0..half.len()).rev() {
+        out.push(half[i]);
+    }
+    String.from_utf8(out).unwrap()
+}
+
+// ---- sort (palindrome_sort.kara) -----------------------------------------
+
+fn sort_largest_palindromic(num: String) -> String {
+    let mut b: Vec[u8] = num.bytes().to_vec();
+    b.sort();
+    b.reverse();
+    let mut half: Vec[u8] = Vec.new();
+    let mut middle: Option[u8] = None;
+    let mut i = 0;
+    while i < b.len() {
+        if i + 1 < b.len() and b[i] == b[i + 1] and not (b[i] == b'0' and half.is_empty()) {
+            half.push(b[i]);
+            i += 2;
+        } else {
+            if middle.is_none() {
+                middle = Some(b[i]);
+            }
+            i += 1;
+        }
+    }
+    let mut out = half.clone();
+    if let Some(m) = middle {
+        out.push(m);
+    }
+    if out.is_empty() {
+        return "0".to_string();
+    }
+    for i in (0..half.len()).rev() {
+        out.push(half[i]);
+    }
+    String.from_utf8(out).unwrap()
+}
+
+// ---- strip (palindrome_strip.kara) ---------------------------------------
+
+fn strip_largest_palindromic(num: String) -> String {
+    let mut count: Vec[i64] = Vec.filled(10, 0);
+    for c in num.bytes().iter() {
+        count[c - b'0'] += 1;
+    }
+    let mut whole: Vec[u8] = Vec.new();
+    for d in (0..10).rev() {
+        for _ in 0..count[d] / 2 {
+            whole.push(b'0' + d as u8);
+        }
+    }
+    let half = whole.len();
+    for d in (0..10).rev() {
+        if count[d] % 2 == 1 {
+            whole.push(b'0' + d as u8);
+            break;
+        }
+    }
+    for i in (0..half).rev() {
+        whole.push(whole[i]);
+    }
+    let mut lead = 0;
+    while 2 * lead < whole.len() and whole[lead] == b'0' {
+        lead += 1;
+    }
+    if 2 * lead >= whole.len() {
+        return "0".to_string();
+    }
+    String.from_utf8(whole[lead..whole.len() - lead].to_vec()).unwrap()
+}
+
+// ---- each (palindrome_each.kara) -----------------------------------------
+
+fn each_largest_palindromic(num: String) -> String {
+    let mut count: Vec[i64] = Vec.filled(10, 0);
+    for c in num.bytes().iter() {
+        count[c - b'0'] += 1;
+    }
+    let mut half: Vec[u8] = Vec.new();
+    loop {
+        let mut chosen = -1;
+        for d in (0..10).rev() {
+            if count[d] >= 2 and (d > 0 or not half.is_empty()) {
+                chosen = d;
+                break;
+            }
+        }
+        if chosen < 0 {
+            break;
+        }
+        count[chosen] -= 2;
+        half.push(b'0' + chosen as u8);
+    }
+    let mut middle = -1;
+    for d in (0..10).rev() {
+        if count[d] > 0 {
+            middle = d;
+            break;
+        }
+    }
+    if half.is_empty() and middle <= 0 {
+        return "0".to_string();
+    }
+    let mut out = half.clone();
+    if middle >= 0 {
+        out.push(b'0' + middle as u8);
+    }
+    for i in (0..half.len()).rev() {
+        out.push(half[i]);
+    }
+    String.from_utf8(out).unwrap()
+}
+
+// ---- iter (palindrome_iter.kara) -----------------------------------------
+
+fn iter_largest_palindromic(num: String) -> String {
+    let count = num.bytes().iter().fold(Vec.filled(10, 0), |c: own Vec[i64], b| {
+        let mut c = c;
+        c[b - b'0'] += 1;
+        c
+    });
+    let lead = (1..10).any(|d| count[d] >= 2);
+    let half: Vec[u8] = (0..10).rev().filter(|d| d > 0 or lead).flat_map(|d| repeat(b'0' + d as u8).take(count[d] / 2)).collect();
+    let middle: Vec[u8] = (0..10).rev().filter(|d| count[d] % 2 == 1).take(1).map(|d| b'0' + d as u8).collect();
+    if half.is_empty() and middle.is_empty() {
+        return "0".to_string();
+    }
+    let out: Vec[u8] = half.iter().chain(middle.iter()).chain(half.iter().rev()).collect();
+    String.from_utf8(out).unwrap()
+}
+
+// ---- solution (palindrome_solution.kara) ---------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn largest_palindromic(num: String) -> String {
+        let mut cnt = [0usize; 10];
+        for b in num.bytes() {
+            cnt[(b - b'0') as usize] += 1;
+        }
+        let mut left = String.new();
+        for d in (0..10).rev() {
+            if d == 0 and left.is_empty() {
+                break;
+            }
+            for _ in 0..cnt[d] / 2 {
+                left.push((b'0' + d as u8) as char);
+            }
+        }
+        let mut mid = String.new();
+        for d in (0..10).rev() {
+            if cnt[d] % 2 == 1 {
+                mid.push((b'0' + d as u8) as char);
+                break;
+            }
+        }
+        if left.is_empty() and mid.is_empty() {
+            return "0".to_string();
+        }
+        let right: String = left.chars().rev().collect();
+        f"{left}{mid}{right}"
+    }
+}
+
+fn solution_largest_palindromic(num: String) -> String {
+    Solution.largest_palindromic(num)
+}
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, num: String) -> String {
+    match arm {
+        0 => star_largest_palindromic(num),
+        1 => sort_largest_palindromic(num),
+        2 => strip_largest_palindromic(num),
+        3 => each_largest_palindromic(num),
+        4 => iter_largest_palindromic(num),
+        _ => solution_largest_palindromic(num),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "sort", "strip", "each", "iter", "solution"];
+    let mut seed = 2384;
+    let mut cases: Vec[String] = Vec.new();
+    for c in 0..360 {
+        let (n, zeros) = if c < 300 {
+            (1 + next_random(mut seed) % 6, next_random(mut seed) % 10)
+        } else if c < 330 {
+            (1 + next_random(mut seed) % 300, next_random(mut seed) % 10)
+        } else {
+            (1 + next_random(mut seed) % 300, 9)
+        };
+        let top = 1 + next_random(mut seed) % 10;
+        let b: Vec[u8] = (0..n).map(|_| if next_random(mut seed) % 10 < zeros { b'0' } else { b'0' + (next_random(mut seed) % top) as u8 }).collect();
+        cases.push(String.from_utf8(b).unwrap());
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let num = cases[c].clone();
+        let small = num.len() <= 6;
+        let truth = if small { palindrome_literally(num) } else { "".to_string() };
+        if small {
+            for b in truth.bytes().iter() {
+                check = (check * 31 + b as i64) % 1000000007;
+            }
+        }
+        let have = counts(num.bytes().to_vec());
+        let mut back = num.bytes().to_vec();
+        back.reverse();
+        let reversed = String.from_utf8(back).unwrap();
+        let nines = f"9{num}9";
+        let got: Vec[String] = (0..6).map(|arm| answer(arm, num)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let v: Vec[u8] = value.bytes().to_vec();
+            let mut mirrored = v.clone();
+            mirrored.reverse();
+            let shaped = v.len() > 0 and mirrored == v and (v[0] != b'0' or v.len() == 1) and holds(have, v);
+            let verdicts = [
+                not small or value == truth,
+                shaped,
+                answer(arm, reversed) == value,
+                v.len() <= 1 or answer(arm, nines) == f"9{value}9",
+                answer(arm, value) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
