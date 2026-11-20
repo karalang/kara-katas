@@ -1,0 +1,285 @@
+// LeetCode #2406: Divide Intervals Into Minimum Number of Groups -- the
+// differential. The six arms against the statement read literally: for
+// one group, then two, and so on, every way to put the intervals into that
+// many groups tried by backtracking, any two in one group compared point
+// for point, and the first count that works. No sorting, no heap, and no
+// counting of overlaps. 360 cases: 300 random cases of 1 to 8 intervals
+// within 1 to 26, which the literal reading answers; 30 of up to 400
+// intervals of up to 10^4 points within 1 to 10^5; and 30 of up to 3000
+// intervals of up to 50 points within 1 to 250. Every case is drawn before
+// any arm answers.
+//
+// P1  up to 8 intervals: the answer is the literal reading's
+// P2  up to 400 intervals: the most intervals holding any one left end,
+//     and otherwise between 1 and n
+// P3  every interval mirrored, x to m + 1 - x for m the largest right
+//     end: the same answer
+// P4  the intervals in the reverse order: the same answer
+// P5  every interval given twice: twice the answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn intersect(a: (i64, i64), b: (i64, i64)) -> bool {
+    a.0.max(b.0) <= a.1.min(b.1)
+}
+
+// Whether the intervals from `i` on fit in `k` groups, the earlier ones'
+// groups already in `group`.
+fn place(iv: Vec[(i64, i64)], group: mut ref Vec[i64], i: i64, k: i64) -> bool {
+    if i == iv.len() {
+        return true;
+    }
+    for g in 0..k {
+        let mut clash = false;
+        for j in 0..i {
+            if group[j] == g and intersect(iv[i], iv[j]) {
+                clash = true;
+            }
+        }
+        if not clash {
+            group[i] = g;
+            if place(iv, mut group, i + 1, k) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn groups_literally(iv: Vec[(i64, i64)]) -> i64 {
+    let mut k = 1;
+    loop {
+        let mut group: Vec[i64] = Vec.filled(iv.len(), -1);
+        if place(iv, mut group, 0, k) {
+            return k;
+        }
+        k += 1;
+    }
+}
+
+// The most intervals holding one left end, every pair compared.
+fn most_covering(iv: Vec[(i64, i64)]) -> i64 {
+    let mut most = 0;
+    for (left, _) in iv.iter() {
+        let mut covering = 0;
+        for (l, r) in iv.iter() {
+            if l <= left and left <= r {
+                covering += 1;
+            }
+        }
+        most = most.max(covering);
+    }
+    most
+}
+
+// ---- star (groups.kara) --------------------------------------------------
+
+fn star_min_groups(intervals: Vec[(i64, i64)]) -> i64 {
+    let mut order = intervals.clone();
+    order.sort();
+    let mut ends: PriorityQueue[i64] = PriorityQueue.new();
+    for (left, right) in order.iter() {
+        if ends.len() > 0 and ends.peek().unwrap() < left {
+            ends.pop();
+        }
+        ends.push(right);
+    }
+    ends.len()
+}
+
+// ---- sweep (groups_sweep.kara) -------------------------------------------
+
+fn sweep_min_groups(intervals: Vec[(i64, i64)]) -> i64 {
+    let mut top = 0;
+    for (_, right) in intervals.iter() {
+        top = top.max(right);
+    }
+    let mut diff: Vec[i64] = Vec.filled(top + 2, 0);
+    for (left, right) in intervals.iter() {
+        diff[left] += 1;
+        diff[right + 1] -= 1;
+    }
+    let mut covering = 0;
+    let mut most = 0;
+    for d in diff.iter() {
+        covering += d;
+        most = most.max(covering);
+    }
+    most
+}
+
+// ---- events (groups_events.kara) -----------------------------------------
+
+fn events_min_groups(intervals: Vec[(i64, i64)]) -> i64 {
+    let mut events: Vec[(i64, i64)] = Vec.new();
+    for (left, right) in intervals.iter() {
+        events.push((left, 1));
+        events.push((right + 1, -1));
+    }
+    events.sort();
+    let mut open = 0;
+    let mut most = 0;
+    for (_, delta) in events.iter() {
+        open += delta;
+        most = most.max(open);
+    }
+    most
+}
+
+// ---- two (groups_two.kara) -----------------------------------------------
+
+fn two_min_groups(intervals: Vec[(i64, i64)]) -> i64 {
+    let mut lefts: Vec[i64] = intervals.iter().map(|iv| iv.0).collect();
+    let mut rights: Vec[i64] = intervals.iter().map(|iv| iv.1).collect();
+    lefts.sort();
+    rights.sort();
+    let mut groups = 0;
+    let mut done = 0;
+    for left in lefts.iter() {
+        if left > rights[done] {
+            done += 1;
+        } else {
+            groups += 1;
+        }
+    }
+    groups
+}
+
+// ---- iter (groups_iter.kara) ---------------------------------------------
+
+fn iter_min_groups(intervals: Vec[(i64, i64)]) -> i64 {
+    let mut events: Vec[(i64, i64)] = intervals.iter().flat_map(|(left, right)| [(left, 1), (right + 1, -1)].into_iter()).collect();
+    events.sort();
+    events.iter().scan(0, |open, (_, delta)| {
+        let open = open + delta;
+        Some((open, open))
+    }).max().unwrap()
+}
+
+// ---- solution (groups_solution.kara) -------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_groups(intervals: own Vec[Vec[i32]]) -> i32 {
+        let mut intervals = intervals;
+        intervals.sort();
+        let mut pq = PriorityQueue.new();
+        for iv in intervals {
+            if let Some(e) = pq.peek().cloned() {
+                if e < iv[0] {
+                    pq.pop();
+                }
+            }
+            pq.push(iv[1]);
+        }
+        pq.len() as i32
+    }
+}
+
+fn solution_min_groups(intervals: Vec[(i64, i64)]) -> i64 {
+    let rows: Vec[Vec[i32]] = intervals.iter().map(|iv| [iv.0 as i32, iv.1 as i32].to_vec()).collect();
+    Solution.min_groups(rows)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, iv: Vec[(i64, i64)]) -> i64 {
+    match arm {
+        0 => star_min_groups(iv),
+        1 => sweep_min_groups(iv),
+        2 => events_min_groups(iv),
+        3 => two_min_groups(iv),
+        4 => iter_min_groups(iv),
+        _ => solution_min_groups(iv),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "sweep", "events", "two", "iter", "solution"];
+    let mut seed = 2406;
+    let mut cases: Vec[Vec[(i64, i64)]] = Vec.new();
+    for t in 0..360 {
+        let (n, span, longest) = if t < 300 {
+            (1 + next_random(mut seed) % 8, 1 + next_random(mut seed) % 20, 1 + next_random(mut seed) % 6)
+        } else if t < 330 {
+            (1 + next_random(mut seed) % 400, 90000, 1 + next_random(mut seed) % 10000)
+        } else {
+            (1 + next_random(mut seed) % 3000, 1 + next_random(mut seed) % 200, 1 + next_random(mut seed) % 50)
+        };
+        let iv: Vec[(i64, i64)] = (0..n).map(|_| {
+            let left = 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % span;
+            (left, left + (next_random(mut seed) * 32768 + next_random(mut seed)) % longest)
+        }).collect();
+        cases.push(iv);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let iv = cases[c].clone();
+        let n = iv.len();
+        let truth = if n <= 8 {
+            groups_literally(iv)
+        } else {
+            -1
+        };
+        if truth >= 0 {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let most = if n <= 400 {
+            most_covering(iv)
+        } else {
+            -1
+        };
+        let top = iv.iter().map(|(_, r)| r).max().unwrap();
+        let mirrored: Vec[(i64, i64)] = iv.iter().map(|(l, r)| (top + 1 - r, top + 1 - l)).collect();
+        let mut backwards = iv.clone();
+        backwards.reverse();
+        let mut twice = iv.clone();
+        twice.extend(iv.iter());
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, iv)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [truth < 0 or value == truth, if most >= 0 {
+                value == most
+            } else {
+                value >= 1 and value <= n
+            }, answer(arm, mirrored) == value, answer(arm, backwards) == value, answer(arm, twice) == 2 * value, same >= 3];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

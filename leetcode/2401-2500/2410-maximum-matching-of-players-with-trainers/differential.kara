@@ -1,0 +1,286 @@
+// LeetCode #2410: Maximum Matching of Players With Trainers -- the
+// differential. The six arms against the statement read literally: every
+// way to give each player a different trainer or none, by backtracking,
+// a player only to a trainer of at least its ability, and the most
+// players placed. No sorting. 360 cases: 300 random cases of 1 to 8
+// players and 1 to 8 trainers from 1 to 12, which the literal reading
+// answers; 30 of up to 400 of each up to 10^9; and 30 of up to 3000 of
+// each up to 50. Every case is drawn before any arm answers.
+//
+// P1  up to 8 players and 8 trainers: the answer is the literal reading's
+// P2  up to 400 of each: the players less the worst shortfall, over every
+//     ability v, of trainers of at least v against players of at least v
+// P3  players and trainers swapped, every value v written m + 1 - v for m
+//     the largest: the same answer
+// P4  both lists reversed: the same answer
+// P5  one more trainer as strong as the strongest player: one more match,
+//     unless every player was already matched
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn place(players: Vec[i64], trainers: Vec[i64], i: i64, used: mut ref Vec[bool]) -> i64 {
+    if i == players.len() {
+        return 0;
+    }
+    let mut best = place(players, trainers, i + 1, mut used);
+    for j in 0..trainers.len() {
+        if not used[j] and players[i] <= trainers[j] {
+            used[j] = true;
+            best = best.max(1 + place(players, trainers, i + 1, mut used));
+            used[j] = false;
+        }
+    }
+    best
+}
+
+fn matching_literally(players: Vec[i64], trainers: Vec[i64]) -> i64 {
+    let mut used: Vec[bool] = Vec.filled(trainers.len(), false);
+    place(players, trainers, 0, mut used)
+}
+
+// Hall's condition for this graph: the players of at least v can only use
+// the trainers of at least v, and the worst such shortfall is unmatched.
+fn by_shortfall(players: Vec[i64], trainers: Vec[i64]) -> i64 {
+    let mut worst = 0;
+    for v in players.iter() {
+        let strong = players.iter().filter(|x| x >= v).count();
+        let able = trainers.iter().filter(|t| t >= v).count();
+        worst = worst.max(strong - able);
+    }
+    players.len() - worst
+}
+
+// ---- star (match.kara) ---------------------------------------------------
+
+fn star_match_players_and_trainers(players: Vec[i64], trainers: Vec[i64]) -> i64 {
+    let mut p = players.clone();
+    let mut t = trainers.clone();
+    p.sort();
+    t.sort();
+    let mut matched = 0;
+    for capacity in t.iter() {
+        if matched < p.len() and p[matched] <= capacity {
+            matched += 1;
+        }
+    }
+    matched
+}
+
+// ---- sorted (match_sorted.kara) ------------------------------------------
+
+fn sorted_match_players_and_trainers(players: Vec[i64], trainers: Vec[i64]) -> i64 {
+    let mut free: SortedMap[i64, i64] = SortedMap.new();
+    for t in trainers.iter() {
+        free[t] = free.get(t).unwrap_or(0) + 1;
+    }
+    let mut p = players.clone();
+    p.sort();
+    let mut matched = 0;
+    for x in p.iter() {
+        match free.ceiling(x) {
+            Some((t, c)) => {
+                if c == 1 {
+                    free.remove(t);
+                } else {
+                    free[t] = c - 1;
+                }
+                matched += 1;
+            },
+            None => {
+                break;
+            },
+        }
+    }
+    matched
+}
+
+// ---- desc (match_desc.kara) ----------------------------------------------
+
+fn desc_match_players_and_trainers(players: Vec[i64], trainers: Vec[i64]) -> i64 {
+    let mut p = players.clone();
+    let mut t = trainers.clone();
+    p.sort_by(|a, b| b.cmp(a));
+    t.sort_by(|a, b| b.cmp(a));
+    let mut j = 0;
+    let mut matched = 0;
+    for x in p.iter() {
+        if j < t.len() and t[j] >= x {
+            matched += 1;
+            j += 1;
+        }
+    }
+    matched
+}
+
+// ---- binary (match_binary.kara) ------------------------------------------
+
+fn binary_fits(p: Vec[i64], t: Vec[i64], k: i64) -> bool {
+    for i in 0..k {
+        if p[i] > t[t.len() - k + i] {
+            return false;
+        }
+    }
+    true
+}
+
+fn binary_match_players_and_trainers(players: Vec[i64], trainers: Vec[i64]) -> i64 {
+    let mut p = players.clone();
+    let mut t = trainers.clone();
+    p.sort();
+    t.sort();
+    let mut lo = 0;
+    let mut hi = p.len().min(t.len());
+    while lo < hi {
+        let mid = (lo + hi + 1) / 2;
+        if binary_fits(p, t, mid) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+// ---- iter (match_iter.kara) ----------------------------------------------
+
+fn iter_match_players_and_trainers(players: Vec[i64], trainers: Vec[i64]) -> i64 {
+    let mut p = players.clone();
+    let mut t = trainers.clone();
+    p.sort();
+    t.sort();
+    t.iter().fold(0, |matched, capacity| if matched < p.len() and p[matched] <= capacity {
+        matched + 1
+    } else {
+        matched
+    })
+}
+
+// ---- solution (match_solution.kara) --------------------------------------
+
+impl Solution {
+    pub fn match_players_and_trainers(players: own Vec[i32], trainers: own Vec[i32]) -> i32 {
+        let mut players = players;
+        let mut trainers = trainers;
+        players.sort();
+        trainers.sort();
+        let mut (i, j) = (0, 0);
+        while i < players.len() and j < trainers.len() {
+            if players[i] <= trainers[j] {
+                i += 1;
+            }
+            j += 1;
+        }
+        i as i32
+    }
+}
+
+struct Solution {}
+
+fn solution_match_players_and_trainers(players: Vec[i64], trainers: Vec[i64]) -> i64 {
+    let p: Vec[i32] = players.iter().map(|x| x as i32).collect();
+    let t: Vec[i32] = trainers.iter().map(|x| x as i32).collect();
+    Solution.match_players_and_trainers(p, t)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, players: Vec[i64], trainers: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_match_players_and_trainers(players, trainers),
+        1 => sorted_match_players_and_trainers(players, trainers),
+        2 => desc_match_players_and_trainers(players, trainers),
+        3 => binary_match_players_and_trainers(players, trainers),
+        4 => iter_match_players_and_trainers(players, trainers),
+        _ => solution_match_players_and_trainers(players, trainers),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "sorted", "desc", "binary", "iter", "solution"];
+    let mut seed = 2410;
+    let mut cases: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    for t in 0..360 {
+        let (n, m, top) = if t < 300 {
+            (1 + next_random(mut seed) % 8, 1 + next_random(mut seed) % 8, 12)
+        } else if t < 330 {
+            (1 + next_random(mut seed) % 400, 1 + next_random(mut seed) % 400, 1000000000)
+        } else {
+            (1 + next_random(mut seed) % 3000, 1 + next_random(mut seed) % 3000, 50)
+        };
+        let players: Vec[i64] = (0..n).map(|_| 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % top).collect();
+        let trainers: Vec[i64] = (0..m).map(|_| 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % top).collect();
+        cases.push((players, trainers));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (players, trainers) = cases[c].clone();
+        let (n, m) = (players.len(), trainers.len());
+        let truth = if n <= 8 and m <= 8 {
+            matching_literally(players, trainers)
+        } else {
+            -1
+        };
+        if truth >= 0 {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let hall = if n <= 400 and m <= 400 {
+            by_shortfall(players, trainers)
+        } else {
+            -1
+        };
+        let top = players.iter().max().unwrap().max(trainers.iter().max().unwrap());
+        let as_players: Vec[i64] = trainers.iter().map(|v| top + 1 - v).collect();
+        let as_trainers: Vec[i64] = players.iter().map(|v| top + 1 - v).collect();
+        let mut back_p = players.clone();
+        back_p.reverse();
+        let mut back_t = trainers.clone();
+        back_t.reverse();
+        let mut more = trainers.clone();
+        more.push(players.iter().max().unwrap());
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, players, trainers)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [truth < 0 or value == truth, hall < 0 or value == hall, answer(arm, as_players, as_trainers) == value, answer(arm, back_p, back_t) == value, answer(arm, players, more) == value + if value < n {
+                1
+            } else {
+                0
+            }, same >= 3];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

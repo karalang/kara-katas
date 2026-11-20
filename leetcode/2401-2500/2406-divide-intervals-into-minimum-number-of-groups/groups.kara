@@ -1,0 +1,61 @@
+// LeetCode #2406: Divide Intervals Into Minimum Number of Groups -- the ★
+// arm, a heap of group ends. The intervals in order of left end; a
+// `PriorityQueue` holds each group's last right end, the smallest first.
+// An interval starting after that smallest end joins its group, which then
+// ends at the new right end; otherwise it opens a group. The groups needed
+// are the most intervals sharing one point. O(n log n).
+
+fn min_groups(intervals: Vec[(i64, i64)]) -> i64 {
+    let mut order = intervals.clone();
+    order.sort();
+    let mut ends: PriorityQueue[i64] = PriorityQueue.new();
+    for (left, right) in order.iter() {
+        if ends.len() > 0 and ends.peek().unwrap() < left {
+            ends.pop();
+        }
+        ends.push(right);
+    }
+    ends.len()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` intervals starting at 1 to `span`, each covering 1 to `longest`
+// points.
+fn intervals(seed: mut ref i64, count: i64, span: i64, longest: i64) -> Vec[(i64, i64)] {
+    (0..count).map(|_| {
+        let left = 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % span;
+        (left, left + (next_random(mut seed) * 32768 + next_random(mut seed)) % longest)
+    }).collect()
+}
+
+fn main() {
+    // LeetCode's two examples; one interval; two sharing an end point; ten
+    // copies of one
+    println(f"{min_groups([(5, 10), (6, 8), (1, 5), (2, 3), (1, 10)].to_vec())}");
+    println(f"{min_groups([(1, 3), (5, 6), (8, 10), (11, 13)].to_vec())}");
+    println(f"{min_groups([(1000000, 1000000)].to_vec())}");
+    println(f"{min_groups([(1, 2), (2, 3)].to_vec())}");
+    let same: Vec[(i64, i64)] = (0..10).map(|_| (4, 7)).collect();
+    println(f"{min_groups(same)}");
+    // 10^5 intervals up to 10^6, short and then long
+    let mut seed = 2406;
+    println(f"{min_groups(intervals(mut seed, 100000, 999900, 100))}");
+    println(f"{min_groups(intervals(mut seed, 100000, 900000, 100000))}");
+    // 2000 random cases of up to 30 intervals within 1 to 60; a checksum of
+    // the answers and their total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..2000 {
+        let count = 1 + next_random(mut seed) % 30;
+        let a = min_groups(intervals(mut seed, count, 40, 1 + next_random(mut seed) % 20));
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"2000 random: checksum {check}, total {total}");
+}
