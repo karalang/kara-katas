@@ -1,0 +1,233 @@
+// LeetCode #2395: Find Subarrays With Equal Sum -- the differential. The
+// six arms, against the statement read literally: every subarray, each a
+// start and an end, the ones of length 2 kept, and every two of those
+// with different starts compared by summing their elements. 300 random
+// arrays of 2 to 12 values from -top to top, top from 0 to 20, which the
+// literal reading answers; then 30 of up to 2000 values from -10^9 to
+// 10^9; then 30 of up to 2000 values from -top to top, top up to 3.
+// Every case is drawn before any arm answers.
+//
+// P1  up to 12 values, the answer is the literal reading's
+// P2  the values reversed: the same answer
+// P3  every value plus the same number: the same answer
+// P4  every value negated: the same answer
+// P5  the first two values copied to the end: yes
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn equal_literally(nums: Vec[i64]) -> bool {
+    let n = nums.len();
+    let mut twos: Vec[(i64, i64)] = Vec.new();
+    for start in 0..n {
+        for end in start..n {
+            if end - start + 1 == 2 {
+                twos.push((start, end));
+            }
+        }
+    }
+    for a in twos.iter() {
+        for b in twos.iter() {
+            if a.0 != b.0 {
+                let mut x = 0;
+                for i in a.0..a.1 + 1 {
+                    x += nums[i];
+                }
+                let mut y = 0;
+                for i in b.0..b.1 + 1 {
+                    y += nums[i];
+                }
+                if x == y {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+// ---- star (subarrays.kara) -----------------------------------------------
+
+fn star_find_subarrays(nums: Vec[i64]) -> bool {
+    let mut seen: Set[i64] = Set.new();
+    for i in 1..nums.len() {
+        let sum = nums[i - 1] + nums[i];
+        if seen.contains(sum) {
+            return true;
+        }
+        seen.insert(sum);
+    }
+    false
+}
+
+// ---- sort (subarrays_sort.kara) ------------------------------------------
+
+fn sort_find_subarrays(nums: Vec[i64]) -> bool {
+    let mut sums: Vec[i64] = Vec.new();
+    for i in 1..nums.len() {
+        sums.push(nums[i - 1] + nums[i]);
+    }
+    sums.sort();
+    for i in 1..sums.len() {
+        if sums[i] == sums[i - 1] {
+            return true;
+        }
+    }
+    false
+}
+
+// ---- pairs (subarrays_pairs.kara) ----------------------------------------
+
+fn pairs_find_subarrays(nums: Vec[i64]) -> bool {
+    for i in 0..nums.len() - 1 {
+        for j in i + 1..nums.len() - 1 {
+            if nums[i] + nums[i + 1] == nums[j] + nums[j + 1] {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+// ---- map (subarrays_map.kara) --------------------------------------------
+
+fn map_find_subarrays(nums: Vec[i64]) -> bool {
+    let mut first: SortedMap[i64, i64] = SortedMap.new();
+    for i in 0..nums.len() - 1 {
+        let sum = nums[i] + nums[i + 1];
+        match first.get(sum) {
+            Some(j) => {
+                if j < i {
+                    return true;
+                }
+            },
+            None => {
+                first.insert(sum, i);
+            },
+        }
+    }
+    false
+}
+
+// ---- iter (subarrays_iter.kara) ------------------------------------------
+
+fn iter_find_subarrays(nums: Vec[i64]) -> bool {
+    let sums: Set[i64] = nums.iter().zip(nums.iter().skip(1)).map(|(a, b)| a + b).collect();
+    sums.len() < nums.len() - 1
+}
+
+// ---- solution (subarrays_solution.kara) ----------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn find_subarrays(nums: Vec[i32]) -> bool {
+        let mut seen = Set.new();
+        nums.windows(2).into_iter().any(|w| not seen.insert(w[0] + w[1]))
+    }
+}
+
+fn solution_find_subarrays(nums: Vec[i64]) -> bool {
+    let nums: Vec[i32] = nums.iter().map(|v| v as i32).collect();
+    Solution.find_subarrays(nums)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64]) -> bool {
+    match arm {
+        0 => star_find_subarrays(nums),
+        1 => sort_find_subarrays(nums),
+        2 => pairs_find_subarrays(nums),
+        3 => map_find_subarrays(nums),
+        4 => iter_find_subarrays(nums),
+        _ => solution_find_subarrays(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "sort", "pairs", "map", "iter", "solution"];
+    let mut seed = 2395;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..360 {
+        let nums: Vec[i64] = if c < 300 {
+            let n = 2 + next_random(mut seed) % 11;
+            let top = next_random(mut seed) % 21;
+            (0..n).map(|_| next_random(mut seed) % (2 * top + 1) - top).collect()
+        } else if c < 330 {
+            let n = 2 + next_random(mut seed) % 1999;
+            (0..n).map(|_| wide(mut seed) % 2000000001 - 1000000000).collect()
+        } else {
+            let n = 2 + next_random(mut seed) % 1999;
+            let top = next_random(mut seed) % 4;
+            (0..n).map(|_| next_random(mut seed) % (2 * top + 1) - top).collect()
+        };
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let nums = cases[c].clone();
+        let small = nums.len() <= 12;
+        let truth = small and equal_literally(nums);
+        if small {
+            check = (check * 31 + if truth {
+                2
+            } else {
+                1
+            }) % 1000000007;
+        }
+        let mut reversed = nums.clone();
+        reversed.reverse();
+        let shift = next_random(mut seed) % 1001 - 500;
+        let shifted: Vec[i64] = nums.iter().map(|v| v + shift).collect();
+        let negated: Vec[i64] = nums.iter().map(|v| -v).collect();
+        let mut copied = nums.clone();
+        copied.push(nums[0]);
+        copied.push(nums[1]);
+        let got: Vec[bool] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [not small or value == truth, answer(arm, reversed) == value, answer(arm, shifted) == value, answer(arm, negated) == value, answer(arm, copied), same >= 3];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

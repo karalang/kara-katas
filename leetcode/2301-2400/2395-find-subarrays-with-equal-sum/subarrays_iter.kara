@@ -1,0 +1,56 @@
+// LeetCode #2395: Find Subarrays With Equal Sum -- iterators. The
+// neighbouring sums are `zip`ped from the values and the values after
+// one, and collected into a Set; fewer distinct sums than pairs means
+// two are equal. O(n).
+
+fn find_subarrays(nums: Vec[i64]) -> bool {
+    let sums: Set[i64] = nums.iter().zip(nums.iter().skip(1)).map(|(a, b)| a + b).collect();
+    sums.len() < nums.len() - 1
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's three examples; the two pairs overlapping; two values;
+    // then 1000 values from -10^9 to 10^9, as they come and with its
+    // first pair copied to the end; then 3000 random arrays of 2 to 12
+    // values from -top to top, top from 0 to 20, with a checksum and the
+    // count of yes
+    println(f"{find_subarrays([4, 2, 4])}");
+    println(f"{find_subarrays([1, 2, 3, 4, 5])}");
+    println(f"{find_subarrays([0, 0, 0])}");
+    println(f"{find_subarrays([3, 1, 3])} {find_subarrays([5, 5])}");
+    let mut seed = 2395;
+    let mut long: Vec[i64] = (0..1000).map(|_| wide(mut seed) % 2000000001 - 1000000000).collect();
+    let first = find_subarrays(long);
+    long.push(long[1]);
+    long.push(long[0]);
+    println(f"1000 values: {first}, {find_subarrays(long)}");
+    let mut check = 0;
+    let mut yes = 0;
+    for _ in 0..3000 {
+        let n = 2 + next_random(mut seed) % 11;
+        let top = next_random(mut seed) % 21;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % (2 * top + 1) - top).collect();
+        let found = find_subarrays(nums);
+        check = (check * 31 + if found {
+            2
+        } else {
+            1
+        }) % 1000000007;
+        if found {
+            yes += 1;
+        }
+    }
+    println(f"3000 arrays: checksum {check}, {yes} yes");
+}
