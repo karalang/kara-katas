@@ -1,0 +1,67 @@
+// LeetCode #2317: Maximum XOR After Operations -- the operations done:
+// for each bit held by an even number of the numbers, one holder is
+// given `nums[i] & (nums[i] ^ x)` with `x` that bit alone, which clears
+// it there and leaves the count odd; then the numbers are XORed. O(27 n).
+
+fn maximum_xor(nums: Vec[i64]) -> i64 {
+    let mut nums = nums.clone();
+    for bit in 0..27 {
+        let x = 1 << bit;
+        let mut holders = 0;
+        let mut last = -1;
+        for i in 0..nums.len() {
+            if nums[i] & x != 0 {
+                holders += 1;
+                last = i;
+            }
+        }
+        if holders > 0 and holders % 2 == 0 {
+            nums[last] = nums[last] & (nums[last] ^ x);
+        }
+    }
+    let mut result = 0;
+    for v in nums.iter() {
+        result ^= v;
+    }
+    result
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; then one zero, one number, two equal
+    // numbers, and the largest number beside a power of two it holds
+    // and one it does not
+    let cases = [[3, 2, 4, 6].to_vec(), [1, 2, 3, 9, 2].to_vec(), [0].to_vec(), [12345].to_vec(), [5, 5].to_vec(), [100000000, 67108864, 33554432].to_vec()];
+    for nums in cases {
+        println(maximum_xor(nums));
+    }
+    // 10^5 numbers up to 10^8, each with only the bits of a random mask
+    let mut seed = 2317;
+    let mut big: Vec[i64] = Vec.new();
+    for _ in 0..100000 {
+        let value = (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000001;
+        big.push(value & (next_random(mut seed) * 4096));
+    }
+    println(maximum_xor(big));
+    // 1000 random arrays of 1 to 30 numbers below 2^1 to 2^27
+    let mut check = 0;
+    let mut ones = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 30 + 1;
+        let top = 1 << (next_random(mut seed) % 27 + 1);
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            nums.push((next_random(mut seed) * 32768 + next_random(mut seed)) % top);
+        }
+        let best = maximum_xor(nums);
+        check = (check * 31 + best) % 1000000007;
+        ones += best.count_ones();
+    }
+    println(f"1000 arrays: checksum {check}, {ones} bits set in all");
+}
