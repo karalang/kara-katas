@@ -1,0 +1,85 @@
+// LeetCode #2267: Check if There Is a Valid Parentheses String Path -- a
+// depth-first search with memory. From (i, j) with `open` brackets open,
+// it moves right or down, giving up when `open` falls below 0 or is more
+// than the cells left could close; a state seen once is not searched
+// again, kept in a `Set[(i64, i64, i64)]`. O(m n (m + n)).
+
+fn search(grid: Vec[Vec[char]], i: i64, j: i64, open: i64, seen: mut ref Set[(i64, i64, i64)]) -> bool {
+    let m = grid.len();
+    let n = grid[0].len();
+    let open = if grid[i][j] == '(' { open + 1 } else { open - 1 };
+    let left = (m - 1 - i) + (n - 1 - j);
+    if open < 0 or open > left {
+        return false;
+    }
+    if i == m - 1 and j == n - 1 {
+        return open == 0;
+    }
+    if seen.contains((i, j, open)) {
+        return false;
+    }
+    seen.insert((i, j, open));
+    (i + 1 < m and search(grid, i + 1, j, open, mut seen)) or (j + 1 < n and search(grid, i, j + 1, open, mut seen))
+}
+
+fn has_valid_path(grid: Vec[Vec[char]]) -> bool {
+    let mut seen: Set[(i64, i64, i64)] = Set.new();
+    search(grid, 0, 0, 0, mut seen)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// an `m` by `n` grid, each cell `(` with chance `open` in 100
+fn random_grid(seed: mut ref i64, m: i64, n: i64, open: i64) -> Vec[Vec[char]] {
+    (0..m)
+        .map(|_| (0..n).map(|_| if next_random(mut seed) % 100 < open { '(' } else { ')' }).collect())
+        .collect()
+}
+
+fn grid_of(rows: Vec[String]) -> Vec[Vec[char]] {
+    rows.iter().map(|r| r.chars().collect()).collect()
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: one cell, a pair in a row,
+    // a pair down a column, an odd path, and `)` at the start
+    let examples = [
+        ["(((", ")()", "(()", "(()"].to_vec(),
+        ["))", "(("].to_vec(),
+        ["("].to_vec(),
+        ["()"].to_vec(),
+        ["(", ")"].to_vec(),
+        ["((", "))"].to_vec(),
+        [")(", "()"].to_vec(),
+    ];
+    for rows in examples.iter() {
+        println(f"{rows} -> {has_valid_path(grid_of(rows))}");
+    }
+    // 2000 grids of 1 to 8 rows and columns, `(` half the time or 60 in
+    // 100
+    let mut seed = 2267;
+    let mut found = 0;
+    let mut check = 0;
+    for t in 0..2000 {
+        let m = next_random(mut seed) % 8 + 1;
+        let n = next_random(mut seed) % 8 + 1;
+        let valid = has_valid_path(random_grid(mut seed, m, n, [50, 60][t % 2]));
+        if valid {
+            found += 1;
+        }
+        check = (check * 31 + if valid { 2 } else { 1 }) % 1000000007;
+    }
+    println(f"2000 grids: {found} with a path, checksum {check}");
+    // the constraints' largest, 100 by 100: random at 55 in 100, a
+    // checkerboard, and `(` above the anti-diagonal with `)` below it
+    let random = random_grid(mut seed, 100, 99, 55);
+    let checker: Vec[Vec[char]] = (0..100).map(|i| (0..99).map(|j| if (i + j) % 2 == 0 { '(' } else { ')' }).collect()).collect();
+    let split: Vec[Vec[char]] = (0..100).map(|i| (0..99).map(|j| if i + j < 99 { '(' } else { ')' }).collect()).collect();
+    let answers = [has_valid_path(random), has_valid_path(checker), has_valid_path(split)];
+    println(f"100 by 99: {answers}");
+}

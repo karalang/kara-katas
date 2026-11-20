@@ -1,0 +1,357 @@
+// LeetCode #2267: Check if There Is a Valid Parentheses String Path --
+// the differential. The six arms, against the statement read literally:
+// every path from the top left to the bottom right, built move by move,
+// its string checked for a balance that never falls below 0 and ends at
+// 0; no table of balances. 300 random grids of 1 to 6 rows and columns,
+// `(` 50 or 60 times in 100; then 30 with every row the same; then 30
+// planted with a valid path along the top row and down the last column.
+// Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the grid transposed: the same answer
+// P3  turned half round, every bracket swapped: the same answer
+// P4  true only for an odd number of rows plus columns, `(` at the top
+//     left and `)` at the bottom right
+// P5  a row of `(` put on top and a row of `)` below: still true when
+//     it was true
+// P6  each arm agrees with at least three of the other five
+
+// ---- path.kara: the ★ arm, a table of balances per cell
+fn star_has_valid_path(grid: Vec[Vec[char]]) -> bool {
+    let m = grid.len();
+    let n = grid[0].len();
+    if (m + n - 1) % 2 == 1 or grid[0][0] == ')' or grid[m - 1][n - 1] == '(' {
+        return false;
+    }
+    let most = (m + n) / 2 + 1;
+    let mut reach = Vec.filled(m, Vec.filled(n, Vec.filled(most + 1, false)));
+    reach[0][0][1] = true;
+    for i in 0..m {
+        for j in 0..n {
+            if i == 0 and j == 0 {
+                continue;
+            }
+            let step = if grid[i][j] == '(' { 1 } else { -1 };
+            for b in 0..most + 1 {
+                let from = b - step;
+                if from < 0 or from > most {
+                    continue;
+                }
+                if (i > 0 and reach[i - 1][j][from]) or (j > 0 and reach[i][j - 1][from]) {
+                    reach[i][j][b] = true;
+                }
+            }
+        }
+    }
+    reach[m - 1][n - 1][0]
+}
+
+// ---- path_bits.kara: balances as the bits of a `u128`
+fn bits_has_valid_path(grid: Vec[Vec[char]]) -> bool {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut above: Vec[u128] = Vec.filled(n, 0);
+    for i in 0..m {
+        let mut row: Vec[u128] = Vec.filled(n, 0);
+        for j in 0..n {
+            let mut into: u128 = if i == 0 and j == 0 { 1 } else { 0 };
+            into = into | above[j];
+            if j > 0 {
+                into = into | row[j - 1];
+            }
+            row[j] = if grid[i][j] == '(' { into << 1 } else { into >> 1 };
+        }
+        above = row;
+    }
+    above[n - 1] & 1 == 1
+}
+
+// ---- path_dfs.kara: a search remembering the states seen
+fn dfs_search(grid: Vec[Vec[char]], i: i64, j: i64, open: i64, seen: mut ref Set[(i64, i64, i64)]) -> bool {
+    let m = grid.len();
+    let n = grid[0].len();
+    let open = if grid[i][j] == '(' { open + 1 } else { open - 1 };
+    let left = (m - 1 - i) + (n - 1 - j);
+    if open < 0 or open > left {
+        return false;
+    }
+    if i == m - 1 and j == n - 1 {
+        return open == 0;
+    }
+    if seen.contains((i, j, open)) {
+        return false;
+    }
+    seen.insert((i, j, open));
+    (i + 1 < m and dfs_search(grid, i + 1, j, open, mut seen)) or (j + 1 < n and dfs_search(grid, i, j + 1, open, mut seen))
+}
+
+fn dfs_has_valid_path(grid: Vec[Vec[char]]) -> bool {
+    let mut seen: Set[(i64, i64, i64)] = Set.new();
+    dfs_search(grid, 0, 0, 0, mut seen)
+}
+
+// ---- path_struct.kara: `struct Sweep`, the lowest and highest balance
+struct StructSweep {
+    low: Vec[i64],
+    high: Vec[i64],
+}
+
+impl StructSweep {
+    fn new(n: i64) -> StructSweep {
+        StructSweep { low: Vec.filled(n, i64.MAX), high: Vec.filled(n, -1) }
+    }
+
+    fn next_row(mut ref self, row: Vec[char], first: bool) {
+        for j in 0..row.len() {
+            let mut low = self.low[j];
+            let mut high = self.high[j];
+            if first and j == 0 {
+                low = 0;
+                high = 0;
+            }
+            if j > 0 {
+                low = low.min(self.low[j - 1]);
+                high = high.max(self.high[j - 1]);
+            }
+            if high < 0 {
+                self.low[j] = i64.MAX;
+                self.high[j] = -1;
+                continue;
+            }
+            if row[j] == '(' {
+                low += 1;
+                high += 1;
+            } else {
+                low = if low == 0 { 1 } else { low - 1 };
+                high -= 1;
+            }
+            self.low[j] = if high < 0 { i64.MAX } else { low };
+            self.high[j] = high;
+        }
+    }
+}
+
+fn struct_has_valid_path(grid: Vec[Vec[char]]) -> bool {
+    let n = grid[0].len();
+    let mut sweep = StructSweep.new(n);
+    for i in 0..grid.len() {
+        sweep.next_row(grid[i], i == 0);
+    }
+    sweep.low[n - 1] == 0
+}
+
+// ---- path_iter.kara: a `fold` of rows, each a `scan` of sets
+fn iter_has_valid_path(grid: Vec[Vec[char]]) -> bool {
+    let n = grid[0].len();
+    let mut start: Vec[Set[i64]] = (0..n).map(|_| Set.new()).collect();
+    start[0].insert(0);
+    let last = grid.iter().enumerate().fold(start, |above, (i, row)| {
+        row.iter()
+            .enumerate()
+            .scan(Set.new(), |left, (j, c)| {
+                let step = if c == '(' { 1 } else { -1 };
+                let from: Set[i64] = if i == 0 and j == 0 { above[0].clone() } else { left.union(above[j]).into_iter().collect() };
+                let here: Set[i64] = from.iter().map(|b| b + step).filter(|b| b >= 0).collect();
+                Some((here.clone(), here))
+            })
+            .collect()
+    });
+    last[n - 1].contains(0)
+}
+
+// ---- path_solution.kara: LeetCode's Rust template
+impl Solution {
+    pub fn has_valid_path(grid: Vec[Vec[char]]) -> bool {
+        let m = grid.len();
+        let n = grid[0].len();
+        if (m + n - 1) % 2 == 1 or grid[0][0] == ')' or grid[m - 1][n - 1] == '(' {
+            return false;
+        }
+        let max = (m + n) / 2 + 1;
+        let mut dp = Vec.filled(m, Vec.filled(n, Vec.filled(max + 1, false)));
+        dp[0][0][1] = true;
+        for i in 0..m {
+            for j in 0..n {
+                let d: i32 = if grid[i][j] == '(' { 1 } else { -1 };
+                for k in 0..=max {
+                    if i == 0 and j == 0 {
+                        continue;
+                    }
+                    let prev = k as i32 - d;
+                    if prev < 0 or prev > max {
+                        continue;
+                    }
+                    let p = prev as i64;
+                    if (i > 0 and dp[i - 1][j][p]) or (j > 0 and dp[i][j - 1][p]) {
+                        dp[i][j][k] = true;
+                    }
+                }
+            }
+        }
+        dp[m - 1][n - 1][0]
+    }
+}
+
+struct Solution {}
+
+fn solution_has_valid_path(grid: Vec[Vec[char]]) -> bool {
+    Solution.has_valid_path(grid)
+}
+
+
+// ---- the statement read literally
+
+// whether some path on from (i, j), with `open` brackets open before it,
+// is a valid string
+fn paths(grid: Vec[Vec[char]], i: i64, j: i64, open: i64) -> bool {
+    let open = if grid[i][j] == '(' { open + 1 } else { open - 1 };
+    if open < 0 {
+        return false;
+    }
+    let m = grid.len();
+    let n = grid[0].len();
+    if i == m - 1 and j == n - 1 {
+        return open == 0;
+    }
+    (i + 1 < m and paths(grid, i + 1, j, open)) or (j + 1 < n and paths(grid, i, j + 1, open))
+}
+
+fn literal(grid: Vec[Vec[char]]) -> bool {
+    paths(grid, 0, 0, 0)
+}
+
+fn transposed(grid: Vec[Vec[char]]) -> Vec[Vec[char]] {
+    (0..grid[0].len()).map(|j| (0..grid.len()).map(|i| grid[i][j]).collect()).collect()
+}
+
+fn turned(grid: Vec[Vec[char]]) -> Vec[Vec[char]] {
+    let m = grid.len();
+    let n = grid[0].len();
+    (0..m).map(|i| (0..n).map(|j| if grid[m - 1 - i][n - 1 - j] == '(' { ')' } else { '(' }).collect()).collect()
+}
+
+fn framed(grid: Vec[Vec[char]]) -> Vec[Vec[char]] {
+    let n = grid[0].len();
+    let mut out: Vec[Vec[char]] = [Vec.filled(n, '(')].to_vec();
+    for row in grid.iter() {
+        out.push(row.clone());
+    }
+    out.push(Vec.filled(n, ')'));
+    out
+}
+
+fn shown(grid: Vec[Vec[char]]) -> String {
+    let rows: Vec[String] = grid.iter().map(|r| r.iter().collect()).collect();
+    rows.join("/")
+}
+
+fn answer(arm: i64, grid: Vec[Vec[char]]) -> bool {
+    match arm {
+        0 => star_has_valid_path(grid),
+        1 => bits_has_valid_path(grid),
+        2 => dfs_has_valid_path(grid),
+        3 => struct_has_valid_path(grid),
+        4 => iter_has_valid_path(grid),
+        _ => solution_has_valid_path(grid),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn bracket(seed: mut ref i64, open: i64) -> char {
+    if next_random(mut seed) % 100 < open { '(' } else { ')' }
+}
+
+fn main() {
+    let names = ["star", "bits", "dfs", "struct", "iter", "solution"];
+    let mut seed = 2267;
+    let mut cases: Vec[Vec[Vec[char]]] = Vec.new();
+    for c in 0..360 {
+        let m = next_random(mut seed) % 6 + 1;
+        let n = next_random(mut seed) % 6 + 1;
+        let mut grid: Vec[Vec[char]] = Vec.new();
+        if c < 300 {
+            let open = [50, 60][c % 2];
+            for _ in 0..m {
+                grid.push((0..n).map(|_| bracket(mut seed, open)).collect());
+            }
+        } else if c < 330 {
+            let row: Vec[char] = (0..n).map(|_| bracket(mut seed, 55)).collect();
+            for _ in 0..m {
+                grid.push(row.clone());
+            }
+        } else {
+            let n = n + (m + n + 1) % 2;
+            for _ in 0..m {
+                grid.push((0..n).map(|_| bracket(mut seed, 50)).collect());
+            }
+            let length = m + n - 1;
+            for k in 0..length {
+                let c = if k < length / 2 { '(' } else { ')' };
+                if k < n {
+                    grid[0][k] = c;
+                } else {
+                    grid[k - n + 1][n - 1] = c;
+                }
+            }
+        }
+        cases.push(grid);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut found = 0;
+    let mut check = 0;
+    for grid in cases.iter() {
+        let truth = literal(grid);
+        if truth {
+            found += 1;
+        }
+        check = (check * 31 + if truth { 2 } else { 1 }) % 1000000007;
+        let m = grid.len();
+        let n = grid[0].len();
+        let possible = (m + n) % 2 == 1 and grid[0][0] == '(' and grid[m - 1][n - 1] == ')';
+        let got: Vec[bool] = (0..6).map(|arm| answer(arm, grid)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, transposed(grid)) == value,
+                answer(arm, turned(grid)) == value,
+                not value or possible,
+                not value or answer(arm, framed(grid)),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{shown(grid)} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases ({found} with a path): checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
