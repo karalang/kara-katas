@@ -1,0 +1,267 @@
+// LeetCode #2366: Minimum Replacements to Sort the Array -- the
+// differential. The six arms, against the statement read literally: from
+// the right, every way of splitting each value into k parts that fit
+// under the bound, with every smallest part those k parts could have,
+// tried, and the fewest operations kept. No greedy choice of k or of the
+// smallest part. 300 random arrays of 1 to 10 values from 1 to 1 to 20;
+// then 30 of up to 2000 values up to 10^9; then 30 of up to 300 values
+// falling from up to 1000. Every case is drawn before any arm answers.
+//
+// P1  up to 10 values up to 20, the answer is the literal reading's
+// P2  0 exactly when the values never fall, and at most the sum of
+//     every value but the last less one
+// P3  a 1 put in front: the same answer
+// P4  the largest value appended: the same answer
+// P5  the last value doubled: no more operations
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn fewest_literally(nums: Vec[i64], i: i64, bound: i64, memo: mut ref Vec[Vec[i64]]) -> i64 {
+    if i < 0 {
+        return 0;
+    }
+    if memo[i][bound] >= 0 {
+        return memo[i][bound];
+    }
+    let v = nums[i];
+    let mut best = -1;
+    for k in 1..v + 1 {
+        for least in 1..v / k + 1 {
+            // k parts, all from least to bound, summing to v
+            if least <= bound and least * k <= v and v <= bound * k {
+                let ops = k - 1 + fewest_literally(nums, i - 1, least, mut memo);
+                if best < 0 or ops < best {
+                    best = ops;
+                }
+            }
+        }
+    }
+    memo[i][bound] = best;
+    best
+}
+
+fn replacements_literally(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let top = nums.iter().max().unwrap();
+    let mut memo: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(top + 1, -1));
+    fewest_literally(nums, n - 2, nums[n - 1], mut memo)
+}
+
+// ---- star (replace.kara) -------------------------------------------------
+
+fn star_minimum_replacement(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut bound = nums[n - 1];
+    let mut ops = 0;
+    for i in (0..n - 1).rev() {
+        let v = nums[i];
+        if v <= bound {
+            bound = v;
+        } else {
+            let k = (v + bound - 1) / bound;
+            ops += k - 1;
+            bound = v / k;
+        }
+    }
+    ops
+}
+
+// ---- search (replace_search.kara) ----------------------------------------
+
+fn search_fewest_pieces(v: i64, bound: i64) -> i64 {
+    let mut lo = 1;
+    let mut hi = v;
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if (v + mid - 1) / mid <= bound {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    lo
+}
+
+fn search_minimum_replacement(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut bound = nums[n - 1];
+    let mut ops = 0;
+    for i in (0..n - 1).rev() {
+        let k = search_fewest_pieces(nums[i], bound);
+        ops += k - 1;
+        bound = nums[i] / k;
+    }
+    ops
+}
+
+// ---- recursive (replace_recursive.kara) ----------------------------------
+
+fn recursive_ops_before(nums: Vec[i64], i: i64, bound: i64) -> i64 {
+    if i < 0 {
+        return 0;
+    }
+    let v = nums[i];
+    let k = (v + bound - 1) / bound;
+    k - 1 + recursive_ops_before(nums, i - 1, v / k)
+}
+
+fn recursive_minimum_replacement(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    recursive_ops_before(nums, n - 2, nums[n - 1])
+}
+
+// ---- divmod (replace_divmod.kara) ----------------------------------------
+
+fn divmod_minimum_replacement(nums: Vec[i64]) -> i64 {
+    let mut bound = nums[nums.len() - 1];
+    let mut ops = 0;
+    for v in nums.iter().rev().skip(1) {
+        let pieces = v / bound + if v % bound == 0 { 0 } else { 1 };
+        ops += pieces - 1;
+        bound = v / pieces;
+    }
+    ops
+}
+
+// ---- iter (replace_iter.kara) --------------------------------------------
+
+fn iter_minimum_replacement(nums: Vec[i64]) -> i64 {
+    let last = nums[nums.len() - 1];
+    let (ops, _) = nums.iter().rev().skip(1).fold((0, last), |(ops, bound), v| {
+        let k = (v + bound - 1) / bound;
+        (ops + k - 1, v / k)
+    });
+    ops
+}
+
+// ---- solution (replace_solution.kara) ------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_replacement(nums: Vec[i32]) -> i64 {
+        let mut bound = *nums.last().unwrap() as i64;
+        let mut ops: i64 = 0;
+        for x in nums.iter().rev().skip(1) {
+            let v = x as i64;
+            let k = (v + bound - 1) / bound;
+            ops += k - 1;
+            bound = v / k;
+        }
+        ops
+    }
+}
+
+fn solution_minimum_replacement(nums: Vec[i64]) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.minimum_replacement(nums)
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_minimum_replacement(nums),
+        1 => search_minimum_replacement(nums),
+        2 => recursive_minimum_replacement(nums),
+        3 => divmod_minimum_replacement(nums),
+        4 => iter_minimum_replacement(nums),
+        _ => solution_minimum_replacement(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "search", "recursive", "divmod", "iter", "solution"];
+    let mut seed = 2366;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..360 {
+        let nums: Vec[i64] = if c < 300 {
+            let n = 1 + next_random(mut seed) % 10;
+            let top = 1 + next_random(mut seed) % 20;
+            (0..n).map(|_| 1 + next_random(mut seed) % top).collect()
+        } else if c < 330 {
+            let n = 1 + next_random(mut seed) % 2000;
+            (0..n).map(|_| 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000).collect()
+        } else {
+            let n = 1 + next_random(mut seed) % 300;
+            let top = 1 + next_random(mut seed) % 1000;
+            let mut v: Vec[i64] = (0..n).map(|_| 1 + next_random(mut seed) % top).collect();
+            v.sort();
+            v.reverse();
+            v
+        };
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let nums = cases[c].clone();
+        let n = nums.len();
+        let small = c < 300;
+        let truth = if small { replacements_literally(nums) } else { -1 };
+        if small {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let mut falls = false;
+        let mut most = 0;
+        for i in 0..n - 1 {
+            if nums[i] > nums[i + 1] {
+                falls = true;
+            }
+            most += nums[i] - 1;
+        }
+        let mut fronted: Vec[i64] = [1].to_vec();
+        fronted.extend(nums.iter());
+        let mut topped = nums.clone();
+        topped.push(nums.iter().max().unwrap());
+        let mut doubled = nums.clone();
+        doubled[n - 1] *= 2;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                (value == 0) == not falls and value >= 0 and value <= most,
+                answer(arm, fronted) == value,
+                answer(arm, topped) == value,
+                answer(arm, doubled) <= value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

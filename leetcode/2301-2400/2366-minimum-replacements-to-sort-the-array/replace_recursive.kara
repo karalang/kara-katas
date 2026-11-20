@@ -1,0 +1,56 @@
+// LeetCode #2366: Minimum Replacements to Sort the Array -- recursion:
+// the operations for the values up to place i under a bound are those
+// for place i itself, split into the fewest pieces that fit, plus those
+// for the values before it under the smallest of its pieces. One call per
+// place, 10^5 deep on the harness's long lines.
+
+fn ops_before(nums: Vec[i64], i: i64, bound: i64) -> i64 {
+    if i < 0 {
+        return 0;
+    }
+    let v = nums[i];
+    let k = (v + bound - 1) / bound;
+    k - 1 + ops_before(nums, i - 1, v / k)
+}
+
+fn minimum_replacement(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    ops_before(nums, n - 2, nums[n - 1])
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; one value; 10^5 values of 10^9 before a 1;
+    // 10^5 values falling from 10^9; 10^5 values rising; then 2000 random
+    // arrays of 1 to 40 values from 1 to 1 to 60
+    println(f"{minimum_replacement([3, 9, 3])}");
+    println(f"{minimum_replacement([1, 2, 3, 4, 5])}");
+    println(f"{minimum_replacement([7])}");
+    let mut heavy: Vec[i64] = (0..99999).map(|_| 1000000000).collect();
+    heavy.push(1);
+    println(f"{minimum_replacement(heavy)}");
+    let falling: Vec[i64] = (0..100000).map(|i| 1000000000 - i * 9999).collect();
+    println(f"{minimum_replacement(falling)}");
+    let rising: Vec[i64] = (0..100000).map(|i| i + 1).collect();
+    println(f"{minimum_replacement(rising)}");
+    let mut seed = 2366;
+    let mut check = 0;
+    let mut sorted = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 40;
+        let top = 1 + next_random(mut seed) % 60;
+        let nums: Vec[i64] = (0..n).map(|_| 1 + next_random(mut seed) % top).collect();
+        let ops = minimum_replacement(nums);
+        check = (check * 31 + ops) % 1000000007;
+        if ops == 0 {
+            sorted += 1;
+        }
+    }
+    println(f"2000 arrays: checksum {check}, {sorted} already sorted");
+}
