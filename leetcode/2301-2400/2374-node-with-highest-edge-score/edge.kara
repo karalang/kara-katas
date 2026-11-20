@@ -1,0 +1,63 @@
+// LeetCode #2374: Node With Highest Edge Score -- the ★ arm. Each node i
+// adds its label to the score of the node its edge points to; the answer
+// is the node of the highest score, the smallest such label on a tie.
+// Scores reach 5 * 10^9, so they are kept in i64. O(n).
+
+fn edge_score(edges: Vec[i64]) -> i64 {
+    let n = edges.len();
+    let mut score: Vec[i64] = Vec.filled(n, 0);
+    for i in 0..n {
+        score[edges[i]] += i;
+    }
+    let mut best = 0;
+    for v in 1..n {
+        if score[v] > score[best] {
+            best = v;
+        }
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; two nodes; 10^5 nodes all pointing at node
+    // 0, node 0 at node 1; 10^5 nodes each pointing at half its label;
+    // 10^5 nodes each pointing at the next, around; then 2000 random
+    // graphs of 2 to 40 nodes, each edge to any other node or, with a
+    // chance of 1 in 2, to one of the first three
+    println(f"{edge_score([1, 0, 0, 0, 0, 7, 7, 5])}");
+    println(f"{edge_score([2, 0, 0, 2])}");
+    println(f"{edge_score([1, 0])}");
+    let n = 100000;
+    let star: Vec[i64] = (0..n).map(|i| if i == 0 { 1 } else { 0 }).collect();
+    let halves: Vec[i64] = (0..n).map(|i| if i == 0 { 1 } else { i / 2 }).collect();
+    let around: Vec[i64] = (0..n).map(|i| (i + 1) % n).collect();
+    println(f"{edge_score(star)} {edge_score(halves)} {edge_score(around)}");
+    let mut seed = 2374;
+    let mut check = 0;
+    let mut zero = 0;
+    for _ in 0..2000 {
+        let n = 2 + next_random(mut seed) % 39;
+        let edges: Vec[i64] = (0..n)
+            .map(|i| {
+                let mut e = if next_random(mut seed) % 2 == 0 { next_random(mut seed) % 3 % n } else { next_random(mut seed) % n };
+                if e == i {
+                    e = (e + 1) % n;
+                }
+                e
+            })
+            .collect();
+        let t = edge_score(edges);
+        check = (check * 31 + t) % 1000000007;
+        if t == 0 {
+            zero += 1;
+        }
+    }
+    println(f"2000 graphs: checksum {check}, {zero} with node 0 the answer");
+}

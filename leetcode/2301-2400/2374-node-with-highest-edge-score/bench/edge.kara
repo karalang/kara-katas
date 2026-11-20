@@ -1,0 +1,49 @@
+// LeetCode #2374: Node With Highest Edge Score -- the bench, the ★ arm:
+// each node adds its label to the score of the node its edge points to,
+// and the answer is the highest score's node, the smallest on a tie.
+
+fn edge_score(edges: Vec[i64]) -> i64 {
+    let n = edges.len();
+    let mut score: Vec[i64] = Vec.filled(n, 0);
+    for i in 0..n {
+        score[edges[i]] += i;
+    }
+    let mut best = 0;
+    for v in 1..n {
+        if score[v] > score[best] {
+            best = v;
+        }
+    }
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // graph a: 10^5 nodes, each edge to one of the first 4^(a + 1) nodes
+    // (at most all of them), another node than its own
+    let n = 100000;
+    let mut seed = 2374;
+    let mut graphs: Vec[Vec[i64]] = Vec.new();
+    let mut width = 4;
+    for _ in 0..10 {
+        let edges: Vec[i64] = (0..n)
+            .map(|i| {
+                let e = (next_random(mut seed) * 32768 + next_random(mut seed)) % width.min(n);
+                if e == i { (e + 1) % n } else { e }
+            })
+            .collect();
+        graphs.push(edges);
+        width *= 4;
+    }
+    let mut check = 0;
+    for p in 0..50 {
+        for edges in graphs.iter() {
+            check = (check * 31 + edge_score(edges) + p) % 1000000007;
+        }
+    }
+    println(f"50 passes over 10 graphs of 10^5 nodes: checksum {check}");
+}

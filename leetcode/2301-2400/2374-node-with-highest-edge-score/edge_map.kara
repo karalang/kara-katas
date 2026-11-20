@@ -1,0 +1,64 @@
+// LeetCode #2374: Node With Highest Edge Score -- a map. Only the nodes
+// pointed at get an entry, their scores summed in a Map; the answer is
+// the entry of the highest score and, on a tie, the smallest label, which
+// the walk compares so that the map's order does not matter. O(n).
+
+fn edge_score(edges: Vec[i64]) -> i64 {
+    let mut score: Map[i64, i64] = Map.new();
+    for i in 0..edges.len() {
+        *score.entry(edges[i]).or_insert(0) += i;
+    }
+    let mut best = -1;
+    let mut best_score = -1;
+    for (node, total) in score.iter() {
+        if total > best_score or (total == best_score and node < best) {
+            best = node;
+            best_score = total;
+        }
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; two nodes; 10^5 nodes all pointing at node
+    // 0, node 0 at node 1; 10^5 nodes each pointing at half its label;
+    // 10^5 nodes each pointing at the next, around; then 2000 random
+    // graphs of 2 to 40 nodes, each edge to any other node or, with a
+    // chance of 1 in 2, to one of the first three
+    println(f"{edge_score([1, 0, 0, 0, 0, 7, 7, 5])}");
+    println(f"{edge_score([2, 0, 0, 2])}");
+    println(f"{edge_score([1, 0])}");
+    let n = 100000;
+    let star: Vec[i64] = (0..n).map(|i| if i == 0 { 1 } else { 0 }).collect();
+    let halves: Vec[i64] = (0..n).map(|i| if i == 0 { 1 } else { i / 2 }).collect();
+    let around: Vec[i64] = (0..n).map(|i| (i + 1) % n).collect();
+    println(f"{edge_score(star)} {edge_score(halves)} {edge_score(around)}");
+    let mut seed = 2374;
+    let mut check = 0;
+    let mut zero = 0;
+    for _ in 0..2000 {
+        let n = 2 + next_random(mut seed) % 39;
+        let edges: Vec[i64] = (0..n)
+            .map(|i| {
+                let mut e = if next_random(mut seed) % 2 == 0 { next_random(mut seed) % 3 % n } else { next_random(mut seed) % n };
+                if e == i {
+                    e = (e + 1) % n;
+                }
+                e
+            })
+            .collect();
+        let t = edge_score(edges);
+        check = (check * 31 + t) % 1000000007;
+        if t == 0 {
+            zero += 1;
+        }
+    }
+    println(f"2000 graphs: checksum {check}, {zero} with node 0 the answer");
+}
