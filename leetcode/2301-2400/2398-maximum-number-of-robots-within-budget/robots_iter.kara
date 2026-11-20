@@ -1,0 +1,81 @@
+// LeetCode #2398: Maximum Number of Robots Within Budget -- iterators: a
+// binary search on the count, each count checked by `any` over the
+// windows of that size. The running costs' prefix sums come from `scan`,
+// and each window's largest charge time from a sparse table whose levels
+// are each built by `map` and `collect` from the level below. O(n log n).
+
+fn maximum_robots(charge_times: Vec[i64], running_costs: Vec[i64], budget: i64) -> i64 {
+    let n = charge_times.len();
+    let prefix: Vec[i64] = [0].iter().cloned().chain(running_costs.iter().scan(0, |sum, c| {
+        let next = sum + c;
+        Some((next, next))
+    })).collect();
+    let mut table: Vec[Vec[i64]] = [charge_times.clone()];
+    while 1 << table.len() <= n {
+        let span = 1 << table.len() - 1;
+        let below = table[table.len() - 1].clone();
+        table.push((0..below.len() - span).map(|i| below[i].max(below[i + span])).collect());
+    }
+    let largest = |a: i64, size: i64| {
+        let j = (0..table.len()).filter(|j| 1 << j <= size).last().unwrap();
+        table[j][a].max(table[j][a + size - (1 << j)])
+    };
+    let mut low = 0;
+    let mut high = n;
+    while low < high {
+        let k = (low + high + 1) / 2;
+        if (0..n - k + 1).any(|a| largest(a, k) + k * (prefix[a + k] - prefix[a]) <= budget) {
+            low = k;
+        } else {
+            high = k - 1;
+        }
+    }
+    low
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; a budget for exactly one robot and one
+    // short of it; every robot at once; then 5 * 10^4 robots with charge
+    // times and running costs up to 10^5, for budgets from 10^5 to 10^15;
+    // then 3000 random fleets of 1 to 30 robots, with a checksum and the
+    // total
+    println(f"{maximum_robots([3, 6, 1, 3, 4], [2, 1, 3, 4, 5], 25)}");
+    println(f"{maximum_robots([11, 12, 19], [10, 8, 7], 19)}");
+    println(f"{maximum_robots([5], [4], 9)} {maximum_robots([5], [4], 8)} {maximum_robots([1, 1, 1], [1, 1, 1], 10)}");
+    let mut seed = 2398;
+    let n = 50000;
+    let charge: Vec[i64] = (0..n).map(|_| 1 + wide(mut seed) % 100000).collect();
+    let running: Vec[i64] = (0..n).map(|_| 1 + wide(mut seed) % 100000).collect();
+    let mut answers: Vec[i64] = Vec.new();
+    let mut budget = 100000;
+    while budget <= 1000000000000000 {
+        answers.push(maximum_robots(charge, running, budget));
+        budget *= 10;
+    }
+    println(f"5 * 10^4 robots: {answers}");
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let top = 1 + next_random(mut seed) % 100;
+        let charge: Vec[i64] = (0..n).map(|_| 1 + next_random(mut seed) % top).collect();
+        let running: Vec[i64] = (0..n).map(|_| 1 + next_random(mut seed) % top).collect();
+        let budget = 1 + wide(mut seed) % (top * 40 * (1 + n));
+        let k = maximum_robots(charge, running, budget);
+        check = (check * 31 + k) % 1000000007;
+        total += k;
+    }
+    println(f"3000 fleets: checksum {check}, {total} robots in all");
+}

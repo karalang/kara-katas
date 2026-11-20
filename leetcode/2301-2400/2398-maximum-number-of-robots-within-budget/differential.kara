@@ -1,0 +1,362 @@
+// LeetCode #2398: Maximum Number of Robots Within Budget -- the
+// differential. The six arms, against the statement read literally:
+// every run of consecutive robots, its largest charge time and its
+// running costs summed afresh, and the longest whose cost is within the
+// budget kept. No window kept between runs. 300 random fleets of 1 to 12
+// robots, which the literal reading answers; then 30 of up to 500 robots
+// with costs up to 10^5; then 30 of up to 500 robots with costs up to 3.
+// Each budget is drawn to cut somewhere inside the fleet, and every case
+// is drawn before any arm answers.
+//
+// P1  up to 12 robots, the answer is the literal reading's
+// P2  some run of the answer's length fits the budget, and no run one
+//     longer does
+// P3  the robots in reverse order: the same answer
+// P4  the budget doubled: the answer or more
+// P5  every charge time, running cost and the budget doubled: the same
+//     answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn robots_literally(charge_times: Vec[i64], running_costs: Vec[i64], budget: i64) -> i64 {
+    let n = charge_times.len();
+    let mut best = 0;
+    for i in 0..n {
+        for j in i..n {
+            let mut largest = 0;
+            let mut sum = 0;
+            for r in i..j + 1 {
+                largest = largest.max(charge_times[r]);
+                sum += running_costs[r];
+            }
+            let k = j - i + 1;
+            if largest + k * sum <= budget and k > best {
+                best = k;
+            }
+        }
+    }
+    best
+}
+
+// ---- star (robots.kara) --------------------------------------------------
+
+fn star_maximum_robots(charge_times: Vec[i64], running_costs: Vec[i64], budget: i64) -> i64 {
+    let mut best = 0;
+    let mut left = 0;
+    let mut sum = 0;
+    let mut largest: VecDeque[i64] = VecDeque.new();
+    for right in 0..charge_times.len() {
+        sum += running_costs[right];
+        while let Some(back) = largest.back() {
+            if charge_times[back] <= charge_times[right] {
+                largest.pop_back();
+            } else {
+                break;
+            }
+        }
+        largest.push_back(right);
+        while left <= right and charge_times[largest[0]] + (right - left + 1) * sum > budget {
+            if largest[0] == left {
+                largest.pop_front();
+            }
+            sum -= running_costs[left];
+            left += 1;
+        }
+        best = best.max(right - left + 1);
+    }
+    best
+}
+
+// ---- binary (robots_binary.kara) -----------------------------------------
+
+fn binary_fits(charge_times: Vec[i64], prefix: Vec[i64], budget: i64, k: i64) -> bool {
+    let mut largest: VecDeque[i64] = VecDeque.new();
+    for right in 0..charge_times.len() {
+        while largest.len() > 0 and charge_times[largest[largest.len() - 1]] <= charge_times[right] {
+            largest.pop_back();
+        }
+        largest.push_back(right);
+        if largest[0] <= right - k {
+            largest.pop_front();
+        }
+        if right >= k - 1 {
+            let cost = charge_times[largest[0]] + k * (prefix[right + 1] - prefix[right + 1 - k]);
+            if cost <= budget {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn binary_maximum_robots(charge_times: Vec[i64], running_costs: Vec[i64], budget: i64) -> i64 {
+    let mut prefix: Vec[i64] = [0];
+    for c in running_costs.iter() {
+        prefix.push(prefix[prefix.len() - 1] + c);
+    }
+    let mut low = 0;
+    let mut high = charge_times.len();
+    while low < high {
+        let mid = (low + high + 1) / 2;
+        if binary_fits(charge_times, prefix, budget, mid) {
+            low = mid;
+        } else {
+            high = mid - 1;
+        }
+    }
+    low
+}
+
+// ---- sparse (robots_sparse.kara) -----------------------------------------
+
+fn sparse_maximum_robots(charge_times: Vec[i64], running_costs: Vec[i64], budget: i64) -> i64 {
+    let n = charge_times.len();
+    let mut table: Vec[Vec[i64]] = [charge_times.clone()];
+    let mut span = 1;
+    while 2 * span <= n {
+        let below = table[table.len() - 1].clone();
+        let mut level: Vec[i64] = Vec.new();
+        for i in 0..n - 2 * span + 1 {
+            level.push(below[i].max(below[i + span]));
+        }
+        table.push(level);
+        span *= 2;
+    }
+    let mut best = 0;
+    let mut left = 0;
+    let mut sum = 0;
+    for right in 0..n {
+        sum += running_costs[right];
+        while left <= right {
+            let size = right - left + 1;
+            let mut j = 0;
+            while 1 << j + 1 <= size {
+                j += 1;
+            }
+            let largest = table[j][left].max(table[j][right + 1 - (1 << j)]);
+            if largest + size * sum <= budget {
+                break;
+            }
+            sum -= running_costs[left];
+            left += 1;
+        }
+        best = best.max(right + 1 - left);
+    }
+    best
+}
+
+// ---- heap (robots_heap.kara) ---------------------------------------------
+
+fn heap_maximum_robots(charge_times: Vec[i64], running_costs: Vec[i64], budget: i64) -> i64 {
+    let mut heap: PriorityQueue[(i64, i64)] = PriorityQueue.max_first();
+    let mut best = 0;
+    let mut left = 0;
+    let mut sum = 0;
+    for right in 0..charge_times.len() {
+        sum += running_costs[right];
+        heap.push((charge_times[right], right));
+        loop {
+            while heap.peek().unwrap().1 < left {
+                heap.pop();
+            }
+            if left > right or heap.peek().unwrap().0 + (right - left + 1) * sum <= budget {
+                break;
+            }
+            sum -= running_costs[left];
+            left += 1;
+            if left > right {
+                break;
+            }
+        }
+        best = best.max(right + 1 - left);
+    }
+    best
+}
+
+// ---- iter (robots_iter.kara) ---------------------------------------------
+
+fn iter_maximum_robots(charge_times: Vec[i64], running_costs: Vec[i64], budget: i64) -> i64 {
+    let n = charge_times.len();
+    let prefix: Vec[i64] = [0].iter().cloned().chain(running_costs.iter().scan(0, |sum, c| {
+        let next = sum + c;
+        Some((next, next))
+    })).collect();
+    let mut table: Vec[Vec[i64]] = [charge_times.clone()];
+    while 1 << table.len() <= n {
+        let span = 1 << table.len() - 1;
+        let below = table[table.len() - 1].clone();
+        table.push((0..below.len() - span).map(|i| below[i].max(below[i + span])).collect());
+    }
+    let largest = |a: i64, size: i64| {
+        let j = (0..table.len()).filter(|j| 1 << j <= size).last().unwrap();
+        table[j][a].max(table[j][a + size - (1 << j)])
+    };
+    let mut low = 0;
+    let mut high = n;
+    while low < high {
+        let k = (low + high + 1) / 2;
+        if (0..n - k + 1).any(|a| largest(a, k) + k * (prefix[a + k] - prefix[a]) <= budget) {
+            low = k;
+        } else {
+            high = k - 1;
+        }
+    }
+    low
+}
+
+// ---- solution (robots_solution.kara) -------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn maximum_robots(charge_times: Vec[i32], running_costs: Vec[i32], budget: i64) -> i32 {
+        let mut q: VecDeque[i64] = VecDeque.new();
+        let mut (l, sum, ans) = (0, 0, 0);
+        for r in 0..charge_times.len() {
+            sum += running_costs[r];
+            while let Some(b) = q.back().cloned() {
+                if charge_times[b] <= charge_times[r] {
+                    q.pop_back();
+                } else {
+                    break;
+                }
+            }
+            q.push_back(r);
+            while l <= r and charge_times[*q.front().unwrap()] + (r - l + 1) * sum > budget {
+                if *q.front().unwrap() == l {
+                    q.pop_front();
+                }
+                sum -= running_costs[l];
+                l += 1;
+            }
+            ans = ans.max(r + 1 - l);
+        }
+        ans as i32
+    }
+}
+
+fn solution_maximum_robots(charge_times: Vec[i64], running_costs: Vec[i64], budget: i64) -> i64 {
+    let charge_times: Vec[i32] = charge_times.iter().map(|v| v as i32).collect();
+    let running_costs: Vec[i32] = running_costs.iter().map(|v| v as i32).collect();
+    Solution.maximum_robots(charge_times, running_costs, budget)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, charge_times: Vec[i64], running_costs: Vec[i64], budget: i64) -> i64 {
+    match arm {
+        0 => star_maximum_robots(charge_times, running_costs, budget),
+        1 => binary_maximum_robots(charge_times, running_costs, budget),
+        2 => sparse_maximum_robots(charge_times, running_costs, budget),
+        3 => heap_maximum_robots(charge_times, running_costs, budget),
+        4 => iter_maximum_robots(charge_times, running_costs, budget),
+        _ => solution_maximum_robots(charge_times, running_costs, budget),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+// Whether some run of exactly k robots fits the budget.
+fn some_run_fits(charge_times: Vec[i64], running_costs: Vec[i64], budget: i64, k: i64) -> bool {
+    let n = charge_times.len();
+    if k == 0 {
+        return true;
+    }
+    for i in 0..n - k + 1 {
+        let mut largest = 0;
+        let mut sum = 0;
+        for r in i..i + k {
+            largest = largest.max(charge_times[r]);
+            sum += running_costs[r];
+        }
+        if largest + k * sum <= budget {
+            return true;
+        }
+    }
+    false
+}
+
+fn main() {
+    let names = ["star", "binary", "sparse", "heap", "iter", "solution"];
+    let mut seed = 2398;
+    let mut cases: Vec[(Vec[i64], Vec[i64], i64)] = Vec.new();
+    for c in 0..360 {
+        let (n, top) = if c < 300 {
+            (1 + next_random(mut seed) % 12, 1 + next_random(mut seed) % 20)
+        } else if c < 330 {
+            (1 + next_random(mut seed) % 500, 100000)
+        } else {
+            (1 + next_random(mut seed) % 500, 3)
+        };
+        let charge: Vec[i64] = (0..n).map(|_| 1 + wide(mut seed) % top).collect();
+        let running: Vec[i64] = (0..n).map(|_| 1 + wide(mut seed) % top).collect();
+        let reach = 1 + next_random(mut seed) % n;
+        let budget = 1 + wide(mut seed) % (top + reach * reach * top + 1);
+        cases.push((charge, running, budget));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (charge, running, budget) = cases[c].clone();
+        let n = charge.len();
+        let small = n <= 12;
+        let truth = if small {
+            robots_literally(charge, running, budget)
+        } else {
+            0
+        };
+        if small {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let mut charge_back = charge.clone();
+        charge_back.reverse();
+        let mut running_back = running.clone();
+        running_back.reverse();
+        let charge_twice: Vec[i64] = charge.iter().map(|v| 2 * v).collect();
+        let running_twice: Vec[i64] = running.iter().map(|v| 2 * v).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, charge, running, budget)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let witnessed = value >= 0 and value <= n and some_run_fits(charge, running, budget, value) and (value == n or not some_run_fits(charge, running, budget, value + 1));
+            let verdicts = [not small or value == truth, witnessed, answer(arm, charge_back, running_back, budget) == value, answer(arm, charge, running, 2 * budget) >= value, answer(arm, charge_twice, running_twice, 2 * budget) == value, same >= 3];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

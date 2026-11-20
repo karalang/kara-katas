@@ -1,0 +1,64 @@
+// LeetCode #2398: Maximum Number of Robots Within Budget -- the bench, the
+// ★ arm: a sliding window, its largest charge time kept by a monotonic
+// deque.
+
+fn maximum_robots(charge_times: Vec[i64], running_costs: Vec[i64], budget: i64) -> i64 {
+    let mut best = 0;
+    let mut left = 0;
+    let mut sum = 0;
+    let mut largest: VecDeque[i64] = VecDeque.new();
+    for right in 0..charge_times.len() {
+        sum += running_costs[right];
+        while let Some(back) = largest.back() {
+            if charge_times[back] <= charge_times[right] {
+                largest.pop_back();
+            } else {
+                break;
+            }
+        }
+        largest.push_back(right);
+        while left <= right and charge_times[largest[0]] + (right - left + 1) * sum > budget {
+            if largest[0] == left {
+                largest.pop_front();
+            }
+            sum -= running_costs[left];
+            left += 1;
+        }
+        best = best.max(right - left + 1);
+    }
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // 20 fleets of 5 * 10^4 robots with charge times and running costs up
+    // to 10^5; each pass answers every fleet for the budgets 10^5, 10^6,
+    // ..., 10^15
+    let mut seed = 2398;
+    let mut fleets: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    for _ in 0..20 {
+        let charge: Vec[i64] = (0..50000).map(|_| 1 + wide(mut seed) % 100000).collect();
+        let running: Vec[i64] = (0..50000).map(|_| 1 + wide(mut seed) % 100000).collect();
+        fleets.push((charge, running));
+    }
+    let mut check = 0;
+    for p in 0..2 {
+        for (charge, running) in fleets.iter() {
+            let mut budget = 100000;
+            while budget <= 1000000000000000 {
+                check = (check * 31 + maximum_robots(charge, running, budget) + p) % 1000000007;
+                budget *= 10;
+            }
+        }
+    }
+    println(f"2 passes over 20 fleets of 5 * 10^4 robots, 11 budgets: checksum {check}");
+}
