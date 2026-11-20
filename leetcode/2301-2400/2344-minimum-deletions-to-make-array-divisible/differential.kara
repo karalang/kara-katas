@@ -1,0 +1,315 @@
+// LeetCode #2344: Minimum Deletions to Make Array Divisible -- the
+// differential. The six arms, against the statement read literally: each
+// value of nums tried as the smallest one kept, kept only when it divides
+// every value of numsDivide one by one, and the deletions it needs counted
+// as the values below it; the fewest of those, or -1. No gcd and no
+// sorting. 300 random cases of 1 to 12 values up to 2 to 31 against 1 to
+// 6 multiples of a base from 1 to 12; then 30 of up to 300 values up to
+// 10^6 against up to 50 multiples of one of them; then 30 of up to 300
+// values up to 100 against up to 50 multiples of a base up to 100. Every
+// case is drawn before any arm answers.
+//
+// P1  up to 12 values, the answer is the literal reading's
+// P2  -1 exactly when no value of nums divides every value of numsDivide,
+//     and otherwise from 0 to one less than the number of values
+// P3  nums reversed: the same answer
+// P4  every value of both arrays three times itself, where that stays
+//     within i32: the same answer
+// P5  a 1 added to nums: 0
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn divides_all(v: i64, nums_divide: Vec[i64]) -> bool {
+    for d in nums_divide.iter() {
+        if d % v != 0 {
+            return false;
+        }
+    }
+    true
+}
+
+fn deletions_literally(nums: Vec[i64], nums_divide: Vec[i64]) -> i64 {
+    let mut answer = -1;
+    for v in nums.iter() {
+        if divides_all(v, nums_divide) {
+            let below = nums.iter().filter(|x| x < v).count();
+            if answer < 0 or below < answer {
+                answer = below;
+            }
+        }
+    }
+    answer
+}
+
+// ---- star (divisible.kara) -----------------------------------------------
+
+fn star_gcd(a: i64, b: i64) -> i64 {
+    let mut (a, b) = (a, b);
+    while b != 0 {
+        a, b = b, a % b;
+    }
+    a
+}
+
+fn star_min_operations(nums: Vec[i64], nums_divide: Vec[i64]) -> i64 {
+    let mut g = 0;
+    for x in nums_divide {
+        g = star_gcd(g, x);
+    }
+    let mut sorted = nums.clone();
+    sorted.sort();
+    for i in 0..sorted.len() {
+        if g % sorted[i] == 0 {
+            return i;
+        }
+    }
+    -1
+}
+
+// ---- scan (divisible_scan.kara) ------------------------------------------
+
+fn scan_gcd(a: i64, b: i64) -> i64 {
+    let mut (a, b) = (a, b);
+    while b != 0 {
+        a, b = b, a % b;
+    }
+    a
+}
+
+fn scan_min_operations(nums: Vec[i64], nums_divide: Vec[i64]) -> i64 {
+    let mut g = 0;
+    for x in nums_divide {
+        g = scan_gcd(g, x);
+    }
+    let mut least = -1;
+    for x in nums.iter() {
+        if g % x == 0 and (least < 0 or x < least) {
+            least = x;
+        }
+    }
+    if least < 0 {
+        return -1;
+    }
+    let mut below = 0;
+    for x in nums.iter() {
+        if x < least {
+            below += 1;
+        }
+    }
+    below
+}
+
+// ---- heap (divisible_heap.kara) ------------------------------------------
+
+fn heap_gcd(a: i64, b: i64) -> i64 {
+    let mut (a, b) = (a, b);
+    while b != 0 {
+        a, b = b, a % b;
+    }
+    a
+}
+
+fn heap_min_operations(nums: Vec[i64], nums_divide: Vec[i64]) -> i64 {
+    let g = nums_divide.iter().fold(0, |g, x| heap_gcd(g, x));
+    let mut heap: PriorityQueue[i64] = PriorityQueue.from(nums.clone());
+    let mut deleted = 0;
+    while let Some(x) = heap.pop() {
+        if g % x == 0 {
+            return deleted;
+        }
+        deleted += 1;
+    }
+    -1
+}
+
+// ---- naive (divisible_naive.kara) ----------------------------------------
+
+fn naive_min_operations(nums: Vec[i64], nums_divide: Vec[i64]) -> i64 {
+    let mut best = -1;
+    for x in nums.iter() {
+        let mut divides_all = true;
+        for y in nums_divide.iter() {
+            if y % x != 0 {
+                divides_all = false;
+                break;
+            }
+        }
+        if divides_all {
+            let mut below = 0;
+            for z in nums.iter() {
+                if z < x {
+                    below += 1;
+                }
+            }
+            if best < 0 or below < best {
+                best = below;
+            }
+        }
+    }
+    best
+}
+
+// ---- iter (divisible_iter.kara) ------------------------------------------
+
+fn iter_gcd(a: i64, b: i64) -> i64 {
+    let mut (a, b) = (a, b);
+    while b != 0 {
+        a, b = b, a % b;
+    }
+    a
+}
+
+fn iter_min_operations(nums: Vec[i64], nums_divide: Vec[i64]) -> i64 {
+    let g = nums_divide.iter().fold(0, |g, x| iter_gcd(g, x));
+    nums.iter()
+        .filter(|x| g % x == 0)
+        .min()
+        .map(|least| nums.iter().filter(|x| x < least).count())
+        .unwrap_or(-1)
+}
+
+// ---- solution (divisible_solution.kara) ----------------------------------
+
+fn solution_gcd(a: i32, b: i32) -> i32 {
+    if b == 0 { a } else { solution_gcd(b, a % b) }
+}
+
+impl Solution {
+    pub fn min_operations(nums: own Vec[i32], nums_divide: Vec[i32]) -> i32 {
+        let mut nums = nums;
+        let g = nums_divide.iter().fold(0, |acc, x| solution_gcd(acc, x));
+        nums.sort();
+        nums.iter().position(|x| g % x == 0).map_or(-1, |i| i as i32)
+    }
+}
+
+struct Solution {}
+
+fn solution_min_operations(nums: Vec[i64], nums_divide: Vec[i64]) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    let nums_divide: Vec[i32] = nums_divide.iter().map(|x| x as i32).collect();
+    Solution.min_operations(nums, nums_divide)
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64], nums_divide: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_min_operations(nums, nums_divide),
+        1 => scan_min_operations(nums, nums_divide),
+        2 => heap_min_operations(nums, nums_divide),
+        3 => naive_min_operations(nums, nums_divide),
+        4 => iter_min_operations(nums, nums_divide),
+        _ => solution_min_operations(nums, nums_divide),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "scan", "heap", "naive", "iter", "solution"];
+    let mut seed = 2344;
+    let mut cases: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    for c in 0..360 {
+        let mut nums: Vec[i64] = Vec.new();
+        let mut nums_divide: Vec[i64] = Vec.new();
+        if c < 300 {
+            let n = 1 + next_random(mut seed) % 12;
+            let m = 1 + next_random(mut seed) % 6;
+            let spread = 2 + next_random(mut seed) % 30;
+            for _ in 0..n {
+                nums.push(1 + next_random(mut seed) % spread);
+            }
+            let base = 1 + next_random(mut seed) % 12;
+            for _ in 0..m {
+                nums_divide.push(base * (1 + next_random(mut seed) % 10));
+            }
+        } else if c < 330 {
+            let n = 1 + next_random(mut seed) % 300;
+            for _ in 0..n {
+                let high = next_random(mut seed);
+                nums.push(1 + (high * 32768 + next_random(mut seed)) % 1000000);
+            }
+            let base = nums[next_random(mut seed) % n];
+            let m = 1 + next_random(mut seed) % 50;
+            for _ in 0..m {
+                nums_divide.push(base * (1 + next_random(mut seed) % 1000));
+            }
+        } else {
+            let n = 1 + next_random(mut seed) % 300;
+            for _ in 0..n {
+                nums.push(1 + next_random(mut seed) % 100);
+            }
+            let base = 1 + next_random(mut seed) % 100;
+            let m = 1 + next_random(mut seed) % 50;
+            for _ in 0..m {
+                let high = next_random(mut seed);
+                nums_divide.push(base * (1 + (high * 32768 + next_random(mut seed)) % 1000000));
+            }
+        }
+        cases.push((nums, nums_divide));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (nums, nums_divide) = cases[c].clone();
+        let small = c < 300;
+        let truth = if small { deletions_literally(nums, nums_divide) } else { -1 };
+        if small {
+            check = (check * 31 + truth + 1) % 1000000007;
+        }
+        let possible = nums.iter().any(|v| divides_all(v, nums_divide));
+        let largest = nums.iter().chain(nums_divide.iter()).max().unwrap();
+        let fits = 3 * largest < 2147483647;
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let tripled: Vec[i64] = nums.iter().map(|x| 3 * x).collect();
+        let tripled_divide: Vec[i64] = nums_divide.iter().map(|x| 3 * x).collect();
+        let mut with_one = nums.clone();
+        with_one.push(1);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums, nums_divide)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                if possible { value >= 0 and value < nums.len() } else { value == -1 },
+                answer(arm, reversed, nums_divide) == value,
+                not fits or answer(arm, tripled, tripled_divide) == value,
+                answer(arm, with_one, nums_divide) == 0,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
