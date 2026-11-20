@@ -1,0 +1,110 @@
+// LeetCode #2296: Design a Text Editor -- the bench, the ★ arm. Two
+// stacks of letters: `left` holds the text before the cursor in order,
+// `right` the text after it reversed. Adding pushes on `left`, deleting
+// pops from it, and a move pops from one stack onto the other.
+
+struct TextEditor {
+    left: Vec[char],
+    right: Vec[char],
+}
+
+impl TextEditor {
+    fn new() -> TextEditor {
+        TextEditor { left: Vec.new(), right: Vec.new() }
+    }
+
+    fn add_text(mut ref self, text: Str) {
+        for c in text.chars() {
+            self.left.push(c);
+        }
+    }
+
+    fn delete_text(mut ref self, k: i64) -> i64 {
+        let n = k.min(self.left.len());
+        for _ in 0..n {
+            self.left.pop();
+        }
+        n
+    }
+
+    fn cursor_left(mut ref self, k: i64) -> String {
+        for _ in 0..k.min(self.left.len()) {
+            let c = self.left.pop().unwrap();
+            self.right.push(c);
+        }
+        self.tail()
+    }
+
+    fn cursor_right(mut ref self, k: i64) -> String {
+        for _ in 0..k.min(self.right.len()) {
+            let c = self.right.pop().unwrap();
+            self.left.push(c);
+        }
+        self.tail()
+    }
+
+    // the last ten letters before the cursor, or all of them if fewer
+    fn tail(self) -> String {
+        let from = self.left.len() - self.left.len().min(10);
+        self.left[from..].iter().collect()
+    }
+}
+
+fn run(calls: Vec[(i64, i64, String)]) -> Vec[String] {
+    let mut editor = TextEditor.new();
+    let mut answers: Vec[String] = Vec.new();
+    for (kind, k, text) in calls.iter() {
+        match kind {
+            0 => editor.add_text(text),
+            1 => answers.push(f"{editor.delete_text(k)}"),
+            2 => answers.push(editor.cursor_left(k)),
+            _ => answers.push(editor.cursor_right(k)),
+        }
+    }
+    answers
+}
+
+// ---- bench harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn calls_of(count: i64, seed: mut ref i64) -> Vec[(i64, i64, String)] {
+    let mut calls: Vec[(i64, i64, String)] = Vec.new();
+    for _ in 0..count {
+        let kind = next_random(mut seed) % 4;
+        let k = next_random(mut seed) % 40 + 1;
+        let mut text = String.new();
+        if kind == 0 {
+            for _ in 0..k {
+                text.push((b'a' + (next_random(mut seed) % 26) as u8) as char);
+            }
+        }
+        calls.push((kind, k, text));
+    }
+    calls
+}
+
+fn main() {
+    // 10 editors of 2 * 10^4 calls, texts of 1 to 40 letters and `k`
+    // from 1 to 40, built once; then 10 passes over all of them
+    let mut seed = 2296;
+    let mut editors: Vec[Vec[(i64, i64, String)]] = Vec.new();
+    for _ in 0..10 {
+        editors.push(calls_of(20000, mut seed));
+    }
+    let mut check = 0;
+    for _ in 0..10 {
+        for calls in editors.iter() {
+            for answer in run(calls).iter() {
+                for b in answer.bytes() {
+                    check = (check * 131 + b) % 1000000007;
+                }
+                check = (check * 131 + 1) % 1000000007;
+            }
+        }
+    }
+    println(f"10 passes over 10 editors of 2 * 10^4 calls: checksum {check}");
+}

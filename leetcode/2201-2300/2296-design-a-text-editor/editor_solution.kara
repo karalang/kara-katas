@@ -1,0 +1,134 @@
+// LeetCode #2296: Design a Text Editor -- LeetCode's Rust template, as
+// submitted, carried into Kāra by `karac fix`.
+
+struct TextEditor {
+    left: Vec[char],
+    right: Vec[char],
+}
+
+impl TextEditor {
+    fn new() -> Self {
+        TextEditor { left: Vec.new(), right: Vec.new() }
+    }
+
+    fn add_text(mut ref self, text: String) {
+        self.left.extend(text.chars());
+    }
+
+    fn delete_text(mut ref self, k: i32) -> i32 {
+        let n = (k as i64).min(self.left.len());
+        self.left.truncate(self.left.len() - n);
+        n as i32
+    }
+
+    fn cursor_left(mut ref self, k: i32) -> String {
+        for _ in 0..k {
+            match self.left.pop() {
+                Some(c) => self.right.push(c),
+                None => break,
+            }
+        }
+        self.tail()
+    }
+
+    fn cursor_right(mut ref self, k: i32) -> String {
+        for _ in 0..k {
+            match self.right.pop() {
+                Some(c) => self.left.push(c),
+                None => break,
+            }
+        }
+        self.tail()
+    }
+
+    fn tail(self) -> String {
+        let from = (self.left.len() - 10).max(0);
+        self.left[from..].iter().collect()
+    }
+}
+
+fn run(calls: Vec[(i64, i64, String)]) -> Vec[String] {
+    let mut editor = TextEditor.new();
+    let mut answers: Vec[String] = Vec.new();
+    for (kind, k, text) in calls.iter() {
+        match kind {
+            0 => editor.add_text(text),
+            1 => answers.push(f"{editor.delete_text(k as i32)}"),
+            2 => answers.push(editor.cursor_left(k as i32)),
+            _ => answers.push(editor.cursor_right(k as i32)),
+        }
+    }
+    answers
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a call is (kind, k, text): 0 addText(text), 1 deleteText(k),
+// 2 cursorLeft(k), 3 cursorRight(k). Texts of 1 to 40 lowercase
+// letters and `k` from 1 to 40, as the constraints allow
+fn calls_of(count: i64, seed: mut ref i64) -> Vec[(i64, i64, String)] {
+    let mut calls: Vec[(i64, i64, String)] = Vec.new();
+    for _ in 0..count {
+        let kind = next_random(mut seed) % 4;
+        let k = next_random(mut seed) % 40 + 1;
+        let mut text = String.new();
+        if kind == 0 {
+            for _ in 0..k {
+                text.push((b'a' + (next_random(mut seed) % 26) as u8) as char);
+            }
+        }
+        calls.push((kind, k, text));
+    }
+    calls
+}
+
+fn tally(answers: Vec[String], check: i64) -> i64 {
+    let mut c = check;
+    for answer in answers.iter() {
+        for b in answer.bytes() {
+            c = (c * 131 + b) % 1000000007;
+        }
+        c = (c * 131 + 1) % 1000000007;
+    }
+    c
+}
+
+fn main() {
+    // LeetCode's example; then a delete and a move past either end, a
+    // text typed into the middle, and a long text whose tail is ten
+    // letters
+    let examples: Vec[Vec[(i64, i64, String)]] = [
+        [(0, 0, "leetcode"), (1, 4, ""), (0, 0, "practice"), (3, 3, ""), (2, 8, ""), (1, 10, ""), (2, 2, ""), (3, 6, "")].to_vec(),
+        [(1, 5, ""), (2, 3, ""), (3, 3, ""), (0, 0, "ab"), (1, 40, ""), (2, 1, ""), (3, 1, "")].to_vec(),
+        [(0, 0, "hello"), (2, 2, ""), (0, 0, "XYZ"), (3, 40, ""), (2, 4, ""), (1, 2, ""), (3, 1, "")].to_vec(),
+        [(0, 0, "abcdefghijklmnopqrstuvwxyz"), (2, 3, ""), (3, 2, ""), (2, 40, ""), (3, 13, ""), (1, 13, ""), (3, 40, "")].to_vec(),
+    ].to_vec();
+    for calls in examples.iter() {
+        println(run(calls).join("|"));
+    }
+    // 3000 editors of 1 to 30 calls
+    let mut seed = 2296;
+    let mut answered = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let count = next_random(mut seed) % 30 + 1;
+        let answers = run(calls_of(count, mut seed));
+        answered += answers.len();
+        check = tally(answers, check);
+    }
+    println(f"3000 small editors: {answered} answers, checksum {check}");
+    // 5 editors of 2 * 10^4 calls, as many as the constraints allow
+    answered = 0;
+    check = 0;
+    for _ in 0..5 {
+        let answers = run(calls_of(20000, mut seed));
+        answered += answers.len();
+        check = tally(answers, check);
+    }
+    println(f"5 editors of 2 * 10^4 calls: {answered} answers, checksum {check}");
+}

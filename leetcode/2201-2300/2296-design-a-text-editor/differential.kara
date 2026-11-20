@@ -1,0 +1,641 @@
+// LeetCode #2296: Design a Text Editor -- the differential. The six
+// arms, against the statement read literally: the text is a list of
+// letters with the cursor in it as a `|`; adding puts each letter just
+// before the `|`, deleting removes the letter before it one at a time
+// while there is one, and a move swaps the `|` with its neighbour one
+// step at a time. 300 random editors of 1 to 30 calls with texts of 1 to
+// 8 letters and `k` from 1 to 12; then 30 with texts and `k` up to 40;
+// then 30 that type once and then only move and delete. Every case is
+// drawn before any arm answers.
+//
+// P1  the answers are the literal reading's
+// P2  each delete answers 0 to `k`, and each move at most ten letters
+// P3  every text typed one letter at a time: the same answers
+// P4  every call with `k` above 1 made as `k` calls of 1: the deletes
+//     summed, and each move's last tail, give the same answers
+// P5  the text after the calls, read out by moving to the end and then
+//     back ten letters at a time: the literal reading's text
+// P6  each arm agrees with at least three of the other five
+
+// ---- editor.kara: two stacks of letters
+struct StarEditor {
+    left: Vec[char],
+    right: Vec[char],
+}
+
+impl StarEditor {
+    fn new() -> StarEditor {
+        StarEditor { left: Vec.new(), right: Vec.new() }
+    }
+
+    fn add_text(mut ref self, text: Str) {
+        for c in text.chars() {
+            self.left.push(c);
+        }
+    }
+
+    fn delete_text(mut ref self, k: i64) -> i64 {
+        let n = k.min(self.left.len());
+        for _ in 0..n {
+            self.left.pop();
+        }
+        n
+    }
+
+    fn cursor_left(mut ref self, k: i64) -> String {
+        for _ in 0..k.min(self.left.len()) {
+            let c = self.left.pop().unwrap();
+            self.right.push(c);
+        }
+        self.tail()
+    }
+
+    fn cursor_right(mut ref self, k: i64) -> String {
+        for _ in 0..k.min(self.right.len()) {
+            let c = self.right.pop().unwrap();
+            self.left.push(c);
+        }
+        self.tail()
+    }
+
+    // the last ten letters before the cursor, or all of them if fewer
+    fn tail(self) -> String {
+        let from = self.left.len() - self.left.len().min(10);
+        self.left[from..].iter().collect()
+    }
+}
+
+fn star_run(calls: Vec[(i64, i64, String)]) -> Vec[String] {
+    let mut editor = StarEditor.new();
+    let mut answers: Vec[String] = Vec.new();
+    for (kind, k, text) in calls.iter() {
+        match kind {
+            0 => editor.add_text(text),
+            1 => answers.push(f"{editor.delete_text(k)}"),
+            2 => answers.push(editor.cursor_left(k)),
+            _ => answers.push(editor.cursor_right(k)),
+        }
+    }
+    answers
+}
+
+// ---- editor_naive.kara: one `String` and a cursor offset
+struct NaiveEditor {
+    text: String,
+    cursor: i64,
+}
+
+impl NaiveEditor {
+    fn new() -> NaiveEditor {
+        NaiveEditor { text: String.new(), cursor: 0 }
+    }
+
+    fn add_text(mut ref self, text: Str) {
+        self.text = f"{self.text[..self.cursor]}{text}{self.text[self.cursor..]}";
+        self.cursor += text.len();
+    }
+
+    fn delete_text(mut ref self, k: i64) -> i64 {
+        let n = k.min(self.cursor);
+        self.text = f"{self.text[..self.cursor - n]}{self.text[self.cursor..]}";
+        self.cursor -= n;
+        n
+    }
+
+    fn cursor_left(mut ref self, k: i64) -> String {
+        self.cursor -= k.min(self.cursor);
+        self.tail()
+    }
+
+    fn cursor_right(mut ref self, k: i64) -> String {
+        self.cursor = (self.cursor + k).min(self.text.len());
+        self.tail()
+    }
+
+    fn tail(self) -> String {
+        self.text[self.cursor - self.cursor.min(10)..self.cursor].to_string()
+    }
+}
+
+fn naive_run(calls: Vec[(i64, i64, String)]) -> Vec[String] {
+    let mut editor = NaiveEditor.new();
+    let mut answers: Vec[String] = Vec.new();
+    for (kind, k, text) in calls.iter() {
+        match kind {
+            0 => editor.add_text(text),
+            1 => answers.push(f"{editor.delete_text(k)}"),
+            2 => answers.push(editor.cursor_left(k)),
+            _ => answers.push(editor.cursor_right(k)),
+        }
+    }
+    answers
+}
+
+// ---- editor_list.kara: a doubly linked list in parallel `Vec`s
+struct ListEditor {
+    letter: Vec[char],
+    prev: Vec[i64],
+    next: Vec[i64],
+    cursor: i64,
+}
+
+impl ListEditor {
+    fn new() -> ListEditor {
+        ListEditor { letter: [' '].to_vec(), prev: [-1].to_vec(), next: [-1].to_vec(), cursor: 0 }
+    }
+
+    fn add_text(mut ref self, text: Str) {
+        for c in text.chars() {
+            let node = self.letter.len();
+            let after = self.next[self.cursor];
+            self.letter.push(c);
+            self.prev.push(self.cursor);
+            self.next.push(after);
+            if after >= 0 {
+                self.prev[after] = node;
+            }
+            self.next[self.cursor] = node;
+            self.cursor = node;
+        }
+    }
+
+    fn delete_text(mut ref self, k: i64) -> i64 {
+        let mut n = 0;
+        while n < k and self.cursor != 0 {
+            let before = self.prev[self.cursor];
+            let after = self.next[self.cursor];
+            self.next[before] = after;
+            if after >= 0 {
+                self.prev[after] = before;
+            }
+            self.cursor = before;
+            n += 1;
+        }
+        n
+    }
+
+    fn cursor_left(mut ref self, k: i64) -> String {
+        let mut moved = 0;
+        while moved < k and self.cursor != 0 {
+            self.cursor = self.prev[self.cursor];
+            moved += 1;
+        }
+        self.tail()
+    }
+
+    fn cursor_right(mut ref self, k: i64) -> String {
+        let mut moved = 0;
+        while moved < k and self.next[self.cursor] >= 0 {
+            self.cursor = self.next[self.cursor];
+            moved += 1;
+        }
+        self.tail()
+    }
+
+    // up to ten nodes back from the cursor, read in reverse
+    fn tail(self) -> String {
+        let mut back: Vec[char] = Vec.new();
+        let mut node = self.cursor;
+        while node != 0 and back.len() < 10 {
+            back.push(self.letter[node]);
+            node = self.prev[node];
+        }
+        back.iter().rev().collect()
+    }
+}
+
+fn list_run(calls: Vec[(i64, i64, String)]) -> Vec[String] {
+    let mut editor = ListEditor.new();
+    let mut answers: Vec[String] = Vec.new();
+    for (kind, k, text) in calls.iter() {
+        match kind {
+            0 => editor.add_text(text),
+            1 => answers.push(f"{editor.delete_text(k)}"),
+            2 => answers.push(editor.cursor_left(k)),
+            _ => answers.push(editor.cursor_right(k)),
+        }
+    }
+    answers
+}
+
+// ---- editor_gap.kara: a gap buffer
+struct GapEditor {
+    buf: Vec[char],
+    start: i64,
+    end: i64,
+}
+
+impl GapEditor {
+    fn new() -> GapEditor {
+        GapEditor { buf: Vec.filled(16, ' '), start: 0, end: 16 }
+    }
+
+    // a buffer twice the size, the letters after the gap moved to its end
+    fn grow(mut ref self) {
+        let size = self.buf.len() * 2;
+        let after = self.buf.len() - self.end;
+        let mut bigger: Vec[char] = Vec.filled(size, ' ');
+        for i in 0..self.start {
+            bigger[i] = self.buf[i];
+        }
+        for i in 0..after {
+            bigger[size - after + i] = self.buf[self.end + i];
+        }
+        self.buf = bigger;
+        self.end = size - after;
+    }
+
+    fn add_text(mut ref self, text: Str) {
+        for c in text.chars() {
+            if self.start == self.end {
+                self.grow();
+            }
+            self.buf[self.start] = c;
+            self.start += 1;
+        }
+    }
+
+    fn delete_text(mut ref self, k: i64) -> i64 {
+        let n = k.min(self.start);
+        self.start -= n;
+        n
+    }
+
+    fn cursor_left(mut ref self, k: i64) -> String {
+        for _ in 0..k.min(self.start) {
+            self.start -= 1;
+            self.end -= 1;
+            self.buf[self.end] = self.buf[self.start];
+        }
+        self.tail()
+    }
+
+    fn cursor_right(mut ref self, k: i64) -> String {
+        for _ in 0..k.min(self.buf.len() - self.end) {
+            self.buf[self.start] = self.buf[self.end];
+            self.start += 1;
+            self.end += 1;
+        }
+        self.tail()
+    }
+
+    fn tail(self) -> String {
+        self.buf[self.start - self.start.min(10)..self.start].iter().collect()
+    }
+}
+
+fn gap_run(calls: Vec[(i64, i64, String)]) -> Vec[String] {
+    let mut editor = GapEditor.new();
+    let mut answers: Vec[String] = Vec.new();
+    for (kind, k, text) in calls.iter() {
+        match kind {
+            0 => editor.add_text(text),
+            1 => answers.push(f"{editor.delete_text(k)}"),
+            2 => answers.push(editor.cursor_left(k)),
+            _ => answers.push(editor.cursor_right(k)),
+        }
+    }
+    answers
+}
+
+// ---- editor_iter.kara: two `String`s and iterator adaptors
+struct IterEditor {
+    left: String,
+    right: String,
+}
+
+// the last `n` letters of `from`, reversed, moved onto `to`
+fn iter_shift(from: mut ref String, to: mut ref String, n: i64) {
+    let cut = from.len() - n;
+    let moved: String = from[cut..].chars().rev().collect();
+    to.push_str(moved);
+    from.truncate(cut);
+}
+
+impl IterEditor {
+    fn new() -> IterEditor {
+        IterEditor { left: String.new(), right: String.new() }
+    }
+
+    fn add_text(mut ref self, text: Str) {
+        self.left.push_str(text);
+    }
+
+    fn delete_text(mut ref self, k: i64) -> i64 {
+        let n = k.min(self.left.len());
+        self.left.truncate(self.left.len() - n);
+        n
+    }
+
+    fn cursor_left(mut ref self, k: i64) -> String {
+        let n = k.min(self.left.len());
+        iter_shift(mut self.left, mut self.right, n);
+        self.tail()
+    }
+
+    fn cursor_right(mut ref self, k: i64) -> String {
+        let n = k.min(self.right.len());
+        iter_shift(mut self.right, mut self.left, n);
+        self.tail()
+    }
+
+    fn tail(self) -> String {
+        self.left.chars().skip(self.left.len() - self.left.len().min(10)).collect()
+    }
+}
+
+fn iter_run(calls: Vec[(i64, i64, String)]) -> Vec[String] {
+    let mut editor = IterEditor.new();
+    let mut answers: Vec[String] = Vec.new();
+    for (kind, k, text) in calls.iter() {
+        match kind {
+            0 => editor.add_text(text),
+            1 => answers.push(f"{editor.delete_text(k)}"),
+            2 => answers.push(editor.cursor_left(k)),
+            _ => answers.push(editor.cursor_right(k)),
+        }
+    }
+    answers
+}
+
+// ---- editor_solution.kara: LeetCode's Rust template
+struct SolutionEditor {
+    left: Vec[char],
+    right: Vec[char],
+}
+
+impl SolutionEditor {
+    fn new() -> Self {
+        SolutionEditor { left: Vec.new(), right: Vec.new() }
+    }
+
+    fn add_text(mut ref self, text: String) {
+        self.left.extend(text.chars());
+    }
+
+    fn delete_text(mut ref self, k: i32) -> i32 {
+        let n = (k as i64).min(self.left.len());
+        self.left.truncate(self.left.len() - n);
+        n as i32
+    }
+
+    fn cursor_left(mut ref self, k: i32) -> String {
+        for _ in 0..k {
+            match self.left.pop() {
+                Some(c) => self.right.push(c),
+                None => break,
+            }
+        }
+        self.tail()
+    }
+
+    fn cursor_right(mut ref self, k: i32) -> String {
+        for _ in 0..k {
+            match self.right.pop() {
+                Some(c) => self.left.push(c),
+                None => break,
+            }
+        }
+        self.tail()
+    }
+
+    fn tail(self) -> String {
+        let from = (self.left.len() - 10).max(0);
+        self.left[from..].iter().collect()
+    }
+}
+
+fn solution_run(calls: Vec[(i64, i64, String)]) -> Vec[String] {
+    let mut editor = SolutionEditor.new();
+    let mut answers: Vec[String] = Vec.new();
+    for (kind, k, text) in calls.iter() {
+        match kind {
+            0 => editor.add_text(text),
+            1 => answers.push(f"{editor.delete_text(k as i32)}"),
+            2 => answers.push(editor.cursor_left(k as i32)),
+            _ => answers.push(editor.cursor_right(k as i32)),
+        }
+    }
+    answers
+}
+
+// ---- the statement read literally
+
+// the answers, and the text when every call is made
+fn literal(calls: Vec[(i64, i64, String)]) -> (Vec[String], String) {
+    let mut text: Vec[char] = ['|'].to_vec();
+    let mut answers: Vec[String] = Vec.new();
+    for (kind, k, typed) in calls.iter() {
+        let mut at = 0;
+        while text[at] != '|' {
+            at += 1;
+        }
+        if kind == 0 {
+            for c in typed.chars() {
+                text.insert(at, c);
+                at += 1;
+            }
+        } else if kind == 1 {
+            let mut deleted = 0;
+            while deleted < k and at > 0 {
+                text.remove(at - 1);
+                at -= 1;
+                deleted += 1;
+            }
+            answers.push(f"{deleted}");
+        } else {
+            for _ in 0..k {
+                if kind == 2 and at > 0 {
+                    text.swap(at - 1, at);
+                    at -= 1;
+                } else if kind == 3 and at + 1 < text.len() {
+                    text.swap(at, at + 1);
+                    at += 1;
+                }
+            }
+            let mut tail = String.new();
+            for i in 0..at {
+                if at - i <= 10 {
+                    tail.push(text[i]);
+                }
+            }
+            answers.push(tail);
+        }
+    }
+    let rest: String = text.iter().filter(|c| c != '|').collect();
+    (answers, rest)
+}
+
+fn answer(arm: i64, calls: Vec[(i64, i64, String)]) -> Vec[String] {
+    match arm {
+        0 => star_run(calls),
+        1 => naive_run(calls),
+        2 => list_run(calls),
+        3 => gap_run(calls),
+        4 => iter_run(calls),
+        _ => solution_run(calls),
+    }
+}
+
+// the arm's text after the calls, read out: moved to the end, its tail
+// the last ten letters, then back ten letters at a time, each tail the
+// ten before the last
+fn read_out(arm: i64, calls: Vec[(i64, i64, String)], length: i64) -> String {
+    let mut more = calls.clone();
+    for _ in 0..length / 40 + 1 {
+        more.push((3, 40, String.new()));
+    }
+    for _ in 0..length / 10 + 1 {
+        more.push((2, 10, String.new()));
+    }
+    let answers = answer(arm, more);
+    let tails = length / 10 + 2;
+    let mut text = String.new();
+    for i in 0..tails {
+        text.push_str(answers[answers.len() - 1 - i]);
+    }
+    text
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letters(n: i64, seed: mut ref i64) -> String {
+    let mut text = String.new();
+    for _ in 0..n {
+        text.push((b'a' + (next_random(mut seed) % 26) as u8) as char);
+    }
+    text
+}
+
+fn main() {
+    let names = ["star", "naive", "list", "gap", "iter", "solution"];
+    let mut seed = 2296;
+    let mut cases: Vec[Vec[(i64, i64, String)]] = Vec.new();
+    for c in 0..360 {
+        let count = next_random(mut seed) % 30 + 1;
+        let (longest, top) = if c < 300 { (8, 12) } else { (40, 40) };
+        let mut calls: Vec[(i64, i64, String)] = Vec.new();
+        for step in 0..count {
+            let mut kind = next_random(mut seed) % 4;
+            if c >= 330 {
+                kind = if step == 0 { 0 } else { next_random(mut seed) % 3 + 1 };
+            }
+            let k = next_random(mut seed) % top + 1;
+            if kind == 0 {
+                calls.push((0, 0, letters(next_random(mut seed) % longest + 1, mut seed)));
+            } else {
+                calls.push((kind, k, String.new()));
+            }
+        }
+        cases.push(calls);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for calls in cases.iter() {
+        let (truth, final_text) = literal(calls);
+        for a in truth.iter() {
+            for b in a.bytes() {
+                check = (check * 131 + b) % 1000000007;
+            }
+            check = (check * 131 + 1) % 1000000007;
+        }
+        let mut typed: Vec[(i64, i64, String)] = Vec.new();
+        let mut ones: Vec[(i64, i64, String)] = Vec.new();
+        let mut groups: Vec[i64] = Vec.new();
+        for (kind, k, text) in calls.iter() {
+            if kind == 0 {
+                for c in text.chars() {
+                    typed.push((0, 0, f"{c}"));
+                }
+                ones.push((kind, k, text.clone()));
+            } else {
+                typed.push((kind, k, text.clone()));
+                for _ in 0..k {
+                    ones.push((kind, 1, String.new()));
+                }
+                groups.push(k);
+            }
+        }
+        let got: Vec[Vec[String]] = (0..6).map(|arm| answer(arm, calls)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut bounded = value.len() == groups.len();
+            if bounded {
+                let mut g = 0;
+                for (kind, k, _) in calls.iter() {
+                    if kind == 1 {
+                        let n = i64.parse(value[g]).unwrap_or(-1);
+                        bounded = bounded and n >= 0 and n <= k;
+                    } else if kind > 1 {
+                        bounded = bounded and value[g].len() <= 10 and value[g].bytes().iter().all(|b| b >= b'a' and b <= b'z');
+                    }
+                    if kind > 0 {
+                        g += 1;
+                    }
+                }
+            }
+            // the single steps folded back: deletes summed, a move's last tail
+            let singles = answer(arm, ones);
+            let mut folded: Vec[String] = Vec.new();
+            let mut at = 0;
+            let mut g = 0;
+            for (kind, _, _) in calls.iter() {
+                if kind == 0 {
+                    continue;
+                }
+                let k = groups[g];
+                g += 1;
+                if kind == 1 {
+                    let mut sum = 0;
+                    for i in at..at + k {
+                        sum += i64.parse(singles[i]).unwrap_or(-1000);
+                    }
+                    folded.push(f"{sum}");
+                } else {
+                    folded.push(singles[at + k - 1].clone());
+                }
+                at += k;
+            }
+            let verdicts = [
+                value == truth,
+                bounded,
+                answer(arm, typed) == value,
+                folded == value,
+                read_out(arm, calls, final_text.len()) == final_text,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{calls} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
