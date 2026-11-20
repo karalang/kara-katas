@@ -1,0 +1,317 @@
+// LeetCode #2368: Reachable Nodes With Restrictions -- the differential.
+// The six arms, against the statement read literally: the nodes reached
+// from 0 grown by passes over every edge, an edge carrying the reach from
+// a reached node to an open one, until a pass adds nothing. No adjacency
+// lists, no search order. 300 random trees of 2 to 40 nodes, each node
+// joined to an earlier one, with up to n - 1 restricted nodes; then 30 of
+// up to 2000 nodes with up to 20 restricted; then 30 paths of up to 300
+// nodes in a random order with up to 3 restricted. Every case is drawn
+// before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  from 1 to n less the restricted nodes
+// P3  every node v but 0 renamed n - v: the same answer
+// P4  the edges listed backwards, each turned around: the same answer
+// P5  a new node joined to node 0: one more
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn reach_literally(n: i64, edges: Vec[(i64, i64)], restricted: Vec[i64]) -> i64 {
+    let mut reached: Vec[bool] = Vec.filled(n, false);
+    reached[0] = true;
+    let mut grew = true;
+    while grew {
+        grew = false;
+        for (a, b) in edges.iter() {
+            for (from, to) in [(a, b), (b, a)] {
+                if reached[from] and not reached[to] and not restricted.contains(to) {
+                    reached[to] = true;
+                    grew = true;
+                }
+            }
+        }
+    }
+    reached.iter().filter(|r| r).count()
+}
+
+// ---- star (reach.kara) ---------------------------------------------------
+
+fn star_reachable_nodes(n: i64, edges: Vec[(i64, i64)], restricted: Vec[i64]) -> i64 {
+    let mut next: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in edges.iter() {
+        next[a].push(b);
+        next[b].push(a);
+    }
+    let mut seen: Vec[bool] = Vec.filled(n, false);
+    for r in restricted.iter() {
+        seen[r] = true;
+    }
+    seen[0] = true;
+    let mut queue: Vec[i64] = [0].to_vec();
+    let mut head = 0;
+    while head < queue.len() {
+        let u = queue[head];
+        head += 1;
+        for v in next[u].iter() {
+            if not seen[v] {
+                seen[v] = true;
+                queue.push(v);
+            }
+        }
+    }
+    queue.len()
+}
+
+// ---- dfs (reach_dfs.kara) ------------------------------------------------
+
+fn dfs_reachable_nodes(n: i64, edges: Vec[(i64, i64)], restricted: Vec[i64]) -> i64 {
+    let mut next: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in edges.iter() {
+        next[a].push(b);
+        next[b].push(a);
+    }
+    let mut blocked: Vec[bool] = Vec.filled(n, false);
+    for r in restricted.iter() {
+        blocked[r] = true;
+    }
+    let mut stack: Vec[(i64, i64)] = [(0, -1)].to_vec();
+    let mut count = 0;
+    while let Some((u, parent)) = stack.pop() {
+        count += 1;
+        for v in next[u].iter() {
+            if v != parent and not blocked[v] {
+                stack.push((v, u));
+            }
+        }
+    }
+    count
+}
+
+// ---- union (reach_union.kara) --------------------------------------------
+
+fn union_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+fn union_reachable_nodes(n: i64, edges: Vec[(i64, i64)], restricted: Vec[i64]) -> i64 {
+    let mut blocked: Vec[bool] = Vec.filled(n, false);
+    for r in restricted.iter() {
+        blocked[r] = true;
+    }
+    let mut parent: Vec[i64] = (0..n).collect();
+    let mut size: Vec[i64] = Vec.filled(n, 1);
+    for (a, b) in edges.iter() {
+        if blocked[a] or blocked[b] {
+            continue;
+        }
+        let mut ra = union_find(mut parent, a);
+        let mut rb = union_find(mut parent, b);
+        if ra != rb {
+            if size[ra] < size[rb] {
+                let t = ra;
+                ra = rb;
+                rb = t;
+            }
+            parent[rb] = ra;
+            size[ra] += size[rb];
+        }
+    }
+    size[union_find(mut parent, 0)]
+}
+
+// ---- recursive (reach_recursive.kara) ------------------------------------
+
+fn recursive_below(next: Vec[Vec[i64]], blocked: Vec[bool], u: i64, parent: i64) -> i64 {
+    let mut count = 1;
+    for v in next[u].iter() {
+        if v != parent and not blocked[v] {
+            count += recursive_below(next, blocked, v, u);
+        }
+    }
+    count
+}
+
+fn recursive_reachable_nodes(n: i64, edges: Vec[(i64, i64)], restricted: Vec[i64]) -> i64 {
+    let mut next: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in edges.iter() {
+        next[a].push(b);
+        next[b].push(a);
+    }
+    let mut blocked: Vec[bool] = Vec.filled(n, false);
+    for r in restricted.iter() {
+        blocked[r] = true;
+    }
+    recursive_below(next, blocked, 0, -1)
+}
+
+// ---- iter (reach_iter.kara) ----------------------------------------------
+
+fn iter_reachable_nodes(n: i64, edges: Vec[(i64, i64)], restricted: Vec[i64]) -> i64 {
+    let mut next: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in edges.iter() {
+        next[a].push(b);
+        next[b].push(a);
+    }
+    let closed: Set[i64] = restricted.iter().collect();
+    let mut level: Vec[(i64, i64)] = [(0, -1)].to_vec();
+    let mut count = 0;
+    while not level.is_empty() {
+        count += level.len();
+        let closed = ref closed;
+        level = level
+            .iter()
+            .flat_map(|(u, parent)| next[u].iter().filter(|v| v != parent and not closed.contains(v)).map(|v| (v, u)))
+            .collect();
+    }
+    count
+}
+
+// ---- solution (reach_solution.kara) --------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn reachable_nodes(n: i32, edges: Vec[Vec[i32]], restricted: Vec[i32]) -> i32 {
+        let n = n as i64;
+        let mut adj: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+        for e in ref edges {
+            let (a, b) = (e[0] as i64, e[1] as i64);
+            adj[a].push(b);
+            adj[b].push(a);
+        }
+        let mut seen = Vec.filled(n, false);
+        for r in ref restricted {
+            seen[r] = true;
+        }
+        seen[0] = true;
+        let mut queue = VecDeque.new();
+        queue.push_back(0);
+        let mut count = 0;
+        while let Some(u) = queue.pop_front() {
+            count += 1;
+            for v in ref adj[u] {
+                if not seen[v] {
+                    seen[v] = true;
+                    queue.push_back(v);
+                }
+            }
+        }
+        count
+    }
+}
+
+fn solution_reachable_nodes(n: i64, edges: Vec[(i64, i64)], restricted: Vec[i64]) -> i64 {
+    let edges: Vec[Vec[i32]] = edges.iter().map(|(a, b)| [a as i32, b as i32].to_vec()).collect();
+    let restricted: Vec[i32] = restricted.iter().map(|r| r as i32).collect();
+    Solution.reachable_nodes(n as i32, edges, restricted)
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn answer(arm: i64, n: i64, edges: Vec[(i64, i64)], restricted: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_reachable_nodes(n, edges, restricted),
+        1 => dfs_reachable_nodes(n, edges, restricted),
+        2 => union_reachable_nodes(n, edges, restricted),
+        3 => recursive_reachable_nodes(n, edges, restricted),
+        4 => iter_reachable_nodes(n, edges, restricted),
+        _ => solution_reachable_nodes(n, edges, restricted),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "dfs", "union", "recursive", "iter", "solution"];
+    let mut seed = 2368;
+    let mut cases: Vec[(i64, Vec[(i64, i64)], Vec[i64])] = Vec.new();
+    for c in 0..360 {
+        let (n, most) = if c < 300 {
+            let n = 2 + next_random(mut seed) % 39;
+            (n, n - 1)
+        } else if c < 330 {
+            (2 + next_random(mut seed) % 1999, 20)
+        } else {
+            (2 + next_random(mut seed) % 299, 3)
+        };
+        let edges: Vec[(i64, i64)] = if c < 330 {
+            (1..n).map(|i| (next_random(mut seed) % i, i)).collect()
+        } else {
+            let mut order: Vec[i64] = (0..n).collect();
+            for i in (1..n).rev() {
+                let j = next_random(mut seed) % (i + 1);
+                order.swap(i, j);
+            }
+            (1..n).map(|i| (order[i - 1], order[i])).collect()
+        };
+        let k = next_random(mut seed) % (most + 1);
+        let mut restricted: Vec[i64] = (0..k).map(|_| 1 + next_random(mut seed) % (n - 1)).collect();
+        restricted.sort();
+        restricted.dedup();
+        cases.push((n, edges, restricted));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (n, edges, restricted) = cases[c].clone();
+        let truth = reach_literally(n, edges, restricted);
+        check = (check * 31 + truth) % 1000000007;
+        let rename: Vec[i64] = (0..n).map(|v| if v == 0 { 0 } else { n - v }).collect();
+        let renamed: Vec[(i64, i64)] = edges.iter().map(|(a, b)| (rename[a], rename[b])).collect();
+        let renamed_restricted: Vec[i64] = restricted.iter().map(|r| rename[r]).collect();
+        let mut turned: Vec[(i64, i64)] = edges.iter().map(|(a, b)| (b, a)).collect();
+        turned.reverse();
+        let mut grown = edges.clone();
+        grown.push((0, n));
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, n, edges, restricted)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                value >= 1 and value <= n - restricted.len(),
+                answer(arm, n, renamed, renamed_restricted) == value,
+                answer(arm, n, turned, restricted) == value,
+                answer(arm, n + 1, grown, restricted) == value + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
