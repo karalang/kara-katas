@@ -1,0 +1,365 @@
+// LeetCode #2360: Longest Cycle in a Graph -- the differential. The six
+// arms, against the statement read literally: for every node and every
+// length k from 1 to n, k edges followed from the node, and k kept when
+// they come back to it through k different nodes. No stamps and no
+// peeling. 300 random graphs of 2 to 30 nodes, each edge -1 with a chance
+// of 1 in 1 to 1 in 8; then 30 of up to 2000 nodes; then 30 of up to 300
+// nodes made of a few cycles with trees hanging off them. Every case is
+// drawn before any arm answers.
+//
+// P1  up to 40 nodes, the answer is the literal reading's
+// P2  -1, or from 2 to n with some node coming back to itself in exactly
+//     that many steps
+// P3  the nodes numbered backwards: the same answer
+// P4  a new node with an edge into the graph: the same answer
+// P5  a separate cycle one longer than the answer (at least 2) added: its
+//     length
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn cycle_literally(edges: Vec[i64]) -> i64 {
+    let n = edges.len();
+    let mut best = -1;
+    for start in 0..n {
+        for k in 1..n + 1 {
+            let mut seen: Vec[i64] = Vec.new();
+            let mut node = start;
+            for _ in 0..k {
+                if node == -1 {
+                    break;
+                }
+                seen.push(node);
+                node = edges[node];
+            }
+            let mut distinct = seen.len() == k;
+            for i in 0..seen.len() {
+                for j in 0..i {
+                    if seen[i] == seen[j] {
+                        distinct = false;
+                    }
+                }
+            }
+            if distinct and node == start {
+                best = best.max(k);
+            }
+        }
+    }
+    best
+}
+
+// ---- star (longest.kara) -------------------------------------------------
+
+fn star_longest_cycle(edges: Vec[i64]) -> i64 {
+    let n = edges.len();
+    let mut stamp: Vec[i64] = Vec.filled(n, -1);
+    let mut time = 0;
+    let mut best = -1;
+    for start in 0..n {
+        let began = time;
+        let mut node = start;
+        while node != -1 and stamp[node] == -1 {
+            stamp[node] = time;
+            time += 1;
+            node = edges[node];
+        }
+        if node != -1 and stamp[node] >= began {
+            best = best.max(time - stamp[node]);
+        }
+    }
+    best
+}
+
+// ---- kahn (longest_kahn.kara) --------------------------------------------
+
+fn kahn_longest_cycle(edges: Vec[i64]) -> i64 {
+    let n = edges.len();
+    let mut indegree: Vec[i64] = Vec.filled(n, 0);
+    for u in 0..n {
+        if edges[u] != -1 {
+            indegree[edges[u]] += 1;
+        }
+    }
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    for u in 0..n {
+        if indegree[u] == 0 {
+            queue.push_back(u);
+        }
+    }
+    let mut removed: Vec[bool] = Vec.filled(n, false);
+    while let Some(u) = queue.pop_front() {
+        removed[u] = true;
+        let v = edges[u];
+        if v != -1 {
+            indegree[v] -= 1;
+            if indegree[v] == 0 {
+                queue.push_back(v);
+            }
+        }
+    }
+    let mut best = -1;
+    for start in 0..n {
+        if not removed[start] {
+            let mut length = 0;
+            let mut node = start;
+            while not removed[node] {
+                removed[node] = true;
+                length += 1;
+                node = edges[node];
+            }
+            best = best.max(length);
+        }
+    }
+    best
+}
+
+// ---- union (longest_union.kara) ------------------------------------------
+
+fn union_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut root = x;
+    while parent[root] != root {
+        root = parent[root];
+    }
+    let mut node = x;
+    while parent[node] != root {
+        let next = parent[node];
+        parent[node] = root;
+        node = next;
+    }
+    root
+}
+
+fn union_longest_cycle(edges: Vec[i64]) -> i64 {
+    let n = edges.len();
+    let mut parent: Vec[i64] = (0..n).collect();
+    let mut best = -1;
+    for u in 0..n {
+        let v = edges[u];
+        if v == -1 {
+            continue;
+        }
+        let ru = union_find(mut parent, u);
+        let rv = union_find(mut parent, v);
+        if ru == rv {
+            let mut length = 1;
+            let mut node = v;
+            while node != u {
+                node = edges[node];
+                length += 1;
+            }
+            best = best.max(length);
+        } else {
+            parent[ru] = rv;
+        }
+    }
+    best
+}
+
+// ---- naive (longest_naive.kara) ------------------------------------------
+
+fn naive_longest_cycle(edges: Vec[i64]) -> i64 {
+    let n = edges.len();
+    let mut best = -1;
+    for start in 0..n {
+        let mut node = edges[start];
+        let mut steps = 1;
+        while node != -1 and node != start and steps <= n {
+            node = edges[node];
+            steps += 1;
+        }
+        if node == start {
+            best = best.max(steps);
+        }
+    }
+    best
+}
+
+// ---- iter (longest_iter.kara) --------------------------------------------
+
+fn iter_longest_cycle(edges: Vec[i64]) -> i64 {
+    let n = edges.len();
+    let mut stamp: Vec[i64] = Vec.filled(n, -1);
+    let mut time = 0;
+    (0..n)
+        .filter_map(|start| {
+            let began = time;
+            let stop = (0..n + 1)
+                .scan(start, |node, _| {
+                    if node == -1 or stamp[node] != -1 {
+                        None
+                    } else {
+                        stamp[node] = time;
+                        time += 1;
+                        Some((edges[node], edges[node]))
+                    }
+                })
+                .last()
+                .unwrap_or(start);
+            if stop != -1 and stamp[stop] >= began { Some(time - stamp[stop]) } else { None }
+        })
+        .max()
+        .unwrap_or(-1)
+}
+
+// ---- solution (longest_solution.kara) ------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn longest_cycle(edges: Vec[i32]) -> i32 {
+        let n = edges.len();
+        let mut stamp = Vec.filled(n, usize.MAX);
+        let mut time = 0usize;
+        let mut best: i32 = -1;
+        for start in 0..n {
+            let began = time;
+            let mut node = start as i32;
+            while node != -1 and stamp[node as usize] == usize.MAX {
+                stamp[node as usize] = time;
+                time += 1;
+                node = edges[node as usize];
+            }
+            if node != -1 and stamp[node as usize] >= began {
+                best = best.max((time - stamp[node as usize]) as i32);
+            }
+        }
+        best
+    }
+}
+
+fn solution_longest_cycle(edges: Vec[i64]) -> i64 {
+    let edges: Vec[i32] = edges.iter().map(|x| x as i32).collect();
+    Solution.longest_cycle(edges)
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn answer(arm: i64, edges: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_longest_cycle(edges),
+        1 => kahn_longest_cycle(edges),
+        2 => union_longest_cycle(edges),
+        3 => naive_longest_cycle(edges),
+        4 => iter_longest_cycle(edges),
+        _ => solution_longest_cycle(edges),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn returns_in(edges: Vec[i64], length: i64) -> bool {
+    for start in 0..edges.len() {
+        let mut node = start;
+        for _ in 0..length {
+            if node == -1 {
+                break;
+            }
+            node = edges[node];
+        }
+        if node == start {
+            return true;
+        }
+    }
+    false
+}
+
+fn main() {
+    let names = ["star", "kahn", "union", "naive", "iter", "solution"];
+    let mut seed = 2360;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..360 {
+        let mut edges: Vec[i64] = Vec.new();
+        if c < 330 {
+            let n = if c < 300 { 2 + next_random(mut seed) % 29 } else { 2 + next_random(mut seed) % 1999 };
+            let odds = 1 + next_random(mut seed) % 8;
+            for i in 0..n {
+                edges.push(if odds > 1 and next_random(mut seed) % odds == 0 { -1 } else { (i + 1 + next_random(mut seed) % (n - 1)) % n });
+            }
+        } else {
+            let n = 2 + next_random(mut seed) % 299;
+            let rings = 1 + next_random(mut seed) % 4;
+            let mut v = 0;
+            for _ in 0..rings {
+                let size = 1 + next_random(mut seed) % (n / rings);
+                if size >= 2 {
+                    for k in 0..size {
+                        edges.push(v + (k + 1) % size);
+                    }
+                    v += size;
+                }
+            }
+            while v < n {
+                edges.push(if v == 0 { -1 } else { next_random(mut seed) % v });
+                v += 1;
+            }
+        }
+        cases.push(edges);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut cyclic = 0;
+    for c in 0..cases.len() {
+        let edges = cases[c].clone();
+        let n = edges.len();
+        let small = n <= 40;
+        let truth = if small { cycle_literally(edges) } else { -2 };
+        if small {
+            check = (check * 31 + truth + 2) % 1000000007;
+        }
+        let backwards: Vec[i64] = (0..n).map(|i| { let e = edges[n - 1 - i]; if e == -1 { -1 } else { n - 1 - e } }).collect();
+        let mut fed = edges.clone();
+        fed.push(next_random(mut seed) % n);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, edges)).collect();
+        if got[0] > 0 {
+            cyclic += 1;
+        }
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let ring = value.max(1) + 1;
+            let mut wider = edges.clone();
+            for k in 0..ring {
+                wider.push(n + (k + 1) % ring);
+            }
+            let verdicts = [
+                not small or value == truth,
+                value == -1 or (value >= 2 and value <= n and returns_in(edges, value)),
+                answer(arm, backwards) == value,
+                answer(arm, fed) == value,
+                answer(arm, wider) == ring,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {cyclic} with a cycle, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

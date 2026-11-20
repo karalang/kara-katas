@@ -1,0 +1,71 @@
+// LeetCode #2360: Longest Cycle in a Graph -- the bench, the ★ arm: each
+// node stamped with the time it is first visited, and a walk that reaches
+// a node stamped since it began has closed a cycle as long as the time
+// between the two visits.
+
+fn longest_cycle(edges: Vec[i64]) -> i64 {
+    let n = edges.len();
+    let mut stamp: Vec[i64] = Vec.filled(n, -1);
+    let mut time = 0;
+    let mut best = -1;
+    for start in 0..n {
+        let began = time;
+        let mut node = start;
+        while node != -1 and stamp[node] == -1 {
+            stamp[node] = time;
+            time += 1;
+            node = edges[node];
+        }
+        if node != -1 and stamp[node] >= began {
+            best = best.max(time - stamp[node]);
+        }
+    }
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // graph a: 10^5 nodes shuffled into one line, cut into pieces with a
+    // chance of 1 in 2^(a + 4) at each link; each piece's last node points
+    // back to its first with a chance of 1 in 2, and otherwise at a random
+    // node
+    let n = 100000;
+    let mut seed = 2360;
+    let mut graphs: Vec[Vec[i64]] = Vec.new();
+    for a in 0..10 {
+        let mut order: Vec[i64] = (0..n).collect();
+        for i in (1..n).rev() {
+            order.swap(i, wide_random(mut seed) % (i + 1));
+        }
+        let cut = 1 << (a + 4);
+        let mut edges: Vec[i64] = Vec.filled(n, -1);
+        let mut first = 0;
+        for i in 0..n {
+            if i == n - 1 or next_random(mut seed) % cut == 0 {
+                let target = if next_random(mut seed) % 2 == 0 { order[first] } else { wide_random(mut seed) % n };
+                if target != order[i] {
+                    edges[order[i]] = target;
+                }
+                first = i + 1;
+            } else {
+                edges[order[i]] = order[i + 1];
+            }
+        }
+        graphs.push(edges);
+    }
+    let mut check = 0;
+    for p in 0..50 {
+        for edges in graphs.iter() {
+            check = (check * 31 + longest_cycle(edges) + 2 + p) % 1000000007;
+        }
+    }
+    println(f"50 passes over 10 graphs of 10^5 nodes: checksum {check}");
+}
