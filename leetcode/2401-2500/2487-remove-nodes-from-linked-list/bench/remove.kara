@@ -1,0 +1,53 @@
+// LeetCode #2487: Remove Nodes From Linked List -- benchmark of the ★ arm
+// (remove.kara): 22000 lists of 1000 shared nodes whose values fall with
+// a little noise drawn from the checksum so far, each cleared by the same
+// stack, the kept nodes folded into the checksum.
+
+shared struct ListNode {
+    val: i64,
+    mut next: Option[ListNode],
+}
+
+fn remove_nodes(head: Option[ListNode]) -> Option[ListNode] {
+    let mut stack: Vec[ListNode] = Vec.new();
+    let mut cur = head;
+    while let Some(node) = cur {
+        cur = node.next;
+        while let Some(top) = stack.last() {
+            if top.val >= node.val {
+                break;
+            }
+            stack.pop();
+        }
+        stack.push(node);
+    }
+    let mut result: Option[ListNode] = None;
+    while let Some(node) = stack.pop() {
+        node.next = result;
+        result = Some(node);
+    }
+    result
+}
+
+fn build(m: i64, round: i64, check: i64) -> Option[ListNode] {
+    let mut head: Option[ListNode] = None;
+    for j in (0..m).rev() {
+        head = Some(ListNode { val: (m - j) * 10 + (round * 7919 + j * 104729 + check) % 37, next: head });
+    }
+    head
+}
+
+fn main() {
+    let rounds = 22000;
+    let mut kept = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        let mut cur = remove_nodes(build(1000, r, check));
+        while let Some(node) = cur {
+            kept += 1;
+            check = (check * 31 + node.val) % 1000000007;
+            cur = node.next;
+        }
+    }
+    println(f"{rounds} lists of 1000 nodes: {kept} kept, checksum {check}");
+}
