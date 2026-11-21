@@ -1,0 +1,49 @@
+// LeetCode #2511: Maximum Enemy Forts That Can Be Captured -- benchmark of
+// the ★ arm (forts.kara): 2000 lines of 1000 forts built once from its
+// own generator, then the passes; each sets one fort of every line from
+// the checksum so far, asks, and puts it back.
+
+fn capture_forts(forts: Vec[i64]) -> i64 {
+    let mut best = 0;
+    let mut last = -1;
+    for i in 0..forts.len() {
+        if forts[i] != 0 {
+            if last >= 0 and forts[last] == -forts[i] {
+                best = best.max(i - last - 1);
+            }
+            last = i;
+        }
+    }
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2511;
+    let mut lines: Vec[Vec[i64]] = Vec.new();
+    for k in 0..2000 {
+        let zeros = k % 50 + 1;
+        let mut line: Vec[i64] = Vec.new();
+        for _ in 0..1000 {
+            let r = next_random(mut seed) % (zeros + 2);
+            line.push(if r < zeros { 0 } else if r == zeros { 1 } else { -1 });
+        }
+        lines.push(line);
+    }
+    let passes = 115;
+    let mut check = 0;
+    for p in 0..passes {
+        for line in lines.iter_mut() {
+            let at = check % 1000;
+            let kept = line[at];
+            line[at] = (check + p) % 3 - 1;
+            check = (check * 31 + capture_forts(line) + p) % 1000000007;
+            line[at] = kept;
+        }
+    }
+    println(f"{passes} passes over 2000 lines of 1000 forts: checksum {check}");
+}

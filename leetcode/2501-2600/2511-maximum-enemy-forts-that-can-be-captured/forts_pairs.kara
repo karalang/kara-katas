@@ -1,0 +1,83 @@
+// LeetCode #2511: Maximum Enemy Forts That Can Be Captured -- the places
+// of the forts that are not 0 gathered in order; two neighbours there of
+// opposite signs bound a run of enemy forts, and the widest such gap is
+// the answer. O(n).
+
+fn capture_forts(forts: Vec[i64]) -> i64 {
+    let mut places: Vec[i64] = Vec.new();
+    for i in 0..forts.len() {
+        if forts[i] != 0 {
+            places.push(i);
+        }
+    }
+    let mut best = 0;
+    for k in 1..places.len() {
+        let (p, q) = (places[k - 1], places[k]);
+        if forts[p] * forts[q] == -1 {
+            best = best.max(q - p - 1);
+        }
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` forts, each -1, 0 or 1, a 0 `zeros` times in `zeros + 2`
+fn random_forts(n: i64, zeros: i64, seed: mut ref i64) -> Vec[i64] {
+    (0..n)
+        .map(|_| {
+            let r = next_random(mut seed) % (zeros + 2);
+            if r < zeros { 0 } else if r == zeros { 1 } else { -1 }
+        })
+        .collect()
+}
+
+fn main() {
+    // LeetCode's two examples, then six more
+    let cases: Vec[Vec[i64]] = [
+        [1, 0, 0, -1, 0, 0, 0, 0, 1].to_vec(),
+        [0, 0, 1, -1].to_vec(),
+        [1].to_vec(),
+        [-1, 0, 0, 0].to_vec(),
+        [1, 0, 0, 1, 0, -1].to_vec(),
+        [-1, 0, 0, 0, 1, 0, 0, 0, 0, -1].to_vec(),
+        [1, 0, 0, 0, 0, 0, 0, 1].to_vec(),
+        [0, -1, 0, 1, 0, 0, -1, 0, 0, 0, 1, 1, -1].to_vec(),
+    ].to_vec();
+    for forts in cases.iter() {
+        println(f"{forts} -> {capture_forts(forts)}");
+    }
+    // 2000 random lines of 1 to 30 forts, a 0 one time in three and nine
+    // times in ten: how many capture nothing, and a checksum
+    let mut seed = 2511;
+    for zeros in [1, 18] {
+        let mut check = 0;
+        let mut none = 0;
+        for _ in 0..2000 {
+            let n = next_random(mut seed) % 30 + 1;
+            let a = capture_forts(random_forts(n, zeros, mut seed));
+            if a == 0 {
+                none += 1;
+            }
+            check = (check * 31 + a) % 1000000007;
+        }
+        println(f"2000 random, zeros {zeros} in {zeros + 2}: {none} capture nothing, checksum {check}");
+    }
+    // the constraints' largest: 1000 forts, ours, 998 enemy and an empty
+    // one; the same with both ends ours; -1 and 1 in turn; and 1000
+    // random with a 0 nineteen times in twenty
+    let mut wide: Vec[i64] = Vec.filled(1000, 0);
+    wide[0] = 1;
+    wide[999] = -1;
+    println(f"1000 forts, 998 between: {capture_forts(wide)}");
+    wide[999] = 1;
+    println(f"1000 forts, both ends ours: {capture_forts(wide)}");
+    let turns: Vec[i64] = (0..1000).map(|i| if i % 2 == 0 { -1 } else { 1 }).collect();
+    println(f"1000 forts, -1 and 1 in turn: {capture_forts(turns)}");
+    println(f"1000 random forts: {capture_forts(random_forts(1000, 38, mut seed))}");
+}
