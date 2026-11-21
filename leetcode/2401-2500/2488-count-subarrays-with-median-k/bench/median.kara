@@ -1,0 +1,54 @@
+// LeetCode #2488: Count Subarrays With Median K -- benchmark of the ★ arm
+// (median.kara): 20 random orders of 1 to 10^4 built once, then 400
+// passes; each swaps two numbers of every order, the places and `k` chosen
+// by the checksum so far, and folds the answer plus the pass into it.
+
+fn count_subarrays(nums: Vec[i64], k: i64) -> i64 {
+    let n = nums.len();
+    let at = nums.iter().position(|v| v == k).unwrap();
+    let mut starts: Map[i64, i64] = Map.new();
+    starts[0] = 1;
+    let mut balance = 0;
+    for i in (0..at).rev() {
+        balance += if nums[i] > k { 1 } else { -1 };
+        starts[balance] = starts.get(balance).unwrap_or(0) + 1;
+    }
+    let mut count = 0;
+    balance = 0;
+    for j in at..n {
+        if j > at {
+            balance += if nums[j] > k { 1 } else { -1 };
+        }
+        count += starts.get(-balance).unwrap_or(0) + starts.get(1 - balance).unwrap_or(0);
+    }
+    count
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let n = 10000;
+    let passes = 400;
+    let mut seed = 2488;
+    let mut orders: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..20 {
+        let mut nums: Vec[i64] = (1..n + 1).collect();
+        for i in (1..n).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            nums.swap(i, j);
+        }
+        orders.push(nums);
+    }
+    let mut check = 0;
+    for p in 0..passes {
+        for o in 0..20 {
+            orders[o].swap(check % n, (check / n + p) % n);
+            let k = (check + o) % n + 1;
+            check = (check * 31 + count_subarrays(orders[o], k) + p) % 1000000007;
+        }
+    }
+    println(f"{passes} passes over 20 orders of 10^4: checksum {check}");
+}

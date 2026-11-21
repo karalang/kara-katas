@@ -1,0 +1,88 @@
+// LeetCode #2488: Count Subarrays With Median K -- the ★ arm. The numbers
+// are distinct, so a subarray has median `k` exactly when it holds `k` and
+// as many numbers greater than `k` as smaller, or one more greater. Read
+// as +1 and -1, that is a balance of 0 or 1 across a subarray round `k`'s
+// place. The balances of every start, walking left from `k`, are counted
+// in a `Map`; each end, walking right, then adds the starts that make 0 or
+// 1 with it. O(n).
+
+fn count_subarrays(nums: Vec[i64], k: i64) -> i64 {
+    let n = nums.len();
+    let at = nums.iter().position(|v| v == k).unwrap();
+    let mut starts: Map[i64, i64] = Map.new();
+    starts[0] = 1;
+    let mut balance = 0;
+    for i in (0..at).rev() {
+        balance += if nums[i] > k { 1 } else { -1 };
+        starts[balance] = starts.get(balance).unwrap_or(0) + 1;
+    }
+    let mut count = 0;
+    balance = 0;
+    for j in at..n {
+        if j > at {
+            balance += if nums[j] > k { 1 } else { -1 };
+        }
+        count += starts.get(-balance).unwrap_or(0) + starts.get(1 - balance).unwrap_or(0);
+    }
+    count
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random order of 1 to `n`, by Fisher-Yates
+fn permutation(n: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut nums: Vec[i64] = (1..n + 1).collect();
+    for i in (1..n).rev() {
+        let j = (next_random(mut seed) * 32768 + next_random(mut seed)) % (i + 1);
+        nums.swap(i, j);
+    }
+    nums
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(", ")}]"
+}
+
+fn main() {
+    // LeetCode's two examples, then six more
+    let cases: Vec[(Vec[i64], i64)] = [
+        ([3, 2, 1, 4, 5].to_vec(), 4),
+        ([2, 3, 1].to_vec(), 3),
+        ([1].to_vec(), 1),
+        ([1, 2].to_vec(), 1),
+        ([2, 1].to_vec(), 2),
+        ([1, 2, 3].to_vec(), 2),
+        ([5, 1, 4, 2, 3].to_vec(), 3),
+        ([4, 1, 7, 3, 6, 2, 5].to_vec(), 4),
+    ].to_vec();
+    for (nums, k) in cases.iter() {
+        println(f"{show(nums)}, {k} -> {count_subarrays(nums, k)}");
+    }
+    // 2000 random orders of 1 to 200 numbers, `k` any of them
+    let mut seed = 2488;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 200 + 1;
+        let nums = permutation(n, mut seed);
+        let k = next_random(mut seed) % n + 1;
+        check = (check * 31 + count_subarrays(nums, k)) % 1000000007;
+    }
+    println(f"2000 random: checksum {check}");
+    // the constraints' largest, 10^5 numbers: rising, falling, and random,
+    // `k` the least, the middle and the greatest
+    let n = 100000;
+    let rising: Vec[i64] = (1..n + 1).collect();
+    let falling: Vec[i64] = (1..n + 1).rev().collect();
+    let random = permutation(n, mut seed);
+    for (name, nums) in [("rising", rising), ("falling", falling), ("random", random)] {
+        for k in [1, n / 2, n] {
+            println(f"10^5 {name}, {k} -> {count_subarrays(nums, k)}");
+        }
+    }
+}
