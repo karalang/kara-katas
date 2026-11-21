@@ -1,0 +1,71 @@
+// LeetCode #2522: Partition String Into Substrings With Values at Most K --
+// iterators: -1 when `any` digit is above `k`; otherwise a `fold` over the
+// digits carrying the parts so far and the value of the last, a digit that
+// would push the value past `k` starting a new part.
+
+fn minimum_partition(s: String, k: i64) -> i64 {
+    let digits: Vec[i64] = s.bytes().iter().map(|b| (b - b'0') as i64).collect();
+    if digits.iter().any(|d| d > k) {
+        return -1;
+    }
+    let (parts, _) = digits.iter().fold((1, 0), |(parts, value), d| {
+        if value * 10 + d > k { (parts + 1, d) } else { (parts, value * 10 + d) }
+    });
+    parts
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a value from 0 to 2^30 - 1, next_random giving only 15 bits
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn digits(length: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for _ in 0..length {
+        s.push(((next_random(mut seed) % 9 + 1) as u8 + b'0') as char);
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's two examples, then six more
+    let fixed = [("165462", 60), ("238182", 5), ("1", 1), ("9", 8), ("111", 11), ("999999999", 999999999), ("9999999999", 999999999), ("123456789", 1)];
+    for (s, k) in fixed {
+        println(f"\"{s}\", {k} -> {minimum_partition(s.to_string(), k)}");
+    }
+    // 2000 random strings of 1 to 10 digits with k from 1 to 100, and 2000
+    // of 1 to 60 digits with k from 1 to 10^9: the sum, how many -1, and a
+    // checksum
+    let mut seed = 2522;
+    for (most, big) in [(10, false), (60, true)] {
+        let mut total = 0;
+        let mut refused = 0;
+        let mut check = 0;
+        for _ in 0..2000 {
+            let s = digits(next_random(mut seed) % most + 1, mut seed);
+            let k = if big { wide_random(mut seed) % 1000000000 + 1 } else { next_random(mut seed) % 100 + 1 };
+            let a = minimum_partition(s, k);
+            if a == -1 {
+                refused += 1;
+            } else {
+                total += a;
+            }
+            check = (check * 31 + a + 1) % 1000000007;
+        }
+        println(f"2000 random of up to {most} digits: total {total}, {refused} with -1, checksum {check}");
+    }
+    // the constraints' largest: 10^5 digits, all 9 with k 9, and random
+    // with k 500, 10^9 and 8
+    println(f"10^5 nines, k 9: {minimum_partition("9".repeat(100000), 9)}");
+    let long = digits(100000, mut seed);
+    for k in [500, 1000000000, 8] {
+        println(f"10^5 random digits, k {k}: {minimum_partition(long, k)}");
+    }
+}
