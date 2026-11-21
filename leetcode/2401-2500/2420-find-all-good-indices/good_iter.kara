@@ -1,0 +1,104 @@
+// LeetCode #2420: Find All Good Indices -- iterators. The two run lengths
+// by `scan`, the falling one from the left and the rising one over the
+// array reversed, then the good indices by `filter`. O(n).
+
+fn good_indices(nums: Vec[i64], k: i64) -> Vec[i64] {
+    let n = nums.len();
+    let falling: Vec[i64] = (0..n).scan(0, |run, i| {
+        let run = if i > 0 and nums[i] <= nums[i - 1] {
+            run + 1
+        } else {
+            1
+        };
+        Some((run, run))
+    }).collect();
+    let mut rising: Vec[i64] = (0..n).rev().scan(0, |run, i| {
+        let run = if i + 1 < n and nums[i] <= nums[i + 1] {
+            run + 1
+        } else {
+            1
+        };
+        Some((run, run))
+    }).collect();
+    rising.reverse();
+    (k..n - k).filter(|i| falling[i - 1] >= k and rising[i + 1] >= k).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` values from 1 to `top`, each a step of up to `step` from the one
+// before it, all one way until the way turns, with probability 1 in
+// `turn`, and kept in range.
+fn values(seed: mut ref i64, n: i64, top: i64, turn: i64, step: i64) -> Vec[i64] {
+    let mut nums: Vec[i64] = Vec.new();
+    let mut down = true;
+    for i in 0..n {
+        if i == 0 {
+            nums.push(1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % top);
+        } else {
+            if next_random(mut seed) % turn == 0 {
+                down = not down;
+            }
+            let d = next_random(mut seed) % (step + 1);
+            let v = if down { nums[i - 1] - d } else { nums[i - 1] + d };
+            nums.push(v.max(1).min(top));
+        }
+    }
+    nums
+}
+
+fn show(good: Vec[i64]) -> String {
+    let parts: Vec[String] = good.iter().map(|g| f"{g}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn digest(good: Vec[i64]) -> String {
+    let mut h = 0;
+    let mut total = 0;
+    for g in good.iter() {
+        h = (h * 31 + g) % 1000000007;
+        total += g;
+    }
+    f"{good.len()} good: {h} {total}"
+}
+
+fn main() {
+    // LeetCode's two examples; all the same; k at its largest; one valley;
+    // strictly up, then strictly down
+    println(show(good_indices([2, 1, 1, 1, 3, 4, 1].to_vec(), 2)));
+    println(show(good_indices([2, 1, 1, 2].to_vec(), 2)));
+    println(show(good_indices([5, 5, 5, 5, 5, 5].to_vec(), 2)));
+    println(show(good_indices([3, 2, 1, 1, 2, 3].to_vec(), 3)));
+    println(show(good_indices([9, 7, 5, 3, 1, 4, 6, 8, 9].to_vec(), 4)));
+    println(show(good_indices([1, 2, 3, 4, 5].to_vec(), 1)));
+    println(show(good_indices([5, 4, 3, 2, 1].to_vec(), 1)));
+    // the constraints' largest, 10^5 values up to 10^6 in slopes about 60
+    // long, with k 2, 5 and 50; and 10^5 of 1 to 3 turning often, with k 3
+    let mut seed = 2420;
+    let big = values(mut seed, 100000, 1000000, 60, 40);
+    println(digest(good_indices(big, 2)));
+    println(digest(good_indices(big, 5)));
+    println(digest(good_indices(big, 50)));
+    println(digest(good_indices(values(mut seed, 100000, 3, 4, 1), 3)));
+    // 3000 random arrays of 3 to 30 values up to 1 to 8, k from 1 to n / 2;
+    // a checksum of every good index and the count of them
+    let mut check = 0;
+    let mut count = 0;
+    for _ in 0..3000 {
+        let n = 3 + next_random(mut seed) % 28;
+        let top = 1 + next_random(mut seed) % 8;
+        let nums = values(mut seed, n, top, 1 + next_random(mut seed) % 6, next_random(mut seed) % 3);
+        let k = 1 + next_random(mut seed) % (n / 2);
+        for g in good_indices(nums, k).iter() {
+            check = (check * 31 + g + 1) % 1000000007;
+            count += 1;
+        }
+        check = (check * 31 + 1000) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}, {count} good");
+}

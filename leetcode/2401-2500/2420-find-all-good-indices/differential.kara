@@ -1,0 +1,336 @@
+// LeetCode #2420: Find All Good Indices -- the differential. The six arms
+// against the statement read literally: for every index from k to
+// n - k - 1, the k values before it compared with their own copy sorted
+// from the largest, and the k after with theirs sorted from the
+// smallest. No run lengths, no counts. 360 cases: 300 random arrays of 3
+// to 14 values up to 1 to 8 in slopes that turn with probability 1 in 1
+// to 6, with k from 1 to n / 2; then 30 of up to 400 values up to 10^6
+// in slopes about 30 long, k up to 20; then 30 of up to 400 values of 1
+// to 3 turning often, k up to 5. Every case is drawn before any arm
+// answers.
+//
+// P1  the answer is the literal reading's
+// P2  the indices rise, each at least k and below n - k
+// P3  the array reversed: each index i answered as n - 1 - i, in order
+// P4  every value v made 2 v + 1: the same answer
+// P5  k made one less: an answer holding every index of this one; at
+//     k = 1, every index from 1 to n - 2
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn good_literally(nums: Vec[i64], k: i64) -> Vec[i64] {
+    let mut good: Vec[i64] = Vec.new();
+    for i in k..nums.len() - k {
+        let before = nums[i - k..i].to_vec();
+        let mut falling = before.clone();
+        falling.sort();
+        falling.reverse();
+        let after = nums[i + 1..i + k + 1].to_vec();
+        let mut rising = after.clone();
+        rising.sort();
+        if before == falling and after == rising {
+            good.push(i);
+        }
+    }
+    good
+}
+
+// ---- star (good.kara) ----------------------------------------------------
+
+fn star_good_indices(nums: Vec[i64], k: i64) -> Vec[i64] {
+    let n = nums.len();
+    let mut falling: Vec[i64] = Vec.filled(n, 1);
+    let mut rising: Vec[i64] = Vec.filled(n, 1);
+    for i in 1..n {
+        if nums[i] <= nums[i - 1] {
+            falling[i] = falling[i - 1] + 1;
+        }
+    }
+    for i in (0..n - 1).rev() {
+        if nums[i] <= nums[i + 1] {
+            rising[i] = rising[i + 1] + 1;
+        }
+    }
+    let mut good: Vec[i64] = Vec.new();
+    for i in k..n - k {
+        if falling[i - 1] >= k and rising[i + 1] >= k {
+            good.push(i);
+        }
+    }
+    good
+}
+
+// ---- naive (good_naive.kara) ---------------------------------------------
+
+fn naive_good_indices(nums: Vec[i64], k: i64) -> Vec[i64] {
+    let n = nums.len();
+    let mut good: Vec[i64] = Vec.new();
+    for i in k..n - k {
+        let mut ok = true;
+        for j in i - k + 1..i {
+            if nums[j] > nums[j - 1] {
+                ok = false;
+            }
+        }
+        for j in i + 2..i + k + 1 {
+            if nums[j] < nums[j - 1] {
+                ok = false;
+            }
+        }
+        if ok {
+            good.push(i);
+        }
+    }
+    good
+}
+
+// ---- breaks (good_breaks.kara) -------------------------------------------
+
+fn breaks_good_indices(nums: Vec[i64], k: i64) -> Vec[i64] {
+    let n = nums.len();
+    let mut rises: Vec[i64] = Vec.filled(n, 0);
+    let mut falls: Vec[i64] = Vec.filled(n, 0);
+    for j in 1..n {
+        rises[j] = rises[j - 1] + if nums[j] > nums[j - 1] { 1 } else { 0 };
+        falls[j] = falls[j - 1] + if nums[j] < nums[j - 1] { 1 } else { 0 };
+    }
+    let mut good: Vec[i64] = Vec.new();
+    for i in k..n - k {
+        if rises[i - 1] == rises[i - k] and falls[i + k] == falls[i + 1] {
+            good.push(i);
+        }
+    }
+    good
+}
+
+// ---- runs (good_runs.kara) -----------------------------------------------
+
+fn runs_stretches(nums: Vec[i64], keeps: Fn(i64, i64) -> bool) -> Vec[(i64, i64)] {
+    let mut out: Vec[(i64, i64)] = Vec.new();
+    let mut start = 0;
+    for j in 1..nums.len() + 1 {
+        if j == nums.len() or not keeps(nums[j - 1], nums[j]) {
+            out.push((start, j - 1));
+            start = j;
+        }
+    }
+    out
+}
+
+// The stretch that holds index `at`.
+fn runs_holding(runs: Vec[(i64, i64)], at: i64) -> (i64, i64) {
+    {
+        let r = runs.partition_point(|(start, end)| if end < at {
+            Ordering.Less
+        } else if start > at {
+            Ordering.Greater
+        } else {
+            Ordering.Equal
+        } != Ordering.Greater);
+        if runs.partition_point(|(start, end)| if end < at {
+            Ordering.Less
+        } else if start > at {
+            Ordering.Greater
+        } else {
+            Ordering.Equal
+        } == Ordering.Less) < r {
+            let r = r - 1;
+            runs[r]
+        } else {
+            (at, at)
+        }
+    }
+}
+
+fn runs_good_indices(nums: Vec[i64], k: i64) -> Vec[i64] {
+    let falling = runs_stretches(nums, |a, b| b <= a);
+    let rising = runs_stretches(nums, |a, b| b >= a);
+    let mut good: Vec[i64] = Vec.new();
+    for i in k..nums.len() - k {
+        let (start, _) = runs_holding(falling, i - 1);
+        let (_, end) = runs_holding(rising, i + 1);
+        if start <= i - k and end >= i + k {
+            good.push(i);
+        }
+    }
+    good
+}
+
+// ---- iter (good_iter.kara) -----------------------------------------------
+
+fn iter_good_indices(nums: Vec[i64], k: i64) -> Vec[i64] {
+    let n = nums.len();
+    let falling: Vec[i64] = (0..n).scan(0, |run, i| {
+        let run = if i > 0 and nums[i] <= nums[i - 1] {
+            run + 1
+        } else {
+            1
+        };
+        Some((run, run))
+    }).collect();
+    let mut rising: Vec[i64] = (0..n).rev().scan(0, |run, i| {
+        let run = if i + 1 < n and nums[i] <= nums[i + 1] {
+            run + 1
+        } else {
+            1
+        };
+        Some((run, run))
+    }).collect();
+    rising.reverse();
+    (k..n - k).filter(|i| falling[i - 1] >= k and rising[i + 1] >= k).collect()
+}
+
+// ---- solution (good_solution.kara) ---------------------------------------
+
+impl Solution {
+    pub fn good_indices(nums: Vec[i32], k: i32) -> Vec[i32] {
+        let n = nums.len();
+        let k = k as i64;
+        let mut left = Vec.filled(n, 1);
+        let mut right = Vec.filled(n, 1);
+        for i in 1..n {
+            if nums[i] <= nums[i - 1] {
+                left[i] = left[i - 1] + 1;
+            }
+        }
+        for i in (0..n - 1).rev() {
+            if nums[i] <= nums[i + 1] {
+                right[i] = right[i + 1] + 1;
+            }
+        }
+        let mut ans = Vec.new();
+        for i in k..n - k {
+            if left[i - 1] >= k and right[i + 1] >= k {
+                ans.push(i as i32);
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_good_indices(nums: Vec[i64], k: i64) -> Vec[i64] {
+    Solution.good_indices(nums.iter().map(|x| x as i32).collect(), k as i32).iter().map(|g| g as i64).collect()
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, nums: Slice[i64], k: i64) -> Vec[i64] {
+    let nums = nums.to_vec();
+    match arm {
+        0 => star_good_indices(nums, k),
+        1 => naive_good_indices(nums, k),
+        2 => breaks_good_indices(nums, k),
+        3 => runs_good_indices(nums, k),
+        4 => iter_good_indices(nums, k),
+        _ => solution_good_indices(nums, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "naive", "breaks", "runs", "iter", "solution"];
+    let mut seed = 2420;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for t in 0..360 {
+        let (n, top, turn, step, most_k) = if t < 300 {
+            let n = 3 + next_random(mut seed) % 12;
+            (n, 1 + next_random(mut seed) % 8, 1 + next_random(mut seed) % 6, next_random(mut seed) % 3, n / 2)
+        } else if t < 330 {
+            (3 + next_random(mut seed) % 398, 1000000, 30, 50, 20)
+        } else {
+            (3 + next_random(mut seed) % 398, 3, 3, 1, 5)
+        };
+        let mut nums: Vec[i64] = Vec.new();
+        let mut down = true;
+        for i in 0..n {
+            if i == 0 {
+                nums.push(1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % top);
+            } else {
+                if next_random(mut seed) % turn == 0 {
+                    down = not down;
+                }
+                let d = next_random(mut seed) % (step + 1);
+                let v = if down { nums[i - 1] - d } else { nums[i - 1] + d };
+                nums.push(v.max(1).min(top));
+            }
+        }
+        let k = 1 + next_random(mut seed) % most_k.min(n / 2);
+        cases.push((nums, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (nums, k) = cases[c].clone();
+        let n = nums.len();
+        let truth = good_literally(nums, k);
+        for g in truth.iter() {
+            check = (check * 31 + g + 1) % 1000000007;
+        }
+        check = (check * 31 + 1000) % 1000000007;
+        let mut back = nums.clone();
+        back.reverse();
+        let raised: Vec[i64] = nums.iter().map(|v| 2 * v + 1).collect();
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, nums, k)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut rises = true;
+            for j in 0..value.len() {
+                if value[j] < k or value[j] >= n - k or (j > 0 and value[j] <= value[j - 1]) {
+                    rises = false;
+                }
+            }
+            let mut mirrored: Vec[i64] = value.iter().map(|i| n - 1 - i).collect();
+            mirrored.reverse();
+            let looser = if k > 1 {
+                let wider = answer(arm, nums, k - 1);
+                value.iter().all(|i| wider.contains(i))
+            } else {
+                value == (Vec[i64].from_iter(1..n - 1))
+            };
+            let verdicts = [
+                value == truth,
+                rises,
+                answer(arm, back, k) == mirrored,
+                answer(arm, raised, k) == value,
+                looser,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
