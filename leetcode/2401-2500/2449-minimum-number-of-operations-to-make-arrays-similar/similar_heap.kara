@@ -1,0 +1,104 @@
+// LeetCode #2449: Minimum Number of Operations to Make Arrays Similar --
+// four `PriorityQueue`s built by `max_first()`, the odd and the even values
+// of each array: popped in step from the largest down, each pair of the
+// same parity matched as it comes, and the distances added up and divided
+// by 4. O(n log n).
+
+fn make_similar(nums: Vec[i64], target: Vec[i64]) -> i64 {
+    let mut have: Vec[PriorityQueue[i64]] = [PriorityQueue.max_first(), PriorityQueue.max_first()].to_vec();
+    let mut want: Vec[PriorityQueue[i64]] = [PriorityQueue.max_first(), PriorityQueue.max_first()].to_vec();
+    for x in nums.iter() {
+        have[x % 2].push(x);
+    }
+    for x in target.iter() {
+        want[x % 2].push(x);
+    }
+    let mut distance = 0;
+    for parity in 0..2 {
+        while let Some(a) = have[parity].pop() {
+            let b = want[parity].pop().unwrap();
+            distance += (a - b).abs();
+        }
+    }
+    distance / 4
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// a target similar to `nums`: `moves` random operations, each 2 added
+// to one value and taken from another of the same parity that stays
+// positive and none above `top`, and then the values shuffled
+fn similar_to(nums: Vec[i64], moves: i64, top: i64, seed: mut ref i64) -> Vec[i64] {
+    let n = nums.len();
+    let mut target = nums.clone();
+    for _ in 0..moves {
+        let i = wide_random(mut seed) % n;
+        let j = wide_random(mut seed) % n;
+        let step = 2 * (1 + next_random(mut seed) % 50);
+        if i != j and target[i] + step <= top and target[j] - step >= 1 {
+            target[i] += step;
+            target[j] -= step;
+        }
+    }
+    for i in 0..n {
+        let j = i + wide_random(mut seed) % (n - i);
+        target.swap(i, j);
+    }
+    target
+}
+
+fn main() {
+    // LeetCode's three examples; one value; two values swapped; two of
+    // each parity, far apart
+    println(f"example 1: {make_similar([8, 12, 6].to_vec(), [2, 14, 10].to_vec())}");
+    println(f"example 2: {make_similar([1, 2, 5].to_vec(), [4, 1, 3].to_vec())}");
+    println(f"example 3: {make_similar([1, 1, 1, 1, 1].to_vec(), [1, 1, 1, 1, 1].to_vec())}");
+    println(f"one value: {make_similar([7].to_vec(), [7].to_vec())}");
+    println(f"swapped: {make_similar([3, 1000000].to_vec(), [1000000, 3].to_vec())}");
+    println(f"far apart: {make_similar([1, 999999, 2, 1000000].to_vec(), [500001, 499999, 500002, 500000].to_vec())}");
+    println(f"one move each way: {make_similar([1, 999999, 2, 1000000].to_vec(), [3, 999997, 4, 999998].to_vec())}");
+    // 10^5 values, the constraints' most: values from 1 to 10^6 against a
+    // target 2 * 10^5 random operations away; values from 1 to 10 against
+    // one 10^5 operations away, full of ties
+    let n = 100000;
+    let mut seed = 2449;
+    let mut wide: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        wide.push(1 + wide_random(mut seed) % 1000000);
+    }
+    let wide_target = similar_to(wide, 200000, 1000000, mut seed);
+    println(f"wide: {make_similar(wide, wide_target)}");
+    let mut narrow: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        narrow.push(1 + next_random(mut seed) % 10);
+    }
+    let narrow_target = similar_to(narrow, 100000, 1000000, mut seed);
+    println(f"narrow: {make_similar(narrow, narrow_target)}");
+    // 3000 random cases of 1 to 10 values from 1 to 20, each against a
+    // target 0 to 9 operations away, values to 40: a checksum and the
+    // total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let len = 1 + next_random(mut seed) % 10;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..len {
+            nums.push(1 + next_random(mut seed) % 20);
+        }
+        let moves = next_random(mut seed) % 10;
+        let target = similar_to(nums, moves, 40, mut seed);
+        let answer = make_similar(nums, target);
+        check = (check * 31 + answer) % 1000000007;
+        total += answer;
+    }
+    println(f"3000 random: checksum {check}, total {total}");
+}

@@ -1,0 +1,327 @@
+// LeetCode #2449: Minimum Number of Operations to Make Arrays Similar --
+// the differential. The six arms against the statement read literally: a
+// breadth-first search from `nums` over single operations, 2 added to one
+// value and 2 taken from another that stays positive, every value kept to
+// at most 40, until the values match `target`'s once both are sorted; the
+// depth reached is the answer. No parity is split and no distance taken.
+// 360 cases: 300 of 1 to 4 values from 1 to 9 against a target 0 to 4
+// operations away; then 30 of 5 or 6 values from 1 to 9, 0 to 2
+// operations away; then 30 of 2 to 4 values from 1 to 3, 0 to 4
+// operations away, full of ties. Every case is drawn before any arm
+// answers.
+//
+// P1  the answer is the literal reading's
+// P2  `nums` and `target` swapped: the same answer
+// P3  every value of both raised by one even number from 2 to 20: the
+//     same answer
+// P4  `target` reversed: the same answer
+// P5  one operation done on `nums`: an answer within one of the first
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn sorted(values: Vec[i64]) -> Vec[i64] {
+    let mut s = values.clone();
+    s.sort();
+    s
+}
+
+fn similar_literally(nums: Vec[i64], target: Vec[i64]) -> i64 {
+    let goal = sorted(target);
+    let n = nums.len();
+    let mut seen: Set[Vec[i64]] = Set.new();
+    let mut level: Vec[Vec[i64]] = [nums.clone()].to_vec();
+    seen.insert(nums.clone());
+    let mut depth = 0;
+    loop {
+        let mut next: Vec[Vec[i64]] = Vec.new();
+        for state in level.iter() {
+            if sorted(state) == goal {
+                return depth;
+            }
+            for i in 0..n {
+                for j in 0..n {
+                    if i != j and state[i] + 2 <= 40 and state[j] - 2 >= 1 {
+                        let mut moved = state.clone();
+                        moved[i] += 2;
+                        moved[j] -= 2;
+                        if not seen.contains(moved) {
+                            seen.insert(moved.clone());
+                            next.push(moved);
+                        }
+                    }
+                }
+            }
+        }
+        level = next;
+        depth += 1;
+    }
+}
+
+// ---- star (similar.kara) -------------------------------------------------
+
+fn star_make_similar(nums: Vec[i64], target: Vec[i64]) -> i64 {
+    let mut odd: Vec[i64] = Vec.new();
+    let mut even: Vec[i64] = Vec.new();
+    for x in nums.iter() {
+        if x % 2 == 1 { odd.push(x) } else { even.push(x) }
+    }
+    let mut odd_target: Vec[i64] = Vec.new();
+    let mut even_target: Vec[i64] = Vec.new();
+    for x in target.iter() {
+        if x % 2 == 1 { odd_target.push(x) } else { even_target.push(x) }
+    }
+    odd.sort();
+    even.sort();
+    odd_target.sort();
+    even_target.sort();
+    let mut distance = 0;
+    for i in 0..odd.len() {
+        distance += (odd[i] - odd_target[i]).abs();
+    }
+    for i in 0..even.len() {
+        distance += (even[i] - even_target[i]).abs();
+    }
+    distance / 4
+}
+
+// ---- key (similar_key.kara) ----------------------------------------------
+
+fn key_make_similar(nums: Vec[i64], target: Vec[i64]) -> i64 {
+    let mut a = nums.clone();
+    let mut b = target.clone();
+    a.sort_by_key(|x| (x % 2, x));
+    b.sort_by_key(|x| (x % 2, x));
+    let mut surplus = 0;
+    for i in 0..a.len() {
+        if a[i] > b[i] {
+            surplus += a[i] - b[i];
+        }
+    }
+    surplus / 2
+}
+
+// ---- count (similar_count.kara) ------------------------------------------
+
+fn count_walk(have: Vec[i64], want: Vec[i64], first: i64) -> i64 {
+    let top = have.len();
+    let mut a = first;
+    let mut b = first;
+    let mut left_a = 0;
+    let mut left_b = 0;
+    let mut distance = 0;
+    loop {
+        while left_a == 0 and a < top {
+            left_a = have[a];
+            if left_a == 0 {
+                a += 2;
+            }
+        }
+        while left_b == 0 and b < top {
+            left_b = want[b];
+            if left_b == 0 {
+                b += 2;
+            }
+        }
+        if a >= top or b >= top {
+            break;
+        }
+        let both = left_a.min(left_b);
+        distance += both * (a - b).abs();
+        left_a -= both;
+        left_b -= both;
+        if left_a == 0 {
+            a += 2;
+        }
+        if left_b == 0 {
+            b += 2;
+        }
+    }
+    distance
+}
+
+fn count_make_similar(nums: Vec[i64], target: Vec[i64]) -> i64 {
+    let mut top = 0;
+    for x in nums.iter().chain(target.iter()) {
+        top = top.max(x + 1);
+    }
+    let mut have: Vec[i64] = Vec.filled(top, 0);
+    let mut want: Vec[i64] = Vec.filled(top, 0);
+    for x in nums.iter() {
+        have[x] += 1;
+    }
+    for x in target.iter() {
+        want[x] += 1;
+    }
+    (count_walk(have, want, 1) + count_walk(have, want, 2)) / 4
+}
+
+// ---- heap (similar_heap.kara) --------------------------------------------
+
+fn heap_make_similar(nums: Vec[i64], target: Vec[i64]) -> i64 {
+    let mut have: Vec[PriorityQueue[i64]] = [PriorityQueue.max_first(), PriorityQueue.max_first()].to_vec();
+    let mut want: Vec[PriorityQueue[i64]] = [PriorityQueue.max_first(), PriorityQueue.max_first()].to_vec();
+    for x in nums.iter() {
+        have[x % 2].push(x);
+    }
+    for x in target.iter() {
+        want[x % 2].push(x);
+    }
+    let mut distance = 0;
+    for parity in 0..2 {
+        while let Some(a) = have[parity].pop() {
+            let b = want[parity].pop().unwrap();
+            distance += (a - b).abs();
+        }
+    }
+    distance / 4
+}
+
+// ---- iter (similar_iter.kara) --------------------------------------------
+
+fn iter_sorted_parts(values: Vec[i64]) -> (Vec[i64], Vec[i64]) {
+    let mut (odd, even): (Vec[i64], Vec[i64]) = values.iter().cloned().partition(|x| x % 2 == 1);
+    odd.sort();
+    even.sort();
+    (odd, even)
+}
+
+fn iter_make_similar(nums: Vec[i64], target: Vec[i64]) -> i64 {
+    let (odd, even) = iter_sorted_parts(nums);
+    let (odd_target, even_target) = iter_sorted_parts(target);
+    let distance: i64 = odd.iter().zip(odd_target.iter()).chain(even.iter().zip(even_target.iter())).map(|p| (p.0 - p.1).abs()).sum();
+    distance / 4
+}
+
+// ---- solution (similar_solution.kara) ------------------------------------
+
+impl Solution {
+    pub fn make_similar(nums: own Vec[i32], target: own Vec[i32]) -> i64 {
+        let mut nums = nums;
+        let mut target = target;
+        nums.sort_by_key(|x| (x & 1, x));
+        target.sort_by_key(|x| (x & 1, x));
+        nums.iter().zip(target.iter()).map(|(a, b)| (a - b).abs() as i64).sum() / 4
+    }
+}
+
+struct Solution {}
+
+fn solution_make_similar(nums: Vec[i64], target: Vec[i64]) -> i64 {
+    let a: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    let b: Vec[i32] = target.iter().map(|x| x as i32).collect();
+    Solution.make_similar(a, b)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64], target: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_make_similar(nums, target),
+        1 => key_make_similar(nums, target),
+        2 => count_make_similar(nums, target),
+        3 => heap_make_similar(nums, target),
+        4 => iter_make_similar(nums, target),
+        _ => solution_make_similar(nums, target),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "key", "count", "heap", "iter", "solution"];
+    let mut seed = 2449;
+    let mut cases: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    for t in 0..360 {
+        let (len, top, moves) = if t < 300 {
+            (1 + next_random(mut seed) % 4, 9, next_random(mut seed) % 5)
+        } else if t < 330 {
+            (5 + next_random(mut seed) % 2, 9, next_random(mut seed) % 3)
+        } else {
+            (2 + next_random(mut seed) % 3, 3, next_random(mut seed) % 5)
+        };
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..len {
+            nums.push(1 + next_random(mut seed) % top);
+        }
+        let mut target = nums.clone();
+        for _ in 0..moves {
+            let i = next_random(mut seed) % len;
+            let j = next_random(mut seed) % len;
+            if i != j and target[j] > 2 {
+                target[i] += 2;
+                target[j] -= 2;
+            }
+        }
+        for i in 0..len {
+            let j = i + next_random(mut seed) % (len - i);
+            target.swap(i, j);
+        }
+        cases.push((nums, target));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (nums, target) = cases[c].clone();
+        let n = nums.len();
+        let truth = similar_literally(nums, target);
+        check = (check * 31 + truth) % 1000000007;
+        let lift = 2 * (1 + next_random(mut seed) % 10);
+        let raised: Vec[i64] = nums.iter().map(|x| x + lift).collect();
+        let raised_target: Vec[i64] = target.iter().map(|x| x + lift).collect();
+        let mut backwards = target.clone();
+        backwards.reverse();
+        let i = next_random(mut seed) % n;
+        let j = next_random(mut seed) % n;
+        let can_move = i != j and nums[j] > 2;
+        let mut moved = nums.clone();
+        if can_move {
+            moved[i] += 2;
+            moved[j] -= 2;
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums, target)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, target, nums) == value,
+                answer(arm, raised, raised_target) == value,
+                answer(arm, nums, backwards) == value,
+                not can_move or (answer(arm, moved, target) - value).abs() <= 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
