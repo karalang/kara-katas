@@ -1,0 +1,71 @@
+// LeetCode #2460: Apply Operations to an Array -- iterators: the
+// operations by `scan`, carrying the value standing at the current place
+// and meeting it with the next, a sentinel `-1` closing the list; then
+// the nonzero values by `filter`, chained with the zeros. O(n).
+
+fn apply_operations(nums: Vec[i64]) -> Vec[i64] {
+    let done: Vec[i64] = nums.iter().skip(1).cloned().chain(once(-1)).scan(nums[0], |carry, next| {
+        if carry == next {
+            Some((0, carry * 2))
+        } else {
+            Some((next, carry))
+        }
+    }).collect();
+    done.iter().filter(|v| v != 0).chain(done.iter().filter(|v| v == 0)).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn fold(values: Vec[i64]) -> i64 {
+    let mut check = 0;
+    for v in values.iter() {
+        check = (check * 31 + v + 1) % 1000000007;
+    }
+    check
+}
+
+fn main() {
+    // LeetCode's two examples; then a run of equal values merging in
+    // pairs, zeros between equal values, all zeros, a zero meeting a zero,
+    // and the constraints' largest value doubled
+    let cases: Vec[Vec[i64]] = [
+        [1, 2, 2, 1, 1, 0].to_vec(),
+        [0, 1].to_vec(),
+        [2, 2, 2, 2, 2].to_vec(),
+        [2, 0, 2, 0, 0, 2].to_vec(),
+        [0, 0, 0].to_vec(),
+        [3, 0, 0, 3, 3, 3].to_vec(),
+        [1000, 1000].to_vec(),
+        [4, 2, 2, 4, 8, 8, 16].to_vec(),
+    ].to_vec();
+    for nums in cases.into_iter() {
+        let shown = f"{nums}";
+        println(f"{shown} -> {apply_operations(nums)}");
+    }
+    // the constraints' largest: 2000 values of 1000, and 2000 alternating
+    // 1000 and 0, each as a checksum
+    let same: Vec[i64] = Vec.filled(2000, 1000);
+    println(f"2000 of 1000: checksum {fold(apply_operations(same))}");
+    let alternating: Vec[i64] = (0..2000).map(|i| if i % 2 == 0 { 1000 } else { 0 }).collect();
+    println(f"2000 alternating: checksum {fold(apply_operations(alternating))}");
+    // 2000 random values from 0 to 1000, and 2000 from 0 to 3
+    let mut seed = 2460;
+    for top in [1001, 4].iter() {
+        let nums: Vec[i64] = (0..2000).map(|_| next_random(mut seed) % top).collect();
+        println(f"2000 random below {top}: checksum {fold(apply_operations(nums))}");
+    }
+    // 3000 random arrays of 2 to 12 values from 0 to 2: a checksum of
+    // every answer's checksum in order
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 2 + next_random(mut seed) % 11;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 3).collect();
+        check = (check * 31 + fold(apply_operations(nums))) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}
