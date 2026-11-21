@@ -1,0 +1,97 @@
+// LeetCode #2432: The Employee That Worked on the Longest Task -- LeetCode's
+// Rust template, as Rust writes it, carried by karac fix: `logs` a
+// `Vec<Vec<i32>>`, the first log taken as the best before the loop, and
+// the rest compared with `||` and `&&` against the log before each.
+
+impl Solution {
+    pub fn hardest_worker(n: i32, logs: Vec[Vec[i32]]) -> i32 {
+        let mut ans = logs[0][0];
+        let mut best = logs[0][1];
+        for i in 1..logs.len() {
+            let t = logs[i][1] - logs[i - 1][1];
+            if t > best or (t == best and logs[i][0] < ans) {
+                best = t;
+                ans = logs[i][0];
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn hardest_worker(n: i64, logs: Vec[Vec[i64]]) -> i64 {
+    let rows: Vec[Vec[i32]] = logs.iter().map(|log| log.iter().map(|x| x as i32).collect()).collect();
+    Solution.hardest_worker(n as i32, rows)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `m` logs over `n` employees, no two in a row by one employee, the
+// leave times rising by 1 to `step`
+fn random_logs(seed: mut ref i64, n: i64, m: i64, step: i64) -> Vec[Vec[i64]] {
+    let mut logs: Vec[Vec[i64]] = Vec.new();
+    let mut time = 0;
+    let mut last = -1;
+    for _ in 0..m {
+        let mut id = next_random(mut seed) % n;
+        if id == last {
+            id = (id + 1) % n;
+        }
+        time += 1 + next_random(mut seed) % step;
+        logs.push([id, time].to_vec());
+        last = id;
+    }
+    logs
+}
+
+fn main() {
+    // LeetCode's three examples; one log; every task one unit long, so
+    // the least id of all wins; the longest task last; a tie between a
+    // high id first and a low id last
+    let cases: Vec[(i64, Vec[Vec[i64]])] = [
+        (10, [[0, 3].to_vec(), [2, 5].to_vec(), [0, 9].to_vec(), [1, 15].to_vec()].to_vec()),
+        (26, [[1, 1].to_vec(), [3, 7].to_vec(), [2, 12].to_vec(), [7, 17].to_vec()].to_vec()),
+        (2, [[0, 10].to_vec(), [1, 20].to_vec()].to_vec()),
+        (5, [[4, 500].to_vec()].to_vec()),
+        (4, [[3, 1].to_vec(), [1, 2].to_vec(), [2, 3].to_vec(), [0, 4].to_vec(), [3, 5].to_vec()].to_vec()),
+        (3, [[2, 1].to_vec(), [1, 2].to_vec(), [0, 500].to_vec()].to_vec()),
+        (9, [[8, 7].to_vec(), [5, 9].to_vec(), [2, 16].to_vec()].to_vec()),
+    ].to_vec();
+    for (n, logs) in cases.iter() {
+        println(f"n = {n}, logs {logs.len()}: {hardest_worker(n, logs)}");
+    }
+    // the constraints' largest: 500 employees and 500 logs, the leave
+    // times 1 to 500, every task one unit long but one, and the ids
+    // falling from 499
+    let mut seed = 2432;
+    let mut logs: Vec[Vec[i64]] = Vec.new();
+    for i in 0..500 {
+        logs.push([499 - i, i + 1].to_vec());
+    }
+    println(f"500 logs, one unit each: {hardest_worker(500, logs)}");
+    logs[250][1] = 252;
+    logs.remove(251);
+    println(f"499 logs, one of two units: {hardest_worker(500, logs)}");
+    // 500 employees and 250 random logs, leave times rising by 1 or 2
+    println(f"250 random logs: {hardest_worker(500, random_logs(mut seed, 500, 250, 2))}");
+    // 3000 random cases of 2 to 10 employees and 1 to 12 logs, leave
+    // times rising by 1 to 1 up to 1 to 4, full of ties: a checksum of
+    // the answers in order, and their total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let n = 2 + next_random(mut seed) % 9;
+        let m = 1 + next_random(mut seed) % 12;
+        let step = 1 + next_random(mut seed) % 4;
+        let answer = hardest_worker(n, random_logs(mut seed, n, m, step));
+        check = (check * 31 + answer) % 1000000007;
+        total += answer;
+    }
+    println(f"3000 random: checksum {check}, total {total}");
+}

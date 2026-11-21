@@ -1,0 +1,262 @@
+// LeetCode #2432: The Employee That Worked on the Longest Task -- the
+// differential. The six arms against the statement read literally: every
+// task's length found from the log before it, each task tested against
+// every other for one that lasted longer, and the least id among the
+// tasks none outlasts. No best is carried through the logs. 360 cases:
+// 300 random of 2 to 10 employees and 1 to 12 logs, leave times rising
+// by 1 to 1 up to 1 to 4, full of ties; then 30 of up to 500 employees
+// and 500 logs, leave times up to 500; then 30 of up to 50 employees and
+// 50 logs, every task one unit long. Every case is drawn before any arm
+// answers.
+//
+// P1  the answer is the literal reading's
+// P2  every leave time doubled: the same answer
+// P3  a last task longer than any by a new employee `n`, with `n + 1`
+//     employees: `n`
+// P4  the answer worked a task as long as any
+// P5  every id raised by one, with `n + 1` employees: the answer plus one
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn worker_literally(n: i64, logs: Vec[Vec[i64]]) -> i64 {
+    let mut lengths: Vec[i64] = Vec.new();
+    for i in 0..logs.len() {
+        let start = if i == 0 { 0 } else { logs[i - 1][1] };
+        lengths.push(logs[i][1] - start);
+    }
+    let mut least = n;
+    for i in 0..logs.len() {
+        let mut outlasted = false;
+        for j in 0..logs.len() {
+            if lengths[j] > lengths[i] {
+                outlasted = true;
+            }
+        }
+        if not outlasted and logs[i][0] < least {
+            least = logs[i][0];
+        }
+    }
+    least
+}
+
+// ---- star (longest.kara) -------------------------------------------------
+
+fn star_hardest_worker(n: i64, logs: Vec[Vec[i64]]) -> i64 {
+    let mut best_id = n;
+    let mut best_time = 0;
+    let mut start = 0;
+    for log in logs.iter() {
+        let time = log[1] - start;
+        if time > best_time or (time == best_time and log[0] < best_id) {
+            best_time = time;
+            best_id = log[0];
+        }
+        start = log[1];
+    }
+    best_id
+}
+
+// ---- naive (longest_naive.kara) ------------------------------------------
+
+fn naive_hardest_worker(n: i64, logs: Vec[Vec[i64]]) -> i64 {
+    let mut best_id = 0;
+    let mut best_time = 0;
+    for id in 0..n {
+        let mut longest = 0;
+        for i in 0..logs.len() {
+            if logs[i][0] == id {
+                let start = if i == 0 { 0 } else { logs[i - 1][1] };
+                longest = longest.max(logs[i][1] - start);
+            }
+        }
+        if longest > best_time {
+            best_time = longest;
+            best_id = id;
+        }
+    }
+    best_id
+}
+
+// ---- sort (longest_sort.kara) --------------------------------------------
+
+fn sort_hardest_worker(n: i64, logs: Vec[Vec[i64]]) -> i64 {
+    let mut tasks: Vec[(i64, i64)] = Vec.new();
+    let mut start = 0;
+    for log in logs.iter() {
+        tasks.push((start - log[1], log[0]));
+        start = log[1];
+    }
+    tasks.sort();
+    tasks[0].1
+}
+
+// ---- map (longest_map.kara) ----------------------------------------------
+
+fn map_hardest_worker(n: i64, logs: Vec[Vec[i64]]) -> i64 {
+    let mut least: SortedMap[i64, i64] = SortedMap.new();
+    let mut start = 0;
+    for log in logs.iter() {
+        let time = log[1] - start;
+        let id = if least.contains_key(time) { least[time].min(log[0]) } else { log[0] };
+        least.insert(time, id);
+        start = log[1];
+    }
+    let (_, id) = least.last().unwrap();
+    id
+}
+
+// ---- iter (longest_iter.kara) --------------------------------------------
+
+fn iter_hardest_worker(n: i64, logs: Vec[Vec[i64]]) -> i64 {
+    let starts = once(0).chain(logs.iter().map(|log| log[1]));
+    let (_, id) = starts.zip(logs.iter()).map(|(start, log)| (log[1] - start, -log[0])).max().unwrap();
+    -id
+}
+
+// ---- solution (longest_solution.kara) ------------------------------------
+
+impl Solution {
+    pub fn hardest_worker(n: i32, logs: Vec[Vec[i32]]) -> i32 {
+        let mut ans = logs[0][0];
+        let mut best = logs[0][1];
+        for i in 1..logs.len() {
+            let t = logs[i][1] - logs[i - 1][1];
+            if t > best or (t == best and logs[i][0] < ans) {
+                best = t;
+                ans = logs[i][0];
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_hardest_worker(n: i64, logs: Vec[Vec[i64]]) -> i64 {
+    let rows: Vec[Vec[i32]] = logs.iter().map(|log| log.iter().map(|x| x as i32).collect()).collect();
+    Solution.hardest_worker(n as i32, rows)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, n: i64, logs: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_hardest_worker(n, logs),
+        1 => naive_hardest_worker(n, logs),
+        2 => sort_hardest_worker(n, logs),
+        3 => map_hardest_worker(n, logs),
+        4 => iter_hardest_worker(n, logs),
+        _ => solution_hardest_worker(n, logs),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_logs(seed: mut ref i64, n: i64, m: i64, step: i64) -> Vec[Vec[i64]] {
+    let mut logs: Vec[Vec[i64]] = Vec.new();
+    let mut time = 0;
+    let mut last = -1;
+    for _ in 0..m {
+        let mut id = next_random(mut seed) % n;
+        if id == last {
+            id = (id + 1) % n;
+        }
+        time += 1 + next_random(mut seed) % step;
+        logs.push([id, time].to_vec());
+        last = id;
+    }
+    logs
+}
+
+fn main() {
+    let arms = ["star", "naive", "sort", "map", "iter", "solution"];
+    let mut seed = 2432;
+    let mut cases: Vec[(i64, Vec[Vec[i64]])] = Vec.new();
+    for t in 0..360 {
+        if t < 300 {
+            let n = 2 + next_random(mut seed) % 9;
+            let m = 1 + next_random(mut seed) % 12;
+            let step = 1 + next_random(mut seed) % 4;
+            cases.push((n, random_logs(mut seed, n, m, step)));
+        } else if t < 330 {
+            let n = 2 + next_random(mut seed) % 499;
+            let m = 1 + next_random(mut seed) % 500;
+            let step = (500 / m).max(1);
+            cases.push((n, random_logs(mut seed, n, m, step)));
+        } else {
+            let n = 2 + next_random(mut seed) % 49;
+            let m = 1 + next_random(mut seed) % 50;
+            cases.push((n, random_logs(mut seed, n, m, 1)));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (n, logs) = cases[c].clone();
+        let truth = worker_literally(n, logs);
+        check = (check * 31 + truth) % 1000000007;
+        let mut longest = 0;
+        let mut start = 0;
+        for log in logs.iter() {
+            longest = longest.max(log[1] - start);
+            start = log[1];
+        }
+        let doubled: Vec[Vec[i64]] = logs.iter().map(|log| [log[0], 2 * log[1]].to_vec()).collect();
+        let mut extended = logs.clone();
+        extended.push([n, start + longest + 1].to_vec());
+        let raised: Vec[Vec[i64]] = logs.iter().map(|log| [log[0] + 1, log[1]].to_vec()).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, n, logs)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut worked_longest = false;
+            let mut before = 0;
+            for log in logs.iter() {
+                if log[0] == value and log[1] - before == longest {
+                    worked_longest = true;
+                }
+                before = log[1];
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, n, doubled) == value,
+                answer(arm, n + 1, extended) == n,
+                worked_longest,
+                answer(arm, n + 1, raised) == value + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

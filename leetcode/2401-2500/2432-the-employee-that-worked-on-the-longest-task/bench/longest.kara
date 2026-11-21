@@ -1,0 +1,55 @@
+// LeetCode #2432: The Employee That Worked on the Longest Task -- the
+// bench, the ★ arm: one pass with the last leave time in hand, the best
+// replaced by a longer task or an equal one of a smaller id.
+
+fn hardest_worker(n: i64, logs: Vec[Vec[i64]]) -> i64 {
+    let mut best_id = n;
+    let mut best_time = 0;
+    let mut start = 0;
+    for log in logs.iter() {
+        let time = log[1] - start;
+        if time > best_time or (time == best_time and log[0] < best_id) {
+            best_time = time;
+            best_id = log[0];
+        }
+        start = log[1];
+    }
+    best_id
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2432;
+    // 2000 cases of 500 employees and 500 logs, the constraints' largest,
+    // no two logs in a row by one employee, leave times rising by 1 to 3
+    let mut cases: Vec[Vec[Vec[i64]]] = Vec.new();
+    for _ in 0..2000 {
+        let mut logs: Vec[Vec[i64]] = Vec.new();
+        let mut time = 0;
+        let mut last = -1;
+        for _ in 0..500 {
+            let mut id = next_random(mut seed) % 500;
+            if id == last {
+                id = (id + 1) % 500;
+            }
+            time += 1 + next_random(mut seed) % 3;
+            logs.push([id, time].to_vec());
+            last = id;
+        }
+        cases.push(logs);
+    }
+    // pass `p` moves every case's last leave time on by one, then answers
+    // every case
+    let mut check = 0;
+    for p in 0..50 {
+        for c in 0..cases.len() {
+            cases[c][499][1] += 1;
+            check = (check * 31 + hardest_worker(500, cases[c]) + p) % 1000000007;
+        }
+    }
+    println(f"50 passes over 2000 cases of 500 logs: checksum {check}");
+}
