@@ -1,0 +1,254 @@
+// LeetCode #2457: Minimum Addition to Make Integer Beautiful -- the
+// differential. The six arms against the statement read literally: `x`
+// tried from 0 upward, one at a time, until the digits of `n + x`, read
+// off its decimal text, add up to at most `target`. No rounding is done.
+// 360 cases: 300 random with `n` up to 999 and targets from 1 to 15;
+// then 30 with `n` up to 10^5 and targets from 1 to 30; then 30 with `n`
+// just below a power of ten, up to 10^5, and targets from 1 to 5, so a
+// carry runs through nines. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  `n` raised by some `k` up to the answer: the answer less `k`
+// P3  `n` times ten: the answer times ten
+// P4  the target raised by one: an answer no larger
+// P5  the digits of `n` plus the answer add up to at most the target
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn fits(m: i64, target: i64) -> bool {
+    let mut sum = 0;
+    for b in m.to_string().bytes().iter() {
+        sum += b - b'0';
+    }
+    sum <= target
+}
+
+fn beautiful_literally(n: i64, target: i64) -> i64 {
+    let mut x = 0;
+    while not fits(n + x, target) {
+        x += 1;
+    }
+    x
+}
+
+// ---- star (beautiful.kara) -----------------------------------------------
+
+fn star_digit_sum(x: i64) -> i64 {
+    let mut rest = x;
+    let mut sum = 0;
+    while rest > 0 {
+        sum += rest % 10;
+        rest /= 10;
+    }
+    sum
+}
+
+fn star_make_integer_beautiful(n: i64, target: i64) -> i64 {
+    let mut m = n;
+    let mut p = 1;
+    while star_digit_sum(m) > target {
+        p *= 10;
+        m = (m + p - 1) / p * p;
+    }
+    m - n
+}
+
+// ---- digits (beautiful_digits.kara) --------------------------------------
+
+fn digits_make_integer_beautiful(n: i64, target: i64) -> i64 {
+    let mut digits: Vec[i64] = Vec.new();
+    let mut rest = n;
+    while rest > 0 {
+        digits.push(rest % 10);
+        rest /= 10;
+    }
+    let mut low = 0;
+    while digits.iter().sum() > target {
+        while digits[low] == 0 {
+            low += 1;
+        }
+        digits[low] = 0;
+        let mut at = low + 1;
+        loop {
+            if at == digits.len() {
+                digits.push(0);
+            }
+            if digits[at] < 9 {
+                digits[at] += 1;
+                break;
+            }
+            digits[at] = 0;
+            at += 1;
+        }
+    }
+    let mut m = 0;
+    for d in digits.iter().rev() {
+        m = m * 10 + d;
+    }
+    m - n
+}
+
+// ---- recursive (beautiful_recursive.kara) --------------------------------
+
+fn recursive_digit_sum(x: i64) -> i64 {
+    if x == 0 { 0 } else { x % 10 + recursive_digit_sum(x / 10) }
+}
+
+fn recursive_make_integer_beautiful(n: i64, target: i64) -> i64 {
+    if recursive_digit_sum(n) <= target {
+        return 0;
+    }
+    let last = n % 10;
+    if last == 0 {
+        10 * recursive_make_integer_beautiful(n / 10, target)
+    } else {
+        (10 - last) + 10 * recursive_make_integer_beautiful(n / 10 + 1, target)
+    }
+}
+
+// ---- power (beautiful_power.kara) ----------------------------------------
+
+fn power_digit_sum(x: i64) -> i64 {
+    x.to_string().bytes().iter().map(|b| (b - b'0') as i64).sum()
+}
+
+fn power_make_integer_beautiful(n: i64, target: i64) -> i64 {
+    let mut best = -1;
+    let mut p = 1;
+    for _ in 0..14 {
+        let up = (n + p - 1) / p * p;
+        if power_digit_sum(up) <= target and (best == -1 or up - n < best) {
+            best = up - n;
+        }
+        p *= 10;
+    }
+    best
+}
+
+// ---- iter (beautiful_iter.kara) ------------------------------------------
+
+fn iter_digit_sum(x: i64) -> i64 {
+    successors(Some(x), |r| if r >= 10 { Some(r / 10) } else { None }).map(|r| r % 10).sum()
+}
+
+fn iter_make_integer_beautiful(n: i64, target: i64) -> i64 {
+    successors(Some(1), |p| Some(p * 10))
+        .map(|p| (n + p - 1) / p * p)
+        .find(|m| iter_digit_sum(m) <= target)
+        .unwrap() - n
+}
+
+// ---- solution (beautiful_solution.kara) ----------------------------------
+
+fn solution_digit_sum(x: i64) -> i32 {
+    let mut x = x;
+    let mut s: i32 = 0;
+    while x > 0 {
+        s += (x % 10) as i32;
+        x /= 10;
+    }
+    s
+}
+
+impl Solution {
+    pub fn make_integer_beautiful(n: i64, target: i32) -> i64 {
+        let mut x = 0;
+        let mut p = 1;
+        while solution_digit_sum(n + x) > target {
+            p *= 10;
+            x = (n / p + 1) * p - n;
+        }
+        x
+    }
+}
+
+struct Solution {}
+
+fn solution_make_integer_beautiful(n: i64, target: i64) -> i64 {
+    Solution.make_integer_beautiful(n, target as i32)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, n: i64, target: i64) -> i64 {
+    match arm {
+        0 => star_make_integer_beautiful(n, target),
+        1 => digits_make_integer_beautiful(n, target),
+        2 => recursive_make_integer_beautiful(n, target),
+        3 => power_make_integer_beautiful(n, target),
+        4 => iter_make_integer_beautiful(n, target),
+        _ => solution_make_integer_beautiful(n, target),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "digits", "recursive", "power", "iter", "solution"];
+    let mut seed = 2457;
+    let mut cases: Vec[(i64, i64, i64)] = Vec.new();
+    for t in 0..360 {
+        let (n, target) = if t < 300 {
+            (1 + next_random(mut seed) % 999, 1 + next_random(mut seed) % 15)
+        } else if t < 330 {
+            (1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000, 1 + next_random(mut seed) % 30)
+        } else {
+            let power = [10, 100, 1000, 10000, 100000][next_random(mut seed) % 5];
+            ((power - 1 - next_random(mut seed) % 10).max(1), 1 + next_random(mut seed) % 5)
+        };
+        cases.push((n, target, next_random(mut seed)));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (n, target, r) = cases[c];
+        let truth = beautiful_literally(n, target);
+        check = (check * 31 + truth) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, n, target)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let k = if value > 0 { r % (value + 1) } else { 0 };
+            let verdicts = [
+                value == truth,
+                value >= 0 and answer(arm, n + k, target) == value - k,
+                answer(arm, 10 * n, target) == 10 * value,
+                answer(arm, n, target + 1) <= value,
+                value >= 0 and fits(n + value, target),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

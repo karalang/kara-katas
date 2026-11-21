@@ -1,0 +1,63 @@
+// LeetCode #2457: Minimum Addition to Make Integer Beautiful --
+// recursion on the last digit: a number that fits needs nothing; one
+// that does not must end in 0, so its last digit is taken up to 10, and
+// what remains is the same question for the number above it, scaled by
+// ten. O(log^2 n).
+
+fn digit_sum(x: i64) -> i64 {
+    if x == 0 { 0 } else { x % 10 + digit_sum(x / 10) }
+}
+
+fn make_integer_beautiful(n: i64, target: i64) -> i64 {
+    if digit_sum(n) <= target {
+        return 0;
+    }
+    let last = n % 10;
+    if last == 0 {
+        10 * make_integer_beautiful(n / 10, target)
+    } else {
+        (10 - last) + 10 * make_integer_beautiful(n / 10 + 1, target)
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples; 10^12, the constraints' most, already
+    // fitting; 10^12 - 1 down to one digit, a carry through twelve nines;
+    // 19 down to 1; a zero ending kept; the most digit sum a target needs
+    println(f"{make_integer_beautiful(16, 6)}");
+    println(f"{make_integer_beautiful(467, 6)}");
+    println(f"{make_integer_beautiful(1, 1)}");
+    println(f"{make_integer_beautiful(1000000000000, 1)}");
+    println(f"{make_integer_beautiful(999999999999, 1)}");
+    println(f"{make_integer_beautiful(19, 1)}");
+    println(f"{make_integer_beautiful(190, 1)}");
+    println(f"{make_integer_beautiful(999999999999, 108)}");
+    // 2000 random values up to 10^12 against targets from 1 to 150: a
+    // checksum of the answers in order, and their total
+    let mut seed = 2457;
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..2000 {
+        let n = 1 + (next_random(mut seed) * 1073741824 + next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000000;
+        let target = 1 + next_random(mut seed) % 150;
+        let answer = make_integer_beautiful(n, target);
+        check = (check * 31 + answer) % 1000000007;
+        total += answer;
+    }
+    println(f"2000 values up to 10^12: checksum {check}, total {total}");
+    // 3000 random values up to 10^4 against targets from 1 to 20
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 10000;
+        let target = 1 + next_random(mut seed) % 20;
+        check = (check * 31 + make_integer_beautiful(n, target)) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}
