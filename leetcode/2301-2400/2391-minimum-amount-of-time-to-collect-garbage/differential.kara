@@ -1,0 +1,314 @@
+// LeetCode #2391: Minimum Amount of Time to Collect Garbage -- the
+// differential. The six arms, against the statement read literally: each
+// truck may stop at any house past which none of its kind is left, and
+// its time is every unit of its kind plus the travel to that house, the
+// least of those kept. No prefix sums and no last-house shortcut. 300
+// random streets of 1 to 12 houses, which the literal reading answers;
+// then 30 of up to 2000 houses; then 30 where one kind is all there is.
+// Every case is drawn before any arm answers.
+//
+// P1  up to 12 houses, the answer is the literal reading's
+// P2  the answer is at least the units, and at most the units and the
+//     whole street three times
+// P3  each house's units written in reverse: the same answer
+// P4  every road twice as long: the travel part of the answer doubled
+// P5  the kinds renamed, M to P, P to G and G to M: the same answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn collect_literally(garbage: Vec[String], travel: Vec[i64]) -> i64 {
+    let mut minutes = 0;
+    for kind in b"MPG".iter() {
+        let mut units = 0;
+        for house in garbage.iter() {
+            for b in house.bytes().iter() {
+                if b == kind {
+                    units += 1;
+                }
+            }
+        }
+        let mut best = -1;
+        for stop in 0..garbage.len() {
+            let mut left = false;
+            for later in stop + 1..garbage.len() {
+                for b in garbage[later].bytes().iter() {
+                    if b == kind {
+                        left = true;
+                    }
+                }
+            }
+            if not left {
+                let mut drive = 0;
+                for road in 0..stop {
+                    drive += travel[road];
+                }
+                if best < 0 or drive + units < best {
+                    best = drive + units;
+                }
+            }
+        }
+        minutes += best;
+    }
+    minutes
+}
+
+// ---- star (garbage.kara) -------------------------------------------------
+
+fn star_garbage_collection(garbage: Vec[String], travel: Vec[i64]) -> i64 {
+    let mut minutes = 0;
+    let mut last = [0, 0, 0];
+    for i in 0..garbage.len() {
+        for b in garbage[i].bytes().iter() {
+            minutes += 1;
+            let kind = if b == b'M' {
+                0
+            } else if b == b'P' {
+                1
+            } else {
+                2
+            };
+            last[kind] = i;
+        }
+    }
+    let mut prefix: Vec[i64] = [0];
+    for t in travel.iter() {
+        prefix.push(prefix[prefix.len() - 1] + t);
+    }
+    for kind in 0..3 {
+        minutes += prefix[last[kind]];
+    }
+    minutes
+}
+
+// ---- trucks (garbage_trucks.kara) ----------------------------------------
+
+fn trucks_garbage_collection(garbage: Vec[String], travel: Vec[i64]) -> i64 {
+    let mut minutes = 0;
+    for kind in b"MPG".iter() {
+        let mut owed = 0;
+        for i in 0..garbage.len() {
+            if i > 0 {
+                owed += travel[i - 1];
+            }
+            let mut units = 0;
+            for b in garbage[i].bytes().iter() {
+                if b == kind {
+                    units += 1;
+                }
+            }
+            if units > 0 {
+                minutes += owed + units;
+                owed = 0;
+            }
+        }
+    }
+    minutes
+}
+
+// ---- back (garbage_back.kara) --------------------------------------------
+
+fn back_garbage_collection(garbage: Vec[String], travel: Vec[i64]) -> i64 {
+    let mut minutes = 0;
+    let mut seen = [false, false, false];
+    let mut i = garbage.len();
+    while i > 0 {
+        i -= 1;
+        for b in garbage[i].bytes().iter() {
+            minutes += 1;
+            if b == b'M' {
+                seen[0] = true;
+            } else if b == b'P' {
+                seen[1] = true;
+            } else {
+                seen[2] = true;
+            }
+        }
+        if i > 0 {
+            let trucks = seen.iter().filter(|s| s).count();
+            minutes += trucks * travel[i - 1];
+        }
+    }
+    minutes
+}
+
+// ---- map (garbage_map.kara) ----------------------------------------------
+
+fn map_garbage_collection(garbage: Vec[String], travel: Vec[i64]) -> i64 {
+    let mut last: Map[char, i64] = Map.new();
+    let mut units = 0;
+    for i in 0..garbage.len() {
+        for c in garbage[i].chars() {
+            last[c] = i;
+            units += 1;
+        }
+    }
+    let mut prefix: Vec[i64] = Vec.filled(garbage.len(), 0);
+    for i in 1..garbage.len() {
+        prefix[i] = prefix[i - 1] + travel[i - 1];
+    }
+    let mut minutes = units;
+    for (_, house) in last.iter() {
+        minutes += prefix[house];
+    }
+    minutes
+}
+
+// ---- iter (garbage_iter.kara) --------------------------------------------
+
+fn iter_garbage_collection(garbage: Vec[String], travel: Vec[i64]) -> i64 {
+    let units: i64 = garbage.iter().map(|g| g.len()).sum();
+    let drives: i64 = ["M", "P", "G"].iter().map(|kind| {
+        let last = garbage.iter().rposition(|g| g.contains(kind)).unwrap_or(0);
+        travel.iter().take(last).sum()
+    }).sum();
+    units + drives
+}
+
+// ---- solution (garbage_solution.kara) ------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn garbage_collection(garbage: Vec[String], travel: Vec[i32]) -> i32 {
+        let mut ans: i32 = 0;
+        let mut last = [0; 3];
+        for (i, g) in garbage.iter().enumerate() {
+            ans += g.len() as i32;
+            for c in g.bytes() {
+                let k = match c {
+                    b'M' => 0,
+                    b'P' => 1,
+                    _ => 2,
+                };
+                last[k] = i;
+            }
+        }
+        let mut pre = Vec.filled(garbage.len(), 0i32);
+        for i in 1..garbage.len() {
+            pre[i] = pre[i - 1] + travel[i - 1];
+        }
+        ans + last.iter().map(|j| pre[j]).sum()
+    }
+}
+
+fn solution_garbage_collection(garbage: Vec[String], travel: Vec[i64]) -> i64 {
+    let travel: Vec[i32] = travel.iter().map(|t| t as i32).collect();
+    Solution.garbage_collection(garbage, travel)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, garbage: Vec[String], travel: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_garbage_collection(garbage, travel),
+        1 => trucks_garbage_collection(garbage, travel),
+        2 => back_garbage_collection(garbage, travel),
+        3 => map_garbage_collection(garbage, travel),
+        4 => iter_garbage_collection(garbage, travel),
+        _ => solution_garbage_collection(garbage, travel),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn rewritten(garbage: Vec[String], reverse: bool, rename: bool) -> Vec[String] {
+    garbage.iter().map(|house| {
+        let mut b: Vec[u8] = house.bytes().iter().map(|c| if not rename {
+            c
+        } else if c == b'M' {
+            b'P'
+        } else if c == b'P' {
+            b'G'
+        } else {
+            b'M'
+        }).collect();
+        if reverse {
+            b.reverse();
+        }
+        String.from_utf8(b).unwrap()
+    }).collect()
+}
+
+fn main() {
+    let names = ["star", "trucks", "back", "map", "iter", "solution"];
+    let mut seed = 2391;
+    let mut cases: Vec[(Vec[String], Vec[i64])] = Vec.new();
+    for c in 0..360 {
+        let n = if c < 300 {
+            1 + next_random(mut seed) % 12
+        } else {
+            1 + next_random(mut seed) % 2000
+        };
+        let kinds = if c < 330 {
+            1 + next_random(mut seed) % 3
+        } else {
+            1
+        };
+        let first = next_random(mut seed) % 3;
+        let longest = 1 + next_random(mut seed) % 6;
+        let garbage: Vec[String] = (0..n).map(|_| {
+            let len = 1 + next_random(mut seed) % longest;
+            let b: Vec[u8] = (0..len).map(|_| b"MPG"[(first + next_random(mut seed) % kinds) % 3]).collect();
+            String.from_utf8(b).unwrap()
+        }).collect();
+        let travel: Vec[i64] = (1..n).map(|_| 1 + next_random(mut seed) % 100).collect();
+        cases.push((garbage, travel));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (garbage, travel) = cases[c].clone();
+        let small = garbage.len() <= 12;
+        let truth = if small {
+            collect_literally(garbage, travel)
+        } else {
+            0
+        };
+        if small {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let units: i64 = garbage.iter().map(|g| g.len()).sum();
+        let street: i64 = travel.iter().sum();
+        let doubled: Vec[i64] = travel.iter().map(|t| 2 * t).collect();
+        let reversed = rewritten(garbage, true, false);
+        let renamed = rewritten(garbage, false, true);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, garbage, travel)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [not small or value == truth, value >= units and value <= units + 3 * street, answer(arm, reversed, travel) == value, answer(arm, garbage, doubled) == units + 2 * (value - units), answer(arm, renamed, travel) == value, same >= 3];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,3 @@
+module garbage_bench
+
+go 1.24

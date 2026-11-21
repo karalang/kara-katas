@@ -1,0 +1,59 @@
+// LeetCode #2391: Minimum Amount of Time to Collect Garbage -- iterators.
+// The units are the strings' lengths summed; each kind's last house is
+// found by `rposition` over the houses that `contains` it, and its drive
+// is the travel `take`n up to there and summed. O(3 * total length).
+
+fn garbage_collection(garbage: Vec[String], travel: Vec[i64]) -> i64 {
+    let units: i64 = garbage.iter().map(|g| g.len()).sum();
+    let drives: i64 = ["M", "P", "G"].iter().map(|kind| {
+        let last = garbage.iter().rposition(|g| g.contains(kind)).unwrap_or(0);
+        travel.iter().take(last).sum()
+    }).sum();
+    units + drives
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn houses(seed: mut ref i64, n: i64, longest: i64, kinds: i64) -> Vec[String] {
+    (0..n).map(|_| {
+        let len = 1 + next_random(mut seed) % longest;
+        let b: Vec[u8] = (0..len).map(|_| b"MPG"[next_random(mut seed) % kinds]).collect();
+        String.from_utf8(b).unwrap()
+    }).collect()
+}
+
+fn main() {
+    // LeetCode's two examples; one house; only glass, and its last house
+    // the first; 10^5 houses of up to 10 units with travel up to 100, as
+    // a total; the same with metal and paper only in the first house;
+    // then 3000 random streets of 1 to 30 houses with checksum and the
+    // largest total
+    println(f"{garbage_collection(["G", "P", "GP", "GG"], [2, 4, 3])}");
+    println(f"{garbage_collection(["MMM", "PGM", "GP"], [3, 10])}");
+    println(f"{garbage_collection(["MPG"], [])}");
+    println(f"{garbage_collection(["GGG", "M", "M"], [5, 7])}");
+    let mut seed = 2391;
+    let n = 100000;
+    let street = houses(mut seed, n, 10, 3);
+    let travel: Vec[i64] = (1..n).map(|_| 1 + next_random(mut seed) % 100).collect();
+    let mut glass: Vec[String] = (0..n).map(|_| "G").collect();
+    glass[0] = "MPG";
+    println(f"10^5 houses: {garbage_collection(street, travel)}, {garbage_collection(glass, travel)}");
+    let mut check = 0;
+    let mut largest = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let kinds = 1 + next_random(mut seed) % 3;
+        let street = houses(mut seed, n, 1 + next_random(mut seed) % 10, kinds);
+        let travel: Vec[i64] = (1..n).map(|_| 1 + next_random(mut seed) % 100).collect();
+        let t = garbage_collection(street, travel);
+        check = (check * 31 + t) % 1000000007;
+        largest = largest.max(t);
+    }
+    println(f"3000 streets: checksum {check}, the longest {largest} minutes");
+}
