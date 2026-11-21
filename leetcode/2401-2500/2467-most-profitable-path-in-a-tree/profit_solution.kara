@@ -1,0 +1,145 @@
+// LeetCode #2467: Most Profitable Path in a Tree -- LeetCode's Rust
+// template, carried by `karac fix`: the ★ arm's breadth-first parents and
+// depths over `usize` indices, `usize.MAX` marking a node not yet
+// reached, Bob's seconds from a `loop` up his parent chain with
+// `i32.MAX` off it, and the incomes summed down the walk's order.
+
+impl Solution {
+    pub fn most_profitable_path(edges: Vec[Vec[i32]], bob: i32, amount: Vec[i32]) -> i32 {
+        let n = amount.len();
+        let mut adj = Vec.filled(n, Vec.new());
+        for e in ref edges {
+            let (a, b) = (e[0] as usize, e[1] as usize);
+            adj[a].push(b);
+            adj[b].push(a);
+        }
+        let mut parent = Vec.filled(n, usize.MAX);
+        let mut depth = Vec.filled(n, 0i32);
+        let mut order = [0usize];
+        parent[0] = 0;
+        let mut i = 0;
+        while i < order.len() {
+            let u = order[i];
+            i += 1;
+            for v in ref adj[u] {
+                if parent[v] == usize.MAX {
+                    parent[v] = u;
+                    depth[v] = depth[u] + 1;
+                    order.push(v);
+                }
+            }
+        }
+        let mut bob_time = Vec.filled(n, i32.MAX);
+        let mut node = bob as usize;
+        let mut t = 0;
+        loop {
+            bob_time[node] = t;
+            if node == 0 {
+                break;
+            }
+            node = parent[node];
+            t += 1;
+        }
+        let mut income = Vec.filled(n, 0i32);
+        let mut best = i32.MIN;
+        for u in ref order {
+            let gain = if depth[u] < bob_time[u] {
+                amount[u]
+            } else if depth[u] == bob_time[u] {
+                amount[u] / 2
+            } else {
+                0
+            };
+            income[u] = gain + if u == 0 { 0 } else { income[parent[u]] };
+            if u != 0 and adj[u].len() == 1 {
+                best = best.max(income[u]);
+            }
+        }
+        best
+    }
+}
+
+struct Solution {}
+
+fn most_profitable_path(edges: Vec[Vec[i64]], bob: i64, amount: Vec[i64]) -> i64 {
+    let e: Vec[Vec[i32]] = edges.iter().map(|p| p.iter().map(|v| v as i32).collect()).collect();
+    let a: Vec[i32] = amount.iter().map(|v| v as i32).collect();
+    Solution.most_profitable_path(e, bob as i32, a)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// a random tree on `n` nodes: each node past 0 joined to an earlier one
+// at most `reach` back, the edges then shuffled and each turned at random
+fn random_tree(n: i64, reach: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for node in 1..n {
+        let back = 1 + wide_random(mut seed) % reach.min(node);
+        let other = node - back;
+        if next_random(mut seed) % 2 == 0 {
+            edges.push([node, other].to_vec());
+        } else {
+            edges.push([other, node].to_vec());
+        }
+    }
+    for i in (1..edges.len()).rev() {
+        let j = wide_random(mut seed) % (i + 1);
+        edges.swap(i, j);
+    }
+    edges
+}
+
+// even amounts from -10^4 to 10^4
+fn random_amounts(n: i64, seed: mut ref i64) -> Vec[i64] {
+    (0..n).map(|_| 2 * (next_random(mut seed) % 10001) - 10000).collect()
+}
+
+fn main() {
+    // LeetCode's two examples; then Bob meeting Alice on a node; Bob a
+    // child of the root; a gate shared on an odd half; every gate a cost
+    let cases: Vec[(Vec[Vec[i64]], i64, Vec[i64])] = [
+        ([[0, 1].to_vec(), [1, 2].to_vec(), [1, 3].to_vec(), [3, 4].to_vec()].to_vec(), 3, [-2, 4, 2, -4, 6].to_vec()),
+        ([[0, 1].to_vec()].to_vec(), 1, [-7280, 2350].to_vec()),
+        ([[0, 1].to_vec(), [1, 2].to_vec(), [2, 3].to_vec(), [3, 4].to_vec()].to_vec(), 4, [0, 2, 10, 4, 8].to_vec()),
+        ([[1, 0].to_vec(), [0, 2].to_vec(), [2, 3].to_vec()].to_vec(), 1, [6, -4, 2, 8].to_vec()),
+        ([[0, 1].to_vec(), [1, 2].to_vec(), [0, 3].to_vec()].to_vec(), 2, [2, 6, -2, -10].to_vec()),
+        ([[0, 1].to_vec(), [0, 2].to_vec(), [2, 3].to_vec()].to_vec(), 3, [-2, -4, -6, -8].to_vec()),
+    ].to_vec();
+    for (edges, bob, amount) in cases.into_iter() {
+        println(f"bob {bob}, {amount} -> {most_profitable_path(edges, bob, amount)}");
+    }
+    // the constraints' largest, 10^5 nodes: a path with Bob at its far
+    // end; a star with Bob on a leaf; a random tree; then a deep random
+    // tree of 10^4, each node joined to one of the three before it, kept
+    // small for the naive arm, whose walks are as long as the tree is deep
+    let mut seed = 2467;
+    let n = 100000;
+    let path: Vec[Vec[i64]] = (1..n).map(|v| [v - 1, v].to_vec()).collect();
+    println(f"path of 10^5: {most_profitable_path(path, n - 1, random_amounts(n, mut seed))}");
+    let star: Vec[Vec[i64]] = (1..n).map(|v| [0, v].to_vec()).collect();
+    println(f"star of 10^5: {most_profitable_path(star, n / 2, random_amounts(n, mut seed))}");
+    let tree = random_tree(n, n, mut seed);
+    println(f"random tree of 10^5: {most_profitable_path(tree, n - 1, random_amounts(n, mut seed))}");
+    let deep = random_tree(10000, 3, mut seed);
+    println(f"deep random tree of 10^4: {most_profitable_path(deep, 3333, random_amounts(10000, mut seed))}");
+    // 3000 random trees of 2 to 40 nodes, Bob anywhere but the root: a
+    // checksum of every answer in order
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 2 + next_random(mut seed) % 39;
+        let edges = random_tree(n, 1 + next_random(mut seed) % n, mut seed);
+        let bob = 1 + next_random(mut seed) % (n - 1);
+        let amount = random_amounts(n, mut seed);
+        check = (check * 31 + most_profitable_path(edges, bob, amount) + 1000000007) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}

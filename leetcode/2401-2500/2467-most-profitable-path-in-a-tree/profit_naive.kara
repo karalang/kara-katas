@@ -1,0 +1,133 @@
+// LeetCode #2467: Most Profitable Path in a Tree -- one walk per leaf: for
+// each leaf, Alice's path read off the parents from the leaf up to 0 and
+// reversed, Bob's from `bob` up to 0, and the two walked second by
+// second, each gate opened once: Alice takes all of a closed gate, or
+// half when Bob steps on it the same second. O(leaves * depth).
+
+fn most_profitable_path(edges: Vec[Vec[i64]], bob: i64, amount: Vec[i64]) -> i64 {
+    let n = amount.len();
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for edge in edges.iter() {
+        adjacent[edge[0]].push(edge[1]);
+        adjacent[edge[1]].push(edge[0]);
+    }
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    parent[0] = 0;
+    let mut waiting: Vec[i64] = [0].to_vec();
+    while waiting.len() > 0 {
+        let node = waiting.pop().unwrap();
+        for other in adjacent[node].iter() {
+            if parent[other] < 0 {
+                parent[other] = node;
+                waiting.push(other);
+            }
+        }
+    }
+    let mut bob_path: Vec[i64] = [bob].to_vec();
+    while bob_path[bob_path.len() - 1] != 0 {
+        bob_path.push(parent[bob_path[bob_path.len() - 1]]);
+    }
+    let mut best = i64.MIN;
+    for leaf in 1..n {
+        if adjacent[leaf].len() != 1 {
+            continue;
+        }
+        let mut alice_path: Vec[i64] = [leaf].to_vec();
+        while alice_path[alice_path.len() - 1] != 0 {
+            alice_path.push(parent[alice_path[alice_path.len() - 1]]);
+        }
+        alice_path.reverse();
+        let mut opened: Set[i64] = Set.new();
+        let mut income = 0;
+        for second in 0..alice_path.len() {
+            let alice = alice_path[second];
+            let bob_here = if second < bob_path.len() { bob_path[second] } else { -1 };
+            if not opened.contains(alice) {
+                income += if alice == bob_here { amount[alice] / 2 } else { amount[alice] };
+            }
+            opened.insert(alice);
+            if bob_here >= 0 {
+                opened.insert(bob_here);
+            }
+        }
+        best = best.max(income);
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// a random tree on `n` nodes: each node past 0 joined to an earlier one
+// at most `reach` back, the edges then shuffled and each turned at random
+fn random_tree(n: i64, reach: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for node in 1..n {
+        let back = 1 + wide_random(mut seed) % reach.min(node);
+        let other = node - back;
+        if next_random(mut seed) % 2 == 0 {
+            edges.push([node, other].to_vec());
+        } else {
+            edges.push([other, node].to_vec());
+        }
+    }
+    for i in (1..edges.len()).rev() {
+        let j = wide_random(mut seed) % (i + 1);
+        edges.swap(i, j);
+    }
+    edges
+}
+
+// even amounts from -10^4 to 10^4
+fn random_amounts(n: i64, seed: mut ref i64) -> Vec[i64] {
+    (0..n).map(|_| 2 * (next_random(mut seed) % 10001) - 10000).collect()
+}
+
+fn main() {
+    // LeetCode's two examples; then Bob meeting Alice on a node; Bob a
+    // child of the root; a gate shared on an odd half; every gate a cost
+    let cases: Vec[(Vec[Vec[i64]], i64, Vec[i64])] = [
+        ([[0, 1].to_vec(), [1, 2].to_vec(), [1, 3].to_vec(), [3, 4].to_vec()].to_vec(), 3, [-2, 4, 2, -4, 6].to_vec()),
+        ([[0, 1].to_vec()].to_vec(), 1, [-7280, 2350].to_vec()),
+        ([[0, 1].to_vec(), [1, 2].to_vec(), [2, 3].to_vec(), [3, 4].to_vec()].to_vec(), 4, [0, 2, 10, 4, 8].to_vec()),
+        ([[1, 0].to_vec(), [0, 2].to_vec(), [2, 3].to_vec()].to_vec(), 1, [6, -4, 2, 8].to_vec()),
+        ([[0, 1].to_vec(), [1, 2].to_vec(), [0, 3].to_vec()].to_vec(), 2, [2, 6, -2, -10].to_vec()),
+        ([[0, 1].to_vec(), [0, 2].to_vec(), [2, 3].to_vec()].to_vec(), 3, [-2, -4, -6, -8].to_vec()),
+    ].to_vec();
+    for (edges, bob, amount) in cases.into_iter() {
+        println(f"bob {bob}, {amount} -> {most_profitable_path(edges, bob, amount)}");
+    }
+    // the constraints' largest, 10^5 nodes: a path with Bob at its far
+    // end; a star with Bob on a leaf; a random tree; then a deep random
+    // tree of 10^4, each node joined to one of the three before it, kept
+    // small for the naive arm, whose walks are as long as the tree is deep
+    let mut seed = 2467;
+    let n = 100000;
+    let path: Vec[Vec[i64]] = (1..n).map(|v| [v - 1, v].to_vec()).collect();
+    println(f"path of 10^5: {most_profitable_path(path, n - 1, random_amounts(n, mut seed))}");
+    let star: Vec[Vec[i64]] = (1..n).map(|v| [0, v].to_vec()).collect();
+    println(f"star of 10^5: {most_profitable_path(star, n / 2, random_amounts(n, mut seed))}");
+    let tree = random_tree(n, n, mut seed);
+    println(f"random tree of 10^5: {most_profitable_path(tree, n - 1, random_amounts(n, mut seed))}");
+    let deep = random_tree(10000, 3, mut seed);
+    println(f"deep random tree of 10^4: {most_profitable_path(deep, 3333, random_amounts(10000, mut seed))}");
+    // 3000 random trees of 2 to 40 nodes, Bob anywhere but the root: a
+    // checksum of every answer in order
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 2 + next_random(mut seed) % 39;
+        let edges = random_tree(n, 1 + next_random(mut seed) % n, mut seed);
+        let bob = 1 + next_random(mut seed) % (n - 1);
+        let amount = random_amounts(n, mut seed);
+        check = (check * 31 + most_profitable_path(edges, bob, amount) + 1000000007) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}

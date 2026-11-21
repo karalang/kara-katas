@@ -1,0 +1,526 @@
+// LeetCode #2467: Most Profitable Path in a Tree -- the differential. The
+// six arms against the statement read literally: Bob's path found by a
+// search from `bob` to 0 over the edges, then every way Alice can walk
+// down from 0 to a leaf tried, second by second, Bob a step along his
+// path each second, a set of the gates opened so far carried with her,
+// and a shared gate halved. 360 cases: 300 random trees of 2 to 10
+// nodes; then 60 of up to 14; even amounts from -5000 to 5000. Every
+// case is drawn before any arm answers, each with a random renaming.
+//
+// P1  the answer is the literal reading's
+// P2  every edge split by a new node of amount 0, the nodes but 0 then
+//     renamed: the same answer
+// P3  every amount doubled: the answer doubled
+// P4  a leaf of amount 0 hung on node 0: the larger of the answer and
+//     node 0's amount
+// P5  every amount on Bob's path made 0: the best leaf's sum of the
+//     amounts down to it
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+// the nodes from `bob` to 0, found by a search that keeps each path
+fn bob_route(adjacent: Vec[Vec[i64]], bob: i64) -> Vec[i64] {
+    let mut waiting: Vec[Vec[i64]] = [[bob].to_vec()].to_vec();
+    while waiting.len() > 0 {
+        let route = waiting.pop().unwrap();
+        let last = route[route.len() - 1];
+        if last == 0 {
+            return route;
+        }
+        for other in adjacent[last].iter() {
+            if not route.contains(other) {
+                let mut longer = route.clone();
+                longer.push(other);
+                waiting.push(longer);
+            }
+        }
+    }
+    Vec.new()
+}
+
+// Alice on `node` at `second`, coming from `from`, having made `income`
+fn alice_best(node: i64, from: i64, second: i64, income: i64, opened: Set[i64], route: Vec[i64], adjacent: Vec[Vec[i64]], amount: Vec[i64]) -> i64 {
+    let bob_here = if second < route.len() { route[second] } else { -1 };
+    let gate = if opened.contains(node) {
+        0
+    } else if node == bob_here {
+        amount[node] / 2
+    } else {
+        amount[node]
+    };
+    let mut now = opened.clone();
+    now.insert(node);
+    if bob_here >= 0 {
+        now.insert(bob_here);
+    }
+    let mut best: Option[i64] = None;
+    for next in adjacent[node].iter() {
+        if next != from {
+            let got = alice_best(next, node, second + 1, income + gate, now, route, adjacent, amount);
+            best = Some(match best {
+                Some(b) => b.max(got),
+                None => got,
+            });
+        }
+    }
+    best.unwrap_or(income + gate)
+}
+
+fn adjacency(n: i64, edges: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for edge in edges.iter() {
+        adjacent[edge[0]].push(edge[1]);
+        adjacent[edge[1]].push(edge[0]);
+    }
+    adjacent
+}
+
+fn profit_literally(edges: Vec[Vec[i64]], bob: i64, amount: Vec[i64]) -> i64 {
+    let adjacent = adjacency(amount.len(), edges);
+    let route = bob_route(adjacent, bob);
+    alice_best(0, -1, 0, 0, Set.new(), route, adjacent, amount)
+}
+
+// the best leaf's sum of the amounts down from 0, with no Bob
+fn best_sum(node: i64, from: i64, adjacent: Vec[Vec[i64]], amount: Vec[i64]) -> i64 {
+    let own = amount[node];
+    let mut best: Option[i64] = None;
+    for next in adjacent[node].iter() {
+        if next != from {
+            let got = best_sum(next, node, adjacent, amount);
+            best = Some(match best {
+                Some(b) => b.max(got),
+                None => got,
+            });
+        }
+    }
+    own + best.unwrap_or(0)
+}
+
+// ---- star (profit.kara) --------------------------------------------------
+
+fn star_most_profitable_path(edges: Vec[Vec[i64]], bob: i64, amount: Vec[i64]) -> i64 {
+    let n = amount.len();
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for edge in edges.iter() {
+        adjacent[edge[0]].push(edge[1]);
+        adjacent[edge[1]].push(edge[0]);
+    }
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    let mut depth: Vec[i64] = Vec.filled(n, 0);
+    let mut order: Vec[i64] = [0].to_vec();
+    parent[0] = 0;
+    let mut next = 0;
+    while next < order.len() {
+        let node = order[next];
+        next += 1;
+        for child in adjacent[node].iter() {
+            if parent[child] < 0 {
+                parent[child] = node;
+                depth[child] = depth[node] + 1;
+                order.push(child);
+            }
+        }
+    }
+    // the second Bob reaches each node on his path, n for every other
+    let mut bob_time: Vec[i64] = Vec.filled(n, n);
+    let mut node = bob;
+    let mut t = 0;
+    while node != 0 {
+        bob_time[node] = t;
+        node = parent[node];
+        t += 1;
+    }
+    bob_time[0] = t;
+    let mut income: Vec[i64] = Vec.filled(n, 0);
+    let mut best = i64.MIN;
+    for node in order.iter() {
+        let gate = if depth[node] < bob_time[node] {
+            amount[node]
+        } else if depth[node] == bob_time[node] {
+            amount[node] / 2
+        } else {
+            0
+        };
+        income[node] = if node == 0 { gate } else { income[parent[node]] + gate };
+        if node != 0 and adjacent[node].len() == 1 {
+            best = best.max(income[node]);
+        }
+    }
+    best
+}
+
+// ---- dfs (profit_dfs.kara) -----------------------------------------------
+
+fn dfs_walk(node: i64, from: i64, depth: i64, bob: i64, adjacent: Vec[Vec[i64]], amount: Vec[i64]) -> (i64, i64) {
+    let mut bob_distance = if node == bob { 0 } else { amount.len() };
+    let mut best_below = i64.MIN;
+    for child in adjacent[node].iter() {
+        if child != from {
+            let (below, distance) = dfs_walk(child, node, depth + 1, bob, adjacent, amount);
+            best_below = best_below.max(below);
+            bob_distance = bob_distance.min(distance + 1);
+        }
+    }
+    let gate = if depth < bob_distance {
+        amount[node]
+    } else if depth == bob_distance {
+        amount[node] / 2
+    } else {
+        0
+    };
+    let income = if best_below == i64.MIN { gate } else { gate + best_below };
+    (income, bob_distance)
+}
+
+fn dfs_most_profitable_path(edges: Vec[Vec[i64]], bob: i64, amount: Vec[i64]) -> i64 {
+    let n = amount.len();
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for edge in edges.iter() {
+        adjacent[edge[0]].push(edge[1]);
+        adjacent[edge[1]].push(edge[0]);
+    }
+    let (best, _) = dfs_walk(0, -1, 0, bob, adjacent, amount);
+    best
+}
+
+// ---- distances (profit_distances.kara) -----------------------------------
+
+fn distances_distances(adjacent: Vec[Vec[i64]], start: i64) -> (Vec[i64], Vec[i64]) {
+    let n = adjacent.len();
+    let mut distance: Vec[i64] = Vec.filled(n, -1);
+    let mut order: Vec[i64] = [start].to_vec();
+    distance[start] = 0;
+    let mut next = 0;
+    while next < order.len() {
+        let node = order[next];
+        next += 1;
+        for other in adjacent[node].iter() {
+            if distance[other] < 0 {
+                distance[other] = distance[node] + 1;
+                order.push(other);
+            }
+        }
+    }
+    (distance, order)
+}
+
+fn distances_most_profitable_path(edges: Vec[Vec[i64]], bob: i64, amount: Vec[i64]) -> i64 {
+    let n = amount.len();
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for edge in edges.iter() {
+        adjacent[edge[0]].push(edge[1]);
+        adjacent[edge[1]].push(edge[0]);
+    }
+    let (from_root, order) = distances_distances(adjacent, 0);
+    let (from_bob, _) = distances_distances(adjacent, bob);
+    let mut income: Vec[i64] = Vec.filled(n, 0);
+    let mut best = i64.MIN;
+    for node in order.iter() {
+        let alice = from_root[node];
+        let on_path = alice + from_bob[node] == from_root[bob];
+        let gate = if not on_path or alice < from_bob[node] {
+            amount[node]
+        } else if alice == from_bob[node] {
+            amount[node] / 2
+        } else {
+            0
+        };
+        // the parent is the one neighbour a step nearer the root
+        let mut above = 0;
+        for other in adjacent[node].iter() {
+            if from_root[other] == alice - 1 {
+                above = income[other];
+            }
+        }
+        income[node] = above + gate;
+        if node != 0 and adjacent[node].len() == 1 {
+            best = best.max(income[node]);
+        }
+    }
+    best
+}
+
+// ---- naive (profit_naive.kara) -------------------------------------------
+
+fn naive_most_profitable_path(edges: Vec[Vec[i64]], bob: i64, amount: Vec[i64]) -> i64 {
+    let n = amount.len();
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for edge in edges.iter() {
+        adjacent[edge[0]].push(edge[1]);
+        adjacent[edge[1]].push(edge[0]);
+    }
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    parent[0] = 0;
+    let mut waiting: Vec[i64] = [0].to_vec();
+    while waiting.len() > 0 {
+        let node = waiting.pop().unwrap();
+        for other in adjacent[node].iter() {
+            if parent[other] < 0 {
+                parent[other] = node;
+                waiting.push(other);
+            }
+        }
+    }
+    let mut bob_path: Vec[i64] = [bob].to_vec();
+    while bob_path[bob_path.len() - 1] != 0 {
+        bob_path.push(parent[bob_path[bob_path.len() - 1]]);
+    }
+    let mut best = i64.MIN;
+    for leaf in 1..n {
+        if adjacent[leaf].len() != 1 {
+            continue;
+        }
+        let mut alice_path: Vec[i64] = [leaf].to_vec();
+        while alice_path[alice_path.len() - 1] != 0 {
+            alice_path.push(parent[alice_path[alice_path.len() - 1]]);
+        }
+        alice_path.reverse();
+        let mut opened: Set[i64] = Set.new();
+        let mut income = 0;
+        for second in 0..alice_path.len() {
+            let alice = alice_path[second];
+            let bob_here = if second < bob_path.len() { bob_path[second] } else { -1 };
+            if not opened.contains(alice) {
+                income += if alice == bob_here { amount[alice] / 2 } else { amount[alice] };
+            }
+            opened.insert(alice);
+            if bob_here >= 0 {
+                opened.insert(bob_here);
+            }
+        }
+        best = best.max(income);
+    }
+    best
+}
+
+// ---- iter (profit_iter.kara) ---------------------------------------------
+
+fn iter_most_profitable_path(edges: Vec[Vec[i64]], bob: i64, amount: Vec[i64]) -> i64 {
+    let n = amount.len();
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for edge in edges.iter() {
+        adjacent[edge[0]].push(edge[1]);
+        adjacent[edge[1]].push(edge[0]);
+    }
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    let mut depth: Vec[i64] = Vec.filled(n, 0);
+    let mut order: Vec[i64] = [0].to_vec();
+    parent[0] = 0;
+    let mut next = 0;
+    while next < order.len() {
+        let node = order[next];
+        next += 1;
+        let children: Vec[i64] = adjacent[node].iter().filter(|c| parent[c] < 0).cloned().collect();
+        for child in children.iter() {
+            parent[child] = node;
+            depth[child] = depth[node] + 1;
+        }
+        order.extend(children);
+    }
+    let mut chain: Vec[i64] = [bob].to_vec();
+    while chain[chain.len() - 1] != 0 {
+        chain.push(parent[chain[chain.len() - 1]]);
+    }
+    let bob_time: Map[i64, i64] = chain.iter().enumerate().map(|(t, node)| (node, t)).collect();
+    let gates: Vec[(i64, i64)] = order.iter().map(|node| {
+        let alice = depth[node];
+        let gate = match bob_time.get(node) {
+            Some(t) if t < alice => 0,
+            Some(t) if t == alice => amount[node] / 2,
+            _ => amount[node],
+        };
+        (node, gate)
+    }).collect();
+    let mut income: Vec[i64] = Vec.filled(n, 0);
+    for (node, gate) in gates.iter() {
+        income[node] = if node == 0 { gate } else { income[parent[node]] + gate };
+    }
+    (1..n).filter(|v| adjacent[v].len() == 1).map(|v| income[v]).max().unwrap()
+}
+
+// ---- solution (profit_solution.kara) -------------------------------------
+
+impl Solution {
+    pub fn most_profitable_path(edges: Vec[Vec[i32]], bob: i32, amount: Vec[i32]) -> i32 {
+        let n = amount.len();
+        let mut adj = Vec.filled(n, Vec.new());
+        for e in ref edges {
+            let (a, b) = (e[0] as usize, e[1] as usize);
+            adj[a].push(b);
+            adj[b].push(a);
+        }
+        let mut parent = Vec.filled(n, usize.MAX);
+        let mut depth = Vec.filled(n, 0i32);
+        let mut order = [0usize];
+        parent[0] = 0;
+        let mut i = 0;
+        while i < order.len() {
+            let u = order[i];
+            i += 1;
+            for v in ref adj[u] {
+                if parent[v] == usize.MAX {
+                    parent[v] = u;
+                    depth[v] = depth[u] + 1;
+                    order.push(v);
+                }
+            }
+        }
+        let mut bob_time = Vec.filled(n, i32.MAX);
+        let mut node = bob as usize;
+        let mut t = 0;
+        loop {
+            bob_time[node] = t;
+            if node == 0 {
+                break;
+            }
+            node = parent[node];
+            t += 1;
+        }
+        let mut income = Vec.filled(n, 0i32);
+        let mut best = i32.MIN;
+        for u in ref order {
+            let gain = if depth[u] < bob_time[u] {
+                amount[u]
+            } else if depth[u] == bob_time[u] {
+                amount[u] / 2
+            } else {
+                0
+            };
+            income[u] = gain + if u == 0 { 0 } else { income[parent[u]] };
+            if u != 0 and adj[u].len() == 1 {
+                best = best.max(income[u]);
+            }
+        }
+        best
+    }
+}
+
+struct Solution {}
+
+fn solution_most_profitable_path(edges: Vec[Vec[i64]], bob: i64, amount: Vec[i64]) -> i64 {
+    let e: Vec[Vec[i32]] = edges.iter().map(|p| p.iter().map(|v| v as i32).collect()).collect();
+    let a: Vec[i32] = amount.iter().map(|v| v as i32).collect();
+    Solution.most_profitable_path(e, bob as i32, a)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn answer(arm: i64, edges: Vec[Vec[i64]], bob: i64, amount: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_most_profitable_path(edges, bob, amount),
+        1 => dfs_most_profitable_path(edges, bob, amount),
+        2 => distances_most_profitable_path(edges, bob, amount),
+        3 => naive_most_profitable_path(edges, bob, amount),
+        4 => iter_most_profitable_path(edges, bob, amount),
+        _ => solution_most_profitable_path(edges, bob, amount),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "dfs", "distances", "naive", "iter", "solution"];
+    let mut seed = 2467;
+    // each case: edges, Bob, amounts, and a renaming of the nodes but 0 of
+    // the tree with every edge split
+    let mut cases: Vec[(Vec[Vec[i64]], i64, Vec[i64], Vec[i64])] = Vec.new();
+    for t in 0..360 {
+        let n = if t < 300 { 2 + next_random(mut seed) % 9 } else { 2 + next_random(mut seed) % 13 };
+        let reach = 1 + next_random(mut seed) % n;
+        let mut edges: Vec[Vec[i64]] = Vec.new();
+        for node in 1..n {
+            let other = node - 1 - next_random(mut seed) % reach.min(node);
+            if next_random(mut seed) % 2 == 0 {
+                edges.push([node, other].to_vec());
+            } else {
+                edges.push([other, node].to_vec());
+            }
+        }
+        let bob = 1 + next_random(mut seed) % (n - 1);
+        let amount: Vec[i64] = (0..n).map(|_| 2 * (next_random(mut seed) % 5001) - 5000).collect();
+        let mut names: Vec[i64] = (0..2 * n - 1).collect();
+        for i in (2..2 * n - 1).rev() {
+            let j = 1 + next_random(mut seed) % i;
+            names.swap(i, j);
+        }
+        cases.push((edges, bob, amount, names));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (edges, bob, amount, names) = cases[c].clone();
+        let n = amount.len();
+        let truth = profit_literally(edges, bob, amount);
+        check = (check * 31 + truth + 1000000007) % 1000000007;
+        let adjacent = adjacency(n, edges);
+        // each edge `i` split by a new node `n + i`, then every node but 0
+        // renamed; `names` covers the split tree's 2n - 1 nodes
+        let mut split: Vec[Vec[i64]] = Vec.new();
+        for i in 0..edges.len() {
+            split.push([names[edges[i][0]], names[n + i]].to_vec());
+            split.push([names[n + i], names[edges[i][1]]].to_vec());
+        }
+        split.reverse();
+        let mut moved: Vec[i64] = Vec.filled(2 * n - 1, 0);
+        for v in 0..n {
+            moved[names[v]] = amount[v];
+        }
+        let route = bob_route(adjacent, bob);
+        let mut quiet = amount.clone();
+        for v in route.iter() {
+            quiet[v] = 0;
+        }
+        let plain = best_sum(0, -1, adjacent, quiet);
+        let doubled: Vec[i64] = amount.iter().map(|a| 2 * a).collect();
+        let mut hung = edges.clone();
+        hung.push([0, n].to_vec());
+        let mut more = amount.clone();
+        more.push(0);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, edges, bob, amount)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, split, names[bob], moved) == value,
+                answer(arm, edges, bob, doubled) == 2 * value,
+                answer(arm, hung, bob, more) == value.max(amount[0]),
+                answer(arm, edges, bob, quiet) == plain,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
