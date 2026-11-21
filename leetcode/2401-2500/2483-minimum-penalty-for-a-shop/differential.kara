@@ -1,0 +1,277 @@
+// LeetCode #2483: Minimum Penalty for a Shop -- the differential. The
+// six arms against the statement read literally: for every closing hour
+// `j` from 0 to `n`, the penalty counted afresh, one for each open hour
+// before `j` without customers and one for each closed hour from `j` on
+// with them, and the earliest hour of least penalty taken. No running
+// count is used. 360 random logs: 300 of 1 to 10 hours, then 60 of up to
+// 30, each with odds of a customer from 0 to 100 in 100, all drawn
+// before any arm answers.
+//
+// P1  the hour is the literal reading's
+// P2  every hour flipped and the log reversed: `n` less the latest hour
+//     of least penalty in the original
+// P3  an hour with customers put first: one hour later
+// P4  an hour without customers put last: the same hour
+// P5  the penalty of closing at the hour is the least penalty
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn penalty_at(log: Str, j: i64) -> i64 {
+    let hours: Vec[char] = log.chars().collect();
+    let mut penalty = 0;
+    for i in 0..hours.len() {
+        if i < j and hours[i] == 'N' {
+            penalty += 1;
+        }
+        if i >= j and hours[i] == 'Y' {
+            penalty += 1;
+        }
+    }
+    penalty
+}
+
+fn penalties(log: Str) -> Vec[i64] {
+    let n = log.chars().count();
+    (0..n + 1).map(|j| penalty_at(log, j)).collect()
+}
+
+fn earliest_least(costs: Vec[i64]) -> i64 {
+    let mut best = 0;
+    for j in 1..costs.len() {
+        if costs[j] < costs[best] {
+            best = j;
+        }
+    }
+    best
+}
+
+fn latest_least(costs: Vec[i64]) -> i64 {
+    let mut best = 0;
+    for j in 1..costs.len() {
+        if costs[j] <= costs[best] {
+            best = j;
+        }
+    }
+    best
+}
+
+// ---- star (shop.kara) ----------------------------------------------------
+
+fn star_best_closing_time(customers: Str) -> i64 {
+    let mut balance = 0;
+    let mut best = 0;
+    let mut best_hour = 0;
+    let mut hour = 0;
+    for c in customers.chars() {
+        if c == 'Y' {
+            balance += 1;
+        } else {
+            balance -= 1;
+        }
+        hour += 1;
+        if balance > best {
+            best = balance;
+            best_hour = hour;
+        }
+    }
+    best_hour
+}
+
+// ---- penalty (shop_penalty.kara) -----------------------------------------
+
+fn penalty_best_closing_time(customers: Str) -> i64 {
+    let mut penalty = customers.chars().filter(|c| c == 'Y').count();
+    let mut least = penalty;
+    let mut best_hour = 0;
+    let mut hour = 0;
+    for c in customers.chars() {
+        hour += 1;
+        if c == 'Y' {
+            penalty -= 1;
+        } else {
+            penalty += 1;
+        }
+        if penalty < least {
+            least = penalty;
+            best_hour = hour;
+        }
+    }
+    best_hour
+}
+
+// ---- prefix (shop_prefix.kara) -------------------------------------------
+
+fn prefix_best_closing_time(customers: Str) -> i64 {
+    let hours: Vec[bool] = customers.chars().map(|c| c == 'Y').collect();
+    let n = hours.len();
+    let mut empty: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut waiting: Vec[i64] = Vec.filled(n + 1, 0);
+    for j in 0..n {
+        empty[j + 1] = empty[j] + if hours[j] { 0 } else { 1 };
+    }
+    for j in (0..n).rev() {
+        waiting[j] = waiting[j + 1] + if hours[j] { 1 } else { 0 };
+    }
+    let mut best_hour = 0;
+    for j in 1..n + 1 {
+        if empty[j] + waiting[j] < empty[best_hour] + waiting[best_hour] {
+            best_hour = j;
+        }
+    }
+    best_hour
+}
+
+// ---- back (shop_back.kara) -----------------------------------------------
+
+fn back_best_closing_time(customers: Str) -> i64 {
+    let bytes = customers.bytes();
+    let n = bytes.len();
+    let mut penalty = 0;
+    for b in bytes.iter() {
+        if b == b'N' {
+            penalty += 1;
+        }
+    }
+    let mut least = penalty;
+    let mut best_hour = n;
+    for j in (0..n).rev() {
+        if bytes[j] == b'Y' {
+            penalty += 1;
+        } else {
+            penalty -= 1;
+        }
+        if penalty <= least {
+            least = penalty;
+            best_hour = j;
+        }
+    }
+    best_hour
+}
+
+// ---- iter (shop_iter.kara) -----------------------------------------------
+
+fn iter_best_closing_time(customers: Str) -> i64 {
+    let (best_hour, _) = customers
+        .chars()
+        .map(|c| if c == 'Y' { 1 } else { -1 })
+        .scan(0, |balance, step| Some((balance + step, balance + step)))
+        .enumerate()
+        .fold((0, 0), |(hour, top), (i, b)| if b > top { (i + 1, b) } else { (hour, top) });
+    best_hour
+}
+
+// ---- solution (shop_solution.kara) ---------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn best_closing_time(customers: String) -> i32 {
+        let mut penalty = customers.bytes().iter().filter(|b| b == b'Y').count() as i32;
+        let mut best = penalty;
+        let mut ans = 0;
+        for (i, b) in customers.bytes().iter().enumerate() {
+            match b {
+                b'Y' => penalty -= 1,
+                _ => penalty += 1,
+            }
+            if penalty < best {
+                best = penalty;
+                ans = i as i32 + 1;
+            }
+        }
+        ans
+    }
+}
+
+fn solution_best_closing_time(customers: Str) -> i64 {
+    Solution.best_closing_time(customers.to_string())
+}
+
+
+// ---- the differential -------------------------------------------------------
+
+fn answer(arm: i64, log: Str) -> i64 {
+    match arm {
+        0 => star_best_closing_time(log),
+        1 => penalty_best_closing_time(log),
+        2 => prefix_best_closing_time(log),
+        3 => back_best_closing_time(log),
+        4 => iter_best_closing_time(log),
+        _ => solution_best_closing_time(log),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "penalty", "prefix", "back", "iter", "solution"];
+    let mut seed = 2483;
+    let mut cases: Vec[String] = Vec.new();
+    for t in 0..360 {
+        let n = if t < 300 { 1 + next_random(mut seed) % 10 } else { 1 + next_random(mut seed) % 30 };
+        let yes = next_random(mut seed) % 101;
+        let mut log = "".to_string();
+        for _ in 0..n {
+            log.push_str(if next_random(mut seed) % 100 < yes { "Y" } else { "N" });
+        }
+        cases.push(log);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let log = cases[c].clone();
+        let n = log.len();
+        let costs = penalties(log);
+        let truth = earliest_least(costs);
+        let latest = latest_least(costs);
+        check = (check * 31 + truth * 37 + latest) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, log)).collect();
+        let mirrored: String = log.chars().rev().map(|h| if h == 'Y' { 'N' } else { 'Y' }).collect();
+        let earlier = f"Y{log}";
+        let later = f"{log}N";
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, mirrored) == n - latest,
+                answer(arm, earlier) == value + 1,
+                answer(arm, later) == value,
+                value >= 0 and value <= n and costs[value] == costs[truth],
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

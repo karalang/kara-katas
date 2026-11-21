@@ -1,0 +1,49 @@
+// LeetCode #2483: Minimum Penalty for a Shop -- bench: the ★ arm, by a
+// running balance of customers less empty hours, the earliest hour of
+// the largest balance. O(n).
+
+fn best_closing_time(customers: Str) -> i64 {
+    let mut balance = 0;
+    let mut best = 0;
+    let mut best_hour = 0;
+    let mut hour = 0;
+    for c in customers.chars() {
+        if c == 'Y' {
+            balance += 1;
+        } else {
+            balance -= 1;
+        }
+        hour += 1;
+        if balance > best {
+            best = balance;
+            best_hour = hour;
+        }
+    }
+    best_hour
+}
+
+// ---- bench ------------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 20 random logs of 10^4 hours built once, odds of a customer a half;
+    // then 600 passes, each flipping one hour of every log, chosen by
+    // the checksum so far, and folding the answer plus the pass into the
+    // checksum
+    let mut seed = 2483;
+    let mut logs: Vec[Vec[char]] = (0..20).map(|_| (0..10000).map(|_| if next_random(mut seed) % 2 == 0 { 'Y' } else { 'N' }).collect()).collect();
+    let mut check = 0;
+    for p in 0..600 {
+        for g in 0..20 {
+            let at = check % 10000;
+            logs[g][at] = if logs[g][at] == 'Y' { 'N' } else { 'Y' };
+            let log: String = logs[g].iter().collect();
+            check = (check * 31 + best_closing_time(log) + p) % 1000000007;
+        }
+    }
+    println(f"600 passes over 20 logs of 10^4 hours: checksum {check}");
+}

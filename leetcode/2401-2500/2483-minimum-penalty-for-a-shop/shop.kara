@@ -1,0 +1,74 @@
+// LeetCode #2483: Minimum Penalty for a Shop -- by a running balance:
+// closing an hour later than `j` changes the penalty only by hour `j`,
+// one less for a customer, kept, one more for none, lost. So the
+// penalty at `j` is the penalty at 0 less the customers before `j` plus
+// the empty hours before it, and the best hour is the earliest that
+// raises customers less empty hours the most. O(n).
+
+fn best_closing_time(customers: Str) -> i64 {
+    let mut balance = 0;
+    let mut best = 0;
+    let mut best_hour = 0;
+    let mut hour = 0;
+    for c in customers.chars() {
+        if c == 'Y' {
+            balance += 1;
+        } else {
+            balance -= 1;
+        }
+        hour += 1;
+        if balance > best {
+            best = balance;
+            best_hour = hour;
+        }
+    }
+    best_hour
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` random hours, each a customer with odds `yes` in 100
+fn random_log(n: i64, yes: i64, seed: mut ref i64) -> String {
+    let mut text = "".to_string();
+    for _ in 0..n {
+        if next_random(mut seed) % 100 < yes {
+            text.push_str("Y");
+        } else {
+            text.push_str("N");
+        }
+    }
+    text
+}
+
+fn main() {
+    // LeetCode's three examples; then one hour of each kind; two hours
+    // either way round, the second a tie between opening never and
+    // closing last; and a tie between two inner hours
+    for log in ["YYNY", "NNNNN", "YYYY", "Y", "N", "YN", "NY", "YNYN"].iter() {
+        println(f"{log} -> {best_closing_time(log)}");
+    }
+    // the constraints' largest, 10^5 hours: all customers, none, taking
+    // turns, and random with odds of a half and of six in ten
+    let mut seed = 2483;
+    println(f"10^5 Y -> {best_closing_time("Y".repeat(100000))}");
+    println(f"10^5 N -> {best_closing_time("N".repeat(100000))}");
+    println(f"\"YN\" x 50000 -> {best_closing_time("YN".repeat(50000))}");
+    for yes in [50, 60].iter() {
+        let log = random_log(100000, yes, mut seed);
+        println(f"10^5 random at {yes} in 100 -> {best_closing_time(log)}");
+    }
+    // 3000 random logs of 1 to 40 hours with odds from 0 to 100 in 100:
+    // a checksum of every answer in order
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 40;
+        let yes = next_random(mut seed) % 101;
+        check = (check * 31 + best_closing_time(random_log(n, yes, mut seed))) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}
