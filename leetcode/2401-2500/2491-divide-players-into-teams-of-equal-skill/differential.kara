@@ -1,0 +1,318 @@
+// LeetCode #2491: Divide Players Into Teams of Equal Skill -- the
+// differential. The six arms against the statement read literally: every
+// way of cutting the players into teams of two tried, by recursion, and
+// the chemistry of one where every team has the same skill, -1 if none
+// has. 300 random lists of 2 to 10 players with skills to 3 or to 6, half
+// of them built to divide; then 20 of two players, and 40 of 12 players
+// built to divide, half then spoiled; every one drawn before any arm
+// answers.
+//
+// P1  the answer is the statement read literally
+// P2  -1, or a chemistry between n / 2 and n / 2 times 1000 squared
+// P3  the players in another order: the same answer
+// P4  every skill doubled: -1 again, or four times the chemistry
+// P5  two players of skill 1 and the sum less 1 added, when the list
+//     divides: the chemistry grows by the sum less 1
+// P6  each arm agrees with at least three of the other five
+
+// ---- star (divide.kara) --------------------------------------------------
+
+fn star_divide_players(skill: Vec[i64]) -> i64 {
+    let mut sorted = skill.clone();
+    sorted.sort();
+    let n = sorted.len();
+    let target = sorted[0] + sorted[n - 1];
+    let mut chemistry = 0;
+    for i in 0..n / 2 {
+        let (a, b) = (sorted[i], sorted[n - 1 - i]);
+        if a + b != target {
+            return -1;
+        }
+        chemistry += a * b;
+    }
+    chemistry
+}
+
+// ---- count (divide_count.kara) -------------------------------------------
+
+fn count_divide_players(skill: Vec[i64]) -> i64 {
+    let teams = skill.len() / 2;
+    let total: i64 = skill.iter().sum();
+    if total % teams != 0 {
+        return -1;
+    }
+    let target = total / teams;
+    let mut count: Vec[i64] = Vec.filled(1001, 0);
+    for s in skill.iter() {
+        count[s] += 1;
+    }
+    let mut chemistry = 0;
+    for s in 1..1001 {
+        if count[s] == 0 {
+            continue;
+        }
+        let other = target - s;
+        if other < 1 or other > 1000 or count[other] != count[s] {
+            return -1;
+        }
+        // each pair is met from both of its skills, or twice from one
+        // skill that is half the sum, so it is added as half of each
+        chemistry += count[s] * s * other;
+    }
+    chemistry / 2
+}
+
+// ---- greedy (divide_greedy.kara) -----------------------------------------
+
+fn greedy_divide_players(skill: Vec[i64]) -> i64 {
+    let teams = skill.len() / 2;
+    let total: i64 = skill.iter().sum();
+    if total % teams != 0 {
+        return -1;
+    }
+    let target = total / teams;
+    let mut waiting: Map[i64, i64] = Map.new();
+    let mut chemistry = 0;
+    let mut matched = 0;
+    for s in skill.iter() {
+        let other = target - s;
+        let free = waiting.get(other).unwrap_or(0);
+        if free > 0 {
+            waiting[other] = free - 1;
+            chemistry += s * other;
+            matched += 1;
+        } else {
+            waiting[s] = waiting.get(s).unwrap_or(0) + 1;
+        }
+    }
+    if matched == teams { chemistry } else { -1 }
+}
+
+// ---- heap (divide_heap.kara) ---------------------------------------------
+
+fn heap_divide_players(skill: Vec[i64]) -> i64 {
+    let mut weakest: PriorityQueue[i64] = PriorityQueue.from(skill.clone());
+    let mut strongest: PriorityQueue[i64] = PriorityQueue.max_first_from(skill.clone());
+    let teams = skill.len() / 2;
+    let mut target = -1;
+    let mut chemistry = 0;
+    for _ in 0..teams {
+        let a = weakest.pop().unwrap();
+        let b = strongest.pop().unwrap();
+        if target == -1 {
+            target = a + b;
+        } else if a + b != target {
+            return -1;
+        }
+        chemistry += a * b;
+    }
+    chemistry
+}
+
+// ---- iter (divide_iter.kara) ---------------------------------------------
+
+fn iter_divide_players(skill: Vec[i64]) -> i64 {
+    let mut sorted = skill.clone();
+    sorted.sort();
+    let half = sorted.len() / 2;
+    let teams: Vec[(i64, i64)] = sorted[..half].iter().cloned().zip(sorted[half..].iter().rev().cloned()).collect();
+    let target = teams[0].0 + teams[0].1;
+    if teams.iter().all(|(a, b)| a + b == target) {
+        teams.iter().map(|(a, b)| a * b).sum()
+    } else {
+        -1
+    }
+}
+
+// ---- solution (divide_solution.kara) -------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn divide_players(skill: own Vec[i32]) -> i64 {
+        let mut skill = skill;
+        skill.sort();
+        let n = skill.len();
+        let target = skill[0] + skill[n - 1];
+        let mut ans: i64 = 0;
+        for i in 0..n / 2 {
+            if skill[i] + skill[n - 1 - i] != target {
+                return -1;
+            }
+            ans += skill[i] as i64 * skill[n - 1 - i] as i64;
+        }
+        ans
+    }
+}
+
+fn solution_divide_players(skill: Vec[i64]) -> i64 {
+    Solution.divide_players(skill.iter().map(|v| v as i32).collect())
+}
+
+// ---- the statement read literally
+
+// the chemistry of a division of `rest` into teams of `total` each, or
+// -1 when there is none: the first player is tried with every other
+fn divide(rest: Vec[i64], total: i64) -> i64 {
+    if rest.len() == 0 {
+        return 0;
+    }
+    for j in 1..rest.len() {
+        if rest[0] + rest[j] == total {
+            let mut others: Vec[i64] = Vec.new();
+            for i in 1..rest.len() {
+                if i != j {
+                    others.push(rest[i]);
+                }
+            }
+            let below = divide(others, total);
+            if below >= 0 {
+                return below + rest[0] * rest[j];
+            }
+        }
+    }
+    -1
+}
+
+fn literal(skill: Vec[i64]) -> i64 {
+    // the first player's team fixes the total, so every partner is tried
+    for j in 1..skill.len() {
+        let answer = divide(skill, skill[0] + skill[j]);
+        if answer >= 0 {
+            return answer;
+        }
+    }
+    -1
+}
+
+fn answer(arm: i64, skill: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_divide_players(skill),
+        1 => count_divide_players(skill),
+        2 => greedy_divide_players(skill),
+        3 => heap_divide_players(skill),
+        4 => iter_divide_players(skill),
+        _ => solution_divide_players(skill),
+    }
+}
+
+// ---- lists
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn shuffled(v: Vec[i64], seed: mut ref i64) -> Vec[i64] {
+    let mut out = v.clone();
+    for i in (1..out.len()).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        out.swap(i, j);
+    }
+    out
+}
+
+// `teams` pairs each adding up to one total, the skills to `top`
+fn dividing(teams: i64, top: i64, seed: mut ref i64) -> Vec[i64] {
+    let total = next_random(mut seed) % (2 * top - 1) + 2;
+    let low = if total - top > 1 { total - top } else { 1 };
+    let high = if total - 1 < top { total - 1 } else { top };
+    let mut skill: Vec[i64] = Vec.new();
+    for _ in 0..teams {
+        let a = low + next_random(mut seed) % (high - low + 1);
+        skill.push(a);
+        skill.push(total - a);
+    }
+    shuffled(skill, mut seed)
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn main() {
+    let names = ["star", "count", "greedy", "heap", "iter", "solution"];
+    let mut seed = 2491;
+    let mut problems: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let top = if next_random(mut seed) % 2 == 0 { 3 } else { 6 };
+        let skill = if t < 300 and t % 2 == 0 {
+            dividing(next_random(mut seed) % 5 + 1, top, mut seed)
+        } else if t < 300 {
+            let n = 2 * (next_random(mut seed) % 5 + 1);
+            (0..n).map(|_| next_random(mut seed) % top + 1).collect()
+        } else if t < 320 {
+            (0..2).map(|_| next_random(mut seed) % top + 1).collect()
+        } else {
+            let mut built = dividing(6, top, mut seed);
+            if t % 2 == 1 {
+                let at = next_random(mut seed) % 12;
+                built[at] += 1;
+            }
+            built
+        };
+        problems.push(skill);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut divided = 0;
+    for skill in problems.iter() {
+        let n = skill.len();
+        let truth = literal(skill);
+        check = (check * 31 + truth + 1) % 1000000007;
+        if truth >= 0 {
+            divided += 1;
+        }
+        let other = shuffled(skill, mut seed);
+        let doubled: Vec[i64] = skill.iter().map(|v| 2 * v).collect();
+        let sum = skill.iter().sum() / (n / 2);
+        let mut grown = skill.clone();
+        grown.push(1);
+        grown.push(sum - 1);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, skill)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let twice = answer(arm, doubled);
+            let verdicts = [
+                x == truth,
+                x == -1 or (x >= n / 2 and x <= n / 2 * 1000000),
+                answer(arm, other) == x,
+                if x == -1 { twice == -1 } else { twice == 4 * x },
+                // a team of 1 and `sum - 1` fits only when the sum is at
+                // least 2, which every dividing list's is
+                truth == -1 or answer(arm, grown) == x + sum - 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{show(skill)} arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} cases, {divided} divide: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,107 @@
+// LeetCode #2491: Divide Players Into Teams of Equal Skill -- LeetCode's
+// Rust template: `mut skill: Vec<i32>` in, `i64` out; `sort_unstable()`,
+// the two ends paired inwards against the first pair's sum, each product
+// widened by `as i64`; carried by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn divide_players(skill: own Vec[i32]) -> i64 {
+        let mut skill = skill;
+        skill.sort();
+        let n = skill.len();
+        let target = skill[0] + skill[n - 1];
+        let mut ans: i64 = 0;
+        for i in 0..n / 2 {
+            if skill[i] + skill[n - 1 - i] != target {
+                return -1;
+            }
+            ans += skill[i] as i64 * skill[n - 1 - i] as i64;
+        }
+        ans
+    }
+}
+
+fn divide_players(skill: Vec[i64]) -> i64 {
+    Solution.divide_players(skill.iter().map(|v| v as i32).collect())
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `teams` pairs of skills from 1 to `top`, each pair adding up to the
+// same total, shuffled; one skill changed by one when `spoil`
+fn random_skills(teams: i64, top: i64, spoil: bool, seed: mut ref i64) -> Vec[i64] {
+    let total = next_random(mut seed) % (2 * top - 1) + 2;
+    let low = if total - top > 1 { total - top } else { 1 };
+    let high = if total - 1 < top { total - 1 } else { top };
+    let mut skill: Vec[i64] = Vec.new();
+    for _ in 0..teams {
+        let a = low + next_random(mut seed) % (high - low + 1);
+        skill.push(a);
+        skill.push(total - a);
+    }
+    for i in (1..skill.len()).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        skill.swap(i, j);
+    }
+    if spoil {
+        let at = next_random(mut seed) % skill.len();
+        skill[at] = if skill[at] > 1 { skill[at] - 1 } else { 2 };
+    }
+    skill
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(", ")}]"
+}
+
+fn main() {
+    // LeetCode's three examples, then six more
+    let cases: Vec[Vec[i64]] = [
+        [3, 2, 5, 1, 3, 4].to_vec(),
+        [3, 4].to_vec(),
+        [1, 1, 2, 3].to_vec(),
+        [1, 1].to_vec(),
+        [5, 5, 5, 5].to_vec(),
+        [1, 2, 3, 5].to_vec(),
+        [2, 2, 1, 3].to_vec(),
+        [1000, 1, 999, 2, 500, 501].to_vec(),
+        [4, 4, 2, 6, 3, 5].to_vec(),
+    ].to_vec();
+    for skill in cases.iter() {
+        println(f"{show(skill)} -> {divide_players(skill)}");
+    }
+    // 2000 random lists of 1 to 100 teams, skills to 1000 and to 5, half
+    // of them spoiled: how many divide, and a checksum
+    let mut seed = 2491;
+    for top in [1000, 5] {
+        let mut divided = 0;
+        let mut check = 0;
+        for t in 0..2000 {
+            let teams = next_random(mut seed) % 100 + 1;
+            let skill = random_skills(teams, top, t % 2 == 1, mut seed);
+            let answer = divide_players(skill);
+            if answer >= 0 {
+                divided += 1;
+            }
+            check = (check * 31 + answer + 1) % 1000000007;
+        }
+        println(f"2000 random to {top}: {divided} divide, checksum {check}");
+    }
+    // the constraints' largest, 10^5 players: every skill 1000; the pairs
+    // `i` and `1001 - i` for `i` from 1 to 1000, 50 times over; random
+    // pairs; and those spoiled
+    let all: Vec[i64] = (0..100000).map(|_| 1000).collect();
+    let paired: Vec[i64] = (0..100000).map(|i| if i % 2 == 0 { i / 2 % 1000 + 1 } else { 1000 - i / 2 % 1000 }).collect();
+    let random = random_skills(50000, 1000, false, mut seed);
+    let spoiled = random_skills(50000, 1000, true, mut seed);
+    for (name, skill) in [("all 1000", all), ("paired", paired), ("random", random), ("spoiled", spoiled)] {
+        println(f"10^5 {name} -> {divide_players(skill)}");
+    }
+}
