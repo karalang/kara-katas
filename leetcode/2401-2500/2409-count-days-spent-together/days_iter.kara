@@ -1,0 +1,71 @@
+// LeetCode #2409: Count Days Spent Together -- iterators. A day of the
+// year by `take` and `sum` over the month lengths; the arrivals' `max` and
+// the departures' `min` over arrays of the two days, the shared stay
+// clamped at 0. O(1).
+
+fn day_of_year(date: String) -> i64 {
+    let lengths = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let fields: Vec[i64] = date.split("-").map(|p| i64.parse(p).unwrap()).collect();
+    lengths.iter().take(fields[0] - 1).sum() + fields[1]
+}
+
+fn count_days_together(arrive_alice: String, leave_alice: String, arrive_bob: String, leave_bob: String) -> i64 {
+    let first = [arrive_alice, arrive_bob].iter().map(|d| day_of_year(d)).max().unwrap();
+    let last = [leave_alice, leave_bob].iter().map(|d| day_of_year(d)).min().unwrap();
+    (last - first + 1).max(0)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// Day `n` of the year, from 0, as "MM-DD".
+fn date(n: i64) -> String {
+    let lengths = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut month = 0;
+    let mut day = n;
+    while day >= lengths[month] {
+        day -= lengths[month];
+        month += 1;
+    }
+    f"{month + 1:02}-{day + 1:02}"
+}
+
+// A stay from one random day to a later or the same one.
+fn stay(seed: mut ref i64) -> (String, String) {
+    let a = next_random(mut seed) % 365;
+    let b = next_random(mut seed) % 365;
+    (date(a.min(b)), date(a.max(b)))
+}
+
+fn main() {
+    // LeetCode's two examples; the whole year twice; one shared day; Bob
+    // leaving the day Alice arrives
+    println(f"{count_days_together("08-15", "08-18", "08-16", "08-19")}");
+    println(f"{count_days_together("10-01", "10-31", "11-01", "12-31")}");
+    println(f"{count_days_together("01-01", "12-31", "01-01", "12-31")}");
+    println(f"{count_days_together("02-28", "02-28", "02-28", "02-28")}");
+    println(f"{count_days_together("03-01", "06-30", "01-15", "03-01")}");
+    // Alice the whole year, Bob each month in turn
+    let mut months: Vec[String] = Vec.new();
+    for m in 0..12 {
+        let first = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365];
+        months.push(f"{count_days_together("01-01", "12-31", date(first[m]), date(first[m + 1] - 1))}");
+    }
+    println(months.join(" "));
+    // 3000 random pairs of stays; a checksum of the answers and their total
+    let mut seed = 2409;
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let (arrive_alice, leave_alice) = stay(mut seed);
+        let (arrive_bob, leave_bob) = stay(mut seed);
+        let a = count_days_together(arrive_alice, leave_alice, arrive_bob, leave_bob);
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}, total {total}");
+}
