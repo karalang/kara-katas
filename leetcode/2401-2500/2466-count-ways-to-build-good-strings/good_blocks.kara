@@ -1,0 +1,103 @@
+// LeetCode #2466: Count Ways To Build Good Strings -- counting by blocks:
+// a string of `a` zero blocks and `b` one blocks can order them in
+// `C(a + b, a)` ways. For each `a`, the `b` that put the length in range
+// run from `lo` to `hi`, and the hockey-stick identity sums their
+// binomials as `C(a + hi + 1, a + 1) - C(a + lo, a + 1)`. Factorials and
+// their inverses mod p are built once. O(high + high / zero).
+
+const MOD: i64 = 1000000007;
+
+fn power(base: i64, exp: i64) -> i64 {
+    let mut result = 1;
+    let mut b = base % MOD;
+    let mut e = exp;
+    while e > 0 {
+        if e & 1 == 1 {
+            result = result * b % MOD;
+        }
+        b = b * b % MOD;
+        e >>= 1;
+    }
+    result
+}
+
+fn count_good_strings(low: i64, high: i64, zero: i64, one: i64) -> i64 {
+    let top = 2 * high + 2;
+    let mut fact: Vec[i64] = Vec.filled(top + 1, 1);
+    for i in 1..top + 1 {
+        fact[i] = fact[i - 1] * i % MOD;
+    }
+    let mut inv: Vec[i64] = Vec.filled(top + 1, 1);
+    inv[top] = power(fact[top], MOD - 2);
+    for i in (1..top + 1).rev() {
+        inv[i - 1] = inv[i] * i % MOD;
+    }
+    let choose = |n: i64, k: i64| {
+        if k < 0 or k > n {
+            0
+        } else {
+            fact[n] * inv[k] % MOD * inv[n - k] % MOD
+        }
+    };
+    let mut total = 0;
+    let mut a = 0;
+    while a * zero <= high {
+        let left_low = (low - a * zero).max(0);
+        let left_high = high - a * zero;
+        // the least `b` with `b * one >= left_low`, the most with
+        // `b * one <= left_high`
+        let lo = (left_low + one - 1) / one;
+        let hi = left_high / one;
+        if lo <= hi {
+            let span = (choose(a + hi + 1, a + 1) - choose(a + lo, a + 1) + MOD) % MOD;
+            total = (total + span) % MOD;
+        }
+        a += 1;
+    }
+    total
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; then one block of each, length one; blocks
+    // of two that never reach an odd length; equal block sizes; and the
+    // largest blocks the constraints allow
+    let cases: Vec[(i64, i64, i64, i64)] = [
+        (3, 3, 1, 1),
+        (2, 3, 1, 2),
+        (1, 1, 1, 1),
+        (5, 5, 2, 2),
+        (4, 9, 2, 2),
+        (6, 20, 6, 6),
+        (7, 30, 3, 7),
+    ].to_vec();
+    for (low, high, zero, one) in cases.into_iter() {
+        println(f"({low}, {high}, {zero}, {one}) -> {count_good_strings(low, high, zero, one)}");
+    }
+    // the constraints' largest: every length up to 10^5 with blocks of
+    // one; only 10^5 itself; and blocks of 1 and 10^5
+    println(f"(1, 100000, 1, 1) -> {count_good_strings(1, 100000, 1, 1)}");
+    println(f"(100000, 100000, 1, 1) -> {count_good_strings(100000, 100000, 1, 1)}");
+    println(f"(100000, 100000, 1, 100000) -> {count_good_strings(100000, 100000, 1, 100000)}");
+    println(f"(50000, 100000, 3, 7) -> {count_good_strings(50000, 100000, 3, 7)}");
+    // 3000 random cases with `high` up to 300 and each block no longer
+    // than `low`: a checksum of every answer in order
+    let mut seed = 2466;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let a = 1 + next_random(mut seed) % 300;
+        let b = 1 + next_random(mut seed) % 300;
+        let low = a.min(b);
+        let high = a.max(b);
+        let zero = 1 + next_random(mut seed) % low;
+        let one = 1 + next_random(mut seed) % low;
+        check = (check * 31 + count_good_strings(low, high, zero, one)) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}

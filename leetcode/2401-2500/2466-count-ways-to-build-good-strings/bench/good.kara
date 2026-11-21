@@ -1,0 +1,58 @@
+// LeetCode #2466: Count Ways To Build Good Strings -- bottom-up counts:
+// `ways[len]` is the number of strings of length `len`, each built by a
+// last block of `zero` zeros or of `one` ones, so
+// `ways[len] = ways[len - zero] + ways[len - one]`; the answer sums the
+// counts from `low` to `high`. O(high).
+
+const MOD: i64 = 1000000007;
+
+fn count_good_strings(low: i64, high: i64, zero: i64, one: i64) -> i64 {
+    let mut ways: Vec[i64] = Vec.filled(high + 1, 0);
+    ways[0] = 1;
+    let mut total = 0;
+    for len in 1..high + 1 {
+        if len >= zero {
+            ways[len] = (ways[len] + ways[len - zero]) % MOD;
+        }
+        if len >= one {
+            ways[len] = (ways[len] + ways[len - one]) % MOD;
+        }
+        if len >= low {
+            total = (total + ways[len]) % MOD;
+        }
+    }
+    total
+}
+
+// ---- bench ------------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 20 cases built once, `high` from 50000 to 10^5, `low` from 1 to
+    // `high`, blocks of 1 to 20 no longer than `low`; then 28 passes,
+    // each setting every case's zero block from the checksum so far, then
+    // answering it and folding the answer plus the pass into the checksum
+    let mut seed = 2466;
+    let mut cases: Vec[(i64, i64, i64, i64)] = Vec.new();
+    for _ in 0..20 {
+        let high = 50000 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 50001;
+        let low = 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % high;
+        let zero = 1 + next_random(mut seed) % low.min(20);
+        let one = 1 + next_random(mut seed) % low.min(20);
+        cases.push((low, high, zero, one));
+    }
+    let mut check = 0;
+    for p in 0..28 {
+        for a in 0..cases.len() {
+            let (low, high, _, one) = cases[a];
+            let zero = 1 + (check + a) % low.min(20);
+            cases[a] = (low, high, zero, one);
+            check = (check * 31 + count_good_strings(low, high, zero, one) + p) % 1000000007;
+        }
+    }
+    println(f"28 passes over 20 cases up to 10^5: checksum {check}");
+}
