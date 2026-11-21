@@ -1,0 +1,73 @@
+// LeetCode #2428: Maximum Sum of an Hourglass -- LeetCode's Rust
+// template, as Rust writes it, carried by karac fix: `let (m, n) = (..)`
+// over `usize` lengths, and each hourglass's top and bottom summed over
+// an inclusive slice by `iter().sum::<i32>()`.
+
+impl Solution {
+    pub fn max_sum(grid: Vec[Vec[i32]]) -> i32 {
+        let (m, n) = (grid.len(), grid[0].len());
+        let mut ans: i32 = 0;
+        for i in 1..m - 1 {
+            for j in 1..n - 1 {
+                let s = grid[i - 1][j - 1..=j + 1].iter().sum()
+                    + grid[i][j]
+                    + grid[i + 1][j - 1..=j + 1].iter().sum();
+                ans = ans.max(s);
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn max_sum(grid: Vec[Vec[i64]]) -> i64 {
+    let rows: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|x| x as i32).collect()).collect();
+    Solution.max_sum(rows)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// an `m` by `n` grid of values from 0 to `top`, drawn 30 bits wide
+fn random_grid(seed: mut ref i64, m: i64, n: i64, top: i64) -> Vec[Vec[i64]] {
+    let mut grid: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..m {
+        let mut row: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            row.push((next_random(mut seed) * 32768 + next_random(mut seed)) % (top + 1));
+        }
+        grid.push(row);
+    }
+    grid
+}
+
+fn main() {
+    // LeetCode's two examples; a grid of zeros; the constraints' largest,
+    // 150 by 150 all 10^6; then random 150 by 150, 3 by 150 and 150 by 3
+    // grids of values up to 10^6
+    println(f"{max_sum([[6, 2, 1, 3].to_vec(), [4, 2, 1, 5].to_vec(), [9, 2, 8, 7].to_vec(), [4, 1, 2, 9].to_vec()].to_vec())}");
+    println(f"{max_sum([[1, 2, 3].to_vec(), [4, 5, 6].to_vec(), [7, 8, 9].to_vec()].to_vec())}");
+    println(f"{max_sum(Vec.filled(3, Vec.filled(3, 0)))}");
+    println(f"{max_sum(Vec.filled(150, Vec.filled(150, 1000000)))}");
+    let mut seed = 2428;
+    println(f"{max_sum(random_grid(mut seed, 150, 150, 1000000))}");
+    println(f"{max_sum(random_grid(mut seed, 3, 150, 1000000))}");
+    println(f"{max_sum(random_grid(mut seed, 150, 3, 1000000))}");
+    // 3000 random grids of 3 to 6 by 3 to 6, values up to 9: a checksum of
+    // the answers in order, and their total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let m = 3 + next_random(mut seed) % 4;
+        let n = 3 + next_random(mut seed) % 4;
+        let answer = max_sum(random_grid(mut seed, m, n, 9));
+        check = (check * 31 + answer) % 1000000007;
+        total += answer;
+    }
+    println(f"3000 random: checksum {check}, total {total}");
+}

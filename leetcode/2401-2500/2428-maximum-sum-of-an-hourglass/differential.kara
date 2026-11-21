@@ -1,0 +1,265 @@
+// LeetCode #2428: Maximum Sum of an Hourglass -- the differential. The
+// six arms against the statement read literally: every placement of the
+// 3 by 3 box, its hourglass the seven cells listed by their offsets,
+// `(0, 0) (0, 1) (0, 2) (1, 1) (2, 0) (2, 1) (2, 2)`, each placement's
+// sum kept when it is the largest yet. 360 cases: 300 random grids of 3
+// to 6 by 3 to 6, values up to 1 to 9; then 30 of up to 40 by 40, values
+// up to 10^6; then 30 of 3 rows or 3 columns and up to 40 the other way,
+// values 0 and 1. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the grid turned half round: the same answer
+// P3  each row reversed: the same answer
+// P4  every cell raised by one constant: the answer plus 7 times it
+// P5  one cell raised by 10^6: an answer no smaller, and at most 10^6
+//     larger
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn hourglass_literally(grid: Vec[Vec[i64]]) -> i64 {
+    let shape = [(0, 0), (0, 1), (0, 2), (1, 1), (2, 0), (2, 1), (2, 2)];
+    let mut best = -1;
+    for top in 0..grid.len() - 2 {
+        for left in 0..grid[0].len() - 2 {
+            let mut sum = 0;
+            for (dr, dc) in shape.iter() {
+                sum += grid[top + dr][left + dc];
+            }
+            if sum > best {
+                best = sum;
+            }
+        }
+    }
+    best
+}
+
+// ---- star (hourglass.kara) -----------------------------------------------
+
+fn star_max_sum(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut best = 0;
+    for r in 1..m - 1 {
+        for c in 1..n - 1 {
+            let sum = grid[r - 1][c - 1] + grid[r - 1][c] + grid[r - 1][c + 1]
+                + grid[r][c]
+                + grid[r + 1][c - 1] + grid[r + 1][c] + grid[r + 1][c + 1];
+            best = best.max(sum);
+        }
+    }
+    best
+}
+
+// ---- naive (hourglass_naive.kara) ----------------------------------------
+
+fn naive_max_sum(grid: Vec[Vec[i64]]) -> i64 {
+    let mut best = 0;
+    for top in 0..grid.len() - 2 {
+        for left in 0..grid[0].len() - 2 {
+            let mut sum = 0;
+            for dr in 0..3 {
+                for dc in 0..3 {
+                    if dr == 1 and dc != 1 {
+                        continue;
+                    }
+                    sum += grid[top + dr][left + dc];
+                }
+            }
+            best = best.max(sum);
+        }
+    }
+    best
+}
+
+// ---- prefix (hourglass_prefix.kara) --------------------------------------
+
+fn prefix_max_sum(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut pre: Vec[Vec[i64]] = Vec.filled(m + 1, Vec.filled(n + 1, 0));
+    for r in 0..m {
+        for c in 0..n {
+            pre[r + 1][c + 1] = grid[r][c] + pre[r][c + 1] + pre[r + 1][c] - pre[r][c];
+        }
+    }
+    let mut best = 0;
+    for r in 0..m - 2 {
+        for c in 0..n - 2 {
+            let boxed = pre[r + 3][c + 3] - pre[r][c + 3] - pre[r + 3][c] + pre[r][c];
+            best = best.max(boxed - grid[r + 1][c] - grid[r + 1][c + 2]);
+        }
+    }
+    best
+}
+
+// ---- rows (hourglass_rows.kara) ------------------------------------------
+
+fn rows_max_sum(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut three: Vec[Vec[i64]] = Vec.new();
+    for row in grid.iter() {
+        let mut sums: Vec[i64] = Vec.new();
+        for c in 0..n - 2 {
+            sums.push(row[c] + row[c + 1] + row[c + 2]);
+        }
+        three.push(sums);
+    }
+    let mut best = 0;
+    for r in 0..m - 2 {
+        for c in 0..n - 2 {
+            best = best.max(three[r][c] + grid[r + 1][c + 1] + three[r + 2][c]);
+        }
+    }
+    best
+}
+
+// ---- iter (hourglass_iter.kara) ------------------------------------------
+
+fn iter_max_sum(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    (1..m - 1).flat_map(|r| (1..n - 1).map(|c| {
+        let top: i64 = grid[r - 1][c - 1..c + 2].iter().sum();
+        let bottom: i64 = grid[r + 1][c - 1..c + 2].iter().sum();
+        top + grid[r][c] + bottom
+    })).max().unwrap()
+}
+
+// ---- solution (hourglass_solution.kara) ----------------------------------
+
+impl Solution {
+    pub fn max_sum(grid: Vec[Vec[i32]]) -> i32 {
+        let (m, n) = (grid.len(), grid[0].len());
+        let mut ans: i32 = 0;
+        for i in 1..m - 1 {
+            for j in 1..n - 1 {
+                let s = grid[i - 1][j - 1..=j + 1].iter().sum()
+                    + grid[i][j]
+                    + grid[i + 1][j - 1..=j + 1].iter().sum();
+                ans = ans.max(s);
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_max_sum(grid: Vec[Vec[i64]]) -> i64 {
+    let rows: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|x| x as i32).collect()).collect();
+    Solution.max_sum(rows)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, grid: Vec[Vec[i64]]) -> i64 {
+    let grid = grid.clone();
+    match arm {
+        0 => star_max_sum(grid),
+        1 => naive_max_sum(grid),
+        2 => prefix_max_sum(grid),
+        3 => rows_max_sum(grid),
+        4 => iter_max_sum(grid),
+        _ => solution_max_sum(grid),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "naive", "prefix", "rows", "iter", "solution"];
+    let mut seed = 2428;
+    let mut cases: Vec[Vec[Vec[i64]]] = Vec.new();
+    for t in 0..360 {
+        let (m, n, top) = if t < 300 {
+            (3 + next_random(mut seed) % 4, 3 + next_random(mut seed) % 4, 1 + next_random(mut seed) % 9)
+        } else if t < 330 {
+            (3 + next_random(mut seed) % 38, 3 + next_random(mut seed) % 38, 1000000)
+        } else if next_random(mut seed) % 2 == 0 {
+            (3, 3 + next_random(mut seed) % 38, 1)
+        } else {
+            (3 + next_random(mut seed) % 38, 3, 1)
+        };
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..m {
+            let mut row: Vec[i64] = Vec.new();
+            for _ in 0..n {
+                row.push((next_random(mut seed) * 32768 + next_random(mut seed)) % (top + 1));
+            }
+            grid.push(row);
+        }
+        cases.push(grid);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let grid = cases[c].clone();
+        let m = grid.len();
+        let n = grid[0].len();
+        let truth = hourglass_literally(grid);
+        check = (check * 31 + truth) % 1000000007;
+        let mut turned: Vec[Vec[i64]] = Vec.new();
+        for r in (0..m).rev() {
+            let mut row = grid[r].clone();
+            row.reverse();
+            turned.push(row);
+        }
+        let mut mirrored: Vec[Vec[i64]] = Vec.new();
+        for r in 0..m {
+            let mut row = grid[r].clone();
+            row.reverse();
+            mirrored.push(row);
+        }
+        let k = next_random(mut seed) % 1000;
+        let raised: Vec[Vec[i64]] = grid.iter().map(|row| row.iter().map(|x| x + k).collect()).collect();
+        let mut bumped = grid.clone();
+        bumped[next_random(mut seed) % m][next_random(mut seed) % n] += 1000000;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, grid)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let higher = answer(arm, bumped);
+            let verdicts = [
+                value == truth,
+                answer(arm, turned) == value,
+                answer(arm, mirrored) == value,
+                answer(arm, raised) == value + 7 * k,
+                higher >= value and higher <= value + 1000000,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
