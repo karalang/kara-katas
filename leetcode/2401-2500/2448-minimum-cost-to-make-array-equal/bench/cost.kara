@@ -1,0 +1,51 @@
+// LeetCode #2448: Minimum Cost to Make Array Equal -- the bench, the ★
+// arm: the pairs sorted, the weighted median the first value whose
+// running cost reaches half the total, and every value moved there.
+
+fn min_cost(nums: Vec[i64], cost: Vec[i64]) -> i64 {
+    let mut pairs: Vec[(i64, i64)] = nums.iter().cloned().zip(cost.iter().cloned()).collect();
+    pairs.sort();
+    let total: i64 = cost.iter().sum();
+    let mut running = 0;
+    let mut target = 0;
+    for (value, c) in pairs.iter() {
+        running += c;
+        if 2 * running >= total {
+            target = value;
+            break;
+        }
+    }
+    let mut answer = 0;
+    for i in 0..nums.len() {
+        answer += (nums[i] - target).abs() * cost[i];
+    }
+    answer
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2448;
+    // 10^5 values and costs from 1 to 10^6, the constraints' largest
+    let n = 100000;
+    let mut nums: Vec[i64] = Vec.new();
+    let mut cost: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        nums.push(1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000);
+        cost.push(1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000);
+    }
+    // pass `p` draws 1000 new costs up to 10^6, from place `1000 p`
+    // on, so the median moves, then answers and folds the answer plus
+    // the pass
+    let mut check = 0;
+    for p in 0..200 {
+        for t in 0..1000 {
+            cost[(1000 * p + t) % n] = 1 + next_random(mut seed) * 30;
+        }
+        check = (check * 31 + min_cost(nums, cost) % 1000000007 + p) % 1000000007;
+    }
+    println(f"200 passes over 10^5 values: checksum {check}");
+}

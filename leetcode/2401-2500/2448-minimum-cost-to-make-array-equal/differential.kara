@@ -1,0 +1,278 @@
+// LeetCode #2448: Minimum Cost to Make Array Equal -- the differential.
+// The six arms against the statement read literally: every integer from
+// the least value to the largest tried as the one all values are made
+// equal to, each value's cost of `cost[i]` for every step to it summed
+// one step at a time, and the least total kept. No median is found and
+// nothing is sorted. 360 cases: 300 random arrays of 1 to 10 values from
+// 1 to 60, costs from 1 to 20; then 30 of up to 50 values from 1 to
+// 300, costs to 10^5; then 30 of up to 200 values from 1 to 5, costs to
+// 10^5, full of ties. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the pairs in reverse order: the same answer
+// P3  every value raised by one number from 1 to 1000: the same answer
+// P4  every cost multiplied by one number from 2 to 9: the answer times
+//     it
+// P5  every value `x` mirrored to `10^6 + 1 - x`: the same answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn cost_literally(nums: Vec[i64], cost: Vec[i64]) -> i64 {
+    let mut least = nums[0];
+    let mut largest = nums[0];
+    for v in nums.iter() {
+        least = least.min(v);
+        largest = largest.max(v);
+    }
+    let mut best = -1;
+    for x in least..largest + 1 {
+        let mut total = 0;
+        for i in 0..nums.len() {
+            let mut at = nums[i];
+            while at != x {
+                at += if at < x { 1 } else { -1 };
+                total += cost[i];
+            }
+        }
+        if best < 0 or total < best {
+            best = total;
+        }
+    }
+    best
+}
+
+// ---- star (cost.kara) ----------------------------------------------------
+
+fn star_min_cost(nums: Vec[i64], cost: Vec[i64]) -> i64 {
+    let mut pairs: Vec[(i64, i64)] = nums.iter().cloned().zip(cost.iter().cloned()).collect();
+    pairs.sort();
+    let total: i64 = cost.iter().sum();
+    let mut running = 0;
+    let mut target = 0;
+    for (value, c) in pairs.iter() {
+        running += c;
+        if 2 * running >= total {
+            target = value;
+            break;
+        }
+    }
+    let mut answer = 0;
+    for i in 0..nums.len() {
+        answer += (nums[i] - target).abs() * cost[i];
+    }
+    answer
+}
+
+// ---- naive (cost_naive.kara) ---------------------------------------------
+
+fn naive_min_cost(nums: Vec[i64], cost: Vec[i64]) -> i64 {
+    let mut best = -1;
+    for target in nums.iter() {
+        let mut total = 0;
+        for i in 0..nums.len() {
+            total += (nums[i] - target).abs() * cost[i];
+        }
+        if best < 0 or total < best {
+            best = total;
+        }
+    }
+    best
+}
+
+// ---- ternary (cost_ternary.kara) -----------------------------------------
+
+fn ternary_total_at(nums: Vec[i64], cost: Vec[i64], x: i64) -> i64 {
+    let mut total = 0;
+    for i in 0..nums.len() {
+        total += (nums[i] - x).abs() * cost[i];
+    }
+    total
+}
+
+fn ternary_min_cost(nums: Vec[i64], cost: Vec[i64]) -> i64 {
+    let mut lo = nums.iter().min().unwrap();
+    let mut hi = nums.iter().max().unwrap();
+    while hi - lo > 2 {
+        let m1 = lo + (hi - lo) / 3;
+        let m2 = hi - (hi - lo) / 3;
+        if ternary_total_at(nums, cost, m1) <= ternary_total_at(nums, cost, m2) {
+            hi = m2;
+        } else {
+            lo = m1;
+        }
+    }
+    let mut best = ternary_total_at(nums, cost, lo);
+    for x in lo + 1..hi + 1 {
+        best = best.min(ternary_total_at(nums, cost, x));
+    }
+    best
+}
+
+// ---- prefix (cost_prefix.kara) -------------------------------------------
+
+fn prefix_min_cost(nums: Vec[i64], cost: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut order: Vec[i64] = (0..n).collect();
+    order.sort_by_key(|i| nums[i]);
+    let mut weight: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut moment: Vec[i64] = Vec.filled(n + 1, 0);
+    for t in 0..n {
+        let i = order[t];
+        weight[t + 1] = weight[t] + cost[i];
+        moment[t + 1] = moment[t] + cost[i] * nums[i];
+    }
+    let mut best = -1;
+    for t in 0..n {
+        let x = nums[order[t]];
+        let below = x * weight[t + 1] - moment[t + 1];
+        let above = (moment[n] - moment[t + 1]) - x * (weight[n] - weight[t + 1]);
+        if best < 0 or below + above < best {
+            best = below + above;
+        }
+    }
+    best
+}
+
+// ---- iter (cost_iter.kara) -----------------------------------------------
+
+fn iter_min_cost(nums: Vec[i64], cost: Vec[i64]) -> i64 {
+    let mut pairs: Vec[(i64, i64)] = nums.iter().cloned().zip(cost.iter().cloned()).collect();
+    pairs.sort();
+    let total: i64 = cost.iter().sum();
+    let target = pairs
+        .iter()
+        .scan(0, |running, p| {
+            let running = running + p.1;
+            Some((running, (p.0, running)))
+        })
+        .find(|v| 2 * v.1 >= total)
+        .unwrap()
+        .0;
+    pairs.iter().map(|p| (p.0 - target).abs() * p.1).sum()
+}
+
+// ---- solution (cost_solution.kara) ---------------------------------------
+
+impl Solution {
+    pub fn min_cost(nums: Vec[i32], cost: Vec[i32]) -> i64 {
+        let mut v: Vec[(i64, i64)] = nums.iter().zip(cost.iter()).map(|(a, b)| (a as i64, b as i64)).collect();
+        v.sort();
+        let total: i64 = v.iter().map(|(_, c)| c).sum();
+        let mut acc = 0;
+        let mut median = 0;
+        for (x, c) in ref v {
+            acc += c;
+            if acc * 2 >= total {
+                median = x;
+                break;
+            }
+        }
+        v.iter().map(|(x, c)| (x - median).abs() * c).sum()
+    }
+}
+
+struct Solution {}
+
+fn solution_min_cost(nums: Vec[i64], cost: Vec[i64]) -> i64 {
+    let values: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    let costs: Vec[i32] = cost.iter().map(|x| x as i32).collect();
+    Solution.min_cost(values, costs)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64], cost: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_min_cost(nums, cost),
+        1 => naive_min_cost(nums, cost),
+        2 => ternary_min_cost(nums, cost),
+        3 => prefix_min_cost(nums, cost),
+        4 => iter_min_cost(nums, cost),
+        _ => solution_min_cost(nums, cost),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "naive", "ternary", "prefix", "iter", "solution"];
+    let mut seed = 2448;
+    let mut cases: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    for t in 0..360 {
+        let mut nums: Vec[i64] = Vec.new();
+        let mut cost: Vec[i64] = Vec.new();
+        let (len, top, dear) = if t < 300 {
+            (1 + next_random(mut seed) % 10, 60, 20)
+        } else if t < 330 {
+            (1 + next_random(mut seed) % 50, 300, 100000)
+        } else {
+            (1 + next_random(mut seed) % 200, 5, 100000)
+        };
+        for _ in 0..len {
+            nums.push(1 + next_random(mut seed) % top);
+            cost.push(1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % dear);
+        }
+        cases.push((nums, cost));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (nums, cost) = cases[c].clone();
+        let truth = cost_literally(nums, cost);
+        check = (check * 31 + truth) % 1000000007;
+        let mut back_nums = nums.clone();
+        back_nums.reverse();
+        let mut back_cost = cost.clone();
+        back_cost.reverse();
+        let shift = 1 + next_random(mut seed) % 1000;
+        let raised: Vec[i64] = nums.iter().map(|x| x + shift).collect();
+        let factor = 2 + next_random(mut seed) % 8;
+        let dearer: Vec[i64] = cost.iter().map(|x| x * factor).collect();
+        let mirrored: Vec[i64] = nums.iter().map(|x| 1000001 - x).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums, cost)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, back_nums, back_cost) == value,
+                answer(arm, raised, cost) == value,
+                answer(arm, nums, dearer) == value * factor,
+                answer(arm, mirrored, cost) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
