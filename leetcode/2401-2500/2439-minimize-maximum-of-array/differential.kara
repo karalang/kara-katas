@@ -1,0 +1,279 @@
+// LeetCode #2439: Minimize Maximum of Array -- the differential. The six
+// arms against the statement read literally: each cap tried from 0
+// upward, and for each the one operation made a unit at a time, always
+// at the rightmost value past the first that is above the cap, until
+// none is; the first cap the first value then fits under is the answer.
+// No sum is taken and no average formed. 360 cases: 300 random arrays of
+// 2 to 6 values from 0 to 9; then 30 of 2 to 12 values from 0 to 30;
+// then 30 of 2 to 12 values, all 0 but one from 0 to 200, placed at
+// random. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  one unit moved one place left: an answer no smaller
+// P3  every value times k from 2 to 5: between k times the answer less
+//     k - 1, and k times the answer
+// P4  the answer is at least the first value and the whole array's
+//     ceiling average, and at most the largest value
+// P5  a 0 appended: the same answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn fits_literally(nums: Vec[i64], cap: i64) -> bool {
+    let mut values = nums.clone();
+    loop {
+        let mut moved = false;
+        let mut i = values.len() - 1;
+        while i > 0 {
+            if values[i] > cap {
+                values[i] -= 1;
+                values[i - 1] += 1;
+                moved = true;
+                break;
+            }
+            i -= 1;
+        }
+        if not moved {
+            break;
+        }
+    }
+    values[0] <= cap
+}
+
+fn minimize_literally(nums: Vec[i64]) -> i64 {
+    let mut cap = 0;
+    while not fits_literally(nums, cap) {
+        cap += 1;
+    }
+    cap
+}
+// ---- star (minmax.kara) --------------------------------------------------
+
+fn star_minimize_array_value(nums: Vec[i64]) -> i64 {
+    let mut sum = 0;
+    let mut answer = 0;
+    for i in 0..nums.len() {
+        sum += nums[i];
+        answer = answer.max((sum + i) / (i + 1));
+    }
+    answer
+}
+
+// ---- naive (minmax_naive.kara) -------------------------------------------
+
+fn naive_minimize_array_value(nums: Vec[i64]) -> i64 {
+    let mut answer = 0;
+    for i in 0..nums.len() {
+        let mut sum = 0;
+        for j in 0..i + 1 {
+            sum += nums[j];
+        }
+        let average = (sum + i) / (i + 1);
+        if average > answer {
+            answer = average;
+        }
+    }
+    answer
+}
+
+// ---- search (minmax_search.kara) -----------------------------------------
+
+fn search_fits(nums: Vec[i64], cap: i64) -> bool {
+    let mut carry = 0;
+    let mut i = nums.len() - 1;
+    while i > 0 {
+        carry = (nums[i] + carry - cap).max(0);
+        i -= 1;
+    }
+    nums[0] + carry <= cap
+}
+
+fn search_minimize_array_value(nums: Vec[i64]) -> i64 {
+    let mut low = 0;
+    let mut high = 0;
+    for x in nums.iter() {
+        high = high.max(x);
+    }
+    while low < high {
+        let mid = low + (high - low) / 2;
+        if search_fits(nums, mid) {
+            high = mid;
+        } else {
+            low = mid + 1;
+        }
+    }
+    low
+}
+
+// ---- stack (minmax_stack.kara) -------------------------------------------
+
+struct Block {
+    sum: i64,
+    len: i64,
+}
+
+fn stack_minimize_array_value(nums: Vec[i64]) -> i64 {
+    let mut stack: Vec[Block] = Vec.new();
+    for x in nums.iter() {
+        let mut block = Block { sum: x, len: 1 };
+        while stack.len() > 0 {
+            let below = ref stack[stack.len() - 1];
+            if (block.sum as i128) * (below.len as i128) < (below.sum as i128) * (block.len as i128) {
+                break;
+            }
+            block = Block { sum: block.sum + below.sum, len: block.len + below.len };
+            stack.pop();
+        }
+        stack.push(block);
+    }
+    (stack[0].sum + stack[0].len - 1) / stack[0].len
+}
+
+// ---- iter (minmax_iter.kara) ---------------------------------------------
+
+fn iter_minimize_array_value(nums: Vec[i64]) -> i64 {
+    nums.iter()
+        .scan(0, |sum, x| {
+            let next = sum + x;
+            Some((next, next))
+        })
+        .enumerate()
+        .map(|(i, sum)| (sum + i) / (i + 1))
+        .max()
+        .unwrap()
+}
+
+// ---- solution (minmax_solution.kara) -------------------------------------
+
+impl Solution {
+    pub fn minimize_array_value(nums: Vec[i32]) -> i32 {
+        let mut sum: i64 = 0;
+        let mut ans: i64 = 0;
+        for (i, x) in nums.iter().enumerate() {
+            sum += x as i64;
+            ans = ans.max((sum + i) / (i + 1));
+        }
+        ans as i32
+    }
+}
+
+struct Solution {}
+
+fn solution_minimize_array_value(nums: Vec[i64]) -> i64 {
+    let values: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.minimize_array_value(values)
+}
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_minimize_array_value(nums),
+        1 => naive_minimize_array_value(nums),
+        2 => search_minimize_array_value(nums),
+        3 => stack_minimize_array_value(nums),
+        4 => iter_minimize_array_value(nums),
+        _ => solution_minimize_array_value(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "naive", "search", "stack", "iter", "solution"];
+    let mut seed = 2439;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let mut nums: Vec[i64] = Vec.new();
+        if t < 300 {
+            for _ in 0..2 + next_random(mut seed) % 5 {
+                nums.push(next_random(mut seed) % 10);
+            }
+        } else if t < 330 {
+            for _ in 0..2 + next_random(mut seed) % 11 {
+                nums.push(next_random(mut seed) % 31);
+            }
+        } else {
+            let len = 2 + next_random(mut seed) % 11;
+            nums = Vec.filled(len, 0);
+            let at = next_random(mut seed) % len;
+            nums[at] = next_random(mut seed) % 201;
+        }
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let nums = cases[c].clone();
+        let n = nums.len();
+        let truth = minimize_literally(nums);
+        check = (check * 31 + truth) % 1000000007;
+        // one unit moved left, from a random nonzero value past the first
+        let mut moved = nums.clone();
+        let mut from = 1 + next_random(mut seed) % (n - 1);
+        let mut tries = 0;
+        while moved[from] == 0 and tries < n {
+            from = 1 + from % (n - 1);
+            tries += 1;
+        }
+        if moved[from] > 0 {
+            moved[from] -= 1;
+            moved[from - 1] += 1;
+        }
+        let k = 2 + next_random(mut seed) % 4;
+        let scaled: Vec[i64] = nums.iter().map(|x| x * k).collect();
+        let mut padded = nums.clone();
+        padded.push(0);
+        let mut total = 0;
+        let mut largest = 0;
+        for x in nums.iter() {
+            total += x;
+            largest = largest.max(x);
+        }
+        let average = (total + n - 1) / n;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let times = answer(arm, scaled);
+            let verdicts = [
+                value == truth,
+                answer(arm, moved) >= value,
+                times >= k * value - (k - 1) and times <= k * value,
+                value >= nums[0] and value >= average and value <= largest,
+                answer(arm, padded) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

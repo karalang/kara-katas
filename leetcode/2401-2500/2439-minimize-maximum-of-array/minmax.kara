@@ -1,0 +1,76 @@
+// LeetCode #2439: Minimize Maximum of Array -- the ★ arm. Value only
+// moves left, so the first `i + 1` values keep at least their sum among
+// themselves, and their largest is at least that sum's ceiling average;
+// and levelling every prefix to its own reaches the largest of those
+// bounds. One pass keeps the running sum and that largest bound. O(n).
+
+fn minimize_array_value(nums: Vec[i64]) -> i64 {
+    let mut sum = 0;
+    let mut answer = 0;
+    for i in 0..nums.len() {
+        sum += nums[i];
+        answer = answer.max((sum + i) / (i + 1));
+    }
+    answer
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; all zeros; everything at the end
+    let cases: Vec[Vec[i64]] = [
+        [3, 7, 1, 6].to_vec(),
+        [10, 1].to_vec(),
+        [0, 0].to_vec(),
+        [0, 1000000000].to_vec(),
+    ].to_vec();
+    for nums in cases.into_iter() {
+        println(f"{nums}: {minimize_array_value(nums)}");
+    }
+    // 10^4 values: 10^9 first; 10^9 last; every one 10^9; a rise by
+    // 10^5; then random from 0 to 10^9
+    let n = 10000;
+    let mut first: Vec[i64] = Vec.filled(n, 0);
+    first[0] = 1000000000;
+    let mut last: Vec[i64] = Vec.filled(n, 0);
+    last[n - 1] = 1000000000;
+    let full: Vec[i64] = Vec.filled(n, 1000000000);
+    let mut rise: Vec[i64] = Vec.new();
+    for i in 0..n {
+        rise.push(i * 100000);
+    }
+    let mut seed = 2439;
+    let mut random: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        random.push(wide_random(mut seed) % 1000000001);
+    }
+    println(f"10^9 first: {minimize_array_value(first)}");
+    println(f"10^9 last: {minimize_array_value(last)}");
+    println(f"all 10^9: {minimize_array_value(full)}");
+    println(f"rising: {minimize_array_value(rise)}");
+    println(f"random: {minimize_array_value(random)}");
+    // 3000 random arrays of 2 to 12 values from 0 to 20: a checksum
+    // and the total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let len = 2 + next_random(mut seed) % 11;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..len {
+            nums.push(next_random(mut seed) % 21);
+        }
+        let answer = minimize_array_value(nums);
+        check = (check * 31 + answer) % 1000000007;
+        total += answer;
+    }
+    println(f"3000 random: checksum {check}, total {total}");
+}
