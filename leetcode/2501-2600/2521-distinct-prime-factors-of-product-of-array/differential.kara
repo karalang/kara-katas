@@ -1,0 +1,277 @@
+// LeetCode #2521: Distinct Prime Factors of Product of Array -- the
+// differential. The six arms against the statement read literally: the
+// primes to 1000 found by counting divisors, a prime being a number with
+// exactly two; then the product of the numbers taken modulo each prime,
+// the prime counted when the product leaves 0. Every list keeps the
+// constraints. 300 random lists of 1 to 10 numbers from 2 to 50, 30 of 1
+// to 30 from 2 to 1000 (the last 15 with a 1000 added), then 30 of one
+// prime repeated 1 to 5 times; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  from 1 to 4 for each number, no number to 1000 having five
+// P3  the numbers in the reverse order: the same answer
+// P4  the first number appended once more: the same answer
+// P5  the list joined to the next case's: from the larger of the two
+//     answers to their sum
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally
+
+fn literal_primes() -> Vec[i64] {
+    (2..1001).filter(|p| (1..p + 1).filter(|d| p % d == 0).count() == 2).collect()
+}
+
+fn literal(nums: Vec[i64], primes: Vec[i64]) -> i64 {
+    let mut count = 0;
+    for p in primes.iter() {
+        let mut product = 1;
+        for x in nums.iter() {
+            product = product * x % p;
+        }
+        if product == 0 {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- star (primes.kara) --------------------------------------------------
+
+fn star_distinct_prime_factors(nums: Vec[i64]) -> i64 {
+    let mut primes: Set[i64] = Set.new();
+    for x in nums.iter() {
+        let mut rest = x;
+        let mut d = 2;
+        while d * d <= rest {
+            if rest % d == 0 {
+                primes.insert(d);
+                while rest % d == 0 {
+                    rest /= d;
+                }
+            }
+            d += 1;
+        }
+        if rest > 1 {
+            primes.insert(rest);
+        }
+    }
+    primes.len()
+}
+
+// ---- sieve (primes_sieve.kara) -------------------------------------------
+
+fn sieve_distinct_prime_factors(nums: Vec[i64]) -> i64 {
+    let mut smallest: Vec[i64] = Vec.filled(1001, 0);
+    for p in 2..1001 {
+        if smallest[p] == 0 {
+            let mut m = p;
+            while m <= 1000 {
+                if smallest[m] == 0 {
+                    smallest[m] = p;
+                }
+                m += p;
+            }
+        }
+    }
+    let mut seen: Vec[bool] = Vec.filled(1001, false);
+    let mut count = 0;
+    for x in nums.iter() {
+        let mut rest = x;
+        while rest > 1 {
+            let p = smallest[rest];
+            if not seen[p] {
+                seen[p] = true;
+                count += 1;
+            }
+            rest /= p;
+        }
+    }
+    count
+}
+
+// ---- multiples (primes_multiples.kara) -----------------------------------
+
+fn multiples_distinct_prime_factors(nums: Vec[i64]) -> i64 {
+    let mut present = [false; 1001];
+    for x in nums.iter() {
+        present[x] = true;
+    }
+    let mut composite = [false; 1001];
+    let mut count = 0;
+    for p in 2..1001 {
+        if not composite[p] {
+            let mut hit = false;
+            let mut m = p;
+            while m <= 1000 {
+                composite[m] = m > p;
+                hit = hit or present[m];
+                m += p;
+            }
+            if hit {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+// ---- rec (primes_rec.kara) -----------------------------------------------
+
+fn rec_factor(rest: i64, d: i64, primes: mut ref SortedSet[i64]) {
+    if rest == 1 {
+        return;
+    }
+    if d * d > rest {
+        primes.insert(rest);
+    } else if rest % d == 0 {
+        primes.insert(d);
+        rec_factor(rest / d, d, mut primes);
+    } else {
+        rec_factor(rest, d + 1, mut primes);
+    }
+}
+
+fn rec_distinct_prime_factors(nums: Vec[i64]) -> i64 {
+    let mut primes: SortedSet[i64] = SortedSet.new();
+    for x in nums.iter() {
+        rec_factor(x, 2, mut primes);
+    }
+    primes.len()
+}
+
+// ---- iter (primes_iter.kara) ---------------------------------------------
+
+fn iter_distinct_prime_factors(nums: Vec[i64]) -> i64 {
+    (2..1001)
+        .filter(|p| (2..p).take_while(|d| d * d <= p).all(|d| p % d != 0))
+        .filter(|p| nums.iter().any(|x| x % p == 0))
+        .count()
+}
+
+// ---- solution (primes_solution.kara) -------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn distinct_prime_factors(nums: Vec[i32]) -> i32 {
+        let mut set = Set.new();
+        for n in ref nums {
+            let mut x = n;
+            let mut p: i32 = 2;
+            while p * p <= x {
+                while x % p == 0 {
+                    set.insert(p);
+                    x /= p;
+                }
+                p += 1;
+            }
+            if x > 1 {
+                set.insert(x);
+            }
+        }
+        set.len() as i32
+    }
+}
+
+fn solution_distinct_prime_factors(nums: Vec[i64]) -> i64 {
+    Solution.distinct_prime_factors(nums.iter().map(|x| x as i32).collect())
+}
+
+// ---- the differential --------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_distinct_prime_factors(nums),
+        1 => sieve_distinct_prime_factors(nums),
+        2 => multiples_distinct_prime_factors(nums),
+        3 => rec_distinct_prime_factors(nums),
+        4 => iter_distinct_prime_factors(nums),
+        _ => solution_distinct_prime_factors(nums),
+    }
+}
+
+fn main() {
+    let names = ["star", "sieve", "multiples", "rec", "iter", "solution"];
+    let primes = literal_primes();
+    let mut seed = 2521;
+    let mut problems: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        if t >= 330 {
+            let p = primes[next_random(mut seed) % primes.len()];
+            problems.push(Vec.filled(next_random(mut seed) % 5 + 1, p));
+        } else {
+            let (most, top) = if t < 300 { (10, 50) } else { (30, 1000) };
+            let n = next_random(mut seed) % most + 1;
+            let mut nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % (top - 1) + 2).collect();
+            if t >= 315 {
+                nums.push(1000);
+            }
+            problems.push(nums);
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut single = 0;
+    for t in 0..problems.len() {
+        let nums = problems[t].clone();
+        let truth = literal(nums, primes);
+        if truth == 1 {
+            single += 1;
+        }
+        check = (check * 31 + truth) % 1000000007;
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let mut longer = nums.clone();
+        longer.push(nums[0]);
+        let next = problems[(t + 1) % problems.len()].clone();
+        let mut joined = nums.clone();
+        joined.extend(next.iter());
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let other = answer(arm, next);
+            let both = answer(arm, joined);
+            let verdicts = [
+                x == truth,
+                x >= 1 and x <= 4 * nums.len(),
+                answer(arm, reversed) == x,
+                answer(arm, longer) == x,
+                both >= x.max(other) and both <= x + other,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums}, arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} cases, {single} with one prime: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

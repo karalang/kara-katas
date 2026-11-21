@@ -1,0 +1,48 @@
+// LeetCode #2521: Distinct Prime Factors of Product of Array -- benchmark
+// of the ★ arm (primes.kara): 200 lists of 1000 numbers from 2 to 1000
+// built once from its own generator; then the passes, each asking every
+// list, its length cut to one the checksum so far picks.
+
+fn distinct_prime_factors(nums: Vec[i64]) -> i64 {
+    let mut primes: Set[i64] = Set.new();
+    for x in nums.iter() {
+        let mut rest = x;
+        let mut d = 2;
+        while d * d <= rest {
+            if rest % d == 0 {
+                primes.insert(d);
+                while rest % d == 0 {
+                    rest /= d;
+                }
+            }
+            d += 1;
+        }
+        if rest > 1 {
+            primes.insert(rest);
+        }
+    }
+    primes.len()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2521;
+    let mut lists: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..200 {
+        lists.push((0..1000).map(|_| next_random(mut seed) % 999 + 2).collect());
+    }
+    let passes = 110;
+    let mut check = 0;
+    for p in 0..passes {
+        for nums in lists.iter() {
+            let n = check % 1000 + 1;
+            let part: Vec[i64] = nums.iter().take(n).collect();
+            check = (check * 31 + distinct_prime_factors(part) + p) % 1000000007;
+        }
+    }
+    println(f"{passes} passes over 200 lists of 1000 numbers: checksum {check}");
+}
