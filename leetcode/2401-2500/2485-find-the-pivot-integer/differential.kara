@@ -1,0 +1,219 @@
+// LeetCode #2485: Find the Pivot Integer -- the differential. The six
+// arms against the statement read literally: every `x` from 1 to `n`
+// tried in turn, the sums of 1 to `x` and of `x` to `n` each added up
+// afresh, and the first `x` where they are equal taken, -1 when none
+// is. No formula is used. 360 counts: the four with a pivot up to 1000,
+// 1, 8, 49 and 288, each with the counts up to two either side of it
+// that are at least 1, 18 in all; then 342 random from 1 to 1000; all
+// drawn before any arm answers.
+// P4 asks the arms for 1681, past the constraints' 1000.
+//
+// P1  the answer is the literal reading's
+// P2  an answer other than -1 is a pivot: between 1 and `n`, its square
+//     the sum of 1 to `n`
+// P3  -1 only when no `y` from 1 to `n` has a square that is the sum
+// P4  a pivot `x` for `n` of 288 or less: the count `3 n + 4 x + 1` has
+//     the pivot `2 n + 3 x + 1`
+// P5  a pivot for `n`: none for `n - 1` or `n + 1`
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn pivot_literally(n: i64) -> i64 {
+    for x in 1..n + 1 {
+        let mut left = 0;
+        for v in 1..x + 1 {
+            left += v;
+        }
+        let mut right = 0;
+        for v in x..n + 1 {
+            right += v;
+        }
+        if left == right {
+            return x;
+        }
+    }
+    -1
+}
+
+// ---- star (pivot.kara) ---------------------------------------------------
+
+fn star_pivot_integer(n: i64) -> i64 {
+    let total = n * (n + 1) / 2;
+    let x = (total as f64).sqrt().round() as i64;
+    if x * x == total { x } else { -1 }
+}
+
+// ---- scan (pivot_scan.kara) ----------------------------------------------
+
+fn scan_pivot_integer(n: i64) -> i64 {
+    let mut left = 0;
+    let mut right = n * (n + 1) / 2;
+    for x in 1..n + 1 {
+        left += x;
+        if left == right {
+            return x;
+        }
+        right -= x;
+    }
+    -1
+}
+
+// ---- bisect (pivot_bisect.kara) ------------------------------------------
+
+fn bisect_left_sum(x: i64) -> i64 {
+    x * (x + 1) / 2
+}
+
+fn bisect_right_sum(x: i64, n: i64) -> i64 {
+    bisect_left_sum(n) - bisect_left_sum(x - 1)
+}
+
+fn bisect_pivot_integer(n: i64) -> i64 {
+    let mut low = 1;
+    let mut high = n;
+    while low < high {
+        let mid = (low + high) / 2;
+        if bisect_left_sum(mid) < bisect_right_sum(mid, n) {
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
+    }
+    if bisect_left_sum(low) == bisect_right_sum(low, n) { low } else { -1 }
+}
+
+// ---- pointers (pivot_pointers.kara) --------------------------------------
+
+fn pointers_pivot_integer(n: i64) -> i64 {
+    let mut low = 1;
+    let mut high = n;
+    let mut left = 1;
+    let mut right = n;
+    while low < high {
+        if left < right {
+            low += 1;
+            left += low;
+        } else {
+            high -= 1;
+            right += high;
+        }
+    }
+    if left == right { low } else { -1 }
+}
+
+// ---- iter (pivot_iter.kara) ----------------------------------------------
+
+fn iter_pivot_integer(n: i64) -> i64 {
+    (1..n + 1).find(|x| (1..x + 1).sum() == (x..n + 1).sum()).unwrap_or(-1)
+}
+
+// ---- solution (pivot_solution.kara) --------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn pivot_integer(n: i32) -> i32 {
+        let total = n * (n + 1) / 2;
+        let x = (total as f64).sqrt() as i32;
+        if x * x == total {
+            x
+        } else {
+            -1
+        }
+    }
+}
+
+fn solution_pivot_integer(n: i64) -> i64 {
+    Solution.pivot_integer(n as i32)
+}
+
+
+// ---- the differential -------------------------------------------------------
+
+fn answer(arm: i64, n: i64) -> i64 {
+    match arm {
+        0 => star_pivot_integer(n),
+        1 => scan_pivot_integer(n),
+        2 => bisect_pivot_integer(n),
+        3 => pointers_pivot_integer(n),
+        4 => iter_pivot_integer(n),
+        _ => solution_pivot_integer(n),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "scan", "bisect", "pointers", "iter", "solution"];
+    let mut seed = 2485;
+    let mut cases: Vec[i64] = Vec.new();
+    for p in [1, 8, 49, 288].iter() {
+        for d in -2..3 {
+            if p + d >= 1 {
+                cases.push(p + d);
+            }
+        }
+    }
+    while cases.len() < 360 {
+        cases.push(1 + next_random(mut seed) % 1000);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let n = cases[c];
+        let truth = pivot_literally(n);
+        check = (check * 31 + truth + 2) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, n)).collect();
+        let total = n * (n + 1) / 2;
+        let mut rooted = false;
+        for y in 1..n + 1 {
+            if y * y == total {
+                rooted = true;
+            }
+        }
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                x == -1 or (x >= 1 and x <= n and x * x == total),
+                x != -1 or not rooted,
+                x == -1 or n > 288 or answer(arm, 3 * n + 4 * x + 1) == 2 * n + 3 * x + 1,
+                x == -1 or (answer(arm, n + 1) == -1 and (n == 1 or answer(arm, n - 1) == -1)),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
