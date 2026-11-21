@@ -1,0 +1,253 @@
+// LeetCode #2418: Sort the People -- the differential. The six arms
+// against the statement read literally: the tallest person not yet placed
+// found by a scan, placed next, and marked, until everyone is placed. No
+// sort. 360 cases: 300 random groups of 1 to 10 people, heights up to 30;
+// 30 of up to 1000 people, heights up to 10^5; and 30 of up to 1000
+// people whose heights are 1 to n. Every case is drawn before any arm
+// answers.
+//
+// P1  the answer is the literal reading's
+// P2  the answer holds the same names, sorted, as the input
+// P3  the people given in reverse order: the same answer
+// P4  every height doubled: the same answer
+// P5  the tallest person left out: the answer without its first name
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn sorted_literally(names: Slice[String], heights: Slice[i64]) -> Vec[String] {
+    let n = names.len();
+    let mut placed: Vec[bool] = Vec.filled(n, false);
+    let mut out: Vec[String] = Vec.new();
+    for _ in 0..n {
+        let mut best = -1;
+        for i in 0..n {
+            if not placed[i] and (best < 0 or heights[i] > heights[best]) {
+                best = i;
+            }
+        }
+        placed[best] = true;
+        out.push(names[best].clone());
+    }
+    out
+}
+
+// ---- star (people.kara) --------------------------------------------------
+
+fn star_sort_people(names: Vec[String], heights: Vec[i64]) -> Vec[String] {
+    let mut order: Vec[i64] = (0..names.len()).collect();
+    order.sort_by(|a, b| heights[b].cmp(heights[a]));
+    let mut sorted: Vec[String] = Vec.new();
+    for i in order.iter() {
+        sorted.push(names[i].clone());
+    }
+    sorted
+}
+
+// ---- pairs (people_pairs.kara) -------------------------------------------
+
+fn pairs_sort_people(names: Vec[String], heights: Vec[i64]) -> Vec[String] {
+    let mut pairs: Vec[(i64, String)] = Vec.new();
+    for i in 0..names.len() {
+        pairs.push((heights[i], names[i].clone()));
+    }
+    pairs.sort();
+    let mut sorted: Vec[String] = Vec.new();
+    let mut k = pairs.len() - 1;
+    while k >= 0 {
+        sorted.push(pairs[k].1.clone());
+        k -= 1;
+    }
+    sorted
+}
+
+// ---- map (people_map.kara) -----------------------------------------------
+
+fn map_sort_people(names: Vec[String], heights: Vec[i64]) -> Vec[String] {
+    let mut by_height: SortedMap[i64, String] = SortedMap.new();
+    for i in 0..names.len() {
+        by_height.insert(heights[i], names[i].clone());
+    }
+    let mut sorted: Vec[String] = Vec.new();
+    for (_, name) in by_height.iter() {
+        sorted.push(name.clone());
+    }
+    sorted.reverse();
+    sorted
+}
+
+// ---- count (people_count.kara) -------------------------------------------
+
+fn count_sort_people(names: Vec[String], heights: Vec[i64]) -> Vec[String] {
+    let mut tallest = 0;
+    for h in heights.iter() {
+        tallest = tallest.max(h);
+    }
+    let mut at: Vec[i64] = Vec.filled(tallest + 1, -1);
+    for i in 0..heights.len() {
+        at[heights[i]] = i;
+    }
+    let mut sorted: Vec[String] = Vec.new();
+    let mut h = tallest;
+    while h > 0 {
+        if at[h] >= 0 {
+            sorted.push(names[at[h]].clone());
+        }
+        h -= 1;
+    }
+    sorted
+}
+
+// ---- iter (people_iter.kara) ---------------------------------------------
+
+fn iter_sort_people(names: Vec[String], heights: Vec[i64]) -> Vec[String] {
+    let mut people: Vec[(i64, String)] = heights.iter().zip(names.iter()).map(|(h, n)| (h, n.clone())).collect();
+    people.sort_by_key(|p| -p.0);
+    people.iter().map(|p| p.1.clone()).collect()
+}
+
+// ---- solution (people_solution.kara) -------------------------------------
+
+impl Solution {
+    pub fn sort_people(names: Vec[String], heights: Vec[i32]) -> Vec[String] {
+        let mut idx: Vec[i64] = (0..names.len()).collect();
+        idx.sort_by(|a, b| heights[b].cmp(heights[a]));
+        idx.into_iter().map(|i| names[i].clone()).collect()
+    }
+}
+
+struct Solution {}
+
+fn solution_sort_people(names: Vec[String], heights: Vec[i64]) -> Vec[String] {
+    Solution.sort_people(names, heights.iter().map(|h| h as i32).collect())
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, names: Slice[String], heights: Slice[i64]) -> Vec[String] {
+    let names = names.to_vec();
+    let heights = heights.to_vec();
+    match arm {
+        0 => star_sort_people(names, heights),
+        1 => pairs_sort_people(names, heights),
+        2 => map_sort_people(names, heights),
+        3 => count_sort_people(names, heights),
+        4 => iter_sort_people(names, heights),
+        _ => solution_sort_people(names, heights),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn digest(names: Slice[String]) -> i64 {
+    let mut h = 0;
+    for name in names.iter() {
+        for b in name.bytes().iter() {
+            h = (h * 31 + b) % 1000000007;
+        }
+        h = (h * 31 + 1) % 1000000007;
+    }
+    h
+}
+
+fn main() {
+    let arms = ["star", "pairs", "map", "count", "iter", "solution"];
+    let mut seed = 2418;
+    let mut cases: Vec[(Vec[String], Vec[i64])] = Vec.new();
+    for t in 0..360 {
+        let (n, top) = if t < 300 {
+            let n = 1 + next_random(mut seed) % 10;
+            (n, n + next_random(mut seed) % 21)
+        } else if t < 330 {
+            (1 + next_random(mut seed) % 1000, 100000)
+        } else {
+            let n = 1 + next_random(mut seed) % 1000;
+            (n, n)
+        };
+        let mut names: Vec[String] = Vec.new();
+        for _ in 0..n {
+            let len = 1 + next_random(mut seed) % 4;
+            let bytes: Vec[u8] = (0..len).map(|_| b'a' + (next_random(mut seed) % 3) as u8).collect();
+            names.push(String.from_utf8(bytes).unwrap());
+        }
+        let mut pool: Vec[i64] = (1..top + 1).collect();
+        for i in 0..n {
+            let j = i + (next_random(mut seed) * 32768 + next_random(mut seed)) % (top - i);
+            pool.swap(i, j);
+        }
+        cases.push((names, pool[0..n].to_vec()));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (names, heights) = cases[c].clone();
+        let n = names.len();
+        let truth = sorted_literally(names, heights);
+        check = (check * 31 + digest(truth)) % 1000000007;
+        let mut names_sorted = names.clone();
+        names_sorted.sort();
+        let mut back_names = names.clone();
+        back_names.reverse();
+        let mut back_heights = heights.clone();
+        back_heights.reverse();
+        let doubled: Vec[i64] = heights.iter().map(|h| 2 * h).collect();
+        let mut tallest = 0;
+        for i in 1..n {
+            if heights[i] > heights[tallest] {
+                tallest = i;
+            }
+        }
+        let mut rest_names: Vec[String] = Vec.new();
+        let mut rest_heights: Vec[i64] = Vec.new();
+        for i in 0..n {
+            if i != tallest {
+                rest_names.push(names[i].clone());
+                rest_heights.push(heights[i]);
+            }
+        }
+        let got: Vec[Vec[String]] = (0..6).map(|arm| answer(arm, names, heights)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut value_sorted = value.clone();
+            value_sorted.sort();
+            let fifth = if n > 1 and value.len() == n {
+                answer(arm, rest_names, rest_heights) == value[1..n].to_vec()
+            } else {
+                true
+            };
+            let verdicts = [value == truth, value_sorted == names_sorted, answer(arm, back_names, back_heights) == value, answer(arm, names, doubled) == value, fifth, same >= 3];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

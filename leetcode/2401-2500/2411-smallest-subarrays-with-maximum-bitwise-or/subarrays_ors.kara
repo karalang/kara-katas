@@ -1,0 +1,85 @@
+// LeetCode #2411: Smallest Subarrays With Maximum Bitwise OR -- the
+// distinct ORs. From each start the ORs of longer and longer subarrays
+// only gain bits, so they take at most 31 values; walking from the right,
+// the list for i is nums[i] alone and each of i + 1's ORed with nums[i],
+// each value kept with the shortest end that gives it. The largest is the
+// last. O(30 n).
+
+fn smallest_subarrays(nums: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut answer: Vec[i64] = Vec.filled(n, 1);
+    let mut ors: Vec[(i64, i64)] = Vec.new();
+    let mut i = n - 1;
+    while i >= 0 {
+        let mut next: Vec[(i64, i64)] = [(nums[i], i)].to_vec();
+        for (value, end) in ors.iter() {
+            let merged = value | nums[i];
+            if merged != next[next.len() - 1].0 {
+                next.push((merged, end));
+            }
+        }
+        ors = next;
+        answer[i] = ors[ors.len() - 1].1 - i + 1;
+        i -= 1;
+    }
+    answer
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` values below `top`, each with probability 1 / `zeros` a 0.
+fn values(seed: mut ref i64, n: i64, top: i64, zeros: i64) -> Vec[i64] {
+    (0..n).map(|_| {
+        let v = (next_random(mut seed) * 32768 + next_random(mut seed)) % top;
+        if next_random(mut seed) % zeros == 0 {
+            0
+        } else {
+            v
+        }
+    }).collect()
+}
+
+fn show(answer: Vec[i64]) -> String {
+    let parts: Vec[String] = answer.iter().map(|a| f"{a}").collect();
+    parts.join(",")
+}
+
+// A checksum of the lengths and their total.
+fn digest(answer: Vec[i64]) -> String {
+    let mut check = 0;
+    for a in answer.iter() {
+        check = (check * 31 + a) % 1000000007;
+    }
+    f"checksum {check}, total {answer.iter().sum()}"
+}
+
+fn main() {
+    // LeetCode's two examples; one 0; all zeros; one bit apiece
+    println(show(smallest_subarrays([1, 0, 2, 1, 3].to_vec())));
+    println(show(smallest_subarrays([1, 2].to_vec())));
+    println(show(smallest_subarrays([0].to_vec())));
+    println(show(smallest_subarrays([0, 0, 0].to_vec())));
+    println(show(smallest_subarrays([1, 2, 4, 8, 16, 0, 1].to_vec())));
+    // 10^5 values up to 10^9, and 10^5 of a few low bits with many zeros
+    let mut seed = 2411;
+    println(digest(smallest_subarrays(values(mut seed, 100000, 1000000001, 50))));
+    println(digest(smallest_subarrays(values(mut seed, 100000, 16, 3))));
+    // 2000 random arrays of up to 30 values below 1 to 64; a checksum of
+    // every answer
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let top = 1 + next_random(mut seed) % 64;
+        for a in smallest_subarrays(values(mut seed, n, top, 4)).iter() {
+            total += a;
+            check = (check * 31 + a) % 1000000007;
+        }
+    }
+    println(f"2000 random: checksum {check}, total {total}");
+}

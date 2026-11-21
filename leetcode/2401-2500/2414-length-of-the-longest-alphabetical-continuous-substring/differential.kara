@@ -1,0 +1,265 @@
+// LeetCode #2414: Length of the Longest Alphabetical Continuous Substring
+// -- the differential. The six arms against the statement read literally:
+// every substring, each compared letter by letter with the alphabet from
+// its first letter's place, and the longest that matches. No runs. 360
+// cases: 300 random strings of 1 to 12 letters, which the literal reading
+// answers; 30 of up to 3000 letters of all 26, rising often; and 30 of up
+// to 3000 of the first 3. Every case is drawn before any arm answers.
+//
+// P1  up to 12 letters: the answer is the literal reading's
+// P2  some substring of the answer's length rises by one letter at a time,
+//     and none one longer does
+// P3  the string reversed, each letter mirrored a to z: the same answer
+// P4  the string written twice: at least the answer, and at most twice it
+//     or 26
+// P5  the first letter dropped: the answer or one less
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn alphabetical(b: Slice[u8], from: i64, to: i64) -> bool {
+    let alphabet = "abcdefghijklmnopqrstuvwxyz".bytes();
+    let first = (b[from] - b'a') as i64;
+    if first + to - from > 26 {
+        return false;
+    }
+    for i in from..to {
+        if b[i] != alphabet[first + i - from] {
+            return false;
+        }
+    }
+    true
+}
+
+fn longest_literally(s: String) -> i64 {
+    let b = s.bytes();
+    let mut best = 0;
+    for from in 0..b.len() {
+        for to in from + 1..b.len() + 1 {
+            if alphabetical(b, from, to) {
+                best = best.max(to - from);
+            }
+        }
+    }
+    best
+}
+
+// Whether some window of `len` letters rises by one letter at a time.
+fn some_rising(b: Slice[u8], len: i64) -> bool {
+    for from in 0..b.len() - len + 1 {
+        let mut rises = true;
+        for i in from + 1..from + len {
+            if b[i] != b[i - 1] + 1 {
+                rises = false;
+            }
+        }
+        if rises {
+            return true;
+        }
+    }
+    false
+}
+
+// ---- star (alpha.kara) ---------------------------------------------------
+
+fn star_longest_continuous_substring(s: String) -> i64 {
+    let b = s.bytes();
+    let mut run = 1;
+    let mut best = 1;
+    for i in 1..b.len() {
+        if b[i] == b[i - 1] + 1 {
+            run += 1;
+            best = best.max(run);
+        } else {
+            run = 1;
+        }
+    }
+    best
+}
+
+// ---- window (alpha_window.kara) ------------------------------------------
+
+fn window_longest_continuous_substring(s: String) -> i64 {
+    let b = s.bytes();
+    let mut start = 0;
+    let mut best = 0;
+    for i in 0..b.len() {
+        if i > 0 and b[i] != b[i - 1] + 1 {
+            start = i;
+        }
+        best = best.max(i - start + 1);
+    }
+    best
+}
+
+// ---- dp (alpha_dp.kara) --------------------------------------------------
+
+fn dp_longest_continuous_substring(s: String) -> i64 {
+    let chars: Vec[char] = s.chars().collect();
+    let n = chars.len();
+    let mut ending: Vec[i64] = Vec.filled(n, 1);
+    for i in 1..n {
+        if chars[i] as u32 == chars[i - 1] as u32 + 1 {
+            ending[i] = ending[i - 1] + 1;
+        }
+    }
+    ending.iter().max().unwrap()
+}
+
+// ---- find (alpha_find.kara) ----------------------------------------------
+
+fn find_longest_continuous_substring(s: String) -> i64 {
+    let alphabet = "abcdefghijklmnopqrstuvwxyz".bytes();
+    let b = s.bytes();
+    let mut best = 0;
+    for i in 0..b.len() {
+        let mut k = (b[i] - b'a') as i64;
+        let mut j = i;
+        while j < b.len() and k < 26 and b[j] == alphabet[k] {
+            j += 1;
+            k += 1;
+        }
+        best = best.max(j - i);
+    }
+    best
+}
+
+// ---- iter (alpha_iter.kara) ----------------------------------------------
+
+fn iter_longest_continuous_substring(s: String) -> i64 {
+    let b = s.bytes();
+    b.windows(2).into_iter().map(|w| w[1] == w[0] + 1).scan(1, |run, follows| {
+        let next = if follows {
+            run + 1
+        } else {
+            1
+        };
+        Some((next, next))
+    }).max().unwrap_or(1).max(1)
+}
+
+// ---- solution (alpha_solution.kara) --------------------------------------
+
+impl Solution {
+    pub fn longest_continuous_substring(s: String) -> i32 {
+        let s = s.bytes();
+        let mut (ans, cnt) = (1i32, 1i32);
+        for i in 1..s.len() {
+            if s[i] == s[i - 1] + 1 {
+                cnt += 1;
+                ans = ans.max(cnt);
+            } else {
+                cnt = 1;
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_longest_continuous_substring(s: String) -> i64 {
+    Solution.longest_continuous_substring(s)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, s: String) -> i64 {
+    match arm {
+        0 => star_longest_continuous_substring(s),
+        1 => window_longest_continuous_substring(s),
+        2 => dp_longest_continuous_substring(s),
+        3 => find_longest_continuous_substring(s),
+        4 => iter_longest_continuous_substring(s),
+        _ => solution_longest_continuous_substring(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "window", "dp", "find", "iter", "solution"];
+    let mut seed = 2414;
+    let mut cases: Vec[String] = Vec.new();
+    for t in 0..360 {
+        let (n, kinds, step) = if t < 300 {
+            (1 + next_random(mut seed) % 12, 2 + next_random(mut seed) % 25, 1 + next_random(mut seed) % 4)
+        } else if t < 330 {
+            (1 + next_random(mut seed) % 3000, 26, 2)
+        } else {
+            (1 + next_random(mut seed) % 3000, 3, 3)
+        };
+        let mut bytes: Vec[u8] = Vec.new();
+        for i in 0..n {
+            if i > 0 and bytes[i - 1] < b'z' and next_random(mut seed) % step == 0 {
+                bytes.push(bytes[i - 1] + 1);
+            } else {
+                bytes.push(b'a' + (next_random(mut seed) % kinds) as u8);
+            }
+        }
+        cases.push(String.from_utf8(bytes).unwrap());
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let s = cases[c].clone();
+        let b = s.bytes();
+        let n = b.len();
+        let truth = if n <= 12 {
+            longest_literally(s)
+        } else {
+            -1
+        };
+        if truth >= 0 {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let mut backwards: Vec[u8] = b.iter().map(|x| b'z' - (x - b'a')).collect();
+        backwards.reverse();
+        let mirrored = String.from_utf8(backwards).unwrap();
+        let twice = f"{s}{s}";
+        let rest = String.from_utf8(b[1..].to_vec()).unwrap();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, s)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let doubled = answer(arm, twice);
+            let dropped = if n > 1 {
+                answer(arm, rest)
+            } else {
+                value
+            };
+            let verdicts = [truth < 0 or value == truth, value >= 1 and value <= n and some_rising(b, value) and (value == n or not some_rising(b, value + 1)), answer(arm, mirrored) == value, doubled >= value and doubled <= (2 * value).min(26).max(value), dropped == value or dropped == value - 1, same >= 3];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,131 @@
+// LeetCode #2415: Reverse Odd Levels of Binary Tree -- LeetCode's Rust
+// template, as Rust writes it, carried by karac fix:
+// `Option<Rc<RefCell<TreeNode>>>` in and out, a `dfs` nested in the method
+// walking the mirror pairs through `borrow()` and `borrow_mut()`.
+
+fn dfs(a: Option[TreeNode], b: Option[TreeNode], odd: bool) {
+    if let (Some(a), Some(b)) = (a, b) {
+        if odd {
+            let t = a.val;
+            a.val = b.val;
+            b.val = t;
+        }
+        dfs(a.left.clone(), b.right.clone(), not odd);
+        dfs(a.right.clone(), b.left.clone(), not odd);
+    }
+}
+
+impl Solution {
+    pub fn reverse_odd_levels(root: Option[TreeNode]) -> Option[TreeNode] {
+        if let Some(r) = root.clone() {
+            dfs(r.left.clone(), r.right.clone(), true);
+        }
+        root
+    }
+}
+
+struct Solution {}
+
+fn reverse_odd_levels(root: Option[TreeNode]) -> Option[TreeNode] {
+    Solution.reverse_odd_levels(root)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+// LeetCode's own node: an `i32` value
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// The perfect tree whose level order is `values`: node i's children are
+// nodes 2 i + 1 and 2 i + 2.
+fn build(values: Slice[i64]) -> Option[TreeNode] {
+    let nodes: Vec[TreeNode] = values.iter().map(|v| TreeNode {
+        val: v as i32,
+        left: None,
+        right: None,
+    }).collect();
+    for i in 0..nodes.len() / 2 {
+        nodes[i].left = Some(nodes[2 * i + 1]);
+        nodes[i].right = Some(nodes[2 * i + 2]);
+    }
+    Some(nodes[0])
+}
+
+// The tree's values in level order.
+fn levels(root: Option[TreeNode]) -> Vec[i64] {
+    let mut queue: Vec[TreeNode] = Vec.new();
+    if let Some(r) = root {
+        queue.push(r);
+    }
+    let mut head = 0;
+    while head < queue.len() {
+        let node = queue[head];
+        head += 1;
+        if let Some(l) = node.left {
+            queue.push(l);
+        }
+        if let Some(r) = node.right {
+            queue.push(r);
+        }
+    }
+    queue.iter().map(|n| n.val as i64).collect()
+}
+
+fn show(values: Vec[i64]) -> String {
+    let parts: Vec[String] = values.iter().map(|v| f"{v}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn answer(values: Vec[i64]) -> Vec[i64] {
+    levels(reverse_odd_levels(build(values)))
+}
+
+// A perfect tree of `depth` levels below the root, its values random below
+// `top`.
+fn random_values(seed: mut ref i64, depth: i64, top: i64) -> Vec[i64] {
+    (0..(1 << depth + 1) - 1).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % top).collect()
+}
+
+fn digest(values: Vec[i64]) -> i64 {
+    let mut h = 0;
+    for v in values.iter() {
+        h = (h * 31 + v) % 1000000007;
+    }
+    h
+}
+
+fn main() {
+    // LeetCode's three examples; one node; the values 0 to 14 in order
+    println(show(answer([2, 3, 5, 8, 13, 21, 34].to_vec())));
+    println(show(answer([7, 13, 11].to_vec())));
+    println(show(answer([0, 1, 2, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2].to_vec())));
+    println(show(answer([5].to_vec())));
+    println(show(answer((0..15).collect())));
+    // the constraints' largest, 2^14 - 1 nodes, values up to 10^5, and
+    // 2^14 - 1 values in order, each by a digest
+    let mut seed = 2415;
+    println(f"{digest(answer(random_values(mut seed, 13, 100001)))} {digest(answer((0..16383).collect()))}");
+    // 2000 random trees of 0 to 6 levels below the root, values below 1 to
+    // 50; a checksum of every digest and the total of each left child of the
+    // root less the right
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..2000 {
+        let depth = next_random(mut seed) % 7;
+        let top = 1 + next_random(mut seed) % 50;
+        let got = answer(random_values(mut seed, depth, top));
+        if got.len() > 1 {
+            total += got[1] - got[2];
+        }
+        check = (check * 31 + digest(got)) % 1000000007;
+    }
+    println(f"2000 random: checksum {check}, total {total}");
+}

@@ -1,0 +1,327 @@
+// LeetCode #2411: Smallest Subarrays With Maximum Bitwise OR -- the
+// differential. The six arms against the statement read literally: from
+// every start, the OR of every subarray computed afresh, the largest
+// found, and the shortest subarray giving it. No bit tracking. 360 cases:
+// 300 random arrays of 1 to 12 values below 1 to 64, a quarter of them 0,
+// which the literal reading answers; 30 of up to 3000 values up to 10^9;
+// and 30 of up to 3000 values below 16, a third of them 0. Every case is
+// drawn before any arm answers.
+//
+// P1  up to 12 values: the answer is the literal reading's
+// P2  from every start, the subarray of the answer's length has the
+//     suffix's OR, and one shorter does not
+// P3  a 0 appended: the same answers, and 1 for the 0
+// P4  the first value dropped: the answers from the second on
+// P5  the array written twice: the second copy's answers are the array's
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn smallest_literally(nums: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut answer: Vec[i64] = Vec.new();
+    for i in 0..n {
+        let mut largest = 0;
+        for j in i..n {
+            let mut whole = 0;
+            for x in nums[i..j + 1].iter() {
+                whole |= x;
+            }
+            largest = largest.max(whole);
+        }
+        let mut j = i;
+        loop {
+            let mut whole = 0;
+            for x in nums[i..j + 1].iter() {
+                whole |= x;
+            }
+            if whole == largest {
+                break;
+            }
+            j += 1;
+        }
+        answer.push(j - i + 1);
+    }
+    answer
+}
+
+// Whether every start's answer reaches the suffix's OR and one less does
+// not.
+fn shortest_reaching(nums: Vec[i64], answer: Vec[i64]) -> bool {
+    let n = nums.len();
+    if answer.len() != n {
+        return false;
+    }
+    let mut suffix = 0;
+    for i in (0..n).rev() {
+        suffix |= nums[i];
+        let a = answer[i];
+        if a < 1 or i + a > n {
+            return false;
+        }
+        let mut whole = 0;
+        for j in i..i + a - 1 {
+            whole |= nums[j];
+        }
+        if a > 1 and whole == suffix or whole | nums[i + a - 1] != suffix {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- star (subarrays.kara) -----------------------------------------------
+
+fn star_smallest_subarrays(nums: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut nearest: Vec[i64] = Vec.filled(30, -1);
+    let mut answer: Vec[i64] = Vec.filled(n, 1);
+    let mut i = n - 1;
+    while i >= 0 {
+        let mut reach = i;
+        for bit in 0..30 {
+            if nums[i] >> bit & 1 == 1 {
+                nearest[bit] = i;
+            }
+            reach = reach.max(nearest[bit]);
+        }
+        answer[i] = reach - i + 1;
+        i -= 1;
+    }
+    answer
+}
+
+// ---- ors (subarrays_ors.kara) --------------------------------------------
+
+fn ors_smallest_subarrays(nums: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut answer: Vec[i64] = Vec.filled(n, 1);
+    let mut ors: Vec[(i64, i64)] = Vec.new();
+    let mut i = n - 1;
+    while i >= 0 {
+        let mut next: Vec[(i64, i64)] = [(nums[i], i)].to_vec();
+        for (value, end) in ors.iter() {
+            let merged = value | nums[i];
+            if merged != next[next.len() - 1].0 {
+                next.push((merged, end));
+            }
+        }
+        ors = next;
+        answer[i] = ors[ors.len() - 1].1 - i + 1;
+        i -= 1;
+    }
+    answer
+}
+
+// ---- window (subarrays_window.kara) --------------------------------------
+
+fn window_smallest_subarrays(nums: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut answer: Vec[i64] = Vec.filled(n, 1);
+    let mut count: Vec[i64] = Vec.filled(30, 0);
+    let mut j = n - 1;
+    let mut i = n - 1;
+    while i >= 0 {
+        for bit in 0..30 {
+            count[bit] += nums[i] >> bit & 1;
+        }
+        while j > i {
+            let mut needed = false;
+            for bit in 0..30 {
+                if nums[j] >> bit & 1 == 1 and count[bit] == 1 {
+                    needed = true;
+                }
+            }
+            if needed {
+                break;
+            }
+            for bit in 0..30 {
+                count[bit] -= nums[j] >> bit & 1;
+            }
+            j -= 1;
+        }
+        answer[i] = j - i + 1;
+        i -= 1;
+    }
+    answer
+}
+
+// ---- sparse (subarrays_sparse.kara) --------------------------------------
+
+fn sparse_range_or(table: Vec[Vec[i64]], from: i64, to: i64) -> i64 {
+    let mut k = 0;
+    while 2 << k <= to - from + 1 {
+        k += 1;
+    }
+    table[k][from] | table[k][to - (1 << k) + 1]
+}
+
+fn sparse_smallest_subarrays(nums: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut table: Vec[Vec[i64]] = [nums.clone()].to_vec();
+    let mut k = 1;
+    while 1 << k <= n {
+        let prev = table[k - 1].clone();
+        let half = 1 << k - 1;
+        let row: Vec[i64] = (0..n - (1 << k) + 1).map(|i| prev[i] | prev[i + half]).collect();
+        table.push(row);
+        k += 1;
+    }
+    let mut suffix: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in (0..n).rev() {
+        suffix[i] = suffix[i + 1] | nums[i];
+    }
+    let mut answer: Vec[i64] = Vec.filled(n, 1);
+    for i in 0..n {
+        let mut lo = i;
+        let mut hi = n - 1;
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            if sparse_range_or(table, i, mid) == suffix[i] {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        answer[i] = lo - i + 1;
+    }
+    answer
+}
+
+// ---- iter (subarrays_iter.kara) ------------------------------------------
+
+fn iter_smallest_subarrays(nums: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut nearest: Vec[i64] = Vec.filled(30, -1);
+    let mut answer: Vec[i64] = Vec.filled(n, 1);
+    for i in (0..n).rev() {
+        for bit in (0..30).filter(|bit| nums[i] >> bit & 1 == 1) {
+            nearest[bit] = i;
+        }
+        answer[i] = nearest.iter().max().unwrap().max(i) - i + 1;
+    }
+    answer
+}
+
+// ---- solution (subarrays_solution.kara) ----------------------------------
+
+impl Solution {
+    pub fn smallest_subarrays(nums: Vec[i32]) -> Vec[i32] {
+        let n = nums.len();
+        let mut last = [0; 32];
+        let mut ans = Vec.filled(n, 1i32);
+        for i in (0..n).rev() {
+            for b in 0..32 {
+                if nums[i] >> b & 1 == 1 {
+                    last[b] = i;
+                }
+                ans[i] = ans[i].max(last[b] as i32 - i as i32 + 1);
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_smallest_subarrays(nums: Vec[i64]) -> Vec[i64] {
+    let values: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.smallest_subarrays(values).iter().map(|a| a as i64).collect()
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64]) -> Vec[i64] {
+    match arm {
+        0 => star_smallest_subarrays(nums),
+        1 => ors_smallest_subarrays(nums),
+        2 => window_smallest_subarrays(nums),
+        3 => sparse_smallest_subarrays(nums),
+        4 => iter_smallest_subarrays(nums),
+        _ => solution_smallest_subarrays(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "ors", "window", "sparse", "iter", "solution"];
+    let mut seed = 2411;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let (n, top, zeros) = if t < 300 {
+            (1 + next_random(mut seed) % 12, 1 + next_random(mut seed) % 64, 4)
+        } else if t < 330 {
+            (1 + next_random(mut seed) % 3000, 1000000001, 50)
+        } else {
+            (1 + next_random(mut seed) % 3000, 16, 3)
+        };
+        let nums: Vec[i64] = (0..n).map(|_| {
+            let v = (next_random(mut seed) * 32768 + next_random(mut seed)) % top;
+            if next_random(mut seed) % zeros == 0 {
+                0
+            } else {
+                v
+            }
+        }).collect();
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let nums = cases[c].clone();
+        let n = nums.len();
+        let truth: Vec[i64] = if n <= 12 {
+            smallest_literally(nums)
+        } else {
+            Vec.new()
+        };
+        for a in truth.iter() {
+            check = (check * 31 + a) % 1000000007;
+        }
+        let mut padded = nums.clone();
+        padded.push(0);
+        let rest = nums[1..].to_vec();
+        let mut twice = nums.clone();
+        twice.extend(nums.iter());
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut with_zero = value.clone();
+            with_zero.push(1);
+            let verdicts = [n > 12 or value == truth, shortest_reaching(nums, value), answer(arm, padded) == with_zero, n < 2 or answer(arm, rest) == value[1..].to_vec(), answer(arm, twice)[n..].to_vec() == value, same >= 3];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

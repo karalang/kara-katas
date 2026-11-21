@@ -1,0 +1,101 @@
+// LeetCode #2418: Sort the People -- counting. A table over every height
+// up to the tallest holds the index of the person of that height, or -1;
+// walking it down from the tallest reads the names in order.
+// O(n + the tallest height).
+
+fn sort_people(names: Vec[String], heights: Vec[i64]) -> Vec[String] {
+    let mut tallest = 0;
+    for h in heights.iter() {
+        tallest = tallest.max(h);
+    }
+    let mut at: Vec[i64] = Vec.filled(tallest + 1, -1);
+    for i in 0..heights.len() {
+        at[heights[i]] = i;
+    }
+    let mut sorted: Vec[String] = Vec.new();
+    let mut h = tallest;
+    while h > 0 {
+        if at[h] >= 0 {
+            sorted.push(names[at[h]].clone());
+        }
+        h -= 1;
+    }
+    sorted
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` people: names of 1 to `longest` letters, upper or lower case, from
+// the first `kinds` of each; distinct heights from 1 to `top`, shuffled.
+fn random_people(seed: mut ref i64, n: i64, longest: i64, kinds: i64, top: i64) -> (Vec[String], Vec[i64]) {
+    let mut names: Vec[String] = Vec.new();
+    for _ in 0..n {
+        let len = 1 + next_random(mut seed) % longest;
+        let mut bytes: Vec[u8] = Vec.new();
+        for _ in 0..len {
+            let base = if next_random(mut seed) % 2 == 0 {
+                b'a'
+            } else {
+                b'A'
+            };
+            bytes.push(base + (next_random(mut seed) % kinds) as u8);
+        }
+        names.push(String.from_utf8(bytes).unwrap());
+    }
+    // a partial shuffle of 1..top, its first n the heights
+    let mut pool: Vec[i64] = (1..top + 1).collect();
+    for i in 0..n {
+        let j = i + (next_random(mut seed) * 32768 + next_random(mut seed)) % (top - i);
+        pool.swap(i, j);
+    }
+    (names, pool[0..n].to_vec())
+}
+
+fn words_of(list: Slice[Str]) -> Vec[String] {
+    list.iter().map(|w| w.to_string()).collect()
+}
+
+fn show(names: Vec[String]) -> String {
+    f"[{names.join(",")}]"
+}
+
+fn digest(names: Vec[String]) -> i64 {
+    let mut h = 0;
+    for name in names.iter() {
+        for b in name.bytes().iter() {
+            h = (h * 31 + b) % 1000000007;
+        }
+        h = (h * 31 + 1) % 1000000007;
+    }
+    h
+}
+
+fn main() {
+    // LeetCode's two examples; one person; heights already falling, and
+    // rising
+    println(show(sort_people(words_of(["Mary", "John", "Emma"]), [180, 165, 170].to_vec())));
+    println(show(sort_people(words_of(["Alice", "Bob", "Bob"]), [155, 185, 150].to_vec())));
+    println(show(sort_people(words_of(["Zed"]), [100000].to_vec())));
+    println(show(sort_people(words_of(["c", "b", "a"]), [3, 2, 1].to_vec())));
+    println(show(sort_people(words_of(["a", "b", "c", "d"]), [1, 2, 3, 4].to_vec())));
+    // the constraints' largest, 1000 people of names up to 20 letters,
+    // heights up to 10^5, by a digest
+    let mut seed = 2418;
+    let (names, heights) = random_people(mut seed, 1000, 20, 26, 100000);
+    println(f"{digest(sort_people(names, heights))}");
+    // 2000 random cases of up to 10 people, names of up to 3 letters from
+    // the first 2, heights up to 1 to 30; a checksum of every digest
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 10;
+        let top = n + next_random(mut seed) % 21;
+        let (names, heights) = random_people(mut seed, n, 3, 2, top);
+        check = (check * 31 + digest(sort_people(names, heights))) % 1000000007;
+    }
+    println(f"2000 random: checksum {check}");
+}
