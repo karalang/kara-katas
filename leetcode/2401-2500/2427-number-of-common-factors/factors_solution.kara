@@ -1,0 +1,67 @@
+// LeetCode #2427: Number of Common Factors -- LeetCode's Rust template, as
+// Rust writes it, carried by karac fix: the gcd by a recursive
+// associated function called through `Self::gcd`, and its divisors
+// counted over the inclusive range `1..=g` by `filter(|&x| ..)` and
+// `count() as i32`.
+
+impl Solution {
+    pub fn common_factors(a: i32, b: i32) -> i32 {
+        let g = Solution.gcd(a, b);
+        (1..=g).filter(|x| g % x == 0).count() as i32
+    }
+
+    fn gcd(a: i32, b: i32) -> i32 {
+        if b == 0 { a } else { Solution.gcd(b, a % b) }
+    }
+}
+
+struct Solution {}
+
+fn common_factors(a: i64, b: i64) -> i64 {
+    Solution.common_factors(a as i32, b as i32)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; 1 and 1; the constraints' largest, 1000
+    // twice; two primes; one dividing the other; 720 and 840, gcd 120
+    for (a, b) in [(12, 6), (25, 30), (1, 1), (1000, 1000), (997, 991), (7, 994), (720, 840)].iter() {
+        println(f"{a} {b}: {common_factors(a, b)}");
+    }
+    // every pair from 1 to 200: a checksum of the answers in order, and
+    // their total
+    let mut check = 0;
+    let mut total = 0;
+    for a in 1..201 {
+        for b in 1..201 {
+            let answer = common_factors(a, b);
+            check = (check * 31 + answer) % 1000000007;
+            total += answer;
+        }
+    }
+    println(f"pairs to 200: checksum {check}, total {total}");
+    // 3000 random pairs from 1 to 1000, the second a multiple of a random
+    // factor of the first half the time
+    let mut seed = 2427;
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let a = 1 + next_random(mut seed) % 1000;
+        let b = if next_random(mut seed) % 2 == 0 {
+            1 + next_random(mut seed) % 1000
+        } else {
+            let f = 1 + next_random(mut seed) % a;
+            f * (1 + next_random(mut seed) % (1000 / f))
+        };
+        let answer = common_factors(a, b);
+        check = (check * 31 + answer) % 1000000007;
+        total += answer;
+    }
+    println(f"3000 random: checksum {check}, total {total}");
+}
