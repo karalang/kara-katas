@@ -1,0 +1,271 @@
+// LeetCode #2364: Count Number of Bad Pairs -- the differential. The six
+// arms, against the statement read literally: every pair i < j checked
+// for j - i != nums[j] - nums[i]. No keys. 300 random arrays of 1 to 40
+// values, each the place plus a small offset or, with a chance of 1 in
+// 8, a random value up to 10^9; then 30 of up to 2000 values; then 30 of
+// up to 300 values whose keys come from at most 1 to 4 numbers. Every
+// case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  from 0 to n (n - 1) / 2
+// P3  the first value removed: the answer less the bad pairs it made
+// P4  the values reversed and negated: the same answer
+// P5  a value one more than the last appended: the answer plus n, less
+//     the places whose key is the last's
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn bad_literally(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut bad = 0;
+    for i in 0..n {
+        for j in i + 1..n {
+            if j - i != nums[j] - nums[i] {
+                bad += 1;
+            }
+        }
+    }
+    bad
+}
+
+// ---- star (bad.kara) -----------------------------------------------------
+
+fn star_count_bad_pairs(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut seen: Map[i64, i64] = Map.new();
+    let mut good = 0;
+    for j in 0..n {
+        let key = nums[j] - j;
+        let before = seen.get(key).unwrap_or(0);
+        good += before;
+        seen[key] = before + 1;
+    }
+    n * (n - 1) / 2 - good
+}
+
+// ---- sort (bad_sort.kara) ------------------------------------------------
+
+fn sort_count_bad_pairs(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut keys: Vec[i64] = Vec.new();
+    for i in 0..n {
+        keys.push(nums[i] - i);
+    }
+    keys.sort();
+    let mut bad = n * (n - 1) / 2;
+    let mut start = 0;
+    for i in 1..n + 1 {
+        if i == n or keys[i] != keys[start] {
+            let c = i - start;
+            bad -= c * (c - 1) / 2;
+            start = i;
+        }
+    }
+    bad
+}
+
+// ---- direct (bad_direct.kara) --------------------------------------------
+
+fn direct_count_bad_pairs(nums: Vec[i64]) -> i64 {
+    let mut seen: SortedMap[i64, i64] = SortedMap.new();
+    let mut bad = 0;
+    for j in 0..nums.len() {
+        let key = nums[j] - j;
+        let same = seen.get(key).unwrap_or(0);
+        bad += j - same;
+        seen.insert(key, same + 1);
+    }
+    bad
+}
+
+// ---- halves (bad_halves.kara) --------------------------------------------
+
+fn halves_good_pairs(keys: mut ref Vec[i64], lo: i64, hi: i64) -> i64 {
+    if hi - lo < 2 {
+        return 0;
+    }
+    let mid = (lo + hi) / 2;
+    let mut good = halves_good_pairs(mut keys, lo, mid) + halves_good_pairs(mut keys, mid, hi);
+    let mut merged: Vec[i64] = Vec.new();
+    let mut i = lo;
+    let mut j = mid;
+    while i < mid or j < hi {
+        if j == hi or (i < mid and keys[i] < keys[j]) {
+            merged.push(keys[i]);
+            i += 1;
+        } else if i == mid or keys[j] < keys[i] {
+            merged.push(keys[j]);
+            j += 1;
+        } else {
+            let key = keys[i];
+            let mut left = 0;
+            while i < mid and keys[i] == key {
+                merged.push(key);
+                left += 1;
+                i += 1;
+            }
+            let mut right = 0;
+            while j < hi and keys[j] == key {
+                merged.push(key);
+                right += 1;
+                j += 1;
+            }
+            good += left * right;
+        }
+    }
+    for k in 0..merged.len() {
+        keys[lo + k] = merged[k];
+    }
+    good
+}
+
+fn halves_count_bad_pairs(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut keys: Vec[i64] = (0..n).map(|i| nums[i] - i).collect();
+    n * (n - 1) / 2 - halves_good_pairs(mut keys, 0, n)
+}
+
+// ---- iter (bad_iter.kara) ------------------------------------------------
+
+fn iter_count_bad_pairs(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let counts: Map[i64, i64] = nums.iter().enumerate().map(|(i, x)| x - i).fold(Map.new(), |counts: own Map[i64, i64], key| {
+        let mut counts = counts;
+        counts[key] = counts.get(key).unwrap_or(0) + 1;
+        counts
+    });
+    let good: i64 = counts.values().map(|c| c * (c - 1) / 2).sum();
+    n * (n - 1) / 2 - good
+}
+
+// ---- solution (bad_solution.kara) ----------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn count_bad_pairs(nums: Vec[i32]) -> i64 {
+        let mut seen: Map[i64, i64] = Map.new();
+        let mut bad: i64 = 0;
+        for (i, x) in nums.iter().enumerate() {
+            let key = x as i64 - i;
+            let same = seen.entry(key).or_insert(0);
+            bad += i - *same;
+            *same += 1;
+        }
+        bad
+    }
+}
+
+fn solution_count_bad_pairs(nums: Vec[i64]) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.count_bad_pairs(nums)
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_count_bad_pairs(nums),
+        1 => sort_count_bad_pairs(nums),
+        2 => direct_count_bad_pairs(nums),
+        3 => halves_count_bad_pairs(nums),
+        4 => iter_count_bad_pairs(nums),
+        _ => solution_count_bad_pairs(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "sort", "direct", "halves", "iter", "solution"];
+    let mut seed = 2364;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..360 {
+        let mut nums: Vec[i64] = Vec.new();
+        if c < 330 {
+            let n = if c < 300 { 1 + next_random(mut seed) % 40 } else { 1 + next_random(mut seed) % 2000 };
+            let spread = 1 + next_random(mut seed) % 6;
+            for i in 0..n {
+                nums.push(if next_random(mut seed) % 8 == 0 { 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000 } else { 1 + i + next_random(mut seed) % spread });
+            }
+        } else {
+            let n = 1 + next_random(mut seed) % 300;
+            let kinds = 1 + next_random(mut seed) % 4;
+            let keys: Vec[i64] = (0..kinds).map(|_| next_random(mut seed) % 1000).collect();
+            for i in 0..n {
+                nums.push(i + keys[next_random(mut seed) % kinds]);
+            }
+        }
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let nums = cases[c].clone();
+        let n = nums.len();
+        let truth = bad_literally(nums);
+        check = (check * 31 + truth) % 1000000007;
+        let rest: Vec[i64] = nums[1..].to_vec();
+        let mut first_bad = 0;
+        for j in 1..n {
+            if j != nums[j] - nums[0] {
+                first_bad += 1;
+            }
+        }
+        let mirrored: Vec[i64] = nums.iter().rev().map(|x| -x).collect();
+        let mut longer = nums.clone();
+        longer.push(nums[n - 1] + 1);
+        let last_key = nums[n - 1] - (n - 1);
+        let mut same_key = 0;
+        for i in 0..n {
+            if nums[i] - i == last_key {
+                same_key += 1;
+            }
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                value >= 0 and value <= n * (n - 1) / 2,
+                n == 1 or answer(arm, rest) == value - first_bad,
+                answer(arm, mirrored) == value,
+                answer(arm, longer) == value + n - same_key,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

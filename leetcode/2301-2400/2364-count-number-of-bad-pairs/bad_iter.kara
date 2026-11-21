@@ -1,0 +1,56 @@
+// LeetCode #2364: Count Number of Bad Pairs -- iterators: the keys
+// nums[i] - i by `enumerate` and `map`, folded into a map of counts;
+// the good pairs as the sum of c (c - 1) / 2 over the counts by `values`
+// and `map`, taken from all the pairs.
+
+fn count_bad_pairs(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let counts: Map[i64, i64] = nums.iter().enumerate().map(|(i, x)| x - i).fold(Map.new(), |counts: own Map[i64, i64], key| {
+        let mut counts = counts;
+        counts[key] = counts.get(key).unwrap_or(0) + 1;
+        counts
+    });
+    let good: i64 = counts.values().map(|c| c * (c - 1) / 2).sum();
+    n * (n - 1) / 2 - good
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; one value; 10^5 places in a run rising by
+    // one, every pair good; 10^5 equal values, every pair bad; 10^5 values
+    // in four interleaved keys; then 2000 random arrays of 1 to 40
+    // values, each the place plus a small offset or a random value up to
+    // 10^9
+    println(f"{count_bad_pairs([4, 1, 3, 3])}");
+    println(f"{count_bad_pairs([1, 2, 3, 4, 5])}");
+    println(f"{count_bad_pairs([7])}");
+    let rising: Vec[i64] = (0..100000).map(|i| i + 1000).collect();
+    println(f"{count_bad_pairs(rising)}");
+    let flat: Vec[i64] = (0..100000).map(|_| 1000000000).collect();
+    println(f"{count_bad_pairs(flat)}");
+    let runs: Vec[i64] = (0..100000).map(|i| i + (i % 4) * 7).collect();
+    println(f"{count_bad_pairs(runs)}");
+    let mut seed = 2364;
+    let mut check = 0;
+    let mut none_bad = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 40;
+        let spread = 1 + next_random(mut seed) % 6;
+        let mut nums: Vec[i64] = Vec.new();
+        for i in 0..n {
+            nums.push(if next_random(mut seed) % 8 == 0 { 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000 } else { 1 + i + next_random(mut seed) % spread });
+        }
+        let bad = count_bad_pairs(nums);
+        check = (check * 31 + bad) % 1000000007;
+        if bad == 0 {
+            none_bad += 1;
+        }
+    }
+    println(f"2000 arrays: checksum {check}, {none_bad} with no bad pair");
+}
