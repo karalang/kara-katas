@@ -1,0 +1,71 @@
+// LeetCode #2425: Bitwise XOR of All Pairings -- bit by bit. For each of
+// the 30 bits, a pairing holds it when exactly one of its two values
+// does: `ones1 (m - ones2) + (n - ones1) ones2` pairings of the n m, and
+// the bit is set in the answer when that count is odd. O(30 (n + m)).
+
+fn xor_all_nums(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let m = nums2.len();
+    let mut answer = 0;
+    for bit in 0..30 {
+        let ones1 = nums1.iter().filter(|x| (x >> bit) & 1 == 1).count();
+        let ones2 = nums2.iter().filter(|y| (y >> bit) & 1 == 1).count();
+        let pairs = ones1 * (m - ones2) + (n - ones1) * ones2;
+        if pairs % 2 == 1 {
+            answer |= 1 << bit;
+        }
+    }
+    answer
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` values from 0 to `top`, drawn 30 bits wide
+fn random_nums(seed: mut ref i64, n: i64, top: i64) -> Vec[i64] {
+    let mut nums: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        nums.push((next_random(mut seed) * 32768 + next_random(mut seed)) % (top + 1));
+    }
+    nums
+}
+
+fn main() {
+    // LeetCode's two examples; one value each; both lengths even; the
+    // second odd; the first odd; one value repeated
+    println(f"{xor_all_nums([2, 1, 3].to_vec(), [10, 2, 5, 0].to_vec())}");
+    println(f"{xor_all_nums([1, 2].to_vec(), [3, 4].to_vec())}");
+    println(f"{xor_all_nums([7].to_vec(), [9].to_vec())}");
+    println(f"{xor_all_nums([1, 2, 4, 8].to_vec(), [16, 32].to_vec())}");
+    println(f"{xor_all_nums([1, 2, 4, 8].to_vec(), [16, 32, 64].to_vec())}");
+    println(f"{xor_all_nums([1, 2, 4].to_vec(), [16, 32, 64, 128].to_vec())}");
+    println(f"{xor_all_nums([5, 5, 5].to_vec(), [5, 5, 5, 5, 5].to_vec())}");
+    // the constraints' largest values: 10^5 against 3, 3 against 10^5,
+    // and 3000 against 3001, values up to 10^9
+    let mut seed = 2425;
+    let a = random_nums(mut seed, 100000, 1000000000);
+    let b = random_nums(mut seed, 3, 1000000000);
+    println(f"{xor_all_nums(a, b)} {xor_all_nums(b, a)}");
+    let c = random_nums(mut seed, 3000, 1000000000);
+    let d = random_nums(mut seed, 3001, 1000000000);
+    println(f"{xor_all_nums(c, d)} {xor_all_nums(d, c)}");
+    // 3000 random pairs of 1 to 12 values up to 1 to 10^9: a checksum of
+    // the answers in order, and their total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let top = if next_random(mut seed) % 2 == 0 { 1 + next_random(mut seed) % 16 } else { 1000000000 };
+        let n = 1 + next_random(mut seed) % 12;
+        let m = 1 + next_random(mut seed) % 12;
+        let x = random_nums(mut seed, n, top);
+        let y = random_nums(mut seed, m, top);
+        let a = xor_all_nums(x, y);
+        check = (check * 31 + a) % 1000000007;
+        total += a;
+    }
+    println(f"3000 random: checksum {check}, total {total}");
+}

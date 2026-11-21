@@ -1,0 +1,239 @@
+// LeetCode #2425: Bitwise XOR of All Pairings -- the differential. The
+// six arms against the statement read literally: `nums3` built with the
+// XOR of every pairing, one value of `nums1` with one of `nums2`, then
+// every value of `nums3` XORed together. No parity used. 360 cases: 300
+// random pairs of lists of 1 to 10 values, up to 1 to 16 or to 10^9; then
+// 30 of up to 200 values up to 10^9; then 30 of up to 20 copies of one
+// value each. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the two lists swapped: the same answer
+// P3  each list reversed: the same answer
+// P4  a value of `nums1` added twice more: the same answer
+// P5  every value of both lists XORed with one mask: the same answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn xor_literally(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let mut nums3: Vec[i64] = Vec.new();
+    for x in nums1.iter() {
+        for y in nums2.iter() {
+            nums3.push(x ^ y);
+        }
+    }
+    let mut answer = 0;
+    for v in nums3.iter() {
+        answer ^= v;
+    }
+    answer
+}
+
+// ---- star (xor.kara) -----------------------------------------------------
+
+fn star_xor_all_nums(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let mut answer = 0;
+    if nums2.len() % 2 == 1 {
+        for x in nums1.iter() {
+            answer ^= x;
+        }
+    }
+    if nums1.len() % 2 == 1 {
+        for y in nums2.iter() {
+            answer ^= y;
+        }
+    }
+    answer
+}
+
+// ---- naive (xor_naive.kara) ----------------------------------------------
+
+fn naive_xor_all_nums(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let mut answer = 0;
+    for x in nums1.iter() {
+        for y in nums2.iter() {
+            answer ^= x ^ y;
+        }
+    }
+    answer
+}
+
+// ---- bits (xor_bits.kara) ------------------------------------------------
+
+fn bits_xor_all_nums(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let m = nums2.len();
+    let mut answer = 0;
+    for bit in 0..30 {
+        let ones1 = nums1.iter().filter(|x| (x >> bit) & 1 == 1).count();
+        let ones2 = nums2.iter().filter(|y| (y >> bit) & 1 == 1).count();
+        let pairs = ones1 * (m - ones2) + (n - ones1) * ones2;
+        if pairs % 2 == 1 {
+            answer |= 1 << bit;
+        }
+    }
+    answer
+}
+
+// ---- map (xor_map.kara) --------------------------------------------------
+
+fn map_xor_all_nums(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let mut times: Map[i64, i64] = Map.new();
+    for x in nums1.iter() {
+        times[x] = times.get(x).unwrap_or(0) + nums2.len();
+    }
+    for y in nums2.iter() {
+        times[y] = times.get(y).unwrap_or(0) + nums1.len();
+    }
+    let mut answer = 0;
+    for (value, count) in times.iter() {
+        if count % 2 == 1 {
+            answer ^= value;
+        }
+    }
+    answer
+}
+
+// ---- iter (xor_iter.kara) ------------------------------------------------
+
+fn iter_xor_all_nums(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let xor1 = nums1.iter().fold(0, |acc, x| acc ^ x);
+    let xor2 = nums2.iter().fold(0, |acc, y| acc ^ y);
+    [(xor1, nums2.len()), (xor2, nums1.len())].iter().filter(|p| p.1 % 2 == 1).map(|p| p.0).fold(0, |acc, v| acc ^ v)
+}
+
+// ---- solution (xor_solution.kara) ----------------------------------------
+
+impl Solution {
+    pub fn xor_all_nums(nums1: Vec[i32], nums2: Vec[i32]) -> i32 {
+        let mut ans: i32 = 0;
+        if nums2.len() & 1 == 1 {
+            ans ^= nums1.iter().fold(0i32, |acc, x| acc ^ x);
+        }
+        if nums1.len() & 1 == 1 {
+            ans ^= nums2.iter().fold(0i32, |acc, x| acc ^ x);
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_xor_all_nums(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let a: Vec[i32] = nums1.iter().map(|x| x as i32).collect();
+    let b: Vec[i32] = nums2.iter().map(|x| x as i32).collect();
+    Solution.xor_all_nums(a, b)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let nums1 = nums1.clone();
+    let nums2 = nums2.clone();
+    match arm {
+        0 => star_xor_all_nums(nums1, nums2),
+        1 => naive_xor_all_nums(nums1, nums2),
+        2 => bits_xor_all_nums(nums1, nums2),
+        3 => map_xor_all_nums(nums1, nums2),
+        4 => iter_xor_all_nums(nums1, nums2),
+        _ => solution_xor_all_nums(nums1, nums2),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64, top: i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % (top + 1)
+}
+
+fn main() {
+    let arms = ["star", "naive", "bits", "map", "iter", "solution"];
+    let mut seed = 2425;
+    let mut cases: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    for t in 0..360 {
+        let mut lists: Vec[Vec[i64]] = Vec.new();
+        if t < 330 {
+            let (most, top) = if t < 300 {
+                (10, if next_random(mut seed) % 2 == 0 { 1 + next_random(mut seed) % 16 } else { 1000000000 })
+            } else {
+                (200, 1000000000)
+            };
+            for _ in 0..2 {
+                let n = 1 + next_random(mut seed) % most;
+                let mut nums: Vec[i64] = Vec.new();
+                for _ in 0..n {
+                    nums.push(wide_random(mut seed, top));
+                }
+                lists.push(nums);
+            }
+        } else {
+            for _ in 0..2 {
+                let n = 1 + next_random(mut seed) % 20;
+                lists.push(Vec.filled(n, wide_random(mut seed, 1000000000)));
+            }
+        }
+        cases.push((lists[0].clone(), lists[1].clone()));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (nums1, nums2) = cases[c].clone();
+        let truth = xor_literally(nums1, nums2);
+        check = (check * 31 + truth) % 1000000007;
+        let mut back1 = nums1.clone();
+        back1.reverse();
+        let mut back2 = nums2.clone();
+        back2.reverse();
+        let mut grown = nums1.clone();
+        let extra = nums1[next_random(mut seed) % nums1.len()];
+        grown.push(extra);
+        grown.push(extra);
+        let mask = wide_random(mut seed, 1000000000);
+        let masked1: Vec[i64] = nums1.iter().map(|x| x ^ mask).collect();
+        let masked2: Vec[i64] = nums2.iter().map(|y| y ^ mask).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums1, nums2)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, nums2, nums1) == value,
+                answer(arm, back1, back2) == value,
+                answer(arm, grown, nums2) == value,
+                answer(arm, masked1, masked2) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
