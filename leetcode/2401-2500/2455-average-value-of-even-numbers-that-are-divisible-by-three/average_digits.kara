@@ -1,0 +1,66 @@
+// LeetCode #2455: Average Value of Even Numbers That Are Divisible by
+// Three -- by digits, as the schoolbook rules test it: even when the last
+// decimal digit is, and divisible by three when the sum of the digits
+// is, each digit read off by `% 10` and `/ 10`. O(n log max).
+
+fn digit_sum(x: i64) -> i64 {
+    let mut rest = x;
+    let mut sum = 0;
+    while rest > 0 {
+        sum += rest % 10;
+        rest /= 10;
+    }
+    sum
+}
+
+fn average_value(nums: Vec[i64]) -> i64 {
+    let mut sum = 0;
+    let mut count = 0;
+    for x in nums.iter() {
+        let last = x % 10;
+        if last % 2 == 0 and digit_sum(x) % 3 == 0 {
+            sum += x;
+            count += 1;
+        }
+    }
+    if count == 0 { 0 } else { sum / count }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; one value, 6; even values none divisible
+    // by three and multiples of three none even; an average rounded down;
+    // 1000 values of 996, the largest multiple of six up to 1000; every
+    // value from 1 to 1000
+    println(f"{average_value([1, 3, 6, 10, 12, 15].to_vec())}");
+    println(f"{average_value([1, 2, 4, 7, 10].to_vec())}");
+    println(f"{average_value([6].to_vec())}");
+    println(f"{average_value([2, 4, 8, 3, 9, 15, 1000].to_vec())}");
+    println(f"{average_value([6, 12, 13, 18, 30].to_vec())}");
+    println(f"{average_value(Vec.filled(1000, 996))}");
+    println(f"{average_value((1..1001).collect())}");
+    // 1000 random values from 1 to 1000, and 1000 from 1 to 20
+    let mut seed = 2455;
+    let wide: Vec[i64] = (0..1000).map(|_| 1 + next_random(mut seed) % 1000).collect();
+    println(f"1000 values up to 1000: {average_value(wide)}");
+    let narrow: Vec[i64] = (0..1000).map(|_| 1 + next_random(mut seed) % 20).collect();
+    println(f"1000 values up to 20: {average_value(narrow)}");
+    // 3000 random arrays of 1 to 8 values from 1 to 60: a checksum of the
+    // answers in order, and their total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 8;
+        let nums: Vec[i64] = (0..n).map(|_| 1 + next_random(mut seed) % 60).collect();
+        let answer = average_value(nums);
+        check = (check * 31 + answer) % 1000000007;
+        total += answer;
+    }
+    println(f"3000 random: checksum {check}, total {total}");
+}
