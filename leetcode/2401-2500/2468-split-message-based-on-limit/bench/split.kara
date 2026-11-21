@@ -1,0 +1,73 @@
+// LeetCode #2468: Split Message Based on Limit -- the count first: with
+// `b` parts, part `a` holds `limit - 3 - digits(a) - digits(b)` letters of
+// the message, so `b` parts hold `b * (limit - 3 - digits(b))` less the
+// digits of 1 to `b`. Trying `b = 1, 2, ...` with a running sum of those
+// digits finds the least `b` that holds the whole message, and the parts
+// are then cut in order. Once the suffix of a `b`-digit count alone
+// fills the limit, no larger count can do. O(n).
+
+fn digits(v: i64) -> i64 {
+    f"{v}".len()
+}
+
+fn split_message(message: String, limit: i64) -> Vec[String] {
+    let n = message.len();
+    let mut digit_sum = 0;
+    let mut parts = 0;
+    let mut b = 1;
+    while 3 + 2 * digits(b) < limit {
+        digit_sum += digits(b);
+        if b * (limit - 3 - digits(b)) - digit_sum >= n {
+            parts = b;
+            break;
+        }
+        b += 1;
+    }
+    let mut out: Vec[String] = Vec.new();
+    if parts == 0 {
+        return out;
+    }
+    let mut at = 0;
+    for a in 1..parts + 1 {
+        let room = limit - 3 - digits(a) - digits(parts);
+        let end = (at + room).min(n);
+        out.push(f"{message.substring(at, end)}<{a}/{parts}>");
+        at = end;
+    }
+    out
+}
+
+// ---- bench ------------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 20 messages of 10^4 lowercase letters and spaces built once; then
+    // 2600 passes, each choosing every message's limit, from 12 to 211,
+    // from the checksum so far, then splitting it and folding the part
+    // count, the last part's length and the pass into the checksum
+    let mut seed = 2468;
+    let letters = "abcdefghijklmnopqrstuvwxyz ";
+    let mut messages: Vec[String] = Vec.new();
+    for _ in 0..20 {
+        let mut text = "".to_string();
+        for _ in 0..10000 {
+            let at = next_random(mut seed) % 27;
+            text.push_str(letters.substring(at, at + 1));
+        }
+        messages.push(text);
+    }
+    let mut check = 0;
+    for p in 0..2600 {
+        for m in messages.iter() {
+            let limit = 12 + check % 200;
+            let parts = split_message(m, limit);
+            let last = parts[parts.len() - 1].len();
+            check = (check * 31 + parts.len() + last + p) % 1000000007;
+        }
+    }
+    println(f"2600 passes over 20 messages of 10^4: checksum {check}");
+}

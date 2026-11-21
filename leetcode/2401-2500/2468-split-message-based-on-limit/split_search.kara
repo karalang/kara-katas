@@ -1,0 +1,131 @@
+// LeetCode #2468: Split Message Based on Limit -- binary search band by
+// band: for a count `b` of `d` digits, the letters `b` parts hold grow
+// with `b` while a part has room, so within each band of counts the
+// least that holds the message is found by halving, the band's room
+// computed from the digits of 1 to `b` counted band by band below it.
+// O(log n) per band, O(n) to cut the parts.
+
+fn digits(v: i64) -> i64 {
+    f"{v}".len()
+}
+
+// the digits written by the counts 1 to `b`
+fn digits_up_to(b: i64) -> i64 {
+    let mut total = 0;
+    let mut low = 1;
+    let mut d = 1;
+    while low <= b {
+        total += d * (b.min(low * 10 - 1) - low + 1);
+        low *= 10;
+        d += 1;
+    }
+    total
+}
+
+fn holds(b: i64, limit: i64) -> i64 {
+    b * (limit - 3 - digits(b)) - digits_up_to(b)
+}
+
+fn split_message(message: String, limit: i64) -> Vec[String] {
+    let n = message.len();
+    let mut parts = 0;
+    let mut low = 1;
+    while 3 + 2 * digits(low) < limit and parts == 0 {
+        let mut lo = low;
+        let mut hi = low * 10 - 1;
+        if holds(hi, limit) >= n {
+            while lo < hi {
+                let mid = (lo + hi) / 2;
+                if holds(mid, limit) >= n {
+                    hi = mid;
+                } else {
+                    lo = mid + 1;
+                }
+            }
+            parts = lo;
+        }
+        low *= 10;
+    }
+    let mut out: Vec[String] = Vec.new();
+    if parts == 0 {
+        return out;
+    }
+    let mut at = 0;
+    for a in 1..parts + 1 {
+        let room = limit - 3 - digits(a) - digits(parts);
+        let end = (at + room).min(n);
+        out.push(f"{message.substring(at, end)}<{a}/{parts}>");
+        at = end;
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random message of lowercase letters and spaces
+fn random_message(n: i64, seed: mut ref i64) -> String {
+    let letters = "abcdefghijklmnopqrstuvwxyz ";
+    let mut text = "".to_string();
+    for _ in 0..n {
+        let at = next_random(mut seed) % 27;
+        text.push_str(letters.substring(at, at + 1));
+    }
+    text
+}
+
+fn fold(parts: Vec[String]) -> i64 {
+    let mut check = parts.len();
+    for part in parts.iter() {
+        for c in part.chars() {
+            check = (check * 31 + c as i64) % 1000000007;
+        }
+    }
+    check
+}
+
+fn main() {
+    // LeetCode's two examples; then a message that fits one part; a limit
+    // too small for any suffix; one too small for two-digit counts; a
+    // last part of one letter; one letter a part, a letter more than
+    // nine parts hold; two letters a part; and a message that needs
+    // exactly 10 parts
+    let cases: Vec[(String, i64)] = [
+        ("this is really a very awesome message", 9),
+        ("short message", 15),
+        ("abc", 9),
+        ("abc", 5),
+        ("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 7),
+        ("hello", 7),
+        ("abcdefghij", 6),
+        ("abcdefghijk", 7),
+        ("abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz ab", 20),
+    ].to_vec();
+    for (message, limit) in cases.into_iter() {
+        let shown = f"{message}";
+        println(f"\"{shown}\", {limit} -> {split_message(message, limit)}");
+    }
+    // the constraints' largest: 10^4 letters with limits 6 and 11, too
+    // small, 12, which takes 8893 parts, 100 and 10^4; each as a part
+    // count and a checksum
+    let mut seed = 2468;
+    let long = random_message(10000, mut seed);
+    for limit in [6, 11, 12, 100, 10000].iter() {
+        let parts = split_message(long, limit);
+        println(f"10^4 letters, limit {limit}: {parts.len()} parts, checksum {fold(parts)}");
+    }
+    // 3000 random messages of 1 to 300 letters with limits from 1 to 40:
+    // a checksum of every split's checksum in order
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 300;
+        let message = random_message(n, mut seed);
+        let limit = 1 + next_random(mut seed) % 40;
+        check = (check * 31 + fold(split_message(message, limit))) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}

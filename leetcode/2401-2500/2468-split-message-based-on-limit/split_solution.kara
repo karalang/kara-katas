@@ -1,0 +1,107 @@
+// LeetCode #2468: Split Message Based on Limit -- LeetCode's Rust
+// template, carried by `karac fix`: the ★ arm's running count over
+// `i32`, the digits by a closure over `to_string`, and each part cut
+// from the message's bytes and turned back by `String.from_utf8`.
+
+impl Solution {
+    pub fn split_message(message: String, limit: i32) -> Vec[String] {
+        let n = message.len() as i32;
+        let digits = |x: i32| x.to_string().len() as i32;
+        let mut sum = 0;
+        let mut b = 1;
+        while 3 + 2 * digits(b) < limit {
+            sum += digits(b);
+            if b * (limit - 3 - digits(b)) - sum >= n {
+                let mut res = Vec.with_capacity(b);
+                let bytes = message.bytes();
+                let mut i = 0;
+                for a in 1..=b {
+                    let room = (limit - 3 - digits(a) - digits(b)) as i64;
+                    let end = (i + room).min(bytes.len());
+                    let part = String.from_utf8(bytes[i..end].to_vec()).unwrap();
+                    res.push(f"{part}<{a}/{b}>");
+                    i = end;
+                }
+                return res;
+            }
+            b += 1;
+        }
+        Vec.new()
+    }
+}
+
+struct Solution {}
+
+fn split_message(message: String, limit: i64) -> Vec[String] {
+    Solution.split_message(message, limit as i32)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random message of lowercase letters and spaces
+fn random_message(n: i64, seed: mut ref i64) -> String {
+    let letters = "abcdefghijklmnopqrstuvwxyz ";
+    let mut text = "".to_string();
+    for _ in 0..n {
+        let at = next_random(mut seed) % 27;
+        text.push_str(letters.substring(at, at + 1));
+    }
+    text
+}
+
+fn fold(parts: Vec[String]) -> i64 {
+    let mut check = parts.len();
+    for part in parts.iter() {
+        for c in part.chars() {
+            check = (check * 31 + c as i64) % 1000000007;
+        }
+    }
+    check
+}
+
+fn main() {
+    // LeetCode's two examples; then a message that fits one part; a limit
+    // too small for any suffix; one too small for two-digit counts; a
+    // last part of one letter; one letter a part, a letter more than
+    // nine parts hold; two letters a part; and a message that needs
+    // exactly 10 parts
+    let cases: Vec[(String, i64)] = [
+        ("this is really a very awesome message", 9),
+        ("short message", 15),
+        ("abc", 9),
+        ("abc", 5),
+        ("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 7),
+        ("hello", 7),
+        ("abcdefghij", 6),
+        ("abcdefghijk", 7),
+        ("abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz ab", 20),
+    ].to_vec();
+    for (message, limit) in cases.into_iter() {
+        let shown = f"{message}";
+        println(f"\"{shown}\", {limit} -> {split_message(message, limit)}");
+    }
+    // the constraints' largest: 10^4 letters with limits 6 and 11, too
+    // small, 12, which takes 8893 parts, 100 and 10^4; each as a part
+    // count and a checksum
+    let mut seed = 2468;
+    let long = random_message(10000, mut seed);
+    for limit in [6, 11, 12, 100, 10000].iter() {
+        let parts = split_message(long, limit);
+        println(f"10^4 letters, limit {limit}: {parts.len()} parts, checksum {fold(parts)}");
+    }
+    // 3000 random messages of 1 to 300 letters with limits from 1 to 40:
+    // a checksum of every split's checksum in order
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 300;
+        let message = random_message(n, mut seed);
+        let limit = 1 + next_random(mut seed) % 40;
+        check = (check * 31 + fold(split_message(message, limit))) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}

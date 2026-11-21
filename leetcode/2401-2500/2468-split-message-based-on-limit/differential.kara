@@ -1,0 +1,395 @@
+// LeetCode #2468: Split Message Based on Limit -- the differential. The
+// six arms against the statement read literally: for `b = 1, 2, ...`
+// every suffix `<a/b>` written out as text, every part but the last
+// filled to exactly `limit` and the last given the rest, the first `b`
+// for which the rest fits answering. 360 cases: 300 random messages of 1
+// to 60 letters with limits from 1 to 20; then 60 of up to 400 letters
+// with limits from 6 to 15. Every case is drawn before any arm answers.
+//
+// P1  the parts are the literal reading's
+// P2  every part but the last is `limit` long, the last no longer, each
+//     ends in `<a/b>` for its place, and without them the parts join to
+//     the message
+// P3  a letter added to the message: no fewer parts, none if none
+// P4  the limit one more: no more parts, some if some
+// P5  one part fewer cannot hold the message
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+// `b` parts, every suffix written out, hold `n` letters: all but the last
+// filled to exactly `limit`, the last given the rest
+fn holds_literally(n: i64, limit: i64, b: i64) -> bool {
+    let suffixes: Vec[String] = (1..b + 1).map(|a| f"<{a}/{b}>").collect();
+    let mut fits = true;
+    let mut used = 0;
+    for a in 0..b - 1 {
+        if suffixes[a].len() > limit {
+            fits = false;
+        }
+        used += limit - suffixes[a].len();
+    }
+    let rest = n - used;
+    fits and rest >= 0 and rest + suffixes[b - 1].len() <= limit
+}
+
+fn split_literally(message: String, limit: i64) -> Vec[String] {
+    let n = message.len();
+    for b in 1..n + 1 {
+        if holds_literally(n, limit, b) {
+            let suffixes: Vec[String] = (1..b + 1).map(|a| f"<{a}/{b}>").collect();
+            let mut out: Vec[String] = Vec.new();
+            let mut at = 0;
+            for a in 0..b {
+                let take = if a + 1 < b { limit - suffixes[a].len() } else { n - at };
+                out.push(f"{message.substring(at, at + take)}{suffixes[a]}");
+                at += take;
+            }
+            return out;
+        }
+    }
+    Vec.new()
+}
+
+// the parts' shape as P2 states it
+fn well_cut(parts: Vec[String], message: String, limit: i64) -> bool {
+    let b = parts.len();
+    let mut joined = "".to_string();
+    for a in 0..b {
+        let suffix = f"<{a + 1}/{b}>";
+        let part = ref parts[a];
+        if not part.ends_with(suffix) {
+            return false;
+        }
+        if part.len() > limit or (a + 1 < b and part.len() != limit) {
+            return false;
+        }
+        joined.push_str(part.substring(0, part.len() - suffix.len()));
+    }
+    b == 0 or joined == message
+}
+
+// ---- star (split.kara) ---------------------------------------------------
+
+fn star_digits(v: i64) -> i64 {
+    f"{v}".len()
+}
+
+fn star_split_message(message: String, limit: i64) -> Vec[String] {
+    let n = message.len();
+    let mut digit_sum = 0;
+    let mut parts = 0;
+    let mut b = 1;
+    while 3 + 2 * star_digits(b) < limit {
+        digit_sum += star_digits(b);
+        if b * (limit - 3 - star_digits(b)) - digit_sum >= n {
+            parts = b;
+            break;
+        }
+        b += 1;
+    }
+    let mut out: Vec[String] = Vec.new();
+    if parts == 0 {
+        return out;
+    }
+    let mut at = 0;
+    for a in 1..parts + 1 {
+        let room = limit - 3 - star_digits(a) - star_digits(parts);
+        let end = (at + room).min(n);
+        out.push(f"{message.substring(at, end)}<{a}/{parts}>");
+        at = end;
+    }
+    out
+}
+
+// ---- bands (split_bands.kara) --------------------------------------------
+
+fn bands_digits(v: i64) -> i64 {
+    f"{v}".len()
+}
+
+fn bands_split_message(message: String, limit: i64) -> Vec[String] {
+    let n = message.len();
+    let mut parts = 0;
+    let mut low = 1;
+    let mut before = 0;
+    for d in 1..6 {
+        let high = low * 10 - 1;
+        let per = limit - 3 - 2 * d;
+        if per <= 0 {
+            break;
+        }
+        let fixed = before - d * (low - 1);
+        // the least `b` with `b * per - fixed >= n`
+        let need = (n + fixed + per - 1) / per;
+        let b = need.max(low);
+        if b <= high {
+            parts = b;
+            break;
+        }
+        before += d * (high - low + 1);
+        low *= 10;
+    }
+    let mut out: Vec[String] = Vec.new();
+    if parts == 0 {
+        return out;
+    }
+    let mut at = 0;
+    for a in 1..parts + 1 {
+        let room = limit - 3 - bands_digits(a) - bands_digits(parts);
+        let end = (at + room).min(n);
+        out.push(f"{message.substring(at, end)}<{a}/{parts}>");
+        at = end;
+    }
+    out
+}
+
+// ---- search (split_search.kara) ------------------------------------------
+
+fn search_digits(v: i64) -> i64 {
+    f"{v}".len()
+}
+
+// the digits written by the counts 1 to `b`
+fn search_digits_up_to(b: i64) -> i64 {
+    let mut total = 0;
+    let mut low = 1;
+    let mut d = 1;
+    while low <= b {
+        total += d * (b.min(low * 10 - 1) - low + 1);
+        low *= 10;
+        d += 1;
+    }
+    total
+}
+
+fn search_holds(b: i64, limit: i64) -> i64 {
+    b * (limit - 3 - search_digits(b)) - search_digits_up_to(b)
+}
+
+fn search_split_message(message: String, limit: i64) -> Vec[String] {
+    let n = message.len();
+    let mut parts = 0;
+    let mut low = 1;
+    while 3 + 2 * search_digits(low) < limit and parts == 0 {
+        let mut lo = low;
+        let mut hi = low * 10 - 1;
+        if search_holds(hi, limit) >= n {
+            while lo < hi {
+                let mid = (lo + hi) / 2;
+                if search_holds(mid, limit) >= n {
+                    hi = mid;
+                } else {
+                    lo = mid + 1;
+                }
+            }
+            parts = lo;
+        }
+        low *= 10;
+    }
+    let mut out: Vec[String] = Vec.new();
+    if parts == 0 {
+        return out;
+    }
+    let mut at = 0;
+    for a in 1..parts + 1 {
+        let room = limit - 3 - search_digits(a) - search_digits(parts);
+        let end = (at + room).min(n);
+        out.push(f"{message.substring(at, end)}<{a}/{parts}>");
+        at = end;
+    }
+    out
+}
+
+// ---- retry (split_retry.kara) --------------------------------------------
+
+fn retry_digits(v: i64) -> i64 {
+    f"{v}".len()
+}
+
+fn retry_split_message(message: String, limit: i64) -> Vec[String] {
+    let letters: Vec[char] = message.chars().collect();
+    let n = letters.len();
+    for w in 1..6 {
+        let mut pieces: Vec[String] = Vec.new();
+        let mut at = 0;
+        let mut fits = true;
+        while at < n {
+            let room = limit - 3 - retry_digits(pieces.len() + 1) - w;
+            if room <= 0 {
+                fits = false;
+                break;
+            }
+            let mut piece = "".to_string();
+            while piece.len() < room and at < n {
+                piece.push(letters[at]);
+                at += 1;
+            }
+            pieces.push(piece);
+        }
+        if fits and retry_digits(pieces.len()) == w {
+            let b = pieces.len();
+            let mut out: Vec[String] = Vec.new();
+            for a in 0..b {
+                out.push(f"{pieces[a]}<{a + 1}/{b}>");
+            }
+            return out;
+        }
+    }
+    Vec.new()
+}
+
+// ---- iter (split_iter.kara) ----------------------------------------------
+
+fn iter_digits(v: i64) -> i64 {
+    f"{v}".len()
+}
+
+fn iter_split_message(message: String, limit: i64) -> Vec[String] {
+    let n = message.len();
+    let found = (1..n + 1).take_while(|b| 3 + 2 * iter_digits(b) < limit).scan(0, |sum, b| Some((sum + iter_digits(b), (b, sum + iter_digits(b))))).find(|(b, sum)| b * (limit - 3 - iter_digits(b)) - sum >= n);
+    match found {
+        None => Vec.new(),
+        Some((parts, _)) => {
+            let spans: Vec[(i64, i64)] = (1..parts + 1).scan(0, |at, a| {
+                let end = (at + limit - 3 - iter_digits(a) - iter_digits(parts)).min(n);
+                Some((end, (at, end)))
+            }).collect();
+            spans.iter().enumerate().map(|(i, (start, end))| f"{message.substring(start, end)}<{i + 1}/{parts}>").collect()
+        }
+    }
+}
+
+// ---- solution (split_solution.kara) --------------------------------------
+
+impl Solution {
+    pub fn split_message(message: String, limit: i32) -> Vec[String] {
+        let n = message.len() as i32;
+        let digits = |x: i32| x.to_string().len() as i32;
+        let mut sum = 0;
+        let mut b = 1;
+        while 3 + 2 * digits(b) < limit {
+            sum += digits(b);
+            if b * (limit - 3 - digits(b)) - sum >= n {
+                let mut res = Vec.with_capacity(b);
+                let bytes = message.bytes();
+                let mut i = 0;
+                for a in 1..=b {
+                    let room = (limit - 3 - digits(a) - digits(b)) as i64;
+                    let end = (i + room).min(bytes.len());
+                    let part = String.from_utf8(bytes[i..end].to_vec()).unwrap();
+                    res.push(f"{part}<{a}/{b}>");
+                    i = end;
+                }
+                return res;
+            }
+            b += 1;
+        }
+        Vec.new()
+    }
+}
+
+struct Solution {}
+
+fn solution_split_message(message: String, limit: i64) -> Vec[String] {
+    Solution.split_message(message, limit as i32)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn answer(arm: i64, message: String, limit: i64) -> Vec[String] {
+    match arm {
+        0 => star_split_message(message, limit),
+        1 => bands_split_message(message, limit),
+        2 => search_split_message(message, limit),
+        3 => retry_split_message(message, limit),
+        4 => iter_split_message(message, limit),
+        _ => solution_split_message(message, limit),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn fold(parts: Vec[String]) -> i64 {
+    let mut check = parts.len();
+    for part in parts.iter() {
+        for c in part.chars() {
+            check = (check * 31 + c as i64) % 1000000007;
+        }
+    }
+    check
+}
+
+fn main() {
+    let arms = ["star", "bands", "search", "retry", "iter", "solution"];
+    let letters = "abcdefghijklmnopqrstuvwxyz ";
+    let mut seed = 2468;
+    let mut cases: Vec[(String, i64)] = Vec.new();
+    for t in 0..360 {
+        let (n, limit) = if t < 300 {
+            (1 + next_random(mut seed) % 60, 1 + next_random(mut seed) % 20)
+        } else {
+            (1 + next_random(mut seed) % 400, 6 + next_random(mut seed) % 10)
+        };
+        let mut message = "".to_string();
+        for _ in 0..n {
+            let at = next_random(mut seed) % 27;
+            message.push_str(letters.substring(at, at + 1));
+        }
+        cases.push((message, limit));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (message, limit) = cases[c].clone();
+        let truth = split_literally(message, limit);
+        check = (check * 31 + fold(truth)) % 1000000007;
+        let longer = f"{message}x";
+        let got: Vec[Vec[String]] = (0..6).map(|arm| answer(arm, message, limit)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let more = answer(arm, longer, limit).len();
+            let wider = answer(arm, message, limit + 1).len();
+            let verdicts = [
+                value == truth,
+                well_cut(value, message, limit),
+                if value.len() == 0 { more == 0 } else { more >= value.len() },
+                if value.len() == 0 { true } else { wider >= 1 and wider <= value.len() },
+                value.len() < 2 or not holds_literally(message.len(), limit, value.len() - 1),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
