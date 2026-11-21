@@ -1,0 +1,77 @@
+// LeetCode #2412: Minimum Money Required Before Transactions -- binary
+// search on the money. A starting amount is enough exactly when it
+// survives the worst order, the losing transactions by cashback upward
+// and then the gaining ones by cost downward; the least such amount is
+// found by halving between 0 and the sum of every cost. O(n log n + n log
+// S).
+
+fn survives(order: Vec[(i64, i64)], money: i64) -> bool {
+    let mut left = money;
+    for (cost, cashback) in order.iter() {
+        if left < cost {
+            return false;
+        }
+        left += cashback - cost;
+    }
+    true
+}
+
+fn minimum_money(transactions: Vec[(i64, i64)]) -> i64 {
+    let mut order = transactions.clone();
+    order.sort_by_key(|t| if t.0 > t.1 {
+        (0, t.1)
+    } else {
+        (1, -t.0)
+    });
+    let mut lo = 0;
+    let mut hi = transactions.iter().map(|t| t.0).sum();
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if survives(order, mid) {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    lo
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` transactions of costs and cashbacks from 0 to `top`.
+fn transactions(seed: mut ref i64, n: i64, top: i64) -> Vec[(i64, i64)] {
+    (0..n).map(|_| {
+        let cost = (next_random(mut seed) * 32768 + next_random(mut seed)) % (top + 1);
+        (cost, (next_random(mut seed) * 32768 + next_random(mut seed)) % (top + 1))
+    }).collect()
+}
+
+fn main() {
+    // LeetCode's two examples; one free transaction; one of each kind;
+    // only gains
+    println(f"{minimum_money([(2, 1), (5, 0), (4, 2)].to_vec())}");
+    println(f"{minimum_money([(3, 0), (0, 3)].to_vec())}");
+    println(f"{minimum_money([(0, 0)].to_vec())}");
+    println(f"{minimum_money([(7, 2), (1, 9)].to_vec())}");
+    println(f"{minimum_money([(1, 5), (8, 8), (3, 4)].to_vec())}");
+    // 10^5 transactions up to 10^9, and 10^5 up to 10
+    let mut seed = 2412;
+    println(f"{minimum_money(transactions(mut seed, 100000, 1000000000))}");
+    println(f"{minimum_money(transactions(mut seed, 100000, 10))}");
+    // 2000 random cases of up to 12 transactions up to 20; a checksum of
+    // the answers and their total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 12;
+        let a = minimum_money(transactions(mut seed, n, 20));
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"2000 random: checksum {check}, total {total}");
+}

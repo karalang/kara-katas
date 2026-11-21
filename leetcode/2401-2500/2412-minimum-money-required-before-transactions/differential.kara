@@ -1,0 +1,249 @@
+// LeetCode #2412: Minimum Money Required Before Transactions -- the
+// differential. The six arms against the statement read literally: every
+// order of the transactions tried, each order walked for the money it
+// needs at the start, and the most any order needs. No worst order and no
+// formula. 360 cases: 300 random cases of 1 to 6 transactions up to 20,
+// which the literal reading answers; 30 of up to 3000 up to 10^9; and 30
+// of up to 3000 up to 10. Every case is drawn before any arm answers.
+//
+// P1  up to 6 transactions: the answer is the literal reading's
+// P2  at least every cost and the total loss, and at most the total loss
+//     plus the largest cost
+// P3  the transactions in reverse: the same answer
+// P4  a free transaction, (0, 0), added: the same answer
+// P5  every cost and cashback doubled: the answer doubled
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+// The most money any order of the transactions not yet `used` needs, with
+// `spent` already gone.
+fn worst_from(transactions: Vec[(i64, i64)], used: mut ref Vec[bool], spent: i64) -> i64 {
+    let mut most = 0;
+    for i in 0..transactions.len() {
+        if not used[i] {
+            let (cost, cashback) = transactions[i];
+            used[i] = true;
+            let need = (spent + cost).max(worst_from(transactions, mut used, spent + cost - cashback));
+            used[i] = false;
+            most = most.max(need);
+        }
+    }
+    most
+}
+
+fn money_literally(transactions: Vec[(i64, i64)]) -> i64 {
+    let mut used: Vec[bool] = Vec.filled(transactions.len(), false);
+    worst_from(transactions, mut used, 0)
+}
+
+// ---- star (money.kara) ---------------------------------------------------
+
+fn star_minimum_money(transactions: Vec[(i64, i64)]) -> i64 {
+    let mut loss = 0;
+    let mut extra = 0;
+    for (cost, cashback) in transactions.iter() {
+        if cost > cashback {
+            loss += cost - cashback;
+            extra = extra.max(cashback);
+        } else {
+            extra = extra.max(cost);
+        }
+    }
+    loss + extra
+}
+
+// ---- each (money_each.kara) ----------------------------------------------
+
+fn each_minimum_money(transactions: Vec[(i64, i64)]) -> i64 {
+    let mut loss = 0;
+    for (cost, cashback) in transactions.iter() {
+        loss += (cost - cashback).max(0);
+    }
+    let mut most = 0;
+    for (cost, cashback) in transactions.iter() {
+        let others = loss - (cost - cashback).max(0);
+        most = most.max(others + cost);
+    }
+    most
+}
+
+// ---- worst (money_worst.kara) --------------------------------------------
+
+fn worst_minimum_money(transactions: Vec[(i64, i64)]) -> i64 {
+    let mut losing: Vec[(i64, i64)] = transactions.iter().filter(|t| t.0 > t.1).collect();
+    let mut gaining: Vec[(i64, i64)] = transactions.iter().filter(|t| t.0 <= t.1).collect();
+    losing.sort_by_key(|t| t.1);
+    gaining.sort_by_key(|t| -t.0);
+    let mut spent = 0;
+    let mut need = 0;
+    for (cost, cashback) in losing.iter().chain(gaining.iter()) {
+        need = need.max(spent + cost);
+        spent += cost - cashback;
+    }
+    need
+}
+
+// ---- binary (money_binary.kara) ------------------------------------------
+
+fn binary_survives(order: Vec[(i64, i64)], money: i64) -> bool {
+    let mut left = money;
+    for (cost, cashback) in order.iter() {
+        if left < cost {
+            return false;
+        }
+        left += cashback - cost;
+    }
+    true
+}
+
+fn binary_minimum_money(transactions: Vec[(i64, i64)]) -> i64 {
+    let mut order = transactions.clone();
+    order.sort_by_key(|t| if t.0 > t.1 {
+        (0, t.1)
+    } else {
+        (1, -t.0)
+    });
+    let mut lo = 0;
+    let mut hi = transactions.iter().map(|t| t.0).sum();
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if binary_survives(order, mid) {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    lo
+}
+
+// ---- iter (money_iter.kara) ----------------------------------------------
+
+fn iter_minimum_money(transactions: Vec[(i64, i64)]) -> i64 {
+    let loss: i64 = transactions.iter().filter(|t| t.0 > t.1).map(|t| t.0 - t.1).sum();
+    let extra = transactions.iter().map(|t| t.0.min(t.1)).max().unwrap();
+    loss + extra
+}
+
+// ---- solution (money_solution.kara) --------------------------------------
+
+impl Solution {
+    pub fn minimum_money(transactions: Vec[Vec[i32]]) -> i64 {
+        let mut loss = 0;
+        let mut mx = 0;
+        for t in transactions.iter() {
+            let (cost, back) = (t[0], t[1]);
+            if cost > back {
+                loss += cost - back;
+                mx = mx.max(back);
+            } else {
+                mx = mx.max(cost);
+            }
+        }
+        loss + mx
+    }
+}
+
+struct Solution {}
+
+fn solution_minimum_money(transactions: Vec[(i64, i64)]) -> i64 {
+    let rows: Vec[Vec[i32]] = transactions.iter().map(|t| [t.0 as i32, t.1 as i32].to_vec()).collect();
+    Solution.minimum_money(rows)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, transactions: Vec[(i64, i64)]) -> i64 {
+    match arm {
+        0 => star_minimum_money(transactions),
+        1 => each_minimum_money(transactions),
+        2 => worst_minimum_money(transactions),
+        3 => binary_minimum_money(transactions),
+        4 => iter_minimum_money(transactions),
+        _ => solution_minimum_money(transactions),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "each", "worst", "binary", "iter", "solution"];
+    let mut seed = 2412;
+    let mut cases: Vec[Vec[(i64, i64)]] = Vec.new();
+    for t in 0..360 {
+        let (n, top) = if t < 300 {
+            (1 + next_random(mut seed) % 6, 20)
+        } else if t < 330 {
+            (1 + next_random(mut seed) % 3000, 1000000000)
+        } else {
+            (1 + next_random(mut seed) % 3000, 10)
+        };
+        let ts: Vec[(i64, i64)] = (0..n).map(|_| {
+            let cost = (next_random(mut seed) * 32768 + next_random(mut seed)) % (top + 1);
+            (cost, (next_random(mut seed) * 32768 + next_random(mut seed)) % (top + 1))
+        }).collect();
+        cases.push(ts);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let ts = cases[c].clone();
+        let n = ts.len();
+        let truth = if n <= 6 {
+            money_literally(ts)
+        } else {
+            -1
+        };
+        if truth >= 0 {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let mut loss = 0;
+        let mut largest = 0;
+        for (cost, cashback) in ts.iter() {
+            loss += (cost - cashback).max(0);
+            largest = largest.max(cost);
+        }
+        let mut backwards = ts.clone();
+        backwards.reverse();
+        let mut with_free = ts.clone();
+        with_free.push((0, 0));
+        let doubled: Vec[(i64, i64)] = ts.iter().map(|(cost, cashback)| (2 * cost, 2 * cashback)).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, ts)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [truth < 0 or value == truth, value >= largest and value >= loss and value <= loss + largest, answer(arm, backwards) == value, answer(arm, with_free) == value, answer(arm, doubled) == 2 * value, same >= 3];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

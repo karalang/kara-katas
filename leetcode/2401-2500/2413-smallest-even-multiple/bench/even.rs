@@ -1,0 +1,20 @@
+// LeetCode #2413: Smallest Even Multiple -- the bench, the ★ arm in Rust:
+// n when n is even, and 2 n when it is odd.
+
+fn smallest_even_multiple(n: i64) -> i64 {
+    if n % 2 == 0 {
+        n
+    } else {
+        2 * n
+    }
+}
+
+fn main() {
+    let mut check: i64 = 0;
+    for p in 0..200000 {
+        for n in 1..151 {
+            check = (check * 31 + smallest_even_multiple(n) + p) % 1000000007;
+        }
+    }
+    println!("200000 passes over n from 1 to 150: checksum {}", check);
+}

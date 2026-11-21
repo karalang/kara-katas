@@ -1,0 +1,75 @@
+// LeetCode #2407: Longest Increasing Subsequence II -- square-root blocks.
+// The values cut into blocks of about the square root of the largest;
+// each block keeps the maximum of its values' longest, so a range is a few
+// values at each end and whole blocks between. O(n sqrt m).
+
+fn length_of_lis(nums: Vec[i64], k: i64) -> i64 {
+    let top = nums.iter().max().unwrap();
+    let mut width = 1;
+    while width * width < top + 1 {
+        width += 1;
+    }
+    let mut ending: Vec[i64] = Vec.filled(top + 1, 0);
+    let mut block: Vec[i64] = Vec.filled(top / width + 1, 0);
+    let mut best = 0;
+    for x in nums.iter() {
+        let mut v = (x - k).max(0);
+        let mut longest = 0;
+        while v < x {
+            if v % width == 0 and v + width <= x {
+                longest = longest.max(block[v / width]);
+                v += width;
+            } else {
+                longest = longest.max(ending[v]);
+                v += 1;
+            }
+        }
+        longest += 1;
+        ending[x] = ending[x].max(longest);
+        block[x / width] = block[x / width].max(longest);
+        best = best.max(longest);
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` values from 1 to `top`.
+fn values(seed: mut ref i64, n: i64, top: i64) -> Vec[i64] {
+    (0..n).map(|_| 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % top).collect()
+}
+
+fn main() {
+    // LeetCode's three examples; one value; a run rising by 2 with k 1 and 2
+    println(f"{length_of_lis([4, 2, 1, 4, 3, 4, 5, 8, 15].to_vec(), 3)}");
+    println(f"{length_of_lis([7, 4, 5, 1, 8, 12, 4, 7].to_vec(), 5)}");
+    println(f"{length_of_lis([1, 5].to_vec(), 1)}");
+    println(f"{length_of_lis([100000].to_vec(), 100000)}");
+    let odd: Vec[i64] = (0..50).map(|i| 1 + 2 * i).collect();
+    println(f"{length_of_lis(odd, 1)} {length_of_lis(odd, 2)}");
+    // 20000 values up to 10^5 with k 1, 100 and 10^5, and 20000 rising
+    // gently
+    let mut seed = 2407;
+    let big = values(mut seed, 20000, 100000);
+    println(f"{length_of_lis(big, 1)} {length_of_lis(big, 100)} {length_of_lis(big, 100000)}");
+    let gentle: Vec[i64] = (0..20000).map(|i| 1 + i * 4 + next_random(mut seed) % 9).collect();
+    println(f"{length_of_lis(gentle, 3)} {length_of_lis(gentle, 8)}");
+    // 2000 random cases of up to 30 values from 1 to up to 50, k from 1 to
+    // 10; a checksum of the answers and their total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let top = 1 + next_random(mut seed) % 50;
+        let k = 1 + next_random(mut seed) % 10;
+        let a = length_of_lis(values(mut seed, n, top), k);
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"2000 random: checksum {check}, total {total}");
+}
