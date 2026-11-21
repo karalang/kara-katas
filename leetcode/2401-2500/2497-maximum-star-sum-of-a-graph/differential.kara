@@ -1,0 +1,332 @@
+// LeetCode #2497: Maximum Star Sum of a Graph -- the differential. The
+// six arms against the statement read literally: for every node as the
+// centre, every set of at most `k` of its neighbours tried, each set
+// read off the bits of a mask, and the greatest sum of a centre and its
+// set taken. 300 random graphs of 1 to 7 nodes and up to 12 tries at an
+// edge, values from -2 to 5 or from -5000 to 10^4, `k` from 0 to 3 and
+// below n; then 20 of one node, and 40 of 12 to 20 nodes with up to 60
+// tries; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  at least the greatest value, and at most that plus `k` times it
+// P3  the edges in the other order, each end for end: the same answer
+// P4  k = 0: the greatest value
+// P5  k one more, below n: no less, and at most the greatest value more
+// P6  each arm agrees with at least three of the other five
+
+// ---- star (star_sum.kara) ------------------------------------------------
+
+fn star_max_star_sum(vals: Vec[i64], edges: Vec[Vec[i64]], k: i64) -> i64 {
+    let n = vals.len();
+    let mut beside: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for edge in edges.iter() {
+        beside[edge[0]].push(vals[edge[1]]);
+        beside[edge[1]].push(vals[edge[0]]);
+    }
+    let mut best = i64.MIN;
+    for centre in 0..n {
+        beside[centre].sort();
+        beside[centre].reverse();
+        let mut sum = vals[centre];
+        let mut taken = 0;
+        for value in beside[centre].iter() {
+            if taken == k or value <= 0 {
+                break;
+            }
+            sum += value;
+            taken += 1;
+        }
+        best = best.max(sum);
+    }
+    best
+}
+
+// ---- heap (star_sum_heap.kara) -------------------------------------------
+
+fn heap_max_star_sum(vals: Vec[i64], edges: Vec[Vec[i64]], k: i64) -> i64 {
+    let n = vals.len();
+    let mut kept: Vec[PriorityQueue[i64]] = Vec.new();
+    for _ in 0..n {
+        kept.push(PriorityQueue.new());
+    }
+    for edge in edges.iter() {
+        for (centre, other) in [(edge[0], edge[1]), (edge[1], edge[0])] {
+            if vals[other] > 0 {
+                kept[centre].push(vals[other]);
+                if kept[centre].len() > k {
+                    kept[centre].pop();
+                }
+            }
+        }
+    }
+    let mut best = i64.MIN;
+    for centre in 0..n {
+        let mut sum = vals[centre];
+        while let Some(value) = kept[centre].pop() {
+            sum += value;
+        }
+        best = best.max(sum);
+    }
+    best
+}
+
+// ---- greedy (star_sum_greedy.kara) ---------------------------------------
+
+fn greedy_max_star_sum(vals: Vec[i64], edges: Vec[Vec[i64]], k: i64) -> i64 {
+    let n = vals.len();
+    let mut offers: Vec[(i64, i64)] = Vec.new();
+    for edge in edges.iter() {
+        if vals[edge[1]] > 0 {
+            offers.push((vals[edge[1]], edge[0]));
+        }
+        if vals[edge[0]] > 0 {
+            offers.push((vals[edge[0]], edge[1]));
+        }
+    }
+    offers.sort();
+    let mut sum: Vec[i64] = vals.clone();
+    let mut taken: Vec[i64] = Vec.filled(n, 0);
+    for (value, centre) in offers.iter().rev() {
+        if taken[centre] < k {
+            sum[centre] += value;
+            taken[centre] += 1;
+        }
+    }
+    sum.iter().max().unwrap()
+}
+
+// ---- select (star_sum_select.kara) ---------------------------------------
+
+fn select_top_sum(xs: mut ref Vec[i64], lo: i64, hi: i64, k: i64) -> i64 {
+    if k == 0 {
+        return 0;
+    }
+    if k == hi - lo {
+        let mut all = 0;
+        for i in lo..hi {
+            all += xs[i];
+        }
+        return all;
+    }
+    xs.swap((lo + hi) / 2, hi - 1);
+    let pivot = xs[hi - 1];
+    let mut store = lo;
+    for i in lo..hi - 1 {
+        if xs[i] > pivot {
+            xs.swap(i, store);
+            store += 1;
+        }
+    }
+    xs.swap(store, hi - 1);
+    let above = store - lo;
+    if k <= above {
+        select_top_sum(mut xs, lo, store, k)
+    } else {
+        select_top_sum(mut xs, lo, store, above) + pivot + select_top_sum(mut xs, store + 1, hi, k - above - 1)
+    }
+}
+
+fn select_max_star_sum(vals: Vec[i64], edges: Vec[Vec[i64]], k: i64) -> i64 {
+    let n = vals.len();
+    let mut up: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for edge in edges.iter() {
+        if vals[edge[1]] > 0 {
+            up[edge[0]].push(vals[edge[1]]);
+        }
+        if vals[edge[0]] > 0 {
+            up[edge[1]].push(vals[edge[0]]);
+        }
+    }
+    let mut best = i64.MIN;
+    for centre in 0..n {
+        let count = up[centre].len();
+        let sum = vals[centre] + select_top_sum(mut up[centre], 0, count, k.min(count));
+        best = best.max(sum);
+    }
+    best
+}
+
+// ---- iter (star_sum_iter.kara) -------------------------------------------
+
+fn iter_max_star_sum(vals: Vec[i64], edges: Vec[Vec[i64]], k: i64) -> i64 {
+    let n = vals.len();
+    let mut beside: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for edge in edges.iter() {
+        beside[edge[0]].push(edge[1]);
+        beside[edge[1]].push(edge[0]);
+    }
+    (0..n)
+        .map(|centre| {
+            let mut up: Vec[i64] = beside[centre].iter().map(|other| vals[other]).filter(|value| value > 0).collect();
+            up.sort();
+            vals[centre] + up.iter().rev().take(k).sum()
+        })
+        .max()
+        .unwrap()
+}
+
+// ---- solution (star_sum_solution.kara) -----------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_star_sum(vals: Vec[i32], edges: Vec[Vec[i32]], k: i32) -> i32 {
+        let n = vals.len();
+        let mut g: Vec[Vec[i32]] = Vec.filled(n, Vec.new());
+        for e in ref edges {
+            let (a, b) = (e[0] as i64, e[1] as i64);
+            if vals[b] > 0 {
+                g[a].push(vals[b]);
+            }
+            if vals[a] > 0 {
+                g[b].push(vals[a]);
+            }
+        }
+        let mut ans = i32.MIN;
+        for i in 0..n {
+            g[i].sort_by(|x, y| y.cmp(x));
+            let s: i32 = g[i].iter().take(k).sum();
+            ans = ans.max(vals[i] + s);
+        }
+        ans
+    }
+}
+
+fn solution_max_star_sum(vals: Vec[i64], edges: Vec[Vec[i64]], k: i64) -> i64 {
+    let asked: Vec[Vec[i32]] = edges.iter().map(|e| e.iter().map(|v| v as i32).collect()).collect();
+    Solution.max_star_sum(vals.iter().map(|v| v as i32).collect(), asked, k as i32)
+}
+
+// ---- the statement read literally
+
+fn literal(vals: Vec[i64], edges: Vec[Vec[i64]], k: i64) -> i64 {
+    let n = vals.len();
+    let mut best = vals[0];
+    for centre in 0..n {
+        let mut others: Vec[i64] = Vec.new();
+        for edge in edges.iter() {
+            if edge[0] == centre {
+                others.push(edge[1]);
+            } else if edge[1] == centre {
+                others.push(edge[0]);
+            }
+        }
+        for mask in 0..1 << others.len() {
+            let mut size = 0;
+            let mut sum = vals[centre];
+            for j in 0..others.len() {
+                if mask >> j & 1 == 1 {
+                    size += 1;
+                    sum += vals[others[j]];
+                }
+            }
+            if size <= k and sum > best {
+                best = sum;
+            }
+        }
+    }
+    best
+}
+
+// ---- cases
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_graph(n: i64, tries: i64, top: i64, seed: mut ref i64) -> (Vec[i64], Vec[Vec[i64]]) {
+    let mut vals: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        vals.push(next_random(mut seed) % (top + top / 2 + 1) - top / 2);
+    }
+    let mut taken: Set[i64] = Set.new();
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..tries {
+        let a = next_random(mut seed) % n;
+        let b = next_random(mut seed) % n;
+        if a != b and taken.insert(a.min(b) * 100 + a.max(b)) {
+            edges.push([a, b].to_vec());
+        }
+    }
+    (vals, edges)
+}
+
+fn answer(arm: i64, vals: Vec[i64], edges: Vec[Vec[i64]], k: i64) -> i64 {
+    match arm {
+        0 => star_max_star_sum(vals, edges, k),
+        1 => heap_max_star_sum(vals, edges, k),
+        2 => greedy_max_star_sum(vals, edges, k),
+        3 => select_max_star_sum(vals, edges, k),
+        4 => iter_max_star_sum(vals, edges, k),
+        _ => solution_max_star_sum(vals, edges, k),
+    }
+}
+
+fn main() {
+    let names = ["star", "heap", "greedy", "select", "iter", "solution"];
+    let mut seed = 2497;
+    let mut problems: Vec[(Vec[i64], Vec[Vec[i64]], i64)] = Vec.new();
+    for t in 0..360 {
+        let (n, tries, top) = if t < 300 {
+            (next_random(mut seed) % 7 + 1, next_random(mut seed) % 13, if t % 2 == 0 { 5 } else { 10000 })
+        } else if t < 320 {
+            (1, 0, 10000)
+        } else {
+            (next_random(mut seed) % 9 + 12, next_random(mut seed) % 61, 10000)
+        };
+        let k = next_random(mut seed) % n.min(4);
+        let (vals, edges) = random_graph(n, tries, top, mut seed);
+        problems.push((vals, edges, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (vals, edges, k) in problems.iter() {
+        let n = vals.len();
+        let truth = literal(vals, edges, k);
+        check = (check * 31 + truth + 1000000000) % 1000000007;
+        let greatest = vals.iter().max().unwrap();
+        let turned: Vec[Vec[i64]] = edges.iter().rev().map(|e| [e[1], e[0]].to_vec()).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, vals, edges, k)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                x >= greatest and x <= greatest + k * greatest.max(0),
+                answer(arm, vals, turned, k) == x,
+                answer(arm, vals, edges, 0) == greatest,
+                k == n - 1 or (answer(arm, vals, edges, k + 1) >= x and answer(arm, vals, edges, k + 1) <= x + greatest.max(0)),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{n} nodes, {edges.len()} edges, k {k}, arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,68 @@
+// LeetCode #2497: Maximum Star Sum of a Graph -- benchmark of the ★ arm
+// (star_sum.kara): one graph of 10^5 nodes and 10^5 edges, built once,
+// then 125 passes; each sets one node's value and `k` from the checksum
+// so far, asks, and puts the value back, folding the answer plus the
+// pass into the checksum.
+
+fn max_star_sum(vals: Vec[i64], edges: Vec[Vec[i64]], k: i64) -> i64 {
+    let n = vals.len();
+    let mut beside: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for edge in edges.iter() {
+        beside[edge[0]].push(vals[edge[1]]);
+        beside[edge[1]].push(vals[edge[0]]);
+    }
+    let mut best = i64.MIN;
+    for centre in 0..n {
+        beside[centre].sort();
+        beside[centre].reverse();
+        let mut sum = vals[centre];
+        let mut taken = 0;
+        for value in beside[centre].iter() {
+            if taken == k or value <= 0 {
+                break;
+            }
+            sum += value;
+            taken += 1;
+        }
+        best = best.max(sum);
+    }
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let n = 100000;
+    let passes = 125;
+    let mut seed = 2497;
+    let mut vals: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        vals.push(wide(mut seed) % 20001 - 10000);
+    }
+    let mut taken: Set[i64] = Set.new();
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..n {
+        let a = wide(mut seed) % n;
+        let b = wide(mut seed) % n;
+        if a != b and taken.insert(a.min(b) * n + a.max(b)) {
+            edges.push([a, b].to_vec());
+        }
+    }
+    let mut check = 0;
+    for p in 0..passes {
+        let at = check % n;
+        let was = vals[at];
+        vals[at] = (check / n + p) % 20001 - 10000;
+        let k = check % 50;
+        check = (check * 31 + max_star_sum(vals, edges, k) + p) % 1000000007;
+        vals[at] = was;
+    }
+    println(f"{passes} passes over 10^5 nodes and {edges.len()} edges: checksum {check}");
+}
