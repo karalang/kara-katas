@@ -1,0 +1,105 @@
+// LeetCode #2509: Cycle Length Queries in a Tree -- every ancestor of a,
+// a itself first, kept in a `Map` with its distance from a; b then
+// climbs until it reaches one, and the cycle is the two distances and
+// the new edge. O(n) a query.
+
+fn cycle_length_queries(n: i64, queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut answer: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let mut above: Map[i64, i64] = Map.new();
+        let mut a = q[0];
+        let mut steps = 0;
+        while a > 0 {
+            above.insert(a, steps);
+            a /= 2;
+            steps += 1;
+        }
+        let mut b = q[1];
+        let mut climbed = 0;
+        while not above.contains_key(b) {
+            b /= 2;
+            climbed += 1;
+        }
+        answer.push(above[b] + climbed + 1);
+    }
+    answer
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a value from 0 below `top`, from two draws, since one is below 32768
+fn below(top: i64, seed: mut ref i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % top
+}
+
+// `count` queries of two different nodes of the tree of 2^n - 1
+fn random_queries(n: i64, count: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let size = (1 << n) - 1;
+    let mut queries: Vec[Vec[i64]] = Vec.new();
+    while queries.len() < count {
+        let a = below(size, mut seed) + 1;
+        let b = below(size, mut seed) + 1;
+        if a != b {
+            queries.push([a, b].to_vec());
+        }
+    }
+    queries
+}
+
+fn fold(check: i64, answers: Vec[i64]) -> i64 {
+    let mut check = check;
+    for a in answers.iter() {
+        check = (check * 31 + a) % 1000000007;
+    }
+    check
+}
+
+fn pairs(list: Vec[(i64, i64)]) -> Vec[Vec[i64]] {
+    list.iter().map(|(a, b)| [a, b].to_vec()).collect()
+}
+
+fn main() {
+    // LeetCode's two examples, then four more
+    let cases: Vec[(i64, Vec[Vec[i64]])] = [
+        (3, pairs([(5, 3), (4, 7), (2, 3)].to_vec())),
+        (2, pairs([(1, 2)].to_vec())),
+        (2, pairs([(2, 3), (3, 1), (2, 1)].to_vec())),
+        (4, pairs([(8, 15), (8, 9), (1, 15), (14, 7), (12, 13)].to_vec())),
+        (5, pairs([(16, 31), (17, 30), (3, 24), (6, 7)].to_vec())),
+        (30, pairs([(536870912, 1073741823), (1, 1073741823), (1073741822, 1073741823), (2, 3)].to_vec())),
+    ].to_vec();
+    for (n, queries) in cases.iter() {
+        println(f"n = {n}, {queries.len()} queries -> {cycle_length_queries(n, queries)}");
+    }
+    // 2000 random trees of 2 to 30 levels with 1 to 20 queries, and 2000
+    // of 2 to 6 levels: the sum of the answers and a checksum
+    let mut seed = 2509;
+    for most in [30, 6] {
+        let mut check = 0;
+        let mut total = 0;
+        for _ in 0..2000 {
+            let n = next_random(mut seed) % (most - 1) + 2;
+            let count = next_random(mut seed) % 20 + 1;
+            let answers = cycle_length_queries(n, random_queries(n, count, mut seed));
+            for a in answers.iter() {
+                total += a;
+            }
+            check = fold(check, answers);
+        }
+        println(f"2000 random to {most} levels: total {total}, checksum {check}");
+    }
+    // the constraints' largest: 30 levels and 10^5 random queries; 10^5
+    // queries between leaves at the two edges; and 10^5 from the root to
+    // every depth in turn
+    let random = cycle_length_queries(30, random_queries(30, 100000, mut seed));
+    println(f"30 levels, 10^5 random: checksum {fold(0, random)}");
+    let edges: Vec[Vec[i64]] = (0..100000).map(|k| [(1 << 29) + k, (1 << 30) - 1 - k].to_vec()).collect();
+    println(f"30 levels, 10^5 between edge leaves: checksum {fold(0, cycle_length_queries(30, edges))}");
+    let deep: Vec[Vec[i64]] = (0..100000).map(|k| [1, (1 << (k % 29 + 1)) + k % (1 << (k % 29 + 1))].to_vec()).collect();
+    println(f"30 levels, 10^5 from the root: checksum {fold(0, cycle_length_queries(30, deep))}");
+}

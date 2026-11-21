@@ -1,0 +1,60 @@
+// LeetCode #2509: Cycle Length Queries in a Tree -- benchmark of the ★
+// arm (cycle.kara): 10^5 queries on the tree of 30 levels built once from
+// its own generator, then the passes; each sets one query's second node
+// from the checksum so far, asks every query, and puts it back.
+
+fn cycle_length_queries(n: i64, queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut answer: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let mut (a, b) = (q[0], q[1]);
+        let mut length = 1;
+        while a != b {
+            if a > b {
+                a /= 2;
+            } else {
+                b /= 2;
+            }
+            length += 1;
+        }
+        answer.push(length);
+    }
+    answer
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn below(top: i64, seed: mut ref i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % top
+}
+
+fn main() {
+    let size = (1 << 30) - 1;
+    let mut seed = 2509;
+    let mut queries: Vec[Vec[i64]] = Vec.new();
+    while queries.len() < 100000 {
+        let a = below(size, mut seed) + 1;
+        let b = below(size, mut seed) + 1;
+        if a != b {
+            queries.push([a, b].to_vec());
+        }
+    }
+    let passes = 34;
+    let mut check = 0;
+    for p in 0..passes {
+        let at = check % queries.len();
+        let kept = queries[at][1];
+        let mut b = (check + p) % size + 1;
+        if b == queries[at][0] {
+            b = b % size + 1;
+        }
+        queries[at][1] = b;
+        for x in cycle_length_queries(30, queries).iter() {
+            check = (check * 31 + x + p) % 1000000007;
+        }
+        queries[at][1] = kept;
+    }
+    println(f"{passes} passes over 10^5 queries on 30 levels: checksum {check}");
+}
