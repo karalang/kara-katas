@@ -1,0 +1,309 @@
+// LeetCode #2507: Smallest Value After Replacing With Sum of Prime
+// Factors -- the differential. The six arms against the statement read
+// literally: every number from 2 up to what is left tried in turn, a
+// prime factor when it divides and no smaller number from 2 divides it,
+// divided out as often as it goes and added each time; the sum replaces
+// n until it leaves n unchanged. 300 random n to 2000; then 2 to 21; and
+// 40 random n to 10^5; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is at most n, and is 4 or a prime
+// P3  the answer is its own answer
+// P4  the answer for the sum of n's prime factors is the same
+// P5  the answer for 2 n is the answer for that sum plus 2, while 2 n is
+//     at most 10^5
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally
+
+fn is_prime(d: i64) -> bool {
+    if d < 2 {
+        return false;
+    }
+    for k in 2..d {
+        if d % k == 0 {
+            return false;
+        }
+    }
+    true
+}
+
+fn factor_total(n: i64) -> i64 {
+    let mut rest = n;
+    let mut total = 0;
+    let mut d = 2;
+    while d <= rest {
+        if rest % d == 0 and is_prime(d) {
+            while rest % d == 0 {
+                rest /= d;
+                total += d;
+            }
+        }
+        d += 1;
+    }
+    total
+}
+
+fn literal(n: i64) -> i64 {
+    let mut n = n;
+    while factor_total(n) != n {
+        n = factor_total(n);
+    }
+    n
+}
+
+// ---- star (smallest.kara) ------------------------------------------------
+
+fn star_smallest_value(n: i64) -> i64 {
+    let mut n = n;
+    loop {
+        let mut rest = n;
+        let mut total = 0;
+        let mut p = 2;
+        while p * p <= rest {
+            while rest % p == 0 {
+                rest /= p;
+                total += p;
+            }
+            p += 1;
+        }
+        if rest > 1 {
+            total += rest;
+        }
+        if total == n {
+            return n;
+        }
+        n = total;
+    }
+}
+
+// ---- primes (smallest_primes.kara) ---------------------------------------
+
+fn primes_primes_to(top: i64) -> Vec[i64] {
+    let mut composite: Vec[bool] = Vec.filled(top + 1, false);
+    let mut primes: Vec[i64] = Vec.new();
+    for p in 2..top + 1 {
+        if not composite[p] {
+            primes.push(p);
+            let mut q = p * p;
+            while q <= top {
+                composite[q] = true;
+                q += p;
+            }
+        }
+    }
+    primes
+}
+
+fn primes_smallest_value(n: i64) -> i64 {
+    let primes = primes_primes_to(n.isqrt());
+    let mut n = n;
+    loop {
+        let mut rest = n;
+        let mut total = 0;
+        for p in primes.iter() {
+            if p * p > rest {
+                break;
+            }
+            while rest % p == 0 {
+                rest /= p;
+                total += p;
+            }
+        }
+        if rest > 1 {
+            total += rest;
+        }
+        if total == n {
+            return n;
+        }
+        n = total;
+    }
+}
+
+// ---- odd (smallest_odd.kara) ---------------------------------------------
+
+fn odd_factor_sum(n: i64) -> i64 {
+    let twos = n.trailing_zeros();
+    let mut rest = n >> twos;
+    let mut total = 2 * twos;
+    let mut p = 3;
+    while p * p <= rest {
+        while rest % p == 0 {
+            rest /= p;
+            total += p;
+        }
+        p += 2;
+    }
+    if rest > 1 { total + rest } else { total }
+}
+
+fn odd_smallest_value(n: i64) -> i64 {
+    let mut n = n;
+    let mut next = odd_factor_sum(n);
+    while next != n {
+        n = next;
+        next = odd_factor_sum(n);
+    }
+    n
+}
+
+// ---- rec (smallest_rec.kara) ---------------------------------------------
+
+fn rec_factor_sum(rest: i64, p: i64) -> i64 {
+    if rest == 1 {
+        return 0;
+    }
+    if p * p > rest {
+        return rest;
+    }
+    if rest % p == 0 {
+        p + rec_factor_sum(rest / p, p)
+    } else {
+        rec_factor_sum(rest, p + 1)
+    }
+}
+
+fn rec_smallest_value(n: i64) -> i64 {
+    let total = rec_factor_sum(n, 2);
+    if total == n { n } else { rec_smallest_value(total) }
+}
+
+// ---- iter (smallest_iter.kara) -------------------------------------------
+
+fn iter_factor_sum(n: i64) -> i64 {
+    let (rest, total) = (2..n.isqrt() + 1).fold((n, 0), |(m, s), p| {
+        let mut (m, s) = (m, s);
+        while m % p == 0 {
+            m /= p;
+            s += p;
+        }
+        (m, s)
+    });
+    if rest > 1 { total + rest } else { total }
+}
+
+fn iter_smallest_value(n: i64) -> i64 {
+    (0..).scan(n, |x, _| {
+        let s = iter_factor_sum(x);
+        if s == x { None } else { Some((s, s)) }
+    }).last().unwrap_or(n)
+}
+
+// ---- solution (smallest_solution.kara) -----------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn smallest_value(n: i32) -> i32 {
+        let mut n = n;
+        loop {
+            let mut x = n;
+            let mut s: i32 = 0;
+            let mut i: i32 = 2;
+            while i * i <= x {
+                while x % i == 0 {
+                    s += i;
+                    x /= i;
+                }
+                i += 1;
+            }
+            if x > 1 {
+                s += x;
+            }
+            if s == n {
+                return n;
+            }
+            n = s;
+        }
+    }
+}
+
+fn solution_smallest_value(n: i64) -> i64 {
+    Solution.smallest_value(n as i32)
+}
+
+// ---- the differential --------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn answer(arm: i64, n: i64) -> i64 {
+    match arm {
+        0 => star_smallest_value(n),
+        1 => primes_smallest_value(n),
+        2 => odd_smallest_value(n),
+        3 => rec_smallest_value(n),
+        4 => iter_smallest_value(n),
+        _ => solution_smallest_value(n),
+    }
+}
+
+fn main() {
+    let names = ["star", "primes", "odd", "rec", "iter", "solution"];
+    let mut seed = 2507;
+    let mut problems: Vec[i64] = Vec.new();
+    for t in 0..360 {
+        let n = if t < 300 {
+            next_random(mut seed) % 1999 + 2
+        } else if t < 320 {
+            t - 298
+        } else {
+            (next_random(mut seed) * 32768 + next_random(mut seed)) % 99999 + 2
+        };
+        problems.push(n);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut fixed = 0;
+    for n in problems.iter() {
+        let truth = literal(n);
+        if truth == n {
+            fixed += 1;
+        }
+        check = (check * 31 + truth) % 1000000007;
+        let total = factor_total(n);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, n)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                x <= n and (x == 4 or is_prime(x)),
+                answer(arm, x) == x,
+                answer(arm, total) == x,
+                2 * n > 100000 or answer(arm, 2 * n) == answer(arm, total + 2),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"n {n}, arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} cases, {fixed} already smallest: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
