@@ -1,0 +1,270 @@
+// LeetCode #2419: Longest Subarray With Maximum Bitwise AND -- the
+// differential. The six arms against the statement read literally: the
+// AND of every subarray, the largest of them, and the longest subarray
+// whose AND is that. 360 cases: 300 random arrays of 1 to 12 values up to
+// 1 to 8; 30 of up to 400 values up to 10^6; and 30 of up to 400 values
+// of 1 to 3 in long runs. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the answer is at least 1 and at most how many times the largest
+//     value appears
+// P3  the array reversed: the same answer
+// P4  every value doubled: the same answer
+// P5  every value given twice in its place: twice the answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn longest_literally(nums: Slice[i64]) -> i64 {
+    let n = nums.len();
+    let mut k = 0;
+    for i in 0..n {
+        let mut acc = nums[i];
+        for j in i..n {
+            acc = acc & nums[j];
+            k = k.max(acc);
+        }
+    }
+    let mut best = 0;
+    for i in 0..n {
+        let mut acc = nums[i];
+        for j in i..n {
+            acc = acc & nums[j];
+            if acc == k {
+                best = best.max(j - i + 1);
+            }
+        }
+    }
+    best
+}
+
+// ---- star (longest.kara) -------------------------------------------------
+
+fn star_longest_subarray(nums: Vec[i64]) -> i64 {
+    let mut top = 0;
+    let mut run = 0;
+    let mut best = 0;
+    for x in nums.iter() {
+        if x > top {
+            top = x;
+            run = 0;
+            best = 0;
+        }
+        if x == top {
+            run += 1;
+            best = best.max(run);
+        } else {
+            run = 0;
+        }
+    }
+    best
+}
+
+// ---- twopass (longest_twopass.kara) --------------------------------------
+
+fn twopass_longest_subarray(nums: Vec[i64]) -> i64 {
+    let mut top = 0;
+    for x in nums.iter() {
+        top = top.max(x);
+    }
+    let mut run = 0;
+    let mut best = 0;
+    for x in nums.iter() {
+        if x == top {
+            run += 1;
+            best = best.max(run);
+        } else {
+            run = 0;
+        }
+    }
+    best
+}
+
+// ---- ands (longest_ands.kara) --------------------------------------------
+
+fn ands_longest_subarray(nums: Vec[i64]) -> i64 {
+    // (the AND, the longest subarray ending here with it)
+    let mut ending: Vec[(i64, i64)] = Vec.new();
+    let mut top = 0;
+    let mut best = 0;
+    for x in nums.iter() {
+        let mut next: Vec[(i64, i64)] = Vec.new();
+        next.push((x, 1));
+        for (acc, len) in ending.iter() {
+            let v = acc & x;
+            let last = next.len() - 1;
+            if next[last].0 == v {
+                next[last] = (v, next[last].1.max(len + 1));
+            } else {
+                next.push((v, len + 1));
+            }
+        }
+        for (acc, len) in next.iter() {
+            if acc > top {
+                top = acc;
+                best = len;
+            } else if acc == top {
+                best = best.max(len);
+            }
+        }
+        ending = next;
+    }
+    best
+}
+
+// ---- runs (longest_runs.kara) --------------------------------------------
+
+fn runs_longest_subarray(nums: Vec[i64]) -> i64 {
+    let mut runs: Vec[(i64, i64)] = Vec.new();
+    for x in nums.iter() {
+        let n = runs.len();
+        if n > 0 and runs[n - 1].0 == x {
+            runs[n - 1] = (x, runs[n - 1].1 + 1);
+        } else {
+            runs.push((x, 1));
+        }
+    }
+    let mut best = (0, 0);
+    for r in runs.iter() {
+        if r.0 > best.0 or r.0 == best.0 and r.1 > best.1 {
+            best = r;
+        }
+    }
+    best.1
+}
+
+// ---- iter (longest_iter.kara) --------------------------------------------
+
+fn iter_longest_subarray(nums: Vec[i64]) -> i64 {
+    let top = nums.iter().max().unwrap();
+    let (_, best) = nums.iter().fold((0, 0), |(run, best), x| {
+        if x == top {
+            (run + 1, best.max(run + 1))
+        } else {
+            (0, best)
+        }
+    });
+    best
+}
+
+// ---- solution (longest_solution.kara) ------------------------------------
+
+impl Solution {
+    pub fn longest_subarray(nums: Vec[i32]) -> i32 {
+        let mx = *nums.iter().max().unwrap();
+        let mut ans: i32 = 0;
+        let mut cnt: i32 = 0;
+        for x in ref nums {
+            if x == mx {
+                cnt += 1;
+                ans = ans.max(cnt);
+            } else {
+                cnt = 0;
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_longest_subarray(nums: Vec[i64]) -> i64 {
+    Solution.longest_subarray(nums.iter().map(|x| x as i32).collect())
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, nums: Slice[i64]) -> i64 {
+    let nums = nums.to_vec();
+    match arm {
+        0 => star_longest_subarray(nums),
+        1 => twopass_longest_subarray(nums),
+        2 => ands_longest_subarray(nums),
+        3 => runs_longest_subarray(nums),
+        4 => iter_longest_subarray(nums),
+        _ => solution_longest_subarray(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "twopass", "ands", "runs", "iter", "solution"];
+    let mut seed = 2419;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let (n, top, stay) = if t < 300 {
+            (1 + next_random(mut seed) % 12, 1 + next_random(mut seed) % 8, 1 + next_random(mut seed) % 4)
+        } else if t < 330 {
+            (1 + next_random(mut seed) % 400, 1000000, 2)
+        } else {
+            (1 + next_random(mut seed) % 400, 3, 8)
+        };
+        let mut nums: Vec[i64] = Vec.new();
+        for i in 0..n {
+            if i > 0 and next_random(mut seed) % stay == 0 {
+                nums.push(nums[i - 1]);
+            } else {
+                nums.push(1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % top);
+            }
+        }
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let nums = cases[c].clone();
+        let truth = longest_literally(nums);
+        check = (check * 31 + truth) % 1000000007;
+        let mut top = 0;
+        for x in nums.iter() {
+            top = top.max(x);
+        }
+        let tops = nums.iter().filter(|x| x == top).count();
+        let mut back = nums.clone();
+        back.reverse();
+        let doubled: Vec[i64] = nums.iter().map(|x| 2 * x).collect();
+        let mut twice: Vec[i64] = Vec.new();
+        for x in nums.iter() {
+            twice.push(x);
+            twice.push(x);
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [value == truth, value >= 1 and value <= tops, answer(arm, back) == value, answer(arm, doubled) == value, answer(arm, twice) == 2 * value, same >= 3];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

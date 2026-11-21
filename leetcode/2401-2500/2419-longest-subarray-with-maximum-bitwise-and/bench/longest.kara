@@ -1,0 +1,54 @@
+// LeetCode #2419: Longest Subarray With Maximum Bitwise AND -- the bench,
+// the ★ arm: one scan keeping the largest value so far and the run of it
+// ending here.
+
+fn longest_subarray(nums: Vec[i64]) -> i64 {
+    let mut top = 0;
+    let mut run = 0;
+    let mut best = 0;
+    for x in nums.iter() {
+        if x > top {
+            top = x;
+            run = 0;
+            best = 0;
+        }
+        if x == top {
+            run += 1;
+            best = best.max(run);
+        } else {
+            run = 0;
+        }
+    }
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 10 arrays of 10^5 values, array i up to 2 + 100 i, each a copy of
+    // the one before with probability 1/2; each pass answers every array
+    // and folds the answer plus the pass
+    let mut seed = 2419;
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    for i in 0..10 {
+        let mut nums: Vec[i64] = Vec.new();
+        for k in 0..100000 {
+            if k > 0 and next_random(mut seed) % 2 == 0 {
+                nums.push(nums[k - 1]);
+            } else {
+                nums.push(1 + next_random(mut seed) % (2 + 100 * i));
+            }
+        }
+        arrays.push(nums);
+    }
+    let mut check = 0;
+    for p in 0..500 {
+        for nums in arrays.iter() {
+            check = (check * 31 + longest_subarray(nums) + p) % 1000000007;
+        }
+    }
+    println(f"500 passes over 10 arrays of 10^5 values: checksum {check}");
+}
