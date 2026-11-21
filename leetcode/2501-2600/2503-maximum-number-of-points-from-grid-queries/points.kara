@@ -1,0 +1,112 @@
+// LeetCode #2503: Maximum Number of Points From Grid Queries -- the ★
+// arm. The queries are answered in increasing order by one growing
+// region: its border waits in a least-first `PriorityQueue` of (value,
+// cell), and a query takes in every border cell below it, whose unseen
+// neighbours join the border. O(m n log(m n) + k log k).
+
+fn max_points(grid: Vec[Vec[i64]], queries: Vec[i64]) -> Vec[i64] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut order: Vec[i64] = (0..queries.len()).collect();
+    order.sort_by_key(|i| queries[i]);
+    let mut answer: Vec[i64] = Vec.filled(queries.len(), 0);
+    let mut seen: Vec[Vec[bool]] = Vec.filled(m, Vec.filled(n, false));
+    let mut border: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    border.push((grid[0][0], 0));
+    seen[0][0] = true;
+    let mut reached = 0;
+    for i in order.iter() {
+        let q = queries[i];
+        while border.peek().is_some_and(|(value, _)| value < q) {
+            let (_, cell) = border.pop().unwrap();
+            reached += 1;
+            let (r, c) = (cell / n, cell % n);
+            for (dr, dc) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                let (rr, cc) = (r + dr, c + dc);
+                if rr >= 0 and rr < m and cc >= 0 and cc < n and not seen[rr][cc] {
+                    seen[rr][cc] = true;
+                    border.push((grid[rr][cc], rr * n + cc));
+                }
+            }
+        }
+        answer[i] = reached;
+    }
+    answer
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a value from 0 below `top`, from two draws, since one is below 32768
+fn below(top: i64, seed: mut ref i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % top
+}
+
+fn random_grid(m: i64, n: i64, top: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut grid: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..m {
+        let mut row: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            row.push(below(top, mut seed) + 1);
+        }
+        grid.push(row);
+    }
+    grid
+}
+
+fn fold(check: i64, answers: Vec[i64]) -> i64 {
+    let mut check = check;
+    for a in answers.iter() {
+        check = (check * 31 + a) % 1000000007;
+    }
+    check
+}
+
+fn main() {
+    // LeetCode's two examples, then six more
+    let cases: Vec[(Vec[Vec[i64]], Vec[i64])] = [
+        ([[1, 2, 3].to_vec(), [2, 5, 7].to_vec(), [3, 5, 1].to_vec()].to_vec(), [5, 6, 2].to_vec()),
+        ([[5, 2, 1].to_vec(), [1, 1, 2].to_vec()].to_vec(), [3].to_vec()),
+        ([[1, 1].to_vec(), [1, 1].to_vec()].to_vec(), [1, 2, 1000000].to_vec()),
+        ([[3, 1].to_vec(), [1, 3].to_vec()].to_vec(), [3, 4, 2].to_vec()),
+        ([[1, 9, 1, 1].to_vec(), [1, 9, 1, 9].to_vec(), [1, 1, 1, 9].to_vec()].to_vec(), [2, 10, 9, 1].to_vec()),
+        ([[2, 2, 2].to_vec(), [2, 9, 2].to_vec(), [2, 2, 2].to_vec()].to_vec(), [3, 9, 10].to_vec()),
+        ([[1000000, 1].to_vec(), [1, 1].to_vec()].to_vec(), [1000000, 999999].to_vec()),
+        ([[1, 5, 4, 7, 2, 8].to_vec(), [9, 9, 9, 9, 9, 9].to_vec()].to_vec(), [3, 6, 9, 10].to_vec()),
+    ].to_vec();
+    for (grid, queries) in cases.iter() {
+        println(f"{grid.len()} by {grid[0].len()}, {queries} -> {max_points(grid, queries)}");
+    }
+    // 1000 random grids of 2 to 8 rows and columns, values to 10 and to
+    // 10^6, with 1 to 10 queries to one past the top: a checksum each
+    let mut seed = 2503;
+    for top in [10, 1000000] {
+        let mut check = 0;
+        for _ in 0..1000 {
+            let m = next_random(mut seed) % 7 + 2;
+            let n = next_random(mut seed) % 7 + 2;
+            let grid = random_grid(m, n, top, mut seed);
+            let count = next_random(mut seed) % 10 + 1;
+            let queries: Vec[i64] = (0..count).map(|_| below(top + 1, mut seed) + 1).collect();
+            check = fold(check, max_points(grid, queries));
+        }
+        println(f"1000 random to {top}: checksum {check}");
+    }
+    // the constraints' largest: 316 by 316 random with 10^4 random
+    // queries; 100 by 1000 of walls a snake must wind through, with 10^4
+    // rising queries; and 2 by 50000 sevens
+    let big = random_grid(316, 316, 1000000, mut seed);
+    let queries: Vec[i64] = (0..10000).map(|_| below(1000000, mut seed) + 1).collect();
+    println(f"316 by 316, 10^4 queries: checksum {fold(0, max_points(big, queries))}");
+    let snake: Vec[Vec[i64]] = (0..100)
+        .map(|r| (0..1000).map(|c| if (r % 4 == 1 and c != 999) or (r % 4 == 3 and c != 0) { 1000000 } else { c + 1 }).collect())
+        .collect();
+    let rising: Vec[i64] = (0..10000).map(|t| (t + 1) * 100).collect();
+    println(f"100 by 1000 walls, 10^4 queries: checksum {fold(0, max_points(snake, rising))}");
+    let flat: Vec[Vec[i64]] = Vec.filled(2, Vec.filled(50000, 7));
+    println(f"2 by 50000 sevens: {max_points(flat, [7, 8, 1000000].to_vec())}");
+}

@@ -1,0 +1,386 @@
+// LeetCode #2503: Maximum Number of Points From Grid Queries -- the
+// differential. The six arms against the statement read literally: for
+// each query on its own, a flood from the top-left cell through the
+// cells below the query, counted, 0 when the top-left cell is not below
+// it. 300 random grids of 2 to 6 rows and columns, values to 5 or to
+// 1000, with 1 to 8 queries; then 20 of 2 by 2, and 40 of 10 by 10 with
+// values to 20 and 10 queries; every one drawn before any arm answers.
+//
+// P1  every answer is the statement read literally
+// P2  every answer from 0 to m n, and 0 exactly when the top-left cell
+//     is not below the query
+// P3  the queries in the other order: the answers in the other order
+// P4  the grid transposed: the same answers
+// P5  every value v written 2 v and every query q written 2 q - 1: the
+//     same answers
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally
+
+fn literal(grid: Vec[Vec[i64]], queries: Vec[i64]) -> Vec[i64] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut out: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        if grid[0][0] >= q {
+            out.push(0);
+            continue;
+        }
+        let mut seen: Vec[Vec[bool]] = Vec.filled(m, Vec.filled(n, false));
+        seen[0][0] = true;
+        let mut stack: Vec[(i64, i64)] = [(0, 0)].to_vec();
+        let mut count = 0;
+        while let Some((r, c)) = stack.pop() {
+            count += 1;
+            for (rr, cc) in [(r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)] {
+                if rr >= 0 and rr < m and cc >= 0 and cc < n and not seen[rr][cc] and grid[rr][cc] < q {
+                    seen[rr][cc] = true;
+                    stack.push((rr, cc));
+                }
+            }
+        }
+        out.push(count);
+    }
+    out
+}
+
+// ---- star (points.kara) --------------------------------------------------
+
+fn star_max_points(grid: Vec[Vec[i64]], queries: Vec[i64]) -> Vec[i64] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut order: Vec[i64] = (0..queries.len()).collect();
+    order.sort_by_key(|i| queries[i]);
+    let mut answer: Vec[i64] = Vec.filled(queries.len(), 0);
+    let mut seen: Vec[Vec[bool]] = Vec.filled(m, Vec.filled(n, false));
+    let mut border: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    border.push((grid[0][0], 0));
+    seen[0][0] = true;
+    let mut reached = 0;
+    for i in order.iter() {
+        let q = queries[i];
+        while border.peek().is_some_and(|(value, _)| value < q) {
+            let (_, cell) = border.pop().unwrap();
+            reached += 1;
+            let (r, c) = (cell / n, cell % n);
+            for (dr, dc) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                let (rr, cc) = (r + dr, c + dc);
+                if rr >= 0 and rr < m and cc >= 0 and cc < n and not seen[rr][cc] {
+                    seen[rr][cc] = true;
+                    border.push((grid[rr][cc], rr * n + cc));
+                }
+            }
+        }
+        answer[i] = reached;
+    }
+    answer
+}
+
+// ---- minimax (points_minimax.kara) ---------------------------------------
+
+fn minimax_max_points(grid: Vec[Vec[i64]], queries: Vec[i64]) -> Vec[i64] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut bottleneck: Vec[i64] = Vec.filled(m * n, -1);
+    let mut queue: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    queue.push((grid[0][0], 0));
+    while let Some((level, cell)) = queue.pop() {
+        if bottleneck[cell] != -1 {
+            continue;
+        }
+        bottleneck[cell] = level;
+        let (r, c) = (cell / n, cell % n);
+        for (rr, cc) in [(r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)] {
+            if rr >= 0 and rr < m and cc >= 0 and cc < n and bottleneck[rr * n + cc] == -1 {
+                queue.push((level.max(grid[rr][cc]), rr * n + cc));
+            }
+        }
+    }
+    bottleneck.sort();
+    queries.iter().map(|q| bottleneck.partition_point(|b| b < q)).collect()
+}
+
+// ---- union (points_union.kara) -------------------------------------------
+
+fn union_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+fn union_union(parent: mut ref Vec[i64], size: mut ref Vec[i64], a: i64, b: i64) {
+    let mut (a, b) = (union_find(mut parent, a), union_find(mut parent, b));
+    if a == b {
+        return;
+    }
+    if size[a] < size[b] {
+        let t = a;
+        a = b;
+        b = t;
+    }
+    parent[b] = a;
+    size[a] += size[b];
+}
+
+fn union_max_points(grid: Vec[Vec[i64]], queries: Vec[i64]) -> Vec[i64] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut cells: Vec[i64] = (0..m * n).collect();
+    cells.sort_by_key(|cell| grid[cell / n][cell % n]);
+    let mut order: Vec[i64] = (0..queries.len()).collect();
+    order.sort_by_key(|i| queries[i]);
+    let mut parent: Vec[i64] = (0..m * n).collect();
+    let mut size: Vec[i64] = Vec.filled(m * n, 1);
+    let mut on: Vec[bool] = Vec.filled(m * n, false);
+    let mut answer: Vec[i64] = Vec.filled(queries.len(), 0);
+    let mut next = 0;
+    for i in order.iter() {
+        while next < cells.len() and grid[cells[next] / n][cells[next] % n] < queries[i] {
+            let cell = cells[next];
+            on[cell] = true;
+            let (r, c) = (cell / n, cell % n);
+            for (rr, cc) in [(r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)] {
+                if rr >= 0 and rr < m and cc >= 0 and cc < n and on[rr * n + cc] {
+                    union_union(mut parent, mut size, cell, rr * n + cc);
+                }
+            }
+            next += 1;
+        }
+        if on[0] {
+            let root = union_find(mut parent, 0);
+            answer[i] = size[root];
+        }
+    }
+    answer
+}
+
+// ---- rec (points_rec.kara) -----------------------------------------------
+
+fn rec_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    if parent[x] == x {
+        return x;
+    }
+    let root = rec_find(mut parent, parent[x]);
+    parent[x] = root;
+    root
+}
+
+fn rec_max_points(grid: Vec[Vec[i64]], queries: Vec[i64]) -> Vec[i64] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut cells: Vec[i64] = (0..m * n).collect();
+    cells.sort_by_key(|cell| grid[cell / n][cell % n]);
+    let mut order: Vec[i64] = (0..queries.len()).collect();
+    order.sort_by_key(|i| queries[i]);
+    let mut parent: Vec[i64] = (0..m * n).collect();
+    let mut size: Vec[i64] = Vec.filled(m * n, 1);
+    let mut on: Vec[bool] = Vec.filled(m * n, false);
+    let mut answer: Vec[i64] = Vec.filled(queries.len(), 0);
+    let mut next = 0;
+    for i in order.iter() {
+        while next < cells.len() and grid[cells[next] / n][cells[next] % n] < queries[i] {
+            let cell = cells[next];
+            on[cell] = true;
+            let (r, c) = (cell / n, cell % n);
+            for (rr, cc) in [(r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)] {
+                if rr >= 0 and rr < m and cc >= 0 and cc < n and on[rr * n + cc] {
+                    let a = rec_find(mut parent, cell);
+                    let b = rec_find(mut parent, rr * n + cc);
+                    if a != b {
+                        parent[a] = b;
+                        size[b] += size[a];
+                    }
+                }
+            }
+            next += 1;
+        }
+        if on[0] {
+            let root = rec_find(mut parent, 0);
+            answer[i] = size[root];
+        }
+    }
+    answer
+}
+
+// ---- iter (points_iter.kara) ---------------------------------------------
+
+fn iter_taking_order(grid: Vec[Vec[i64]]) -> Vec[i64] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut seen: Vec[bool] = Vec.filled(m * n, false);
+    let mut border: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    border.push((grid[0][0], 0));
+    seen[0] = true;
+    let mut taken: Vec[i64] = Vec.new();
+    while let Some((value, cell)) = border.pop() {
+        taken.push(value);
+        let (r, c) = (cell / n, cell % n);
+        for (rr, cc) in [(r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)] {
+            if rr >= 0 and rr < m and cc >= 0 and cc < n and not seen[rr * n + cc] {
+                seen[rr * n + cc] = true;
+                border.push((grid[rr][cc], rr * n + cc));
+            }
+        }
+    }
+    taken
+}
+
+fn iter_max_points(grid: Vec[Vec[i64]], queries: Vec[i64]) -> Vec[i64] {
+    let levels: Vec[i64] = iter_taking_order(grid).iter().scan(0, |most, v| Some((most.max(v), most.max(v)))).collect();
+    queries.iter().map(|q| levels.partition_point(|l| l < q)).collect()
+}
+
+// ---- solution (points_solution.kara) -------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_points(grid: Vec[Vec[i32]], queries: Vec[i32]) -> Vec[i32] {
+        let (m, n) = (grid.len(), grid[0].len());
+        let mut idx: Vec[i64] = (0..queries.len()).collect();
+        idx.sort_by_key(|i| queries[i]);
+        let mut ans = Vec.filled(queries.len(), 0);
+        let mut heap = PriorityQueue.new();
+        let mut visited = Vec.filled(m, Vec.filled(n, false));
+        heap.push((grid[0][0], 0, 0));
+        visited[0][0] = true;
+        let mut count = 0;
+        let dirs = [(0i32, 1i32), (1, 0), (0, -1), (-1, 0)];
+        for i in ref idx {
+            let q = queries[i];
+            while let Some((v, r, c)) = heap.peek().cloned() {
+                if v >= q {
+                    break;
+                }
+                heap.pop();
+                count += 1;
+                for (dr, dc) in ref dirs {
+                    let nr = r as i32 + dr;
+                    let nc = c as i32 + dc;
+                    if nr >= 0 and nr < m as i32 and nc >= 0 and nc < n as i32 {
+                        let (nr, nc) = (nr as i64, nc as i64);
+                        if not visited[nr][nc] {
+                            visited[nr][nc] = true;
+                            heap.push((grid[nr][nc], nr, nc));
+                        }
+                    }
+                }
+            }
+            ans[i] = count;
+        }
+        ans
+    }
+}
+
+fn solution_max_points(grid: Vec[Vec[i64]], queries: Vec[i64]) -> Vec[i64] {
+    let asked: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|v| v as i32).collect()).collect();
+    let wanted: Vec[i32] = queries.iter().map(|q| q as i32).collect();
+    Solution.max_points(asked, wanted).iter().map(|a| a as i64).collect()
+}
+
+// ---- the differential --------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn answer(arm: i64, grid: Vec[Vec[i64]], queries: Vec[i64]) -> Vec[i64] {
+    match arm {
+        0 => star_max_points(grid, queries),
+        1 => minimax_max_points(grid, queries),
+        2 => union_max_points(grid, queries),
+        3 => rec_max_points(grid, queries),
+        4 => iter_max_points(grid, queries),
+        _ => solution_max_points(grid, queries),
+    }
+}
+
+fn main() {
+    let names = ["star", "minimax", "union", "rec", "iter", "solution"];
+    let mut seed = 2503;
+    let mut problems: Vec[(Vec[Vec[i64]], Vec[i64])] = Vec.new();
+    for t in 0..360 {
+        let (m, n, top, count) = if t < 300 {
+            let m = next_random(mut seed) % 5 + 2;
+            let n = next_random(mut seed) % 5 + 2;
+            (m, n, if t % 2 == 0 { 5 } else { 1000 }, next_random(mut seed) % 8 + 1)
+        } else if t < 320 {
+            (2, 2, 5, 4)
+        } else {
+            (10, 10, 20, 10)
+        };
+        let grid: Vec[Vec[i64]] = (0..m).map(|_| (0..n).map(|_| next_random(mut seed) % top + 1).collect()).collect();
+        let queries: Vec[i64] = (0..count).map(|_| next_random(mut seed) % (top + 1) + 1).collect();
+        problems.push((grid, queries));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut zeros = 0;
+    for (grid, queries) in problems.iter() {
+        let m = grid.len();
+        let n = grid[0].len();
+        let truth = literal(grid, queries);
+        for a in truth.iter() {
+            if a == 0 {
+                zeros += 1;
+            }
+            check = (check * 31 + a) % 1000000007;
+        }
+        let reversed: Vec[i64] = queries.iter().rev().cloned().collect();
+        let transposed: Vec[Vec[i64]] = (0..n).map(|c| (0..m).map(|r| grid[r][c]).collect()).collect();
+        let doubled: Vec[Vec[i64]] = grid.iter().map(|row| row.iter().map(|v| 2 * v).collect()).collect();
+        let odd: Vec[i64] = queries.iter().map(|q| 2 * q - 1).collect();
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, grid, queries)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let mut bounded = x.len() == queries.len();
+            if bounded {
+                for i in 0..x.len() {
+                    bounded = bounded and x[i] >= 0 and x[i] <= m * n and (x[i] == 0) == (grid[0][0] >= queries[i]);
+                }
+            }
+            let backwards: Vec[i64] = x.iter().rev().cloned().collect();
+            let verdicts = [
+                x == truth,
+                bounded,
+                answer(arm, grid, reversed) == backwards,
+                answer(arm, transposed, queries) == x,
+                answer(arm, doubled, odd) == x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{m} by {n}, queries {queries}, arm {names[arm]}: P{q + 1} fails, answers {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} cases, {zeros} answers of 0: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
