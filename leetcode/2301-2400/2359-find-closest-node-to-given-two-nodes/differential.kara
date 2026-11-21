@@ -1,0 +1,370 @@
+// LeetCode #2359: Find Closest Node to Given Two Nodes -- the
+// differential. The six arms, against the statement read literally: each
+// start's path written out as the node after 0, 1, 2, ... steps; then for
+// k = 0, 1, 2, ... the nodes on both paths within k steps, and the least
+// of them at the first k that has any. No distance tables. 300 random
+// graphs of 1 to 30 nodes, each edge -1 with a chance of 1 in 1 to 1 in 8;
+// then 30 of up to 2000 nodes; then 30 of up to 300 nodes made of one
+// long cycle with trees hanging off it. Every case is drawn before any arm
+// answers.
+//
+// P1  up to 40 nodes, the answer is the literal reading's
+// P2  -1 or a node that both starts reach
+// P3  the two starts swapped: the same answer
+// P4  the edge out of the answer cut: the same answer
+// P5  both starts at node1: node1
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn path_literally(edges: Vec[i64], start: i64) -> Vec[i64] {
+    let mut path: Vec[i64] = Vec.new();
+    let mut node = start;
+    for _ in 0..edges.len() {
+        if node == -1 {
+            break;
+        }
+        path.push(node);
+        node = edges[node];
+    }
+    path
+}
+
+fn closest_literally(edges: Vec[i64], node1: i64, node2: i64) -> i64 {
+    let p1 = path_literally(edges, node1);
+    let p2 = path_literally(edges, node2);
+    for k in 0..edges.len() {
+        let mut best = -1;
+        for v in 0..edges.len() {
+            let on1 = p1[..(k + 1).min(p1.len())].contains(v);
+            let on2 = p2[..(k + 1).min(p2.len())].contains(v);
+            if on1 and on2 and best == -1 {
+                best = v;
+            }
+        }
+        if best != -1 {
+            return best;
+        }
+    }
+    -1
+}
+
+// ---- star (closest.kara) -------------------------------------------------
+
+fn star_distances(edges: Vec[i64], start: i64) -> Vec[i64] {
+    let mut dist: Vec[i64] = Vec.filled(edges.len(), -1);
+    let mut node = start;
+    let mut d = 0;
+    while node != -1 and dist[node] == -1 {
+        dist[node] = d;
+        node = edges[node];
+        d += 1;
+    }
+    dist
+}
+
+fn star_closest_meeting_node(edges: Vec[i64], node1: i64, node2: i64) -> i64 {
+    let d1 = star_distances(edges, node1);
+    let d2 = star_distances(edges, node2);
+    let mut best = -1;
+    let mut best_dist = -1;
+    for v in 0..edges.len() {
+        if d1[v] >= 0 and d2[v] >= 0 {
+            let far = d1[v].max(d2[v]);
+            if best < 0 or far < best_dist {
+                best = v;
+                best_dist = far;
+            }
+        }
+    }
+    best
+}
+
+// ---- lockstep (closest_lockstep.kara) ------------------------------------
+
+fn lockstep_closest_meeting_node(edges: Vec[i64], node1: i64, node2: i64) -> i64 {
+    let n = edges.len();
+    let mut seen1: Vec[bool] = Vec.filled(n, false);
+    let mut seen2: Vec[bool] = Vec.filled(n, false);
+    let mut a = node1;
+    let mut b = node2;
+    while a != -1 or b != -1 {
+        if a != -1 {
+            seen1[a] = true;
+        }
+        if b != -1 {
+            seen2[b] = true;
+        }
+        let hit_a = a != -1 and seen2[a];
+        let hit_b = b != -1 and seen1[b];
+        if hit_a and hit_b {
+            return a.min(b);
+        }
+        if hit_a {
+            return a;
+        }
+        if hit_b {
+            return b;
+        }
+        let next_a = if a == -1 { -1 } else { edges[a] };
+        let next_b = if b == -1 { -1 } else { edges[b] };
+        a = if next_a != -1 and seen1[next_a] { -1 } else { next_a };
+        b = if next_b != -1 and seen2[next_b] { -1 } else { next_b };
+    }
+    -1
+}
+
+// ---- bfs (closest_bfs.kara) ----------------------------------------------
+
+fn bfs_bfs(neighbours: Vec[Vec[i64]], start: i64) -> Vec[i64] {
+    let mut dist: Vec[i64] = Vec.filled(neighbours.len(), -1);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    dist[start] = 0;
+    queue.push_back(start);
+    while let Some(u) = queue.pop_front() {
+        for v in neighbours[u].iter() {
+            if dist[v] == -1 {
+                dist[v] = dist[u] + 1;
+                queue.push_back(v);
+            }
+        }
+    }
+    dist
+}
+
+fn bfs_closest_meeting_node(edges: Vec[i64], node1: i64, node2: i64) -> i64 {
+    let n = edges.len();
+    let mut neighbours: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for u in 0..n {
+        if edges[u] != -1 {
+            neighbours[u].push(edges[u]);
+        }
+    }
+    let d1 = bfs_bfs(neighbours, node1);
+    let d2 = bfs_bfs(neighbours, node2);
+    let mut best = -1;
+    for v in 0..n {
+        if d1[v] >= 0 and d2[v] >= 0 {
+            if best < 0 or d1[v].max(d2[v]) < d1[best].max(d2[best]) {
+                best = v;
+            }
+        }
+    }
+    best
+}
+
+// ---- naive (closest_naive.kara) ------------------------------------------
+
+fn naive_steps_to(edges: Vec[i64], start: i64, target: i64) -> i64 {
+    let mut node = start;
+    for d in 0..edges.len() {
+        if node == target {
+            return d;
+        }
+        if node == -1 {
+            return -1;
+        }
+        node = edges[node];
+    }
+    -1
+}
+
+fn naive_closest_meeting_node(edges: Vec[i64], node1: i64, node2: i64) -> i64 {
+    let mut best = -1;
+    let mut best_dist = 0;
+    for v in 0..edges.len() {
+        let a = naive_steps_to(edges, node1, v);
+        let b = naive_steps_to(edges, node2, v);
+        if a >= 0 and b >= 0 and (best < 0 or a.max(b) < best_dist) {
+            best = v;
+            best_dist = a.max(b);
+        }
+    }
+    best
+}
+
+// ---- iter (closest_iter.kara) --------------------------------------------
+
+fn iter_distances(edges: Vec[i64], start: i64) -> Vec[i64] {
+    let n = edges.len();
+    let mut dist: Vec[i64] = Vec.filled(n, -1);
+    let mut seen: Vec[bool] = Vec.filled(n, false);
+    let path: Vec[i64] = (0..n)
+        .scan(start, |node, _| {
+            if node == -1 or seen[node] {
+                None
+            } else {
+                seen[node] = true;
+                Some((edges[node], node))
+            }
+        })
+        .collect();
+    path.iter().enumerate().for_each(|(d, node)| { dist[node] = d; });
+    dist
+}
+
+fn iter_closest_meeting_node(edges: Vec[i64], node1: i64, node2: i64) -> i64 {
+    let d1 = iter_distances(edges, node1);
+    let d2 = iter_distances(edges, node2);
+    (0..edges.len())
+        .filter(|v| d1[v] >= 0 and d2[v] >= 0)
+        .min_by_key(|v| (d1[v].max(d2[v]), v))
+        .unwrap_or(-1)
+}
+
+// ---- solution (closest_solution.kara) ------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn closest_meeting_node(edges: Vec[i32], node1: i32, node2: i32) -> i32 {
+        let n = edges.len();
+        let walk: Fn(i32) -> Vec[i32] = |start: i32| {
+            let mut dist = Vec.filled(n, -1);
+            let mut node = start;
+            let mut d = 0;
+            while node != -1 and dist[node as usize] == -1 {
+                dist[node as usize] = d;
+                node = edges[node as usize];
+                d += 1;
+            }
+            dist
+        };
+        let (d1, d2) = (walk(node1), walk(node2));
+        let mut best = -1;
+        let mut best_dist = i32.MAX;
+        for v in 0..n {
+            if d1[v] >= 0 and d2[v] >= 0 {
+                let far = d1[v].max(d2[v]);
+                if far < best_dist {
+                    best_dist = far;
+                    best = v as i32;
+                }
+            }
+        }
+        best
+    }
+}
+
+fn solution_closest_meeting_node(edges: Vec[i64], node1: i64, node2: i64) -> i64 {
+    let edges: Vec[i32] = edges.iter().map(|x| x as i32).collect();
+    Solution.closest_meeting_node(edges, node1 as i32, node2 as i32)
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn answer(arm: i64, edges: Vec[i64], node1: i64, node2: i64) -> i64 {
+    match arm {
+        0 => star_closest_meeting_node(edges, node1, node2),
+        1 => lockstep_closest_meeting_node(edges, node1, node2),
+        2 => bfs_closest_meeting_node(edges, node1, node2),
+        3 => naive_closest_meeting_node(edges, node1, node2),
+        4 => iter_closest_meeting_node(edges, node1, node2),
+        _ => solution_closest_meeting_node(edges, node1, node2),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn reaches(edges: Vec[i64], start: i64, target: i64) -> bool {
+    let mut node = start;
+    for _ in 0..edges.len() + 1 {
+        if node == target {
+            return true;
+        }
+        if node == -1 {
+            return false;
+        }
+        node = edges[node];
+    }
+    false
+}
+
+fn main() {
+    let names = ["star", "lockstep", "bfs", "naive", "iter", "solution"];
+    let mut seed = 2359;
+    let mut cases: Vec[(Vec[i64], i64, i64)] = Vec.new();
+    for c in 0..360 {
+        let mut edges: Vec[i64] = Vec.new();
+        let n = if c < 300 {
+            1 + next_random(mut seed) % 30
+        } else if c < 330 {
+            1 + next_random(mut seed) % 2000
+        } else {
+            2 + next_random(mut seed) % 299
+        };
+        if c < 330 {
+            let odds = 1 + next_random(mut seed) % 8;
+            for _ in 0..n {
+                edges.push(if next_random(mut seed) % odds == 0 and odds > 1 { -1 } else { next_random(mut seed) % n });
+            }
+        } else {
+            let ring = 1 + next_random(mut seed) % n;
+            for v in 0..n {
+                edges.push(if v < ring { (v + 1) % ring } else { next_random(mut seed) % v });
+            }
+        }
+        let a = next_random(mut seed) % n;
+        let b = next_random(mut seed) % n;
+        cases.push((edges, a, b));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (edges, a, b) = cases[c].clone();
+        let n = edges.len();
+        let small = n <= 40;
+        let truth = if small { closest_literally(edges, a, b) } else { -2 };
+        if small {
+            check = (check * 31 + truth + 2) % 1000000007;
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, edges, a, b)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut cut = edges.clone();
+            if value >= 0 and value < n {
+                cut[value] = -1;
+            }
+            let verdicts = [
+                not small or value == truth,
+                value == -1 or (value >= 0 and value < n and reaches(edges, a, value) and reaches(edges, b, value)),
+                answer(arm, edges, b, a) == value,
+                value == -1 or answer(arm, cut, a, b) == value,
+                answer(arm, edges, a, a) == a,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
