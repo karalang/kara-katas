@@ -1,0 +1,85 @@
+// LeetCode #2444: Count Subarrays With Fixed Bounds -- inclusion and
+// exclusion: within the bounds, a subarray is fixed-bound unless it
+// lacks `min_k` or lacks `max_k`. So the count is those lying wholly
+// within the bounds, less those that also avoid `min_k`, less those that
+// avoid `max_k`, plus those that avoid both; each family is counted the
+// same way, by the length of the run of allowed values ending at each
+// place. O(n).
+
+fn avoiding(nums: Vec[i64], min_k: i64, max_k: i64, no_min: bool, no_max: bool) -> i64 {
+    let mut count = 0;
+    let mut run = 0;
+    for x in nums.iter() {
+        let allowed = x >= min_k and x <= max_k and not (no_min and x == min_k) and not (no_max and x == max_k);
+        if allowed {
+            run += 1;
+        } else {
+            run = 0;
+        }
+        count += run;
+    }
+    count
+}
+
+fn count_subarrays(nums: Vec[i64], min_k: i64, max_k: i64) -> i64 {
+    if min_k > max_k {
+        return 0;
+    }
+    avoiding(nums, min_k, max_k, false, false) - avoiding(nums, min_k, max_k, true, false)
+        - avoiding(nums, min_k, max_k, false, true)
+        + avoiding(nums, min_k, max_k, true, true)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; bounds the wrong way round; one value
+    println(f"example 1: {count_subarrays([1, 3, 5, 2, 7, 5].to_vec(), 1, 5)}");
+    println(f"example 2: {count_subarrays([1, 1, 1, 1].to_vec(), 1, 1)}");
+    println(f"bounds reversed: {count_subarrays([2, 1, 2].to_vec(), 2, 1)}");
+    println(f"one value: {count_subarrays([1000000].to_vec(), 1000000, 1000000)}");
+    // 5000 values: all equal, bounds equal to them; random from 1 to 5
+    // against 1 and 5; random from 1 to 10^6 against 2 * 10^5 and
+    // 8 * 10^5, with every value outside them every 50th place
+    let n = 5000;
+    let same: Vec[i64] = Vec.filled(n, 7);
+    println(f"all equal: {count_subarrays(same, 7, 7)}");
+    let mut seed = 2444;
+    let mut small: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        small.push(1 + next_random(mut seed) % 5);
+    }
+    println(f"1 to 5: {count_subarrays(small, 1, 5)}");
+    let mut wide: Vec[i64] = Vec.new();
+    for i in 0..n {
+        let v = if i % 50 == 49 { 1000000 } else { 200000 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 600001 };
+        wide.push(v);
+    }
+    wide[10] = 200000;
+    wide[20] = 800000;
+    wide[3000] = 800000;
+    wide[3001] = 200000;
+    println(f"wide: {count_subarrays(wide, 200000, 800000)}");
+    // 3000 random arrays of 1 to 10 values from 1 to 4, bounds from 1 to
+    // 4: a checksum and the total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let len = 1 + next_random(mut seed) % 10;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..len {
+            nums.push(1 + next_random(mut seed) % 4);
+        }
+        let low = 1 + next_random(mut seed) % 4;
+        let high = 1 + next_random(mut seed) % 4;
+        let answer = count_subarrays(nums, low, high);
+        check = (check * 31 + answer) % 1000000007;
+        total += answer;
+    }
+    println(f"3000 random: checksum {check}, total {total}");
+}

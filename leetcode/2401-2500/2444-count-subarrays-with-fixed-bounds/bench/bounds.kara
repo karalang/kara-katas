@@ -1,0 +1,53 @@
+// LeetCode #2444: Count Subarrays With Fixed Bounds -- the bench, the ★
+// arm: one pass keeping the last value outside the bounds, the last
+// `min_k` and the last `max_k`.
+
+fn count_subarrays(nums: Vec[i64], min_k: i64, max_k: i64) -> i64 {
+    let mut count = 0;
+    let mut bad = -1;
+    let mut last_min = -1;
+    let mut last_max = -1;
+    for i in 0..nums.len() {
+        let x = nums[i];
+        if x < min_k or x > max_k {
+            bad = i;
+        }
+        if x == min_k {
+            last_min = i;
+        }
+        if x == max_k {
+            last_max = i;
+        }
+        count += (last_min.min(last_max) - bad).max(0);
+    }
+    count
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2444;
+    // 10 arrays of 10^5 values from 1 to 20, against 3 and 17
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..10 {
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..100000 {
+            nums.push(1 + next_random(mut seed) % 20);
+        }
+        arrays.push(nums);
+    }
+    // pass `p` sets one value of every array, then answers every array
+    // and folds the answer plus the pass
+    let mut check = 0;
+    for p in 0..100 {
+        for c in 0..arrays.len() {
+            let at = (p * 7919 + c * 104729) % 100000;
+            arrays[c][at] = 1 + next_random(mut seed) % 20;
+            check = (check * 31 + count_subarrays(arrays[c], 3, 17) + p) % 1000000007;
+        }
+    }
+    println(f"100 passes over 10 arrays of 10^5 values: checksum {check}");
+}

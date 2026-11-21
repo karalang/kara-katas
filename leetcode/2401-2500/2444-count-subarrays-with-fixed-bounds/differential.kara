@@ -1,0 +1,298 @@
+// LeetCode #2444: Count Subarrays With Fixed Bounds -- the differential.
+// The six arms against the statement read literally: every subarray by
+// its two ends, its minimum and maximum found by walking it afresh, and
+// counted when they are `min_k` and `max_k`. No last place is kept. 360
+// cases: 300 random arrays of 1 to 10 values from 1 to `m`, `m` from 1 to
+// 5, bounds from 1 to `m`; then 30 of 20 to 60 values from 1 to 6 against
+// 2 and 5; then 30 of 20 to 60 values from 1 to 3 against 2 and 2 or 1
+// and 3. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the array reversed: the same answer
+// P3  a value below `min_k` put first: the same answer
+// P4  every value negated against 2000, the bounds swapped likewise: the
+//     same answer
+// P5  the array, a value above `max_k`, the array again: twice the answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn bounds_literally(nums: Vec[i64], min_k: i64, max_k: i64) -> i64 {
+    let n = nums.len();
+    let mut count = 0;
+    for i in 0..n {
+        for j in i..n {
+            let mut low = nums[i];
+            let mut high = nums[i];
+            for t in i..j + 1 {
+                if nums[t] < low {
+                    low = nums[t];
+                }
+                if nums[t] > high {
+                    high = nums[t];
+                }
+            }
+            if low == min_k and high == max_k {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+// ---- star (bounds.kara) --------------------------------------------------
+
+fn star_count_subarrays(nums: Vec[i64], min_k: i64, max_k: i64) -> i64 {
+    let mut count = 0;
+    let mut bad = -1;
+    let mut last_min = -1;
+    let mut last_max = -1;
+    for i in 0..nums.len() {
+        let x = nums[i];
+        if x < min_k or x > max_k {
+            bad = i;
+        }
+        if x == min_k {
+            last_min = i;
+        }
+        if x == max_k {
+            last_max = i;
+        }
+        count += (last_min.min(last_max) - bad).max(0);
+    }
+    count
+}
+
+// ---- naive (bounds_naive.kara) -------------------------------------------
+
+fn naive_count_subarrays(nums: Vec[i64], min_k: i64, max_k: i64) -> i64 {
+    let mut count = 0;
+    for i in 0..nums.len() {
+        let mut low = nums[i];
+        let mut high = nums[i];
+        for j in i..nums.len() {
+            low = low.min(nums[j]);
+            high = high.max(nums[j]);
+            if low == min_k and high == max_k {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+// ---- window (bounds_window.kara) -----------------------------------------
+
+fn window_in_run(run: Vec[i64], min_k: i64, max_k: i64) -> i64 {
+    let mut count = 0;
+    let mut mins = 0;
+    let mut maxes = 0;
+    let mut left = 0;
+    for right in 0..run.len() {
+        if run[right] == min_k {
+            mins += 1;
+        }
+        if run[right] == max_k {
+            maxes += 1;
+        }
+        while mins > 0 and maxes > 0 {
+            if run[left] == min_k {
+                mins -= 1;
+            }
+            if run[left] == max_k {
+                maxes -= 1;
+            }
+            left += 1;
+        }
+        count += left;
+    }
+    count
+}
+
+fn window_count_subarrays(nums: Vec[i64], min_k: i64, max_k: i64) -> i64 {
+    let mut count = 0;
+    let mut run: Vec[i64] = Vec.new();
+    for x in nums.iter() {
+        if x < min_k or x > max_k {
+            count += window_in_run(run, min_k, max_k);
+            run.clear();
+        } else {
+            run.push(x);
+        }
+    }
+    count + window_in_run(run, min_k, max_k)
+}
+
+// ---- exclude (bounds_exclude.kara) ---------------------------------------
+
+fn exclude_avoiding(nums: Vec[i64], min_k: i64, max_k: i64, no_min: bool, no_max: bool) -> i64 {
+    let mut count = 0;
+    let mut run = 0;
+    for x in nums.iter() {
+        let allowed = x >= min_k and x <= max_k and not (no_min and x == min_k) and not (no_max and x == max_k);
+        if allowed {
+            run += 1;
+        } else {
+            run = 0;
+        }
+        count += run;
+    }
+    count
+}
+
+fn exclude_count_subarrays(nums: Vec[i64], min_k: i64, max_k: i64) -> i64 {
+    if min_k > max_k {
+        return 0;
+    }
+    exclude_avoiding(nums, min_k, max_k, false, false) - exclude_avoiding(nums, min_k, max_k, true, false)
+        - exclude_avoiding(nums, min_k, max_k, false, true)
+        + exclude_avoiding(nums, min_k, max_k, true, true)
+}
+
+// ---- iter (bounds_iter.kara) ---------------------------------------------
+
+fn iter_count_subarrays(nums: Vec[i64], min_k: i64, max_k: i64) -> i64 {
+    let (_, _, _, count) = nums.iter().enumerate().fold((-1, -1, -1, 0), |state, (i, x)| {
+        let (bad, low, high, count) = state;
+        let bad = if x < min_k or x > max_k { i } else { bad };
+        let low = if x == min_k { i } else { low };
+        let high = if x == max_k { i } else { high };
+        (bad, low, high, count + (low.min(high) - bad).max(0))
+    });
+    count
+}
+
+// ---- solution (bounds_solution.kara) -------------------------------------
+
+impl Solution {
+    pub fn count_subarrays(nums: Vec[i32], min_k: i32, max_k: i32) -> i64 {
+        let mut (ans, bad, mn, mx): (i64, i64, i64, i64) = (0, -1, -1, -1);
+        for (i, x) in nums.iter().enumerate() {
+            let i = i;
+            if x < min_k or x > max_k {
+                bad = i;
+            }
+            if x == min_k {
+                mn = i;
+            }
+            if x == max_k {
+                mx = i;
+            }
+            ans += 0.max(mn.min(mx) - bad);
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_count_subarrays(nums: Vec[i64], min_k: i64, max_k: i64) -> i64 {
+    let values: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.count_subarrays(values, min_k as i32, max_k as i32)
+}
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64], min_k: i64, max_k: i64) -> i64 {
+    match arm {
+        0 => star_count_subarrays(nums, min_k, max_k),
+        1 => naive_count_subarrays(nums, min_k, max_k),
+        2 => window_count_subarrays(nums, min_k, max_k),
+        3 => exclude_count_subarrays(nums, min_k, max_k),
+        4 => iter_count_subarrays(nums, min_k, max_k),
+        _ => solution_count_subarrays(nums, min_k, max_k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "naive", "window", "exclude", "iter", "solution"];
+    let mut seed = 2444;
+    let mut cases: Vec[(Vec[i64], i64, i64)] = Vec.new();
+    for t in 0..360 {
+        let mut nums: Vec[i64] = Vec.new();
+        if t < 300 {
+            let m = 1 + next_random(mut seed) % 5;
+            for _ in 0..1 + next_random(mut seed) % 10 {
+                nums.push(1 + next_random(mut seed) % m);
+            }
+            let low = 1 + next_random(mut seed) % m;
+            let high = 1 + next_random(mut seed) % m;
+            cases.push((nums, low, high));
+        } else if t < 330 {
+            for _ in 0..20 + next_random(mut seed) % 41 {
+                nums.push(1 + next_random(mut seed) % 6);
+            }
+            cases.push((nums, 2, 5));
+        } else {
+            for _ in 0..20 + next_random(mut seed) % 41 {
+                nums.push(1 + next_random(mut seed) % 3);
+            }
+            if t % 2 == 0 {
+                cases.push((nums, 2, 2));
+            } else {
+                cases.push((nums, 1, 3));
+            }
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (nums, min_k, max_k) = cases[c].clone();
+        let truth = bounds_literally(nums, min_k, max_k);
+        check = (check * 31 + truth) % 1000000007;
+        let mut reversed = nums.clone();
+        reversed.reverse();
+        let mut fronted = nums.clone();
+        fronted.insert(0, min_k - 1);
+        let mirrored: Vec[i64] = nums.iter().map(|x| 2000 - x).collect();
+        let mut doubled = nums.clone();
+        doubled.push(max_k + 1);
+        for x in nums.iter() {
+            doubled.push(x);
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums, min_k, max_k)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, reversed, min_k, max_k) == value,
+                answer(arm, fronted, min_k, max_k) == value,
+                answer(arm, mirrored, 2000 - max_k, 2000 - min_k) == value,
+                answer(arm, doubled, min_k, max_k) == 2 * value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
