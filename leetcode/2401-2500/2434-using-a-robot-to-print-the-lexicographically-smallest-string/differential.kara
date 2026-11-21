@@ -1,0 +1,295 @@
+// LeetCode #2434: Using a Robot to Print the Lexicographically Smallest
+// String -- the differential. The six arms against the statement read
+// literally: every sequence of the two operations tried by recursion,
+// moving the next letter of `s` to `t` or writing `t`'s last letter, and
+// the least paper among those that empty both kept. No greedy rule is
+// used. 360 cases: 300 random words of 1 to 8 letters from the first 1 to
+// 4; then 30 of 9 letters from 2; then 30 of 1 to 8 letters from the
+// first 25. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  every letter raised by one: the answer raised by one
+// P3  the answer holds the word's letters, each as often
+// P4  the answer is no larger than the word itself
+// P5  every letter raised by one and an `a` put after: `a`, then the
+//     raised word backwards
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn every_way(s: Slice[u8], i: i64, t: Vec[u8], paper: Vec[u8], best: mut ref String) {
+    if i == s.len() and t.len() == 0 {
+        let written = String.from_utf8(paper.clone()).unwrap();
+        if best.len() == 0 or written < *best {
+            *best = written;
+        }
+        return;
+    }
+    if i < s.len() {
+        let mut more = t.clone();
+        more.push(s[i]);
+        every_way(s, i + 1, more, paper, mut best);
+    }
+    if t.len() > 0 {
+        let mut fewer = t.clone();
+        let mut wrote = paper.clone();
+        wrote.push(fewer.pop().unwrap());
+        every_way(s, i, fewer, wrote, mut best);
+    }
+}
+
+fn robot_literally(s: String) -> String {
+    let mut best = "".to_string();
+    every_way(s.bytes(), 0, Vec.new(), Vec.new(), mut best);
+    best
+}
+
+// ---- star (robot.kara) ---------------------------------------------------
+
+fn star_robot_with_string(s: String) -> String {
+    let b = s.bytes();
+    let mut left: Vec[i64] = Vec.filled(26, 0);
+    for c in b.iter() {
+        left[c - b'a'] += 1;
+    }
+    let mut smallest = 0;
+    let mut t: Vec[u8] = Vec.new();
+    let mut paper: Vec[u8] = Vec.new();
+    for c in b.iter() {
+        t.push(c);
+        left[c - b'a'] -= 1;
+        while smallest < 26 and left[smallest] == 0 {
+            smallest += 1;
+        }
+        while t.len() > 0 and t[t.len() - 1] - b'a' <= smallest {
+            paper.push(t.pop().unwrap());
+        }
+    }
+    String.from_utf8(paper).unwrap()
+}
+
+// ---- naive (robot_naive.kara) --------------------------------------------
+
+fn naive_robot_with_string(s: String) -> String {
+    let b = s.bytes();
+    let n = b.len();
+    let mut t: Vec[u8] = Vec.new();
+    let mut paper: Vec[u8] = Vec.new();
+    for i in 0..n {
+        t.push(b[i]);
+        let mut smallest = b'z';
+        for j in i + 1..n {
+            smallest = smallest.min(b[j]);
+        }
+        while t.len() > 0 and t[t.len() - 1] <= smallest {
+            paper.push(t.pop().unwrap());
+        }
+    }
+    String.from_utf8(paper).unwrap()
+}
+
+// ---- suffix (robot_suffix.kara) ------------------------------------------
+
+fn suffix_robot_with_string(s: String) -> String {
+    let b = s.bytes();
+    let n = b.len();
+    let mut low: Vec[u8] = Vec.filled(n + 1, b'z');
+    for i in (0..n).rev() {
+        low[i] = low[i + 1].min(b[i]);
+    }
+    let mut t: Vec[u8] = Vec.new();
+    let mut paper: Vec[u8] = Vec.new();
+    for i in 0..n {
+        t.push(b[i]);
+        while t.len() > 0 and t[t.len() - 1] <= low[i + 1] {
+            paper.push(t.pop().unwrap());
+        }
+    }
+    String.from_utf8(paper).unwrap()
+}
+
+// ---- sorted (robot_sorted.kara) ------------------------------------------
+
+fn sorted_robot_with_string(s: String) -> String {
+    let b = s.bytes();
+    let mut left: SortedMap[u8, i64] = SortedMap.new();
+    for c in b.iter() {
+        let count = if left.contains_key(c) { left[c] } else { 0 };
+        left.insert(c, count + 1);
+    }
+    let mut t: Vec[u8] = Vec.new();
+    let mut paper: Vec[u8] = Vec.new();
+    for c in b.iter() {
+        t.push(c);
+        if left[c] == 1 {
+            left.remove(c);
+        } else {
+            left[c] -= 1;
+        }
+        let smallest = match left.first() {
+            Some((k, _)) => k,
+            None => b'z',
+        };
+        while t.len() > 0 and t[t.len() - 1] <= smallest {
+            paper.push(t.pop().unwrap());
+        }
+    }
+    String.from_utf8(paper).unwrap()
+}
+
+// ---- iter (robot_iter.kara) ----------------------------------------------
+
+fn iter_robot_with_string(s: String) -> String {
+    let b = s.bytes();
+    let mut low: Vec[u8] = b.iter().rev().scan(b'z', |m, c| {
+        let m = m.min(c);
+        Some((m, m))
+    }).collect();
+    low.reverse();
+    low.push(b'z');
+    let (_, paper) = b.iter().zip(low.iter().skip(1)).fold((Vec.new(), Vec.new()), |(t, paper), (c, after)| {
+        let mut t: Vec[u8] = t;
+        let mut paper: Vec[u8] = paper;
+        t.push(c);
+        while t.len() > 0 and t[t.len() - 1] <= after {
+            paper.push(t.pop().unwrap());
+        }
+        (t, paper)
+    });
+    String.from_utf8(paper).unwrap()
+}
+
+// ---- solution (robot_solution.kara) --------------------------------------
+
+impl Solution {
+    pub fn robot_with_string(s: String) -> String {
+        let s = s.bytes();
+        let n = s.len();
+        let mut min_suffix = Vec.filled(n + 1, b'z');
+        for i in (0..n).rev() {
+            min_suffix[i] = min_suffix[i + 1].min(s[i]);
+        }
+        let mut t: Vec[u8] = Vec.new();
+        let mut ans = String.with_capacity(n);
+        for i in 0..n {
+            t.push(s[i]);
+            while let Some(c) = t.last().cloned() {
+                if c <= min_suffix[i + 1] {
+                    ans.push(c as char);
+                    t.pop();
+                } else {
+                    break;
+                }
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_robot_with_string(s: String) -> String {
+    Solution.robot_with_string(s)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, s: String) -> String {
+    match arm {
+        0 => star_robot_with_string(s),
+        1 => naive_robot_with_string(s),
+        2 => suffix_robot_with_string(s),
+        3 => sorted_robot_with_string(s),
+        4 => iter_robot_with_string(s),
+        _ => solution_robot_with_string(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn raised(s: String) -> String {
+    String.from_utf8(s.bytes().iter().map(|b| b + 1).collect()).unwrap()
+}
+
+fn sorted_letters(s: String) -> Vec[u8] {
+    let mut letters = s.bytes().to_vec();
+    letters.sort();
+    letters
+}
+
+fn main() {
+    let arms = ["star", "naive", "suffix", "sorted", "iter", "solution"];
+    let mut seed = 2434;
+    let mut cases: Vec[String] = Vec.new();
+    for t in 0..360 {
+        let (n, kinds) = if t < 300 {
+            (1 + next_random(mut seed) % 8, 1 + next_random(mut seed) % 4)
+        } else if t < 330 {
+            (9, 2)
+        } else {
+            (1 + next_random(mut seed) % 8, 25)
+        };
+        let mut bytes: Vec[u8] = Vec.new();
+        for _ in 0..n {
+            bytes.push(b'a' + (next_random(mut seed) % kinds) as u8);
+        }
+        cases.push(String.from_utf8(bytes).unwrap());
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let s = cases[c].clone();
+        let truth = robot_literally(s);
+        for b in truth.bytes().iter() {
+            check = (check * 31 + b as i64) % 1000000007;
+        }
+        let up = raised(s);
+        let mut tail = up.bytes().to_vec();
+        tail.reverse();
+        let backwards = f"a{String.from_utf8(tail).unwrap()}";
+        let got: Vec[String] = (0..6).map(|arm| answer(arm, s)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, up) == raised(value),
+                sorted_letters(value) == sorted_letters(s),
+                value <= s,
+                answer(arm, f"{up}a") == backwards,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
