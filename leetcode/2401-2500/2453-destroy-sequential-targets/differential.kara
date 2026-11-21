@@ -1,0 +1,258 @@
+// LeetCode #2453: Destroy Sequential Targets -- the differential. The six
+// arms against the statement read literally: each value tried as the
+// seed, the machine stepped from it by `space` up to the largest value,
+// and at each step every value standing there counted as destroyed; the
+// most destroyed kept, the least seed on a tie. No residue is taken. 360
+// cases: 300 random of 1 to 10 values up to 60, space 1 to 8; then 30 of
+// up to 30 values up to 5 * 10^8, space 10^8 to 5 * 10^8, so the walk
+// stays short; then 30 of up to 30 values up to 10, space 1 to 3, full of
+// repeats. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the values in reverse order: the same answer
+// P3  every value raised by `space`: the answer plus `space`
+// P4  every value and `space` doubled: the answer doubled
+// P5  the answer put in once more: the same answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn destroy_literally(nums: Vec[i64], space: i64) -> i64 {
+    let top = nums.iter().max().unwrap();
+    let mut best = 0;
+    let mut answer = 0;
+    for seed in nums.iter() {
+        let mut destroyed = 0;
+        let mut at = seed;
+        while at <= top {
+            destroyed += nums.iter().filter(|t| t == at).count();
+            at += space;
+        }
+        if destroyed > best or (destroyed == best and seed < answer) {
+            best = destroyed;
+            answer = seed;
+        }
+    }
+    answer
+}
+
+// ---- star (targets.kara) -------------------------------------------------
+
+fn star_destroy_targets(nums: Vec[i64], space: i64) -> i64 {
+    let mut count: Map[i64, i64] = Map.new();
+    for x in nums.iter() {
+        *count.entry(x % space).or_insert(0) += 1;
+    }
+    let mut best = 0;
+    let mut answer = 0;
+    for x in nums.iter() {
+        let c = count[x % space];
+        if c > best or (c == best and x < answer) {
+            best = c;
+            answer = x;
+        }
+    }
+    answer
+}
+
+// ---- naive (targets_naive.kara) ------------------------------------------
+
+fn naive_destroy_targets(nums: Vec[i64], space: i64) -> i64 {
+    let mut best = 0;
+    let mut answer = 0;
+    for seed in nums.iter() {
+        let mut destroyed = 0;
+        for t in nums.iter() {
+            if t >= seed and (t - seed) % space == 0 {
+                destroyed += 1;
+            }
+        }
+        if destroyed > best or (destroyed == best and seed < answer) {
+            best = destroyed;
+            answer = seed;
+        }
+    }
+    answer
+}
+
+// ---- sort (targets_sort.kara) --------------------------------------------
+
+fn sort_destroy_targets(nums: Vec[i64], space: i64) -> i64 {
+    let mut keyed: Vec[(i64, i64)] = nums.iter().map(|x| (x % space, x)).collect();
+    keyed.sort();
+    let mut best = 0;
+    let mut answer = 0;
+    let mut start = 0;
+    while start < keyed.len() {
+        let mut end = start;
+        while end < keyed.len() and keyed[end].0 == keyed[start].0 {
+            end += 1;
+        }
+        let first = keyed[start].1;
+        if end - start > best or (end - start == best and first < answer) {
+            best = end - start;
+            answer = first;
+        }
+        start = end;
+    }
+    answer
+}
+
+// ---- least (targets_least.kara) ------------------------------------------
+
+fn least_destroy_targets(nums: Vec[i64], space: i64) -> i64 {
+    let mut classes: Map[i64, (i64, i64)] = Map.new();
+    for x in nums.iter() {
+        let r = x % space;
+        match classes.get(r) {
+            Some((size, least)) => classes[r] = (size + 1, least.min(x)),
+            None => classes[r] = (1, x),
+        }
+    }
+    let mut best = 0;
+    let mut answer = 0;
+    for (_, (size, least)) in classes.iter() {
+        if size > best or (size == best and least < answer) {
+            best = size;
+            answer = least;
+        }
+    }
+    answer
+}
+
+// ---- iter (targets_iter.kara) --------------------------------------------
+
+fn iter_destroy_targets(nums: Vec[i64], space: i64) -> i64 {
+    let count: Map[i64, i64] = nums.iter().fold(Map.new(), |m, x| {
+        let mut m = m;
+        *m.entry(x % space).or_insert(0) += 1;
+        m
+    });
+    let most = nums.iter().map(|x| count[x % space]).max().unwrap();
+    nums.iter().filter(|x| count[x % space] == most).min().unwrap()
+}
+
+// ---- solution (targets_solution.kara) ------------------------------------
+
+impl Solution {
+    pub fn destroy_targets(nums: Vec[i32], space: i32) -> i32 {
+        let mut count: Map[i32, i32] = Map.new();
+        for n in ref nums {
+            *count.entry(n % space).or_insert(0) += 1;
+        }
+        let mut best = 0;
+        let mut ans = i32.MAX;
+        for n in ref nums {
+            let c = count[(n % space)];
+            if c > best or (c == best and n < ans) {
+                best = c;
+                ans = n;
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_destroy_targets(nums: Vec[i64], space: i64) -> i64 {
+    let values: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.destroy_targets(values, space as i32)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64], space: i64) -> i64 {
+    match arm {
+        0 => star_destroy_targets(nums, space),
+        1 => naive_destroy_targets(nums, space),
+        2 => sort_destroy_targets(nums, space),
+        3 => least_destroy_targets(nums, space),
+        4 => iter_destroy_targets(nums, space),
+        _ => solution_destroy_targets(nums, space),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let arms = ["star", "naive", "sort", "least", "iter", "solution"];
+    let mut seed = 2453;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for t in 0..360 {
+        if t < 300 {
+            let n = 1 + next_random(mut seed) % 10;
+            let nums: Vec[i64] = (0..n).map(|_| 1 + next_random(mut seed) % 60).collect();
+            cases.push((nums, 1 + next_random(mut seed) % 8));
+        } else if t < 330 {
+            let n = 1 + next_random(mut seed) % 30;
+            let nums: Vec[i64] = (0..n).map(|_| 1 + wide_random(mut seed) % 500000000).collect();
+            cases.push((nums, 100000000 + wide_random(mut seed) % 400000001));
+        } else {
+            let n = 1 + next_random(mut seed) % 30;
+            let nums: Vec[i64] = (0..n).map(|_| 1 + next_random(mut seed) % 10).collect();
+            cases.push((nums, 1 + next_random(mut seed) % 3));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (nums, space) = cases[c].clone();
+        let truth = destroy_literally(nums, space);
+        check = (check * 31 + truth) % 1000000007;
+        let mut back = nums.clone();
+        back.reverse();
+        let raised: Vec[i64] = nums.iter().map(|x| x + space).collect();
+        let doubled: Vec[i64] = nums.iter().map(|x| 2 * x).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums, space)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut again = nums.clone();
+            again.push(value);
+            let verdicts = [
+                value == truth,
+                answer(arm, back, space) == value,
+                answer(arm, raised, space) == value + space,
+                answer(arm, doubled, 2 * space) == 2 * value,
+                answer(arm, again, space) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

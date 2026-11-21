@@ -1,0 +1,65 @@
+// LeetCode #2453: Destroy Sequential Targets -- the statement read
+// directly: every value tried as the seed, and the targets it destroys
+// counted, those at or above it a multiple of `space` away; the most
+// kept, the least seed on a tie. O(n^2).
+
+fn destroy_targets(nums: Vec[i64], space: i64) -> i64 {
+    let mut best = 0;
+    let mut answer = 0;
+    for seed in nums.iter() {
+        let mut destroyed = 0;
+        for t in nums.iter() {
+            if t >= seed and (t - seed) % space == 0 {
+                destroyed += 1;
+            }
+        }
+        if destroyed > best or (destroyed == best and seed < answer) {
+            best = destroyed;
+            answer = seed;
+        }
+    }
+    answer
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's three examples; one value; space 1, one class; a space
+    // larger than every gap, each value its own class; a tie between two
+    // classes of the same size
+    println(f"{destroy_targets([3, 7, 8, 1, 1, 5].to_vec(), 2)}");
+    println(f"{destroy_targets([1, 3, 5, 2, 4, 6].to_vec(), 2)}");
+    println(f"{destroy_targets([6, 2, 5].to_vec(), 100)}");
+    println(f"{destroy_targets([1000000000].to_vec(), 1)}");
+    println(f"{destroy_targets([9, 4, 7, 4, 8].to_vec(), 1)}");
+    println(f"{destroy_targets([30, 10, 20, 1000000000].to_vec(), 1000000000)}");
+    println(f"{destroy_targets([12, 5, 9, 16, 2, 19].to_vec(), 7)}");
+    // 2000 random values up to 10^9 against spaces from 1 to 10^9, and 2000
+    // values up to 50 against space 3
+    let mut seed = 2453;
+    for space in [1, 7, 1000, 1000000000].iter() {
+        let nums: Vec[i64] = (0..2000).map(|_| 1 + wide_random(mut seed) % 1000000000).collect();
+        println(f"2000 values, space {space}: {destroy_targets(nums, space)}");
+    }
+    let small: Vec[i64] = (0..2000).map(|_| 1 + next_random(mut seed) % 50).collect();
+    println(f"2000 values up to 50, space 3: {destroy_targets(small, 3)}");
+    // 3000 random arrays of 1 to 8 values up to 20, space 1 to 6: a
+    // checksum of the answers in order
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 8;
+        let nums: Vec[i64] = (0..n).map(|_| 1 + next_random(mut seed) % 20).collect();
+        let space = 1 + next_random(mut seed) % 6;
+        check = (check * 31 + destroy_targets(nums, space)) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}

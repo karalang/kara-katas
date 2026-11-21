@@ -1,0 +1,51 @@
+// LeetCode #2453: Destroy Sequential Targets -- bench. Ten arrays of 10^5
+// values up to 10^9 are built once; each of 50 passes sets one value of
+// every array, so no answer carries over, and answers every array with
+// its own space, folding the answer plus the pass into the checksum. The
+// ★ arm: a `Map` counts each residue class, and a second pass keeps the
+// least value of a largest class.
+
+fn destroy_targets(nums: Vec[i64], space: i64) -> i64 {
+    let mut count: Map[i64, i64] = Map.new();
+    for x in nums.iter() {
+        *count.entry(x % space).or_insert(0) += 1;
+    }
+    let mut best = 0;
+    let mut answer = 0;
+    for x in nums.iter() {
+        let c = count[x % space];
+        if c > best or (c == best and x < answer) {
+            best = c;
+            answer = x;
+        }
+    }
+    answer
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let n = 100000;
+    let mut seed = 2453;
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..10 {
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            let hi = next_random(mut seed);
+            nums.push(1 + (hi * 32768 + next_random(mut seed)) % 1000000000);
+        }
+        arrays.push(nums);
+    }
+    let mut check = 0;
+    for p in 0..50 {
+        for a in 0..10 {
+            arrays[a][(p * 7919 + a) % n] = 1 + check % 1000000000;
+            let space = 1 + (p * 7919 + a * 104729) % 100000;
+            check = (check * 31 + destroy_targets(arrays[a], space) + p) % 1000000007;
+        }
+    }
+    println(f"50 passes over 10 arrays of 10^5 values: checksum {check}");
+}
