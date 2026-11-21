@@ -1,0 +1,458 @@
+// LeetCode #2493: Divide Nodes Into the Maximum Number of Groups -- the
+// differential. The six arms against the statement read literally: every
+// way of giving each node a group from 1 to n tried, node by node, a
+// node's group one apart from that of each earlier neighbour; a full
+// assignment counts when its groups are exactly 1 to m, and the answer
+// is the greatest such m, -1 if none. 300 random graphs of 2 to 6 nodes
+// and up to 12 tries at an edge, half across a random cut and half drawn
+// freely; then 20 of two nodes, and 40 of 7 or 8 nodes, a random tree
+// with up to three more edges; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  -1, or at least 2 and at most n groups
+// P3  the edges in the other order, each end for end: the same answer
+// P4  the nodes numbered backwards: the same answer
+// P5  a second copy of the graph beside it: -1 again, or twice as many
+// P6  each arm agrees with at least three of the other five
+
+// ---- star (groups.kara) --------------------------------------------------
+
+fn star_magnificent_sets(n: i64, edges: Vec[Vec[i64]]) -> i64 {
+    let mut next: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.new());
+    for edge in edges.iter() {
+        next[edge[0]].push(edge[1]);
+        next[edge[1]].push(edge[0]);
+    }
+    let mut most: Vec[i64] = Vec.filled(n + 1, 0);
+    for start in 1..n + 1 {
+        let mut depth: Vec[i64] = Vec.filled(n + 1, -1);
+        depth[start] = 0;
+        let mut queue: Vec[i64] = [start].to_vec();
+        let mut head = 0;
+        let mut least = start;
+        let mut deepest = 0;
+        while head < queue.len() {
+            let node = queue[head];
+            head += 1;
+            least = least.min(node);
+            deepest = deepest.max(depth[node]);
+            for other in next[node].iter() {
+                if depth[other] == -1 {
+                    depth[other] = depth[node] + 1;
+                    queue.push(other);
+                } else if depth[other] == depth[node] {
+                    return -1;
+                }
+            }
+        }
+        most[least] = most[least].max(deepest + 1);
+    }
+    most.iter().sum()
+}
+
+// ---- rec (groups_rec.kara) -----------------------------------------------
+
+fn rec_colour(node: i64, side: i64, part: i64, next: Vec[Vec[i64]], sides: mut ref Vec[i64], parts: mut ref Vec[i64]) -> bool {
+    sides[node] = side;
+    parts[node] = part;
+    for other in next[node].iter() {
+        if sides[other] == side {
+            return false;
+        }
+        if sides[other] == -1 and not rec_colour(other, 1 - side, part, next, mut sides, mut parts) {
+            return false;
+        }
+    }
+    true
+}
+
+fn rec_levels(start: i64, n: i64, next: Vec[Vec[i64]]) -> i64 {
+    let mut depth: Vec[i64] = Vec.filled(n + 1, -1);
+    depth[start] = 1;
+    let mut queue: Vec[i64] = [start].to_vec();
+    let mut head = 0;
+    while head < queue.len() {
+        let node = queue[head];
+        head += 1;
+        for other in next[node].iter() {
+            if depth[other] == -1 {
+                depth[other] = depth[node] + 1;
+                queue.push(other);
+            }
+        }
+    }
+    depth[queue[queue.len() - 1]]
+}
+
+fn rec_magnificent_sets(n: i64, edges: Vec[Vec[i64]]) -> i64 {
+    let mut next: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.new());
+    for edge in edges.iter() {
+        next[edge[0]].push(edge[1]);
+        next[edge[1]].push(edge[0]);
+    }
+    let mut sides: Vec[i64] = Vec.filled(n + 1, -1);
+    let mut parts: Vec[i64] = Vec.filled(n + 1, 0);
+    for node in 1..n + 1 {
+        if sides[node] == -1 and not rec_colour(node, 0, node, next, mut sides, mut parts) {
+            return -1;
+        }
+    }
+    let mut most: Vec[i64] = Vec.filled(n + 1, 0);
+    for start in 1..n + 1 {
+        let part = parts[start];
+        most[part] = most[part].max(rec_levels(start, n, next));
+    }
+    most.iter().sum()
+}
+
+// ---- union (groups_union.kara) -------------------------------------------
+
+fn union_find(parent: mut ref Vec[i64], parity: mut ref Vec[i64], x: i64) -> i64 {
+    if parent[x] == x {
+        return x;
+    }
+    let up = parent[x];
+    let root = union_find(mut parent, mut parity, up);
+    parity[x] = (parity[x] + parity[up]) % 2;
+    parent[x] = root;
+    root
+}
+
+fn union_magnificent_sets(n: i64, edges: Vec[Vec[i64]]) -> i64 {
+    let mut parent: Vec[i64] = (0..n + 1).collect();
+    let mut parity: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut next: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.new());
+    for edge in edges.iter() {
+        let (a, b) = (edge[0], edge[1]);
+        next[a].push(b);
+        next[b].push(a);
+        let ra = union_find(mut parent, mut parity, a);
+        let rb = union_find(mut parent, mut parity, b);
+        if ra == rb {
+            if parity[a] == parity[b] {
+                return -1;
+            }
+        } else {
+            parent[ra] = rb;
+            parity[ra] = (parity[a] + parity[b] + 1) % 2;
+        }
+    }
+    let mut most: Vec[i64] = Vec.filled(n + 1, 0);
+    for start in 1..n + 1 {
+        let mut depth: Vec[i64] = Vec.filled(n + 1, 0);
+        depth[start] = 1;
+        let mut queue: Vec[i64] = [start].to_vec();
+        let mut head = 0;
+        let mut deepest = 1;
+        while head < queue.len() {
+            let node = queue[head];
+            head += 1;
+            for other in next[node].iter() {
+                if depth[other] == 0 {
+                    depth[other] = depth[node] + 1;
+                    deepest = depth[other];
+                    queue.push(other);
+                }
+            }
+        }
+        let root = union_find(mut parent, mut parity, start);
+        most[root] = most[root].max(deepest);
+    }
+    most.iter().sum()
+}
+
+// ---- map (groups_map.kara) -----------------------------------------------
+
+fn map_magnificent_sets(n: i64, edges: Vec[Vec[i64]]) -> i64 {
+    let mut beside: Map[i64, Vec[i64]] = Map.new();
+    for node in 1..n + 1 {
+        beside.insert(node, Vec.new());
+    }
+    for edge in edges.iter() {
+        beside[edge[0]].push(edge[1]);
+        beside[edge[1]].push(edge[0]);
+    }
+    let mut best: Map[i64, i64] = Map.new();
+    for start in 1..n + 1 {
+        let mut distance: Map[i64, i64] = Map.new();
+        distance.insert(start, 0);
+        let mut queue: VecDeque[i64] = VecDeque.new();
+        queue.push_back(start);
+        let mut least = start;
+        let mut far = 0;
+        while let Some(node) = queue.pop_front() {
+            let here = distance[node];
+            least = least.min(node);
+            far = far.max(here);
+            for other in beside[node].iter() {
+                match distance.get(other) {
+                    Some(there) => {
+                        if there == here {
+                            return -1;
+                        }
+                    }
+                    None => {
+                        distance.insert(other, here + 1);
+                        queue.push_back(other);
+                    }
+                }
+            }
+        }
+        let groups = best.entry(least).or_insert(0);
+        *groups = (*groups).max(far + 1);
+    }
+    best.values().sum()
+}
+
+// ---- iter (groups_iter.kara) ---------------------------------------------
+
+fn iter_magnificent_sets(n: i64, edges: Vec[Vec[i64]]) -> i64 {
+    let mut next: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.new());
+    for edge in edges.iter() {
+        next[edge[0]].push(edge[1]);
+        next[edge[1]].push(edge[0]);
+    }
+    let mut most: Vec[i64] = Vec.filled(n + 1, 0);
+    for start in 1..n + 1 {
+        let mut level: Vec[i64] = Vec.filled(n + 1, -1);
+        level[start] = 0;
+        let mut wave: Vec[i64] = [start].to_vec();
+        let mut waves = 0;
+        while wave.len() > 0 {
+            waves += 1;
+            wave = wave
+                .iter()
+                .flat_map(|node| next[node].iter().cloned())
+                .filter(|node| {
+                    let new = level[node] == -1;
+                    if new {
+                        level[node] = waves;
+                    }
+                    new
+                })
+                .collect();
+        }
+        let fits = edges.iter().filter(|e| level[e[0]] >= 0).all(|e| (level[e[0]] - level[e[1]]).abs() == 1);
+        if not fits {
+            return -1;
+        }
+        let least = (1..n + 1).filter(|v| level[v] >= 0).min().unwrap();
+        most[least] = most[least].max(waves);
+    }
+    most.iter().sum()
+}
+
+// ---- solution (groups_solution.kara) -------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn magnificent_sets(n: i32, edges: Vec[Vec[i32]]) -> i32 {
+        let n = n as i64;
+        let mut g = Vec.filled(n, Vec.new());
+        for e in edges.iter() {
+            let (a, b) = (e[0] as i64 - 1, e[1] as i64 - 1);
+            g[a].push(b);
+            g[b].push(a);
+        }
+        let mut best: Map[i64, i32] = Map.new();
+        for s in 0..n {
+            let mut dist = Vec.filled(n, -1i32);
+            dist[s] = 0;
+            let mut q = VecDeque.new();
+            q.push_back(s);
+            let mut root = s;
+            let mut far: i32 = 0;
+            while let Some(u) = q.pop_front() {
+                root = root.min(u);
+                far = far.max(dist[u]);
+                for v in ref g[u] {
+                    if dist[v] == -1 {
+                        dist[v] = dist[u] + 1;
+                        q.push_back(v);
+                    } else if (dist[v] - dist[u]).abs() != 1 {
+                        return -1;
+                    }
+                }
+            }
+            let e = best.entry(root).or_insert(0);
+            *e = (*e).max(far + 1);
+        }
+        best.values().sum()
+    }
+}
+
+fn solution_magnificent_sets(n: i64, edges: Vec[Vec[i64]]) -> i64 {
+    let asked: Vec[Vec[i32]] = edges.iter().map(|e| e.iter().map(|v| v as i32).collect()).collect();
+    Solution.magnificent_sets(n as i32, asked)
+}
+
+// ---- the statement read literally
+
+fn literal_from(v: i64, n: i64, beside: Vec[Vec[i64]], group: mut ref Vec[i64]) -> i64 {
+    if v > n {
+        let m = (1..n + 1).map(|u| group[u]).max().unwrap();
+        let mut used: Vec[bool] = Vec.filled(m + 1, false);
+        for u in 1..n + 1 {
+            used[group[u]] = true;
+        }
+        if (1..m + 1).all(|g| used[g]) {
+            return m;
+        }
+        return -1;
+    }
+    let mut best = -1;
+    for x in 1..n + 1 {
+        if beside[v].iter().all(|u| u > v or (group[u] - x).abs() == 1) {
+            group[v] = x;
+            best = best.max(literal_from(v + 1, n, beside, mut group));
+            group[v] = 0;
+        }
+    }
+    best
+}
+
+fn literal(n: i64, edges: Vec[Vec[i64]]) -> i64 {
+    let mut beside: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.new());
+    for edge in edges.iter() {
+        beside[edge[0]].push(edge[1]);
+        beside[edge[1]].push(edge[0]);
+    }
+    let mut group: Vec[i64] = Vec.filled(n + 1, 0);
+    literal_from(1, n, beside, mut group)
+}
+
+// ---- cases
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_edges(n: i64, tries: i64, cut: bool, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut side: Vec[i64] = Vec.filled(n + 1, 0);
+    for v in 1..n + 1 {
+        side[v] = next_random(mut seed) % 2;
+    }
+    let mut taken: Set[i64] = Set.new();
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..tries {
+        let a = next_random(mut seed) % n + 1;
+        let b = next_random(mut seed) % n + 1;
+        if a != b and (not cut or side[a] != side[b]) and taken.insert(a.min(b) * 1000 + a.max(b)) {
+            edges.push([a, b].to_vec());
+        }
+    }
+    if edges.len() == 0 {
+        edges.push([1, 2].to_vec());
+    }
+    edges
+}
+
+// a random tree on `n` nodes, then up to `more` tries at another edge
+fn random_tree(n: i64, more: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut taken: Set[i64] = Set.new();
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for v in 2..n + 1 {
+        let u = next_random(mut seed) % (v - 1) + 1;
+        taken.insert(u * 1000 + v);
+        edges.push([u, v].to_vec());
+    }
+    for _ in 0..more {
+        let a = next_random(mut seed) % n + 1;
+        let b = next_random(mut seed) % n + 1;
+        if a != b and taken.insert(a.min(b) * 1000 + a.max(b)) {
+            edges.push([a, b].to_vec());
+        }
+    }
+    edges
+}
+
+fn answer(arm: i64, n: i64, edges: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_magnificent_sets(n, edges),
+        1 => rec_magnificent_sets(n, edges),
+        2 => union_magnificent_sets(n, edges),
+        3 => map_magnificent_sets(n, edges),
+        4 => iter_magnificent_sets(n, edges),
+        _ => solution_magnificent_sets(n, edges),
+    }
+}
+
+fn main() {
+    let names = ["star", "rec", "union", "map", "iter", "solution"];
+    let mut seed = 2493;
+    let mut problems: Vec[(i64, Vec[Vec[i64]])] = Vec.new();
+    for t in 0..360 {
+        if t < 300 {
+            let n = next_random(mut seed) % 5 + 2;
+            let tries = next_random(mut seed) % 13;
+            let cut = t % 2 == 0;
+            problems.push((n, random_edges(n, tries, cut, mut seed)));
+        } else if t < 320 {
+            problems.push((2, [[1, 2].to_vec()].to_vec()));
+        } else {
+            let n = next_random(mut seed) % 2 + 7;
+            let more = next_random(mut seed) % 4;
+            problems.push((n, random_tree(n, more, mut seed)));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut divide = 0;
+    for (n, edges) in problems.iter() {
+        let truth = literal(n, edges);
+        check = (check * 31 + truth + 1) % 1000000007;
+        if truth > 0 {
+            divide += 1;
+        }
+        let turned: Vec[Vec[i64]] = edges.iter().rev().map(|e| [e[1], e[0]].to_vec()).collect();
+        let backwards: Vec[Vec[i64]] = edges.iter().map(|e| [n + 1 - e[0], n + 1 - e[1]].to_vec()).collect();
+        let mut doubled = edges.clone();
+        for e in edges.iter() {
+            doubled.push([e[0] + n, e[1] + n].to_vec());
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, n, edges)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let twice = answer(arm, 2 * n, doubled);
+            let verdicts = [
+                x == truth,
+                x == -1 or (x >= 2 and x <= n),
+                answer(arm, n, turned) == x,
+                answer(arm, n, backwards) == x,
+                if x == -1 { twice == -1 } else { twice == 2 * x },
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{n} nodes, {edges.len()} edges, arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} cases, {divide} divide: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

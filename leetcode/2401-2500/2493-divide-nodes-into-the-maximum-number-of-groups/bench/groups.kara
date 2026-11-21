@@ -1,0 +1,69 @@
+// LeetCode #2493: Divide Nodes Into the Maximum Number of Groups --
+// benchmark of the ★ arm (groups.kara): one graph of 500 nodes and about
+// 4000 edges across a random cut, built once, then 38 passes; each asks
+// on all but the last few edges, as many as the checksum so far chooses,
+// folding the answer plus the pass into the checksum.
+
+fn magnificent_sets(n: i64, edges: Vec[Vec[i64]]) -> i64 {
+    let mut next: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.new());
+    for edge in edges.iter() {
+        next[edge[0]].push(edge[1]);
+        next[edge[1]].push(edge[0]);
+    }
+    let mut most: Vec[i64] = Vec.filled(n + 1, 0);
+    for start in 1..n + 1 {
+        let mut depth: Vec[i64] = Vec.filled(n + 1, -1);
+        depth[start] = 0;
+        let mut queue: Vec[i64] = [start].to_vec();
+        let mut head = 0;
+        let mut least = start;
+        let mut deepest = 0;
+        while head < queue.len() {
+            let node = queue[head];
+            head += 1;
+            least = least.min(node);
+            deepest = deepest.max(depth[node]);
+            for other in next[node].iter() {
+                if depth[other] == -1 {
+                    depth[other] = depth[node] + 1;
+                    queue.push(other);
+                } else if depth[other] == depth[node] {
+                    return -1;
+                }
+            }
+        }
+        most[least] = most[least].max(deepest + 1);
+    }
+    most.iter().sum()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let n = 500;
+    let passes = 38;
+    let mut seed = 2493;
+    let mut side: Vec[i64] = Vec.filled(n + 1, 0);
+    for v in 1..n + 1 {
+        side[v] = next_random(mut seed) % 2;
+    }
+    let mut taken: Set[i64] = Set.new();
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..8000 {
+        let a = next_random(mut seed) % n + 1;
+        let b = next_random(mut seed) % n + 1;
+        if a != b and side[a] != side[b] and taken.insert(a.min(b) * 1000 + a.max(b)) {
+            edges.push([a, b].to_vec());
+        }
+    }
+    let m = edges.len();
+    let mut check = 0;
+    for p in 0..passes {
+        let asked: Vec[Vec[i64]] = edges.iter().take(m - check % 100).cloned().collect();
+        check = (check * 31 + magnificent_sets(n, asked) + p) % 1000000007;
+    }
+    println(f"{passes} passes over 500 nodes and {m} edges: checksum {check}");
+}

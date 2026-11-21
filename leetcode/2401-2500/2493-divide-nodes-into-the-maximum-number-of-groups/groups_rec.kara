@@ -1,0 +1,151 @@
+// LeetCode #2493: Divide Nodes Into the Maximum Number of Groups -- by a
+// recursive two-colouring: a depth-first search gives every node a side
+// and the label of its part, and an edge between two nodes of one side
+// means no division; then a breadth-first search from every node counts
+// its levels, and each part takes its most. O(n (n + m)).
+
+fn colour(node: i64, side: i64, part: i64, next: Vec[Vec[i64]], sides: mut ref Vec[i64], parts: mut ref Vec[i64]) -> bool {
+    sides[node] = side;
+    parts[node] = part;
+    for other in next[node].iter() {
+        if sides[other] == side {
+            return false;
+        }
+        if sides[other] == -1 and not colour(other, 1 - side, part, next, mut sides, mut parts) {
+            return false;
+        }
+    }
+    true
+}
+
+fn levels(start: i64, n: i64, next: Vec[Vec[i64]]) -> i64 {
+    let mut depth: Vec[i64] = Vec.filled(n + 1, -1);
+    depth[start] = 1;
+    let mut queue: Vec[i64] = [start].to_vec();
+    let mut head = 0;
+    while head < queue.len() {
+        let node = queue[head];
+        head += 1;
+        for other in next[node].iter() {
+            if depth[other] == -1 {
+                depth[other] = depth[node] + 1;
+                queue.push(other);
+            }
+        }
+    }
+    depth[queue[queue.len() - 1]]
+}
+
+fn magnificent_sets(n: i64, edges: Vec[Vec[i64]]) -> i64 {
+    let mut next: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.new());
+    for edge in edges.iter() {
+        next[edge[0]].push(edge[1]);
+        next[edge[1]].push(edge[0]);
+    }
+    let mut sides: Vec[i64] = Vec.filled(n + 1, -1);
+    let mut parts: Vec[i64] = Vec.filled(n + 1, 0);
+    for node in 1..n + 1 {
+        if sides[node] == -1 and not colour(node, 0, node, next, mut sides, mut parts) {
+            return -1;
+        }
+    }
+    let mut most: Vec[i64] = Vec.filled(n + 1, 0);
+    for start in 1..n + 1 {
+        let part = parts[start];
+        most[part] = most[part].max(levels(start, n, next));
+    }
+    most.iter().sum()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` nodes and up to `tries` random edges, none repeated; when `cut`,
+// only between the two sides of a random cut, so that the graph divides.
+// An empty draw gets the edge 1 - 2, since there is at least one edge.
+fn random_edges(n: i64, tries: i64, cut: bool, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut side: Vec[i64] = Vec.filled(n + 1, 0);
+    for v in 1..n + 1 {
+        side[v] = next_random(mut seed) % 2;
+    }
+    let mut taken: Set[i64] = Set.new();
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..tries {
+        let a = next_random(mut seed) % n + 1;
+        let b = next_random(mut seed) % n + 1;
+        if a != b and (not cut or side[a] != side[b]) and taken.insert(a.min(b) * 1000 + a.max(b)) {
+            edges.push([a, b].to_vec());
+        }
+    }
+    if edges.len() == 0 {
+        edges.push([1, 2].to_vec());
+    }
+    edges
+}
+
+fn main() {
+    // LeetCode's two examples, then seven more
+    let cases: Vec[(i64, Vec[Vec[i64]])] = [
+        (6, [[1, 2].to_vec(), [1, 4].to_vec(), [1, 5].to_vec(), [2, 6].to_vec(), [2, 3].to_vec(), [4, 6].to_vec()].to_vec()),
+        (3, [[1, 2].to_vec(), [2, 3].to_vec(), [3, 1].to_vec()].to_vec()),
+        (2, [[1, 2].to_vec()].to_vec()),
+        (4, [[1, 2].to_vec()].to_vec()),
+        (4, [[1, 2].to_vec(), [2, 3].to_vec(), [3, 4].to_vec(), [4, 1].to_vec()].to_vec()),
+        (5, [[1, 2].to_vec(), [2, 3].to_vec(), [3, 4].to_vec(), [4, 5].to_vec()].to_vec()),
+        (7, [[1, 2].to_vec(), [2, 3].to_vec(), [3, 1].to_vec(), [4, 5].to_vec()].to_vec()),
+        (8, [[1, 2].to_vec(), [2, 3].to_vec(), [3, 4].to_vec(), [5, 6].to_vec(), [6, 7].to_vec(), [7, 8].to_vec(), [8, 5].to_vec()].to_vec()),
+        (6, [[1, 2].to_vec(), [1, 3].to_vec(), [1, 4].to_vec(), [1, 5].to_vec(), [1, 6].to_vec()].to_vec()),
+    ].to_vec();
+    for (n, edges) in cases.iter() {
+        println(f"{n} nodes, {edges.len()} edges -> {magnificent_sets(n, edges)}");
+    }
+    // 2000 random graphs of 2 to 40 nodes and up to 60 tries at an edge,
+    // across a random cut and drawn freely: how many divide, and a checksum
+    let mut seed = 2493;
+    for cut in [true, false] {
+        let mut divide = 0;
+        let mut check = 0;
+        for _ in 0..2000 {
+            let n = next_random(mut seed) % 39 + 2;
+            let tries = next_random(mut seed) % 61;
+            let answer = magnificent_sets(n, random_edges(n, tries, cut, mut seed));
+            if answer > 0 {
+                divide += 1;
+            }
+            check = (check * 31 + answer + 1) % 1000000007;
+        }
+        let how = if cut { "across a cut" } else { "drawn freely" };
+        println(f"2000 random {how}: {divide} divide, checksum {check}");
+    }
+    // the constraints' largest, 500 nodes: a path; a 20 by 25 grid; every
+    // node of 1 to 100 joined to every node of 101 to 200, 10^4 edges, the
+    // other 300 alone; and 10^4 tries at an edge across a random cut
+    let n = 500;
+    let path: Vec[Vec[i64]] = (1..n).map(|v| [v, v + 1].to_vec()).collect();
+    let mut grid: Vec[Vec[i64]] = Vec.new();
+    for r in 0..20 {
+        for c in 0..25 {
+            let v = r * 25 + c + 1;
+            if c < 24 {
+                grid.push([v, v + 1].to_vec());
+            }
+            if r < 19 {
+                grid.push([v, v + 25].to_vec());
+            }
+        }
+    }
+    let mut both: Vec[Vec[i64]] = Vec.new();
+    for a in 1..101 {
+        for b in 101..201 {
+            both.push([a, b].to_vec());
+        }
+    }
+    let random = random_edges(n, 10000, true, mut seed);
+    for (name, edges) in [("path", path), ("grid", grid), ("two sides", both), ("random", random)] {
+        println(f"500 {name}: {edges.len()} edges -> {magnificent_sets(n, edges)}");
+    }
+}
