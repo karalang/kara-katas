@@ -1,0 +1,111 @@
+// LeetCode #2477: Minimum Fuel Cost to Report to the Capital -- LeetCode's
+// Rust template: `Vec<Vec<i32>>` and `i32` in, `i64` out; a `vec![vec![];
+// n]` of `usize` neighbours, and a `dfs` nested in the method with the
+// parent `usize::MAX` at the capital, returning each subtree's people and
+// adding its cars to a `&mut i64`. Carried by `karac fix`. The adapter
+// below hands the harness's `i64` roads to it.
+
+fn dfs(u: usize, p: usize, graph: ref Vec[Vec[usize]], seats: i64, ans: mut ref i64) -> i64 {
+    let mut people = 1;
+    for v in ref graph[u] {
+        if v != p {
+            let sub = dfs(v, u, graph, seats, mut ans);
+            *ans += (sub + seats - 1) / seats;
+            people += sub;
+        }
+    }
+    people
+}
+
+impl Solution {
+    pub fn minimum_fuel_cost(roads: Vec[Vec[i32]], seats: i32) -> i64 {
+        let n = roads.len() + 1;
+        let mut graph = Vec.filled(n, Vec.new());
+        for r in ref roads {
+            let (a, b) = (r[0] as usize, r[1] as usize);
+            graph[a].push(b);
+            graph[b].push(a);
+        }
+        let mut ans = 0;
+        dfs(0, usize.MAX, graph, seats, mut ans);
+        ans
+    }
+}
+
+struct Solution {}
+
+fn minimum_fuel_cost(roads: Vec[Vec[i64]], seats: i64) -> i64 {
+    let r: Vec[Vec[i32]] = roads.iter().map(|p| p.iter().map(|v| v as i32).collect()).collect();
+    Solution.minimum_fuel_cost(r, seats as i32)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a draw up to 2^30, two 15-bit draws joined
+fn wide_random(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+// the roads of a random tree of `n` cities: each city after the first
+// joined to a random earlier one, each road's ends in a random order,
+// and the roads shuffled
+fn random_roads(n: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut roads: Vec[Vec[i64]] = Vec.new();
+    for k in 1..n {
+        let other = wide_random(mut seed) % k;
+        if next_random(mut seed) % 2 == 0 {
+            roads.push([k, other].to_vec());
+        } else {
+            roads.push([other, k].to_vec());
+        }
+    }
+    for i in (1..roads.len()).rev() {
+        let j = wide_random(mut seed) % (i + 1);
+        roads.swap(i, j);
+    }
+    roads
+}
+
+fn main() {
+    // LeetCode's three examples; then a path from the capital with one
+    // seat; a star round it with two; and a path with the capital in the
+    // middle
+    let cases: Vec[(Vec[Vec[i64]], i64)] = [
+        ([[0, 1].to_vec(), [0, 2].to_vec(), [0, 3].to_vec()].to_vec(), 5),
+        ([[3, 1].to_vec(), [3, 2].to_vec(), [1, 0].to_vec(), [0, 4].to_vec(), [0, 5].to_vec(), [4, 6].to_vec()].to_vec(), 2),
+        (Vec.new(), 1),
+        ([[0, 1].to_vec(), [1, 2].to_vec(), [2, 3].to_vec(), [3, 4].to_vec()].to_vec(), 1),
+        ([[0, 1].to_vec(), [0, 2].to_vec(), [0, 3].to_vec(), [0, 4].to_vec(), [0, 5].to_vec()].to_vec(), 2),
+        ([[2, 1].to_vec(), [1, 0].to_vec(), [0, 3].to_vec(), [3, 4].to_vec()].to_vec(), 3),
+    ].to_vec();
+    for (roads, seats) in cases.into_iter() {
+        let shown = f"{roads}";
+        println(f"{shown}, seats {seats} -> {minimum_fuel_cost(roads, seats)}");
+    }
+    // the constraints' largest, 10^5 cities, with 1, 3 and 10^5 seats; then
+    // a path of 2000 cities from the capital, with 1 and 7 seats
+    let mut seed = 2477;
+    let big = random_roads(100000, mut seed);
+    for seats in [1, 3, 100000].iter() {
+        println(f"10^5 cities, seats {seats} -> {minimum_fuel_cost(big, seats)}");
+    }
+    let path: Vec[Vec[i64]] = (1..2000).map(|k| [k - 1, k].to_vec()).collect();
+    println(f"a path of 2000, seats 1 -> {minimum_fuel_cost(path, 1)}");
+    println(f"a path of 2000, seats 7 -> {minimum_fuel_cost(path, 7)}");
+    // 3000 random trees of 1 to 40 cities with 1 to 10 seats: a checksum
+    // of every answer in order
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 40;
+        let roads = random_roads(n, mut seed);
+        let seats = 1 + next_random(mut seed) % 10;
+        check = (check * 31 + minimum_fuel_cost(roads, seats)) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}

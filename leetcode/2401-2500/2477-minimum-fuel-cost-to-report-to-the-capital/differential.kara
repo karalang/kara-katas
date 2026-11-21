@@ -1,0 +1,361 @@
+// LeetCode #2477: Minimum Fuel Cost to Report to the Capital -- the
+// differential. The six arms against the statement read literally:
+// every representative beyond a road must cross it, and the fewest cars
+// that carry `c` people are `ceil(c / seats)`; so for each road, the
+// cities it cuts off from the capital are counted by a search that may
+// not use it, and the counts' cars summed. No root, order or subtree is
+// used. 360 random trees: 300 of 1 to 10 cities, then 60 of up to 30,
+// with 1 to 6 seats. Every case is drawn before any arm answers.
+//
+// P1  the fuel is the literal reading's
+// P2  as many seats as cities: one liter a road
+// P3  one seat: the sum of every city's distance from the capital
+// P4  two copies joined at the capital: twice the fuel
+// P5  the tree hung below a new capital, the old one its only
+//     neighbour: `ceil(n / seats)` more
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn fuel_literally(roads: Vec[Vec[i64]], seats: i64) -> i64 {
+    let n = roads.len() + 1;
+    let mut fuel = 0;
+    for cut in 0..roads.len() {
+        // the cities the capital reaches without road `cut`
+        let mut reached: Vec[bool] = Vec.filled(n, false);
+        reached[0] = true;
+        let mut grew = true;
+        while grew {
+            grew = false;
+            for r in 0..roads.len() {
+                let (a, b) = (roads[r][0], roads[r][1]);
+                if r != cut and reached[a] != reached[b] {
+                    reached[a] = true;
+                    reached[b] = true;
+                    grew = true;
+                }
+            }
+        }
+        let beyond = reached.iter().filter(|x| not x).count();
+        fuel += (beyond + seats - 1) / seats;
+    }
+    fuel
+}
+
+// every city's distance from the capital, summed
+fn distances(roads: Vec[Vec[i64]]) -> i64 {
+    let n = roads.len() + 1;
+    let mut distance: Vec[i64] = Vec.filled(n, -1);
+    distance[0] = 0;
+    let mut grew = true;
+    while grew {
+        grew = false;
+        for road in roads.iter() {
+            let (a, b) = (road[0], road[1]);
+            if distance[a] >= 0 and distance[b] < 0 {
+                distance[b] = distance[a] + 1;
+                grew = true;
+            } else if distance[b] >= 0 and distance[a] < 0 {
+                distance[a] = distance[b] + 1;
+                grew = true;
+            }
+        }
+    }
+    distance.iter().sum()
+}
+
+// ---- star (fuel.kara) ----------------------------------------------------
+
+fn star_minimum_fuel_cost(roads: Vec[Vec[i64]], seats: i64) -> i64 {
+    let n = roads.len() + 1;
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for road in roads.iter() {
+        adjacent[road[0]].push(road[1]);
+        adjacent[road[1]].push(road[0]);
+    }
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    let mut order: Vec[i64] = [0].to_vec();
+    parent[0] = 0;
+    let mut next = 0;
+    while next < order.len() {
+        let city = order[next];
+        next += 1;
+        for other in adjacent[city].iter() {
+            if parent[other] < 0 {
+                parent[other] = city;
+                order.push(other);
+            }
+        }
+    }
+    let mut size: Vec[i64] = Vec.filled(n, 1);
+    let mut fuel = 0;
+    for k in (1..n).rev() {
+        let city = order[k];
+        fuel += (size[city] + seats - 1) / seats;
+        size[parent[city]] += size[city];
+    }
+    fuel
+}
+
+// ---- dfs (fuel_dfs.kara) -------------------------------------------------
+
+fn dfs_people(city: i64, from: i64, adjacent: Vec[Vec[i64]], seats: i64, fuel: mut ref i64) -> i64 {
+    let mut size = 1;
+    for other in adjacent[city].iter() {
+        if other != from {
+            let below = dfs_people(other, city, adjacent, seats, mut fuel);
+            *fuel += (below + seats - 1) / seats;
+            size += below;
+        }
+    }
+    size
+}
+
+fn dfs_minimum_fuel_cost(roads: Vec[Vec[i64]], seats: i64) -> i64 {
+    let n = roads.len() + 1;
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for road in roads.iter() {
+        adjacent[road[0]].push(road[1]);
+        adjacent[road[1]].push(road[0]);
+    }
+    let mut fuel = 0;
+    dfs_people(0, -1, adjacent, seats, mut fuel);
+    fuel
+}
+
+// ---- peel (fuel_peel.kara) -----------------------------------------------
+
+fn peel_minimum_fuel_cost(roads: Vec[Vec[i64]], seats: i64) -> i64 {
+    let n = roads.len() + 1;
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for road in roads.iter() {
+        adjacent[road[0]].push(road[1]);
+        adjacent[road[1]].push(road[0]);
+    }
+    let mut degree: Vec[i64] = adjacent.iter().map(|a| a.len()).collect();
+    let mut people: Vec[i64] = Vec.filled(n, 1);
+    let mut gone: Vec[bool] = Vec.filled(n, false);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    for city in 1..n {
+        if degree[city] == 1 {
+            queue.push_back(city);
+        }
+    }
+    let mut fuel = 0;
+    while let Some(city) = queue.pop_front() {
+        gone[city] = true;
+        fuel += (people[city] + seats - 1) / seats;
+        for other in adjacent[city].iter() {
+            if not gone[other] {
+                people[other] += people[city];
+                degree[other] -= 1;
+                if other != 0 and degree[other] == 1 {
+                    queue.push_back(other);
+                }
+            }
+        }
+    }
+    fuel
+}
+
+// ---- trips (fuel_trips.kara) ---------------------------------------------
+
+fn trips_minimum_fuel_cost(roads: Vec[Vec[i64]], seats: i64) -> i64 {
+    let n = roads.len() + 1;
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for road in roads.iter() {
+        adjacent[road[0]].push(road[1]);
+        adjacent[road[1]].push(road[0]);
+    }
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    parent[0] = 0;
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    queue.push_back(0);
+    while let Some(city) = queue.pop_front() {
+        for other in adjacent[city].iter() {
+            if parent[other] < 0 {
+                parent[other] = city;
+                queue.push_back(other);
+            }
+        }
+    }
+    let mut passing: Vec[i64] = Vec.filled(n, 0);
+    for start in 1..n {
+        let mut at = start;
+        while at != 0 {
+            passing[at] += 1;
+            at = parent[at];
+        }
+    }
+    let mut fuel = 0;
+    for city in 1..n {
+        fuel += (passing[city] + seats - 1) / seats;
+    }
+    fuel
+}
+
+// ---- iter (fuel_iter.kara) -----------------------------------------------
+
+fn iter_minimum_fuel_cost(roads: Vec[Vec[i64]], seats: i64) -> i64 {
+    let n = roads.len() + 1;
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for road in roads.iter() {
+        adjacent[road[0]].push(road[1]);
+        adjacent[road[1]].push(road[0]);
+    }
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    parent[0] = 0;
+    let mut order: Vec[i64] = [0].to_vec();
+    let mut next = 0;
+    while next < order.len() {
+        let city = order[next];
+        next += 1;
+        let fresh: Vec[i64] = adjacent[city].iter().filter(|o| parent[o] < 0).cloned().collect();
+        for o in fresh.iter() {
+            parent[o] = city;
+        }
+        order.extend(fresh);
+    }
+    let mut size: Vec[i64] = Vec.filled(n, 1);
+    for city in order.iter().skip(1).rev() {
+        size[parent[city]] += size[city];
+    }
+    (1..n).map(|city| (size[city] + seats - 1) / seats).sum()
+}
+
+// ---- solution (fuel_solution.kara) ---------------------------------------
+
+fn solution_dfs(u: usize, p: usize, graph: ref Vec[Vec[usize]], seats: i64, ans: mut ref i64) -> i64 {
+    let mut people = 1;
+    for v in ref graph[u] {
+        if v != p {
+            let sub = solution_dfs(v, u, graph, seats, mut ans);
+            *ans += (sub + seats - 1) / seats;
+            people += sub;
+        }
+    }
+    people
+}
+
+impl Solution {
+    pub fn minimum_fuel_cost(roads: Vec[Vec[i32]], seats: i32) -> i64 {
+        let n = roads.len() + 1;
+        let mut graph = Vec.filled(n, Vec.new());
+        for r in ref roads {
+            let (a, b) = (r[0] as usize, r[1] as usize);
+            graph[a].push(b);
+            graph[b].push(a);
+        }
+        let mut ans = 0;
+        solution_dfs(0, usize.MAX, graph, seats, mut ans);
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_minimum_fuel_cost(roads: Vec[Vec[i64]], seats: i64) -> i64 {
+    let r: Vec[Vec[i32]] = roads.iter().map(|p| p.iter().map(|v| v as i32).collect()).collect();
+    Solution.minimum_fuel_cost(r, seats as i32)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn answer(arm: i64, roads: Vec[Vec[i64]], seats: i64) -> i64 {
+    match arm {
+        0 => star_minimum_fuel_cost(roads, seats),
+        1 => dfs_minimum_fuel_cost(roads, seats),
+        2 => peel_minimum_fuel_cost(roads, seats),
+        3 => trips_minimum_fuel_cost(roads, seats),
+        4 => iter_minimum_fuel_cost(roads, seats),
+        _ => solution_minimum_fuel_cost(roads, seats),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "dfs", "peel", "trips", "iter", "solution"];
+    let mut seed = 2477;
+    let mut cases: Vec[(Vec[Vec[i64]], i64)] = Vec.new();
+    for t in 0..360 {
+        let n = if t < 300 { 1 + next_random(mut seed) % 10 } else { 1 + next_random(mut seed) % 30 };
+        let mut roads: Vec[Vec[i64]] = Vec.new();
+        for k in 1..n {
+            let other = next_random(mut seed) % k;
+            if next_random(mut seed) % 2 == 0 {
+                roads.push([k, other].to_vec());
+            } else {
+                roads.push([other, k].to_vec());
+            }
+        }
+        for i in (1..roads.len()).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            roads.swap(i, j);
+        }
+        let seats = 1 + next_random(mut seed) % 6;
+        cases.push((roads, seats));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (roads, seats) = cases[c].clone();
+        let n = roads.len() + 1;
+        let truth = fuel_literally(roads, seats);
+        check = (check * 31 + truth) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, roads, seats)).collect();
+        let walked = distances(roads);
+        // the second copy's cities raised by n - 1, its capital kept 0
+        let mut both = roads.clone();
+        for road in roads.iter() {
+            let lift: Vec[i64] = road.iter().map(|v| if v == 0 { 0 } else { v + n - 1 }).collect();
+            both.push(lift);
+        }
+        // the old capital renamed n, and a new capital 0 joined to it
+        let mut hung: Vec[Vec[i64]] = roads.iter().map(|road| road.iter().map(|v| if v == 0 { n } else { v }).collect()).collect();
+        hung.push([0, n].to_vec());
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, roads, n) == n - 1,
+                answer(arm, roads, 1) == walked,
+                answer(arm, both, seats) == 2 * value,
+                answer(arm, hung, seats) == value + (n + seats - 1) / seats,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
