@@ -1,0 +1,65 @@
+// LeetCode #2484: Count Palindromic Subsequences -- bench: the ★ arm, by
+// the digit pairs before and after each middle, the hundred products
+// summed. O(100 n).
+
+fn count_palindromes(s: Str) -> i64 {
+    let modulus = 1000000007;
+    let digits: Vec[i64] = s.chars().map(|c| c as i64 - '0' as i64).collect();
+    let mut before_one: Vec[i64] = Vec.filled(10, 0);
+    let mut before_two: Vec[i64] = Vec.filled(100, 0);
+    let mut after_one: Vec[i64] = Vec.filled(10, 0);
+    let mut after_two: Vec[i64] = Vec.filled(100, 0);
+    for d in digits.iter().rev() {
+        for a in 0..10 {
+            after_two[d * 10 + a] += after_one[a];
+        }
+        after_one[d] += 1;
+    }
+    let mut total = 0;
+    for d in digits.iter() {
+        // the middle leaves the digits after it
+        after_one[d] -= 1;
+        for a in 0..10 {
+            after_two[d * 10 + a] -= after_one[a];
+        }
+        let mut here = 0;
+        for a in 0..10 {
+            for b in 0..10 {
+                here += before_two[a * 10 + b] * after_two[b * 10 + a];
+            }
+        }
+        total = (total + here) % modulus;
+        // and joins the digits before it
+        for a in 0..10 {
+            before_two[a * 10 + d] += before_one[a];
+        }
+        before_one[d] += 1;
+    }
+    total
+}
+
+// ---- bench ------------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 4 random strings of 2000 digits built once; then 110 passes,
+    // each changing one digit of every string, place and digit chosen by
+    // the checksum so far, and folding the count plus the pass into the
+    // checksum
+    let mut seed = 2484;
+    let mut strings: Vec[Vec[i64]] = (0..4).map(|_| (0..2000).map(|_| next_random(mut seed) % 10).collect()).collect();
+    let mut check = 0;
+    for p in 0..110 {
+        for g in 0..4 {
+            strings[g][check % 2000] = check / 2000 % 10;
+            let pieces: Vec[String] = strings[g].iter().map(|d| f"{d}").collect();
+            let s = pieces.join("");
+            check = (check * 31 + count_palindromes(s) + p) % 1000000007;
+        }
+    }
+    println(f"110 passes over 4 strings of 2000 digits: checksum {check}");
+}

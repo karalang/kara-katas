@@ -1,0 +1,342 @@
+// LeetCode #2484: Count Palindromic Subsequences -- the differential.
+// The six arms against the statement read literally: every choice of
+// five places in order, `i < j < k < l < m`, taken in turn and counted
+// when its digits read the same both ways. No pair is counted. 360
+// random strings: 300 of 1 to 10 digits, then 60 of up to 14, each
+// drawn from the first 1 to 10 digits, all drawn before any arm
+// answers.
+//
+// P1  the count is the literal reading's
+// P2  the string reversed: the same count
+// P3  every digit renamed, `d` to `(3 d + 7) % 10`: the same count
+// P4  a digit the string lacks put last, when it lacks one: the same
+//     count
+// P5  every digit made `0`: the ways to choose five of the `n` places
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn palindromes_literally(s: Str) -> i64 {
+    let d: Vec[char] = s.chars().collect();
+    let n = d.len();
+    let mut count = 0;
+    for i in 0..n {
+        for j in i + 1..n {
+            for k in j + 1..n {
+                for l in k + 1..n {
+                    for m in l + 1..n {
+                        if d[i] == d[m] and d[j] == d[l] {
+                            count += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    count
+}
+
+fn choose(n: i64, r: i64) -> i64 {
+    if r > n {
+        return 0;
+    }
+    let mut value = 1;
+    for i in 0..r {
+        value = value * (n - i) / (i + 1);
+    }
+    value
+}
+
+// ---- star (palin.kara) ---------------------------------------------------
+
+fn star_count_palindromes(s: Str) -> i64 {
+    let modulus = 1000000007;
+    let digits: Vec[i64] = s.chars().map(|c| c as i64 - '0' as i64).collect();
+    let mut before_one: Vec[i64] = Vec.filled(10, 0);
+    let mut before_two: Vec[i64] = Vec.filled(100, 0);
+    let mut after_one: Vec[i64] = Vec.filled(10, 0);
+    let mut after_two: Vec[i64] = Vec.filled(100, 0);
+    for d in digits.iter().rev() {
+        for a in 0..10 {
+            after_two[d * 10 + a] += after_one[a];
+        }
+        after_one[d] += 1;
+    }
+    let mut total = 0;
+    for d in digits.iter() {
+        // the middle leaves the digits after it
+        after_one[d] -= 1;
+        for a in 0..10 {
+            after_two[d * 10 + a] -= after_one[a];
+        }
+        let mut here = 0;
+        for a in 0..10 {
+            for b in 0..10 {
+                here += before_two[a * 10 + b] * after_two[b * 10 + a];
+            }
+        }
+        total = (total + here) % modulus;
+        // and joins the digits before it
+        for a in 0..10 {
+            before_two[a * 10 + d] += before_one[a];
+        }
+        before_one[d] += 1;
+    }
+    total
+}
+
+// ---- table (palin_table.kara) --------------------------------------------
+
+fn table_count_palindromes(s: Str) -> i64 {
+    let digits: Vec[i64] = s.chars().map(|c| c as i64 - '0' as i64).collect();
+    let n = digits.len();
+    let mut before: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.filled(100, 0));
+    let mut singles: Vec[i64] = Vec.filled(10, 0);
+    for i in 0..n {
+        let mut row = before[i].clone();
+        for a in 0..10 {
+            row[a * 10 + digits[i]] += singles[a];
+        }
+        singles[digits[i]] += 1;
+        before[i + 1] = row;
+    }
+    let mut after: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.filled(100, 0));
+    let mut singles_after: Vec[i64] = Vec.filled(10, 0);
+    for i in (0..n).rev() {
+        let mut row = after[i + 1].clone();
+        for a in 0..10 {
+            row[digits[i] * 10 + a] += singles_after[a];
+        }
+        singles_after[digits[i]] += 1;
+        after[i] = row;
+    }
+    let mut total = 0;
+    for i in 0..n {
+        for a in 0..10 {
+            for b in 0..10 {
+                total = (total + before[i][a * 10 + b] * after[i + 1][b * 10 + a]) % 1000000007;
+            }
+        }
+    }
+    total
+}
+
+// ---- map (palin_map.kara) ------------------------------------------------
+
+fn map_count_palindromes(s: Str) -> i64 {
+    let digits: Vec[i64] = s.chars().map(|c| c as i64 - '0' as i64).collect();
+    let mut after_one: Map[i64, i64] = Map.new();
+    let mut after_two: Map[(i64, i64), i64] = Map.new();
+    for d in digits.iter().rev() {
+        for a in 0..10 {
+            let later = after_one.get(a).unwrap_or(0);
+            if later > 0 {
+                let had = after_two.get((d, a)).unwrap_or(0);
+                after_two.insert((d, a), had + later);
+            }
+        }
+        let had = after_one.get(d).unwrap_or(0);
+        after_one.insert(d, had + 1);
+    }
+    let mut before_one: Map[i64, i64] = Map.new();
+    let mut before_two: Map[(i64, i64), i64] = Map.new();
+    let mut total = 0;
+    for d in digits.iter() {
+        after_one.insert(d, after_one[d] - 1);
+        for a in 0..10 {
+            let later = after_one.get(a).unwrap_or(0);
+            if later > 0 {
+                after_two.insert((d, a), after_two[(d, a)] - later);
+            }
+        }
+        for ((a, b), count) in before_two.iter() {
+            total = (total + count * after_two.get((b, a)).unwrap_or(0)) % 1000000007;
+        }
+        for (a, count) in before_one.iter() {
+            let had = before_two.get((a, d)).unwrap_or(0);
+            before_two.insert((a, d), had + count);
+        }
+        let had = before_one.get(d).unwrap_or(0);
+        before_one.insert(d, had + 1);
+    }
+    total
+}
+
+// ---- pattern (palin_pattern.kara) ----------------------------------------
+
+fn pattern_count_pattern(digits: Vec[i64], pattern: Vec[i64]) -> i64 {
+    let mut ways: Vec[i64] = Vec.filled(pattern.len() + 1, 0);
+    ways[0] = 1;
+    for d in digits.iter() {
+        for k in (0..pattern.len()).rev() {
+            if pattern[k] == -1 or pattern[k] == d {
+                ways[k + 1] = (ways[k + 1] + ways[k]) % 1000000007;
+            }
+        }
+    }
+    ways[pattern.len()]
+}
+
+fn pattern_count_palindromes(s: Str) -> i64 {
+    let digits: Vec[i64] = s.chars().map(|c| c as i64 - '0' as i64).collect();
+    let mut total = 0;
+    for a in 0..10 {
+        for b in 0..10 {
+            total = (total + pattern_count_pattern(digits, [a, b, -1, b, a].to_vec())) % 1000000007;
+        }
+    }
+    total
+}
+
+// ---- iter (palin_iter.kara) ----------------------------------------------
+
+fn iter_count_palindromes(s: Str) -> i64 {
+    let digits: Vec[i64] = s.chars().map(|c| c as i64 - '0' as i64).collect();
+    let mut before_one: Vec[i64] = Vec.filled(10, 0);
+    let mut before_two: Vec[i64] = Vec.filled(100, 0);
+    let mut after_one: Vec[i64] = Vec.filled(10, 0);
+    let mut after_two: Vec[i64] = Vec.filled(100, 0);
+    for d in digits.iter().rev() {
+        (0..10).for_each(|a| { after_two[d * 10 + a] += after_one[a]; });
+        after_one[d] += 1;
+    }
+    digits.iter().fold(0, |total, d| {
+        after_one[d] -= 1;
+        (0..10).for_each(|a| { after_two[d * 10 + a] -= after_one[a]; });
+        let here: i64 = (0..100).map(|p| before_two[p] * after_two[(p % 10) * 10 + p / 10]).sum();
+        (0..10).for_each(|a| { before_two[a * 10 + d] += before_one[a]; });
+        before_one[d] += 1;
+        (total + here) % 1000000007
+    })
+}
+
+// ---- solution (palin_solution.kara) --------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn count_palindromes(s: String) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let s: Vec[usize] = s.bytes().iter().map(|b| (b - b'0') as usize).collect();
+        let mut ans: i64 = 0;
+        for a in 0..10 {
+            for b in 0..10 {
+                let mut dp = [0; 5];
+                for c in ref s {
+                    if c == a {
+                        dp[4] = (dp[4] + dp[3]) % MOD;
+                    }
+                    if c == b {
+                        dp[3] = (dp[3] + dp[2]) % MOD;
+                    }
+                    dp[2] = (dp[2] + dp[1]) % MOD;
+                    if c == b {
+                        dp[1] = (dp[1] + dp[0]) % MOD;
+                    }
+                    if c == a {
+                        dp[0] += 1;
+                    }
+                }
+                ans = (ans + dp[4]) % MOD;
+            }
+        }
+        ans as i32
+    }
+}
+
+fn solution_count_palindromes(s: Str) -> i64 {
+    Solution.count_palindromes(s.to_string())
+}
+
+
+// ---- the differential -------------------------------------------------------
+
+fn answer(arm: i64, s: Str) -> i64 {
+    match arm {
+        0 => star_count_palindromes(s),
+        1 => table_count_palindromes(s),
+        2 => map_count_palindromes(s),
+        3 => pattern_count_palindromes(s),
+        4 => iter_count_palindromes(s),
+        _ => solution_count_palindromes(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "table", "map", "pattern", "iter", "solution"];
+    let mut seed = 2484;
+    let mut cases: Vec[String] = Vec.new();
+    for t in 0..360 {
+        let n = if t < 300 { 1 + next_random(mut seed) % 10 } else { 1 + next_random(mut seed) % 14 };
+        let kinds = 1 + next_random(mut seed) % 10;
+        let mut s = "".to_string();
+        for _ in 0..n {
+            s.push_str(f"{next_random(mut seed) % kinds}");
+        }
+        cases.push(s);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let s = cases[c].clone();
+        let n = s.len();
+        let truth = palindromes_literally(s);
+        check = (check * 31 + truth) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, s)).collect();
+        let reversed: String = s.chars().rev().collect();
+        let renamed: String = s.chars().map(|c| (((c as i64 - '0' as i64) * 3 + 7) % 10 + '0' as i64) as u8 as char).collect();
+        let mut lacking = -1;
+        for d in (0..10).rev() {
+            if not s.contains(f"{d}") {
+                lacking = d;
+            }
+        }
+        let longer = if lacking >= 0 { f"{s}{lacking}" } else { s.clone() };
+        let zeros = "0".repeat(n);
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, reversed) == value,
+                answer(arm, renamed) == value,
+                answer(arm, longer) == value,
+                answer(arm, zeros) == choose(n, 5),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

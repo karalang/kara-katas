@@ -1,0 +1,67 @@
+// LeetCode #2484: Count Palindromic Subsequences -- iterators: the ★
+// arm's running counts, each middle's hundred products summed by `map`
+// and `sum` over `(0..100)`, the pair `a b` read back as `b a` by
+// `a * 10 + b` turned round, and the totals folded by `fold`. O(100 n).
+
+fn count_palindromes(s: Str) -> i64 {
+    let digits: Vec[i64] = s.chars().map(|c| c as i64 - '0' as i64).collect();
+    let mut before_one: Vec[i64] = Vec.filled(10, 0);
+    let mut before_two: Vec[i64] = Vec.filled(100, 0);
+    let mut after_one: Vec[i64] = Vec.filled(10, 0);
+    let mut after_two: Vec[i64] = Vec.filled(100, 0);
+    for d in digits.iter().rev() {
+        (0..10).for_each(|a| { after_two[d * 10 + a] += after_one[a]; });
+        after_one[d] += 1;
+    }
+    digits.iter().fold(0, |total, d| {
+        after_one[d] -= 1;
+        (0..10).for_each(|a| { after_two[d * 10 + a] -= after_one[a]; });
+        let here: i64 = (0..100).map(|p| before_two[p] * after_two[(p % 10) * 10 + p / 10]).sum();
+        (0..10).for_each(|a| { before_two[a * 10 + d] += before_one[a]; });
+        before_one[d] += 1;
+        (total + here) % 1000000007
+    })
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` random digits from the first `kinds`
+fn random_digits(n: i64, kinds: i64, seed: mut ref i64) -> String {
+    let mut text = "".to_string();
+    for _ in 0..n {
+        text.push_str(f"{next_random(mut seed) % kinds}");
+    }
+    text
+}
+
+fn main() {
+    // LeetCode's three examples; then a string too short; exactly five
+    // that read the same both ways; five that do not; and every digit
+    // once each way round
+    for s in ["103301", "0000000", "9999900000", "1234", "12321", "12345", "01234567899876543210"].iter() {
+        println(f"{s} -> {count_palindromes(s)}");
+    }
+    // the constraints' largest, 10^4 digits: all one digit, two taking
+    // turns, and random from all ten and from two
+    let mut seed = 2484;
+    println(f"\"0\" x 10^4 -> {count_palindromes("0".repeat(10000))}");
+    println(f"\"01\" x 5000 -> {count_palindromes("01".repeat(5000))}");
+    for kinds in [10, 2].iter() {
+        let s = random_digits(10000, kinds, mut seed);
+        println(f"10^4 random of {kinds} digits -> {count_palindromes(s)}");
+    }
+    // 3000 random strings of 1 to 30 digits from the first 1 to 10: a
+    // checksum of every answer in order
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let kinds = 1 + next_random(mut seed) % 10;
+        check = (check * 31 + count_palindromes(random_digits(n, kinds, mut seed))) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}
