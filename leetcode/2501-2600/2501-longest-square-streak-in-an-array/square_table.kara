@@ -1,0 +1,101 @@
+// LeetCode #2501: Longest Square Streak in an Array -- a table over every
+// value to 10^5, filled upward: a value that is present ends a streak one
+// longer than its square root's entry, which is 0 when the root is absent
+// or the value is not a square. O(n + 10^5).
+
+fn longest_square_streak(nums: Vec[i64]) -> i64 {
+    let top = 100000;
+    let mut present: Vec[bool] = Vec.filled(top + 1, false);
+    for v in nums.iter() {
+        present[v] = true;
+    }
+    let mut ending: Vec[i64] = Vec.filled(top + 1, 0);
+    let mut best = 0;
+    for v in 2..top + 1 {
+        if present[v] {
+            let r = v.isqrt();
+            ending[v] = if r * r == v { ending[r] + 1 } else { 1 };
+            best = best.max(ending[v]);
+        }
+    }
+    if best >= 2 { best } else { -1 }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a value from 0 below `top`, from two draws, since one is below 32768
+fn below(top: i64, seed: mut ref i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % top
+}
+
+// `n` values drawn mostly from squares chains: a base 2 to 20 squared 0
+// to 3 times, kept to 10^5; one in four any value to 10^5
+fn chained(n: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        if next_random(mut seed) % 4 == 0 {
+            out.push(below(99999, mut seed) + 2);
+        } else {
+            let mut v = next_random(mut seed) % 19 + 2;
+            for _ in 0..next_random(mut seed) % 4 {
+                if v * v <= 100000 {
+                    v = v * v;
+                }
+            }
+            out.push(v);
+        }
+    }
+    out
+}
+
+fn main() {
+    // LeetCode's two examples, then six more
+    let cases: Vec[Vec[i64]] = [
+        [4, 3, 6, 16, 8, 2].to_vec(),
+        [2, 3, 5, 6, 7].to_vec(),
+        [2, 4].to_vec(),
+        [2, 2].to_vec(),
+        [4, 2, 4, 2].to_vec(),
+        [65536, 256, 16, 4, 2].to_vec(),
+        [3, 9, 81, 6561, 100000].to_vec(),
+        [10, 100, 1000, 10000, 5, 25, 625].to_vec(),
+    ].to_vec();
+    for nums in cases.iter() {
+        println(f"{nums.len()} values -> {longest_square_streak(nums)}");
+    }
+    // 2000 random arrays of 2 to 40 values, to 100 and from squares
+    // chains: how many have no streak, and a checksum
+    let mut seed = 2501;
+    for kind in ["to 100", "chained"] {
+        let mut check = 0;
+        let mut none = 0;
+        for _ in 0..2000 {
+            let n = next_random(mut seed) % 39 + 2;
+            let nums: Vec[i64] = if kind == "to 100" {
+                (0..n).map(|_| next_random(mut seed) % 99 + 2).collect()
+            } else {
+                chained(n, mut seed)
+            };
+            let a = longest_square_streak(nums);
+            if a == -1 {
+                none += 1;
+            }
+            check = (check * 31 + a + 1) % 1000000007;
+        }
+        println(f"2000 random {kind}: {none} without a streak, checksum {check}");
+    }
+    // the constraints' largest: every value 2 to 10^5; 10^5 twos; 10^5
+    // random values to 10^5; and 10^5 from squares chains
+    let every: Vec[i64] = (2..100001).collect();
+    println(f"the values 2 to 10^5 -> {longest_square_streak(every)}");
+    let twos: Vec[i64] = Vec.filled(100000, 2);
+    println(f"10^5 twos -> {longest_square_streak(twos)}");
+    let big: Vec[i64] = (0..100000).map(|_| below(99999, mut seed) + 2).collect();
+    println(f"10^5 random to 10^5 -> {longest_square_streak(big)}");
+    println(f"10^5 chained -> {longest_square_streak(chained(100000, mut seed))}");
+}

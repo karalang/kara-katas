@@ -1,0 +1,287 @@
+// LeetCode #2501: Longest Square Streak in an Array -- the differential.
+// The six arms against the statement read literally: every subsequence
+// of two or more places, sorted, kept when each value is the square of
+// the one before, and the longest kept, -1 if none. 300 random arrays of
+// 2 to 10 values, to 20 or from squares chains; then 20 of two values,
+// and 40 of 10 from squares chains; every one drawn before any arm
+// answers.
+//
+// P1  the answer is the statement read literally
+// P2  -1, or from 2 to the smaller of n and 5
+// P3  the values in the other order: the same answer
+// P4  every value written twice: the same answer
+// P5  the squares chain of the least value added: the greater of the
+//     answer and that chain's length, when it is 2 or more
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut best = -1;
+    for mask in 1..(1 << n) {
+        let mut picked: Vec[i64] = Vec.new();
+        for i in 0..n {
+            if (mask >> i) & 1 == 1 {
+                picked.push(nums[i]);
+            }
+        }
+        picked.sort();
+        if picked.len() < 2 {
+            continue;
+        }
+        let mut streak = true;
+        for i in 1..picked.len() {
+            if picked[i] != picked[i - 1] * picked[i - 1] {
+                streak = false;
+            }
+        }
+        if streak {
+            best = best.max(picked.len());
+        }
+    }
+    best
+}
+
+// ---- star (square.kara) --------------------------------------------------
+
+fn star_longest_square_streak(nums: Vec[i64]) -> i64 {
+    let present: Set[i64] = nums.iter().cloned().collect();
+    let mut best = 0;
+    for v in present.iter() {
+        let r = v.isqrt();
+        if r * r == v and present.contains(r) {
+            continue;
+        }
+        let mut length = 0;
+        let mut x = v;
+        while present.contains(x) {
+            length += 1;
+            x = x * x;
+        }
+        best = best.max(length);
+    }
+    if best >= 2 { best } else { -1 }
+}
+
+// ---- sort (square_sort.kara) ---------------------------------------------
+
+fn sort_longest_square_streak(nums: Vec[i64]) -> i64 {
+    let mut values = nums.clone();
+    values.sort();
+    values.dedup();
+    let mut ending: Map[i64, i64] = Map.new();
+    let mut best = 0;
+    for v in values.iter() {
+        let r = v.isqrt();
+        let length = if r * r == v { (ending.get(r) ?? 0) + 1 } else { 1 };
+        ending.insert(v, length);
+        best = best.max(length);
+    }
+    if best >= 2 { best } else { -1 }
+}
+
+// ---- table (square_table.kara) -------------------------------------------
+
+fn table_longest_square_streak(nums: Vec[i64]) -> i64 {
+    let top = 100000;
+    let mut present: Vec[bool] = Vec.filled(top + 1, false);
+    for v in nums.iter() {
+        present[v] = true;
+    }
+    let mut ending: Vec[i64] = Vec.filled(top + 1, 0);
+    let mut best = 0;
+    for v in 2..top + 1 {
+        if present[v] {
+            let r = v.isqrt();
+            ending[v] = if r * r == v { ending[r] + 1 } else { 1 };
+            best = best.max(ending[v]);
+        }
+    }
+    if best >= 2 { best } else { -1 }
+}
+
+// ---- rec (square_rec.kara) -----------------------------------------------
+
+fn rec_streak_from(x: i64, present: Set[i64]) -> i64 {
+    if not present.contains(x) {
+        return 0;
+    }
+    1 + rec_streak_from(x * x, present)
+}
+
+fn rec_longest_square_streak(nums: Vec[i64]) -> i64 {
+    let present: Set[i64] = nums.iter().cloned().collect();
+    let best = nums.iter().map(|v| rec_streak_from(v, present)).max().unwrap();
+    if best >= 2 { best } else { -1 }
+}
+
+// ---- iter (square_iter.kara) ---------------------------------------------
+
+fn iter_longest_square_streak(nums: Vec[i64]) -> i64 {
+    let present: Set[i64] = nums.iter().cloned().collect();
+    let best = present
+        .iter()
+        .map(|v| {
+            (0..5)
+                .scan(*v, |x, _| Some((if x <= 100000 { x * x } else { x }, x)))
+                .take_while(|x| present.contains(x))
+                .count()
+        })
+        .max()
+        .unwrap();
+    if best >= 2 { best } else { -1 }
+}
+
+// ---- solution (square_solution.kara) -------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn longest_square_streak(nums: Vec[i32]) -> i32 {
+        let set: Set[i64] = nums.iter().map(|x| x as i64).collect();
+        let mut ans: i32 = -1;
+        for x in ref set {
+            let mut cur = x;
+            let mut len: i32 = 0;
+            while set.contains(cur) {
+                len += 1;
+                cur = cur * cur;
+            }
+            if len >= 2 {
+                ans = ans.max(len);
+            }
+        }
+        ans
+    }
+}
+
+fn solution_longest_square_streak(nums: Vec[i64]) -> i64 {
+    let asked: Vec[i32] = nums.iter().map(|v| v as i32).collect();
+    Solution.longest_square_streak(asked)
+}
+
+// ---- the differential --------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn below(top: i64, seed: mut ref i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % top
+}
+
+// a value from a squares chain: a base 2 to 10 squared 0 to 3 times, kept
+// to 10^5; one in four any value to 10^5
+fn chained_value(seed: mut ref i64) -> i64 {
+    if next_random(mut seed) % 4 == 0 {
+        return below(99999, mut seed) + 2;
+    }
+    let mut v = next_random(mut seed) % 9 + 2;
+    for _ in 0..next_random(mut seed) % 4 {
+        if v * v <= 100000 {
+            v = v * v;
+        }
+    }
+    v
+}
+
+// the squares chain from `m`: m, m^2, m^4, ... while at most 10^5
+fn chain_of(m: i64) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    let mut x = m;
+    while x <= 100000 {
+        out.push(x);
+        x = x * x;
+    }
+    out
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_longest_square_streak(nums),
+        1 => sort_longest_square_streak(nums),
+        2 => table_longest_square_streak(nums),
+        3 => rec_longest_square_streak(nums),
+        4 => iter_longest_square_streak(nums),
+        _ => solution_longest_square_streak(nums),
+    }
+}
+
+fn main() {
+    let names = ["star", "sort", "table", "rec", "iter", "solution"];
+    let mut seed = 2501;
+    let mut problems: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let n = if t < 300 { next_random(mut seed) % 9 + 2 } else if t < 320 { 2 } else { 10 };
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            if t < 300 and t % 2 == 0 {
+                nums.push(next_random(mut seed) % 19 + 2);
+            } else {
+                nums.push(chained_value(mut seed));
+            }
+        }
+        problems.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut can = 0;
+    for nums in problems.iter() {
+        let n = nums.len();
+        let truth = literal(nums);
+        if truth != -1 {
+            can += 1;
+        }
+        check = (check * 31 + truth + 1) % 1000000007;
+        let reversed: Vec[i64] = nums.iter().rev().cloned().collect();
+        let mut twice = nums.clone();
+        twice.extend(nums.iter().cloned());
+        let chain = chain_of(nums.iter().min().unwrap());
+        let mut grown = nums.clone();
+        grown.extend(chain.iter().cloned());
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let expect_grown = if chain.len() >= 2 { x.max(chain.len()) } else { x };
+            let verdicts = [
+                x == truth,
+                x == -1 or (x >= 2 and x <= n.min(5)),
+                answer(arm, reversed) == x,
+                answer(arm, twice) == x,
+                answer(arm, grown) == expect_grown,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums}, arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} cases, {can} with a streak: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
