@@ -1,0 +1,45 @@
+// LeetCode #2486: Append Characters to String to Make Subsequence --
+// bench: the ★ arm, by two pointers, `t`'s pointer moved on by each
+// letter of `s` that matches the next one wanted. O(m + n).
+
+fn append_characters(s: Str, t: Str) -> i64 {
+    let wanted: Vec[char] = t.chars().collect();
+    let mut matched = 0;
+    for c in s.chars() {
+        if matched < wanted.len() and c == wanted[matched] {
+            matched += 1;
+        }
+    }
+    wanted.len() - matched
+}
+
+// ---- bench ------------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 20 pairs of random words of 10^4 letters from `a` to `d` built
+    // once; then 600 passes, each changing one letter of every `s`,
+    // place and letter chosen by the checksum so far, and folding the
+    // count plus the pass into the checksum
+    let mut seed = 2486;
+    let letters = ['a', 'b', 'c', 'd'];
+    let mut pairs: Vec[(Vec[char], String)] = Vec.new();
+    for _ in 0..20 {
+        let s: Vec[char] = (0..10000).map(|_| letters[next_random(mut seed) % 4]).collect();
+        let t: String = (0..10000).map(|_| letters[next_random(mut seed) % 4]).collect();
+        pairs.push((s, t));
+    }
+    let mut check = 0;
+    for p in 0..600 {
+        for g in 0..20 {
+            pairs[g].0[check % 10000] = letters[check / 10000 % 4];
+            let s: String = pairs[g].0.iter().collect();
+            check = (check * 31 + append_characters(s, pairs[g].1) + p) % 1000000007;
+        }
+    }
+    println(f"600 passes over 20 pairs of 10^4 letters: checksum {check}");
+}

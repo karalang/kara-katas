@@ -1,0 +1,253 @@
+// LeetCode #2486: Append Characters to String to Make Subsequence -- the
+// differential. The six arms against the statement read literally: for
+// `k` from 0 up, the last `k` letters of `t` appended to `s`, and the
+// least `k` for which `t` is then a subsequence, that tested by a table
+// of the longest common subsequence of the two words. No pointer walks
+// `t`. 360 random pairs: 300 of 1 to 8 letters each, then 60 of up to
+// 20, both words drawn from the first 1 to 4 letters, all drawn before
+// any arm answers.
+//
+// P1  the count is the literal reading's
+// P2  `t` appended to `s`: none
+// P3  `t` cut to the letters `s` already holds, its first `m - k`: none
+// P4  a letter put after `t` when `k` is more than 0: one more
+// P5  a `z`, a letter neither word has, put in the middle of `s`: the
+//     same count
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn is_subsequence(t: Vec[char], s: Vec[char]) -> bool {
+    let (m, n) = (t.len(), s.len());
+    let mut common: Vec[Vec[i64]] = Vec.filled(m + 1, Vec.filled(n + 1, 0));
+    for i in 1..m + 1 {
+        for j in 1..n + 1 {
+            common[i][j] = if t[i - 1] == s[j - 1] {
+                common[i - 1][j - 1] + 1
+            } else {
+                common[i - 1][j].max(common[i][j - 1])
+            };
+        }
+    }
+    common[m][n] == m
+}
+
+fn append_literally(s: Str, t: Str) -> i64 {
+    let a: Vec[char] = s.chars().collect();
+    let b: Vec[char] = t.chars().collect();
+    let m = b.len();
+    for k in 0..m + 1 {
+        let mut longer = a.clone();
+        for i in m - k..m {
+            longer.push(b[i]);
+        }
+        if is_subsequence(b, longer) {
+            return k;
+        }
+    }
+    m
+}
+
+// ---- star (append.kara) --------------------------------------------------
+
+fn star_append_characters(s: Str, t: Str) -> i64 {
+    let wanted: Vec[char] = t.chars().collect();
+    let mut matched = 0;
+    for c in s.chars() {
+        if matched < wanted.len() and c == wanted[matched] {
+            matched += 1;
+        }
+    }
+    wanted.len() - matched
+}
+
+// ---- places (append_places.kara) -----------------------------------------
+
+fn places_append_characters(s: Str, t: Str) -> i64 {
+    let mut places: Vec[Vec[i64]] = Vec.filled(26, Vec.new());
+    let mut at = 0;
+    for c in s.chars() {
+        places[c as i64 - 'a' as i64].push(at);
+        at += 1;
+    }
+    let wanted: Vec[char] = t.chars().collect();
+    let mut cursor = 0;
+    for k in 0..wanted.len() {
+        let list = places[wanted[k] as i64 - 'a' as i64].clone();
+        let i = list.partition_point(|p| p < cursor);
+        if i == list.len() {
+            return wanted.len() - k;
+        }
+        cursor = list[i] + 1;
+    }
+    0
+}
+
+// ---- jump (append_jump.kara) ---------------------------------------------
+
+fn jump_append_characters(s: Str, t: Str) -> i64 {
+    let letters: Vec[i64] = s.chars().map(|c| c as i64 - 'a' as i64).collect();
+    let n = letters.len();
+    let mut next: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.filled(26, n));
+    for i in (0..n).rev() {
+        let mut row = next[i + 1].clone();
+        row[letters[i]] = i;
+        next[i] = row;
+    }
+    let mut at = 0;
+    let mut matched = 0;
+    for c in t.chars() {
+        let found = next[at][c as i64 - 'a' as i64];
+        if found == n {
+            break;
+        }
+        matched += 1;
+        at = found + 1;
+    }
+    t.len() - matched
+}
+
+// ---- driven (append_driven.kara) -----------------------------------------
+
+fn driven_append_characters(s: Str, t: Str) -> i64 {
+    let a = s.bytes();
+    let b = t.bytes();
+    let mut i = 0;
+    let mut j = 0;
+    while j < b.len() {
+        while i < a.len() and a[i] != b[j] {
+            i += 1;
+        }
+        if i == a.len() {
+            break;
+        }
+        i += 1;
+        j += 1;
+    }
+    b.len() - j
+}
+
+// ---- iter (append_iter.kara) ---------------------------------------------
+
+fn iter_append_characters(s: Str, t: Str) -> i64 {
+    let wanted: Vec[char] = t.chars().collect();
+    let matched = s.chars().fold(0, |k, c| if wanted.get(k).cloned() == Some(c) { k + 1 } else { k });
+    wanted.len() - matched
+}
+
+// ---- solution (append_solution.kara) -------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn append_characters(s: String, t: String) -> i32 {
+        let (s, t) = (s.bytes(), t.bytes());
+        let mut j = 0;
+        for c in s {
+            if j < t.len() and c == t[j] {
+                j += 1;
+            }
+        }
+        (t.len() - j) as i32
+    }
+}
+
+fn solution_append_characters(s: Str, t: Str) -> i64 {
+    Solution.append_characters(s.to_string(), t.to_string())
+}
+
+
+// ---- the differential -------------------------------------------------------
+
+fn answer(arm: i64, s: Str, t: Str) -> i64 {
+    match arm {
+        0 => star_append_characters(s, t),
+        1 => places_append_characters(s, t),
+        2 => jump_append_characters(s, t),
+        3 => driven_append_characters(s, t),
+        4 => iter_append_characters(s, t),
+        _ => solution_append_characters(s, t),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn word(n: i64, kinds: i64, seed: mut ref i64) -> String {
+    let letters = "abcd";
+    let mut text = "".to_string();
+    for _ in 0..n {
+        let at = next_random(mut seed) % kinds;
+        text.push_str(letters.substring(at, at + 1));
+    }
+    text
+}
+
+fn main() {
+    let arms = ["star", "places", "jump", "driven", "iter", "solution"];
+    let mut seed = 2486;
+    let mut cases: Vec[(String, String)] = Vec.new();
+    for c in 0..360 {
+        let most = if c < 300 { 8 } else { 20 };
+        let kinds = 1 + next_random(mut seed) % 4;
+        let s = word(1 + next_random(mut seed) % most, kinds, mut seed);
+        let t = word(1 + next_random(mut seed) % most, kinds, mut seed);
+        cases.push((s, t));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (s, t) = cases[c].clone();
+        let truth = append_literally(s, t);
+        check = (check * 31 + truth) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, s, t)).collect();
+        let m = t.len();
+        let joined = f"{s}{t}";
+        let half = s.len() / 2;
+        let spaced = f"{s.substring(0, half)}z{s.substring(half, s.len())}";
+        let longer = f"{t}a";
+        for arm in 0..6 {
+            let k = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == k {
+                    same += 1;
+                }
+            }
+            let held = if k >= 0 and k <= m { t.substring(0, m - k) } else { t.clone() };
+            let verdicts = [
+                k == truth,
+                answer(arm, joined, t) == 0,
+                held.len() == 0 or answer(arm, s, held) == 0,
+                k == 0 or answer(arm, s, longer) == k + 1,
+                answer(arm, spaced, t) == k,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,79 @@
+// LeetCode #2486: Append Characters to String to Make Subsequence -- by
+// two pointers: walking `s` once, each letter that matches the next
+// letter of `t` still wanted moves `t`'s pointer on. Taking the first
+// match is never worse, so the pointer ends at the longest start of `t`
+// that `s` holds in order, and the rest of `t` must be appended. O(m + n).
+
+fn append_characters(s: Str, t: Str) -> i64 {
+    let wanted: Vec[char] = t.chars().collect();
+    let mut matched = 0;
+    for c in s.chars() {
+        if matched < wanted.len() and c == wanted[matched] {
+            matched += 1;
+        }
+    }
+    wanted.len() - matched
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` random letters from the first `kinds` of the alphabet
+fn random_word(n: i64, kinds: i64, seed: mut ref i64) -> String {
+    let letters = "abcdefghijklmnopqrstuvwxyz";
+    let mut text = "".to_string();
+    for _ in 0..n {
+        let at = next_random(mut seed) % kinds;
+        text.push_str(letters.substring(at, at + 1));
+    }
+    text
+}
+
+fn main() {
+    // LeetCode's three examples; then one letter each, the same and not;
+    // `t` longer than `s` but begun by it; `t` the reverse of `s`; and a
+    // letter of `t` that `s` holds only before the place it is needed
+    let cases: Vec[(String, String)] = [
+        ("coaching", "coding"),
+        ("abcde", "a"),
+        ("z", "abcde"),
+        ("a", "a"),
+        ("a", "b"),
+        ("abc", "abcdef"),
+        ("abcd", "dcba"),
+        ("ba", "ab"),
+    ].to_vec();
+    for (s, t) in cases.into_iter() {
+        let shown_s = f"{s}";
+        let shown_t = f"{t}";
+        println(f"\"{shown_s}\", \"{shown_t}\" -> {append_characters(s, t)}");
+    }
+    // the constraints' largest, 10^5 letters each: `t` all of `s`; `t`
+    // the reverse of `s`; one letter repeated against another; and
+    // random words from 2 and from 26 letters
+    let mut seed = 2486;
+    let long = random_word(100000, 26, mut seed);
+    let backwards: String = long.chars().rev().collect();
+    println(f"10^5, t = s -> {append_characters(long, long)}");
+    println(f"10^5, t reversed -> {append_characters(long, backwards)}");
+    println(f"10^5 a, 10^5 b -> {append_characters("a".repeat(100000), "b".repeat(100000))}");
+    for kinds in [2, 26].iter() {
+        let s = random_word(100000, kinds, mut seed);
+        let t = random_word(100000, kinds, mut seed);
+        println(f"10^5 random of {kinds} letters -> {append_characters(s, t)}");
+    }
+    // 3000 random pairs of 1 to 30 letters from the first 1 to 4: a
+    // checksum of every answer in order
+    let mut check = 0;
+    for _ in 0..3000 {
+        let kinds = 1 + next_random(mut seed) % 4;
+        let s = random_word(1 + next_random(mut seed) % 30, kinds, mut seed);
+        let t = random_word(1 + next_random(mut seed) % 30, kinds, mut seed);
+        check = (check * 31 + append_characters(s, t)) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}
