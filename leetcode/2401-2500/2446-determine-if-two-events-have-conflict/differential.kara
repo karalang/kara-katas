@@ -1,0 +1,213 @@
+// LeetCode #2446: Determine if Two Events Have Conflict -- the
+// differential. The six arms against the statement read literally: each
+// time turned into minutes from its four digit bytes, and every minute of
+// the day tested for lying within both events; one that does is a
+// conflict. No string is compared and no start or end chosen. 360 cases:
+// 300 random pairs of events; then 30 pairs of events of up to 30
+// minutes; then 20 pairs that touch, the second starting where the first
+// ends or one minute after; then 10 events ending at 23:59 against the
+// one minute 23:59 itself. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the events swapped: the same answer
+// P3  both events moved by one number of minutes, kept within the day:
+//     the same answer
+// P4  the first event widened to the whole day: true
+// P5  the second event the one minute after the first ends, when there
+//     is one: false
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn minute_of(time: String) -> i64 {
+    let b = time.bytes();
+    let d: Vec[i64] = [0, 1, 3, 4].iter().map(|i| (b[i] - b'0') as i64).collect();
+    (d[0] * 10 + d[1]) * 60 + d[2] * 10 + d[3]
+}
+
+fn conflict_literally(event1: Vec[String], event2: Vec[String]) -> bool {
+    for m in 0..1440 {
+        let in_first = minute_of(event1[0]) <= m and m <= minute_of(event1[1]);
+        let in_second = minute_of(event2[0]) <= m and m <= minute_of(event2[1]);
+        if in_first and in_second {
+            return true;
+        }
+    }
+    false
+}
+// ---- star (conflict.kara) ------------------------------------------------
+
+fn star_have_conflict(event1: Vec[String], event2: Vec[String]) -> bool {
+    event1[0] <= event2[1] and event2[0] <= event1[1]
+}
+
+// ---- minutes (conflict_minutes.kara) -------------------------------------
+
+fn minutes_minutes(time: String) -> i64 {
+    let parts: Vec[String] = time.split(":").map(|p| p.to_string()).collect();
+    i64.parse(parts[0]).unwrap() * 60 + i64.parse(parts[1]).unwrap()
+}
+
+fn minutes_have_conflict(event1: Vec[String], event2: Vec[String]) -> bool {
+    let start = minutes_minutes(event1[0]).max(minutes_minutes(event2[0]));
+    let end = minutes_minutes(event1[1]).min(minutes_minutes(event2[1]));
+    start <= end
+}
+
+// ---- naive (conflict_naive.kara) -----------------------------------------
+
+fn naive_have_conflict(event1: Vec[String], event2: Vec[String]) -> bool {
+    let mut busy: Vec[bool] = Vec.filled(1440, false);
+    for m in 0..1440 {
+        let time = f"{m / 60:02}:{m % 60:02}";
+        if event1[0] <= time and time <= event1[1] {
+            busy[m] = true;
+        }
+    }
+    for m in 0..1440 {
+        let time = f"{m / 60:02}:{m % 60:02}";
+        if busy[m] and event2[0] <= time and time <= event2[1] {
+            return true;
+        }
+    }
+    false
+}
+
+// ---- sorted (conflict_sorted.kara) ---------------------------------------
+
+fn sorted_have_conflict(event1: Vec[String], event2: Vec[String]) -> bool {
+    let mut events: Vec[(Vec[u8], Vec[u8])] = [
+        (event1[0].bytes().to_vec(), event1[1].bytes().to_vec()),
+        (event2[0].bytes().to_vec(), event2[1].bytes().to_vec()),
+    ].to_vec();
+    events.sort();
+    events[1].0 <= events[0].1
+}
+
+// ---- iter (conflict_iter.kara) -------------------------------------------
+
+fn iter_have_conflict(event1: Vec[String], event2: Vec[String]) -> bool {
+    let events = [event1, event2];
+    let start = events.iter().map(|e| e[0].clone()).max().unwrap();
+    let end = events.iter().map(|e| e[1].clone()).min().unwrap();
+    start <= end
+}
+
+// ---- solution (conflict_solution.kara) -----------------------------------
+
+impl Solution {
+    pub fn have_conflict(event1: Vec[String], event2: Vec[String]) -> bool {
+        event1[0] <= event2[1] and event2[0] <= event1[1]
+    }
+}
+
+struct Solution {}
+
+fn solution_have_conflict(event1: Vec[String], event2: Vec[String]) -> bool {
+    Solution.have_conflict(event1, event2)
+}
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, event1: Vec[String], event2: Vec[String]) -> bool {
+    match arm {
+        0 => star_have_conflict(event1, event2),
+        1 => minutes_have_conflict(event1, event2),
+        2 => naive_have_conflict(event1, event2),
+        3 => sorted_have_conflict(event1, event2),
+        4 => iter_have_conflict(event1, event2),
+        _ => solution_have_conflict(event1, event2),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn clock(minute: i64) -> String {
+    f"{minute / 60:02}:{minute % 60:02}"
+}
+
+fn event(a: i64, b: i64) -> Vec[String] {
+    [clock(a), clock(b)].to_vec()
+}
+
+fn main() {
+    let arms = ["star", "minutes", "naive", "sorted", "iter", "solution"];
+    let mut seed = 2446;
+    let mut cases: Vec[(i64, i64, i64, i64)] = Vec.new();
+    for t in 0..360 {
+        if t < 300 {
+            let a = next_random(mut seed) % 1440;
+            let b = next_random(mut seed) % 1440;
+            let c = next_random(mut seed) % 1440;
+            let d = next_random(mut seed) % 1440;
+            cases.push((a.min(b), a.max(b), c.min(d), c.max(d)));
+        } else if t < 330 {
+            let s = next_random(mut seed) % 1410;
+            let u = next_random(mut seed) % 1410;
+            cases.push((s, s + next_random(mut seed) % 30, u, u + next_random(mut seed) % 30));
+        } else if t < 350 {
+            let s = next_random(mut seed) % 1300;
+            let e = s + next_random(mut seed) % 60;
+            let u = e + next_random(mut seed) % 2;
+            cases.push((s, e, u, u + next_random(mut seed) % 60));
+        } else {
+            cases.push((1439 - next_random(mut seed) % 60, 1439, 1439, 1439));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (a, b, s, e) = cases[c];
+        let first = event(a, b);
+        let second = event(s, e);
+        let truth = conflict_literally(first, second);
+        check = (check * 31 + if truth { c + 1 } else { 0 }) % 1000000007;
+        // a move that keeps both events within the day
+        let low = 0 - a.min(s);
+        let high = 1439 - b.max(e);
+        let shift = low + next_random(mut seed) % (high - low + 1);
+        let got: Vec[bool] = (0..6).map(|arm| answer(arm, first, second)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, second, first) == value,
+                answer(arm, event(a + shift, b + shift), event(s + shift, e + shift)) == value,
+                answer(arm, event(0, 1439), second),
+                b == 1439 or not answer(arm, first, event(b + 1, b + 1)),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
