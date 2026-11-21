@@ -1,0 +1,186 @@
+// LeetCode #2471: Minimum Number of Operations to Sort a Binary Tree by
+// Level -- by union-find: the levels by one `VecDeque`, each taken as the
+// queue's size at its start; in each level every place is joined with
+// the place its value belongs at, and the joined groups are the cycles,
+// so the swaps are the width less the number of groups. The sorted place
+// of each value comes from a binary search in the sorted level. O(n log n).
+
+fn find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut root = x;
+    while parent[root] != root {
+        root = parent[root];
+    }
+    let mut at = x;
+    while parent[at] != root {
+        let next = parent[at];
+        parent[at] = root;
+        at = next;
+    }
+    root
+}
+
+fn minimum_operations(root: Option[TreeNode]) -> i64 {
+    let mut queue: VecDeque[TreeNode] = VecDeque.new();
+    if let Some(r) = root {
+        queue.push_back(r);
+    }
+    let mut total = 0;
+    while not queue.is_empty() {
+        let width = queue.len();
+        let mut values: Vec[i64] = Vec.new();
+        for _ in 0..width {
+            let node = queue.pop_front().unwrap();
+            values.push(node.val);
+            if let Some(c) = node.left {
+                queue.push_back(c);
+            }
+            if let Some(c) = node.right {
+                queue.push_back(c);
+            }
+        }
+        let mut sorted = values.clone();
+        sorted.sort();
+        let mut parent: Vec[i64] = (0..width).collect();
+        let mut groups = width;
+        for i in 0..width {
+            let home = sorted.binary_search(values[i]).unwrap();
+            let a = find(mut parent, i);
+            let b = find(mut parent, home);
+            if a != b {
+                parent[a] = b;
+                groups -= 1;
+            }
+        }
+        total += width - groups;
+    }
+    total
+}
+
+// ---- test harness ---------------------------------------------------------
+
+// LeetCode's own node: an `i32` value
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn leaf(v: i64) -> TreeNode {
+    TreeNode { val: v as i32, left: None, right: None }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// LeetCode's level-order form, "[1,2,null,3]": each node's two children
+// come next, in the order the nodes were met, "null" for none.
+fn parse(text: Str) -> Option[TreeNode] {
+    let inner = text.strip_prefix("[").unwrap().strip_suffix("]").unwrap();
+    let items: Vec[Option[i64]] = inner.split(",").map(|s| if s == "null" { None } else { Some(i64.parse(s).unwrap()) }).collect();
+    let root = leaf(items[0].unwrap());
+    let mut queue: Vec[TreeNode] = [root].to_vec();
+    let mut head = 0;
+    let mut i = 1;
+    while i < items.len() {
+        let node = queue[head];
+        head += 1;
+        if let Some(v) = items[i] {
+            let child = leaf(v);
+            node.left = Some(child);
+            queue.push(child);
+        }
+        i += 1;
+        if i < items.len() {
+            if let Some(v) = items[i] {
+                let child = leaf(v);
+                node.right = Some(child);
+                queue.push(child);
+            }
+            i += 1;
+        }
+    }
+    Some(root)
+}
+
+// `n` nodes with the values 1 to `n` in a random order, each after the
+// first hung below a random earlier one: from it, a random side is taken
+// down until a free one is found
+fn random_tree(n: i64, seed: mut ref i64) -> Option[TreeNode] {
+    let mut values: Vec[i64] = (1..n + 1).collect();
+    for i in (1..n).rev() {
+        let j = (next_random(mut seed) * 32768 + next_random(mut seed)) % (i + 1);
+        values.swap(i, j);
+    }
+    let nodes: Vec[TreeNode] = values.iter().map(|v| leaf(v)).collect();
+    for k in 1..n {
+        let mut at = nodes[(next_random(mut seed) * 32768 + next_random(mut seed)) % k];
+        loop {
+            if next_random(mut seed) % 2 == 0 {
+                match at.left {
+                    Some(c) => at = c,
+                    None => {
+                        at.left = Some(nodes[k]);
+                        break;
+                    }
+                }
+            } else {
+                match at.right {
+                    Some(c) => at = c,
+                    None => {
+                        at.right = Some(nodes[k]);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    Some(nodes[0])
+}
+
+// a complete tree of `n` nodes, the values 1 to `n` in a random order
+fn complete_tree(n: i64, seed: mut ref i64) -> Option[TreeNode] {
+    let mut values: Vec[i64] = (1..n + 1).collect();
+    for i in (1..n).rev() {
+        let j = (next_random(mut seed) * 32768 + next_random(mut seed)) % (i + 1);
+        values.swap(i, j);
+    }
+    let nodes: Vec[TreeNode] = values.iter().map(|v| leaf(v)).collect();
+    for k in 1..n {
+        let parent = nodes[(k - 1) / 2];
+        if k % 2 == 1 {
+            parent.left = Some(nodes[k]);
+        } else {
+            parent.right = Some(nodes[k]);
+        }
+    }
+    Some(nodes[0])
+}
+
+fn main() {
+    // LeetCode's three examples; then one node; a level of two reversed;
+    // a level holding a cycle of three; and a level split by missing
+    // children
+    for text in ["[1,4,3,7,6,8,5,null,null,null,null,9,null,10]", "[1,3,2,7,6,5,4]", "[1,2,3,4,5,6]", "[5]", "[1,3,2]", "[1,2,3,5,null,6,4]", "[10,2,9,null,8,null,1,7,null,3]"].iter() {
+        println(f"{text} -> {minimum_operations(parse(text))}");
+    }
+    // the constraints' largest, 10^5 nodes: a path; a complete tree
+    // with random values, its last level 34465 wide; and a random tree
+    let mut seed = 2471;
+    let chain: Vec[TreeNode] = (0..100000).map(|i| leaf(100000 - i)).collect();
+    for i in 1..100000 {
+        chain[i - 1].right = Some(chain[i]);
+    }
+    println(f"path of 10^5 -> {minimum_operations(Some(chain[0]))}");
+    println(f"complete tree of 10^5 -> {minimum_operations(complete_tree(100000, mut seed))}");
+    println(f"random tree of 10^5 -> {minimum_operations(random_tree(100000, mut seed))}");
+    // 3000 random trees of 1 to 40 nodes: a checksum of every answer in
+    // order
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 40;
+        check = (check * 31 + minimum_operations(random_tree(n, mut seed))) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}
