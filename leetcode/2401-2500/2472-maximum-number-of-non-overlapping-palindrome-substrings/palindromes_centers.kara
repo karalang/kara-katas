@@ -1,0 +1,89 @@
+// LeetCode #2472: Maximum Number of Non-overlapping Palindrome Substrings
+// -- by centers: from each of the `2n - 1` centers, a palindrome grown
+// outward one letter each side until it holds `k` letters or more, and
+// only that shortest one kept, listed by the letter it ends on; then
+// `best[j]`, the most palindromes among the first `j` letters, the best
+// of leaving letter `j - 1` out and of ending a kept one there. O(nk).
+
+fn max_palindromes(s: String, k: i64) -> i64 {
+    let c: Vec[char] = s.chars().collect();
+    let n = c.len();
+    let mut starts: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for center in 0..2 * n - 1 {
+        let mut lo = center / 2;
+        let mut hi = lo + center % 2;
+        while lo >= 0 and hi < n and c[lo] == c[hi] {
+            if hi - lo + 1 >= k {
+                starts[hi].push(lo);
+                break;
+            }
+            lo -= 1;
+            hi += 1;
+        }
+    }
+    let mut best: Vec[i64] = Vec.filled(n + 1, 0);
+    for j in 1..n + 1 {
+        best[j] = best[j - 1];
+        for lo in starts[j - 1].iter() {
+            best[j] = best[j].max(best[lo] + 1);
+        }
+    }
+    best[n]
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` random letters from the first `kinds` of the alphabet
+fn random_text(n: i64, kinds: i64, seed: mut ref i64) -> String {
+    let letters = "abcdefghijklmnopqrstuvwxyz";
+    let mut text = "".to_string();
+    for _ in 0..n {
+        let at = next_random(mut seed) % kinds;
+        text.push_str(letters.substring(at, at + 1));
+    }
+    text
+}
+
+fn main() {
+    // LeetCode's two examples; then `k` 1, every letter its own; one
+    // letter six times with `k` 2; a whole palindrome with `k` its
+    // length; a palindrome of `k` letters only; and two that overlap,
+    // with one more left apart from them
+    let cases: Vec[(String, i64)] = [
+        ("abaccdbbd", 3),
+        ("adbcda", 2),
+        ("abc", 1),
+        ("aaaaaa", 2),
+        ("racecar", 7),
+        ("xabbay", 4),
+        ("aabaaba", 3),
+    ].to_vec();
+    for (s, k) in cases.into_iter() {
+        let shown = f"{s}";
+        println(f"\"{shown}\", k {k} -> {max_palindromes(s, k)}");
+    }
+    // the constraints' largest, 2000 letters: one letter with `k` 1 and
+    // 7; two letters with `k` 3; and the whole alphabet with `k` 2
+    let mut seed = 2472;
+    let same = random_text(2000, 1, mut seed);
+    println(f"2000 of one letter, k 1 -> {max_palindromes(same, 1)}");
+    println(f"2000 of one letter, k 7 -> {max_palindromes(same, 7)}");
+    println(f"2000 of two letters, k 3 -> {max_palindromes(random_text(2000, 2, mut seed), 3)}");
+    println(f"2000 of 26 letters, k 2 -> {max_palindromes(random_text(2000, 26, mut seed), 2)}");
+    // 3000 random strings of 1 to 40 letters from 1 to 3 kinds, with `k`
+    // from 1 to their length: a checksum of every answer in order
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 40;
+        let kinds = 1 + next_random(mut seed) % 3;
+        let s = random_text(n, kinds, mut seed);
+        let k = 1 + next_random(mut seed) % n;
+        check = (check * 31 + max_palindromes(s, k)) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}
