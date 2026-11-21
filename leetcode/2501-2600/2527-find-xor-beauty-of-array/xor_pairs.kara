@@ -1,0 +1,68 @@
+// LeetCode #2527: Find Xor-Beauty of Array -- pairs counted by bits, the
+// identity taken one step at a time. With `c` numbers holding a bit, the
+// pairs `(i, j)` whose `a_i | a_j` holds it number `n^2 - (n - c)^2`, and
+// the triples whose `(a_i | a_j) & a_k` holds it that times `c`; the bit
+// is set when that count of triples is odd. No pair is formed. O(30 n).
+
+fn xor_beauty(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut beauty = 0;
+    for bit in 0..30 {
+        let c = nums.iter().filter(|x| (x >> bit) & 1 == 1).count();
+        let pairs = n * n - (n - c) * (n - c);
+        if pairs * c % 2 == 1 {
+            beauty |= 1 << bit;
+        }
+    }
+    beauty
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a value from 0 to 2^30 - 1, next_random giving only 15 bits
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples, then six more
+    let fixed: Vec[Vec[i64]] = [
+        [1, 4],
+        [15, 45, 20, 2, 34, 35, 5, 44, 32, 30],
+        [1],
+        [1000000000],
+        [7, 7],
+        [1, 2, 3],
+        [1000000000, 999999999, 1],
+        [5, 5, 5],
+    ];
+    for nums in fixed.iter() {
+        println(f"{nums} -> {xor_beauty(nums)}");
+    }
+    // 2000 random lists of 1 to 20 numbers to 64, and 2000 of 1 to 200 to
+    // 10^9: the sum and a checksum
+    let mut seed = 2527;
+    for (most, top) in [(20, 64), (200, 1000000000)] {
+        let mut total = 0;
+        let mut check = 0;
+        for _ in 0..2000 {
+            let n = next_random(mut seed) % most + 1;
+            let nums: Vec[i64] = (0..n).map(|_| wide_random(mut seed) % top + 1).collect();
+            let a = xor_beauty(nums);
+            total += a;
+            check = (check * 31 + a) % 1000000007;
+        }
+        println(f"2000 random lists of up to {most} numbers to {top}: total {total}, checksum {check}");
+    }
+    // the constraints' largest: 10^5 numbers, 1 to 10^5 in turn, and random
+    // to 10^9
+    let every: Vec[i64] = (1..100001).collect();
+    println(f"1 to 10^5: {xor_beauty(every)}");
+    let random: Vec[i64] = (0..100000).map(|_| wide_random(mut seed) % 1000000000 + 1).collect();
+    println(f"10^5 random to 10^9: {xor_beauty(random)}");
+}
