@@ -1,0 +1,116 @@
+// LeetCode #2458: Height of Binary Tree After Subtree Removal Queries --
+// the bench, the ★ arm: every subtree's height, then a walk down carrying
+// the height the tree keeps without each node.
+
+fn height(node: Option[TreeNode], heights: mut ref Map[i64, i64]) -> i64 {
+    match node {
+        None => -1,
+        Some(n) => {
+            let h = 1 + height(n.left, mut heights).max(height(n.right, mut heights));
+            heights[n.val as i64] = h;
+            h
+        },
+    }
+}
+
+fn of(node: Option[TreeNode], heights: Map[i64, i64]) -> i64 {
+    match node {
+        None => -1,
+        Some(n) => heights[n.val as i64],
+    }
+}
+
+fn walk(node: Option[TreeNode], depth: i64, rest: i64, heights: Map[i64, i64], answers: mut ref Map[i64, i64]) {
+    if let Some(n) = node {
+        answers[n.val as i64] = rest;
+        walk(n.left, depth + 1, rest.max(depth + 1 + of(n.right, heights)), heights, mut answers);
+        walk(n.right, depth + 1, rest.max(depth + 1 + of(n.left, heights)), heights, mut answers);
+    }
+}
+
+fn tree_queries(root: Option[TreeNode], queries: Vec[i64]) -> Vec[i64] {
+    let mut heights: Map[i64, i64] = Map.new();
+    height(root, mut heights);
+    let mut answers: Map[i64, i64] = Map.new();
+    walk(root, 0, 0, heights, mut answers);
+    queries.iter().map(|q| answers[q]).collect()
+}
+
+// LeetCode's own node: an `i32` value
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn leaf(v: i64) -> TreeNode {
+    TreeNode {
+        val: v as i32,
+        left: None,
+        right: None,
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` nodes with the values 1 to `n` in a random order, each after the
+// first hung below a random earlier one: from it, a random side is taken
+// down until a free one is found
+fn random_tree(n: i64, seed: mut ref i64) -> Option[TreeNode] {
+    let mut values: Vec[i64] = (1..n + 1).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        values.swap(i, j);
+    }
+    let nodes: Vec[TreeNode] = values.iter().map(|v| leaf(v)).collect();
+    for k in 1..n {
+        let mut at = nodes[(next_random(mut seed) * 32768 + next_random(mut seed)) % k];
+        loop {
+            if next_random(mut seed) % 2 == 0 {
+                match at.left {
+                    Some(c) => {
+                        at = c;
+                    },
+                    None => {
+                        at.left = Some(nodes[k]);
+                        break;
+                    },
+                }
+            } else {
+                match at.right {
+                    Some(c) => {
+                        at = c;
+                    },
+                    None => {
+                        at.right = Some(nodes[k]);
+                        break;
+                    },
+                }
+            }
+        }
+    }
+    Some(nodes[0])
+}
+
+fn main() {
+    // 20 random trees of 10^4 nodes built once; then 60 passes, each
+    // asking every tree about every value but the root's, pass p starting
+    // its queries p * 101 values along
+    let mut seed = 2458;
+    let n = 10000;
+    let trees: Vec[TreeNode] = (0..20).map(|_| random_tree(n, mut seed).unwrap()).collect();
+    let mut check = 0;
+    for p in 0..60 {
+        for root in trees.iter() {
+            let r = root.val as i64;
+            let queries: Vec[i64] = (0..n).map(|i| 1 + (i + p * 101) % n).filter(|v| v != r).collect();
+            for a in tree_queries(Some(root), queries).iter() {
+                check = (check * 31 + a + p) % 1000000007;
+            }
+        }
+    }
+    println(f"60 passes over 20 trees of 10^4: checksum {check}");
+}

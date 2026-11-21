@@ -1,0 +1,173 @@
+// LeetCode #2458: Height of Binary Tree After Subtree Removal Queries --
+// an Euler tour: the nodes listed in pre-order with their depths, so
+// every subtree is one run of the list, from its node's place for its
+// size; the tree without it keeps the deepest node before the run or
+// after it, read from running maxima taken from each end. O(n + q).
+
+fn tour(node: Option[TreeNode], depth: i64, depths: mut ref Vec[i64], place: mut ref Map[i64, i64], size: mut ref Map[i64, i64]) -> i64 {
+    match node {
+        None => 0,
+        Some(n) => {
+            let v = n.val as i64;
+            place[v] = depths.len();
+            depths.push(depth);
+            let s = 1 + tour(n.left, depth + 1, mut depths, mut place, mut size) + tour(n.right, depth + 1, mut depths, mut place, mut size);
+            size[v] = s;
+            s
+        },
+    }
+}
+
+fn tree_queries(root: Option[TreeNode], queries: Vec[i64]) -> Vec[i64] {
+    let mut depths: Vec[i64] = Vec.new();
+    let mut place: Map[i64, i64] = Map.new();
+    let mut size: Map[i64, i64] = Map.new();
+    tour(root, 0, mut depths, mut place, mut size);
+    let n = depths.len();
+    let mut before: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        before[i + 1] = before[i].max(depths[i]);
+    }
+    let mut after: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in (0..n).rev() {
+        after[i] = after[i + 1].max(depths[i]);
+    }
+    let mut answers: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let start = place[q];
+        answers.push(before[start].max(after[start + size[q]]));
+    }
+    answers
+}
+
+// ---- test harness ---------------------------------------------------------
+
+// LeetCode's own node: an `i32` value
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn leaf(v: i64) -> TreeNode {
+    TreeNode { val: v as i32, left: None, right: None }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// LeetCode's level-order form, "[1,2,null,3]": each node's two children
+// come next, in the order the nodes were met, "null" for none.
+fn parse(text: Str) -> Option[TreeNode] {
+    let inner = text.strip_prefix("[").unwrap().strip_suffix("]").unwrap();
+    let items: Vec[Option[i64]] = inner.split(",").map(|s| if s == "null" { None } else { Some(i64.parse(s).unwrap()) }).collect();
+    let root = leaf(items[0].unwrap());
+    let mut queue: Vec[TreeNode] = [root].to_vec();
+    let mut head = 0;
+    let mut i = 1;
+    while i < items.len() {
+        let node = queue[head];
+        head += 1;
+        if let Some(v) = items[i] {
+            let child = leaf(v);
+            node.left = Some(child);
+            queue.push(child);
+        }
+        i += 1;
+        if i < items.len() {
+            if let Some(v) = items[i] {
+                let child = leaf(v);
+                node.right = Some(child);
+                queue.push(child);
+            }
+            i += 1;
+        }
+    }
+    Some(root)
+}
+
+// `n` nodes with the values 1 to `n` in a random order, each after the
+// first hung below a random earlier one: from it, a random side is taken
+// down until a free one is found
+fn random_tree(n: i64, seed: mut ref i64) -> Option[TreeNode] {
+    let mut values: Vec[i64] = (1..n + 1).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        values.swap(i, j);
+    }
+    let nodes: Vec[TreeNode] = values.iter().map(|v| leaf(v)).collect();
+    for k in 1..n {
+        let mut at = nodes[(next_random(mut seed) * 32768 + next_random(mut seed)) % k];
+        loop {
+            if next_random(mut seed) % 2 == 0 {
+                match at.left {
+                    Some(c) => at = c,
+                    None => {
+                        at.left = Some(nodes[k]);
+                        break;
+                    }
+                }
+            } else {
+                match at.right {
+                    Some(c) => at = c,
+                    None => {
+                        at.right = Some(nodes[k]);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    Some(nodes[0])
+}
+
+// a checksum of the answers in order
+fn fold(values: Vec[i64]) -> i64 {
+    let mut check = 0;
+    for v in values.iter() {
+        check = (check * 31 + v + 1) % 1000000007;
+    }
+    check
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: a root's two leaves; a left
+    // chain cut at every node; a right chain cut below its root; and a
+    // deep left side whose removal leaves the short right one
+    let texts = ["[1,3,4,2,null,6,5,null,null,null,null,null,7]", "[5,8,9,2,1,3,7,4,6]", "[1,2,3]", "[1,2,null,3,null,4]", "[1,null,2,null,3,null,4,null,5]", "[1,2,3,4,null,null,5,6,null,null,null,7]"];
+    let asked = [[4].to_vec(), [3, 2, 4, 8].to_vec(), [2, 3].to_vec(), [2, 3, 4].to_vec(), [2, 5].to_vec(), [2, 4, 6, 7, 3, 5].to_vec()];
+    for i in 0..texts.len() {
+        println(f"{texts[i]} {asked[i]} -> {tree_queries(parse(texts[i]), asked[i].clone())}");
+    }
+    // 2000 random trees of 2 to 60 nodes, every node but the root asked
+    let mut seed = 2458;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 59 + 2;
+        let tree = random_tree(n, mut seed);
+        let root = tree.unwrap().val as i64;
+        let queries: Vec[i64] = (1..n + 1).filter(|v| v != root).collect();
+        check = (check * 31 + fold(tree_queries(tree, queries))) % 1000000007;
+    }
+    println(f"2000 trees, every node asked: checksum {check}");
+    // a random tree of 2000 nodes and a chain of 2000 left children, each
+    // with 2000 random queries
+    let big = random_tree(2000, mut seed);
+    let root = big.unwrap().val as i64;
+    let mut queries: Vec[i64] = Vec.new();
+    while queries.len() < 2000 {
+        let q = 1 + next_random(mut seed) % 2000;
+        if q != root {
+            queries.push(q);
+        }
+    }
+    println(f"2000 nodes, 2000 queries: checksum {fold(tree_queries(big, queries))}");
+    let chain: Vec[TreeNode] = (0..2000).map(|i| leaf(i + 1)).collect();
+    for i in 1..2000 {
+        chain[i - 1].left = Some(chain[i]);
+    }
+    let cuts: Vec[i64] = (0..2000).map(|_| 2 + next_random(mut seed) % 1999).collect();
+    println(f"chain of 2000, 2000 queries: checksum {fold(tree_queries(Some(chain[0]), cuts))}");
+}
