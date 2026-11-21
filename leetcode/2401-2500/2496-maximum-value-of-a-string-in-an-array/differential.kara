@@ -1,0 +1,263 @@
+// LeetCode #2496: Maximum Value of a String in an Array -- the
+// differential. The six arms against the statement read literally: a
+// string is all digits when every character is one of "0123456789", its
+// number then the sum of each digit's place value, a power of ten counted
+// from the right; any other string is worth its length; the answer is the
+// greatest worth. 300 random lists of 1 to 8 strings of 1 to 9 characters,
+// each a digit with a chance from none in 4 to all; then 20 of one string,
+// and 40 of 100; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is some string's worth, and no string's length with a
+//     letter in it is more
+// P3  the strings in the other order: the same answer
+// P4  a 0 put before every string of digits shorter than 9: the same
+// P5  when no string is longer than 8, an "a" put after every one: one
+//     more than the longest length
+// P6  each arm agrees with at least three of the other five
+
+// ---- star (value.kara) ---------------------------------------------------
+
+fn star_maximum_value(strs: Vec[String]) -> i64 {
+    let mut best = 0;
+    for s in strs.iter() {
+        let mut number = 0;
+        let mut digits = true;
+        for c in s.chars() {
+            if c.is_ascii_digit() {
+                number = number * 10 + (c as i64 - '0' as i64);
+            } else {
+                digits = false;
+            }
+        }
+        let worth = if digits { number } else { s.len() };
+        best = best.max(worth);
+    }
+    best
+}
+
+// ---- rec (value_rec.kara) ------------------------------------------------
+
+fn rec_number_of(chars: Vec[char], i: i64, so_far: i64) -> i64 {
+    if i == chars.len() {
+        return so_far;
+    }
+    if not chars[i].is_ascii_digit() {
+        return -1;
+    }
+    rec_number_of(chars, i + 1, so_far * 10 + (chars[i] as i64 - '0' as i64))
+}
+
+fn rec_best_from(strs: Vec[String], i: i64) -> i64 {
+    if i == strs.len() {
+        return 0;
+    }
+    let chars: Vec[char] = strs[i].chars().collect();
+    let number = rec_number_of(chars, 0, 0);
+    let worth = if number >= 0 { number } else { chars.len() };
+    worth.max(rec_best_from(strs, i + 1))
+}
+
+fn rec_maximum_value(strs: Vec[String]) -> i64 {
+    rec_best_from(strs, 0)
+}
+
+// ---- parse (value_parse.kara) --------------------------------------------
+
+fn parse_maximum_value(strs: Vec[String]) -> i64 {
+    let mut best = 0;
+    for s in strs.iter() {
+        let worth = match i64.parse(s) {
+            Ok(number) => number,
+            Err(_) => s.len(),
+        };
+        best = best.max(worth);
+    }
+    best
+}
+
+// ---- bytes (value_bytes.kara) --------------------------------------------
+
+fn bytes_maximum_value(strs: Vec[String]) -> i64 {
+    let mut best = 0;
+    for s in strs.iter() {
+        let bytes = s.bytes();
+        let mut worth = 0;
+        for b in bytes.iter() {
+            match b {
+                b'0'..=b'9' => worth = worth * 10 + (b - b'0'),
+                _ => {
+                    worth = bytes.len();
+                    break;
+                }
+            }
+        }
+        best = best.max(worth);
+    }
+    best
+}
+
+// ---- iter (value_iter.kara) ----------------------------------------------
+
+fn iter_maximum_value(strs: Vec[String]) -> i64 {
+    strs.iter()
+        .map(|s| {
+            if s.chars().all(|c| c.is_ascii_digit()) {
+                s.chars().fold(0, |number, c| number * 10 + (c as i64 - '0' as i64))
+            } else {
+                s.len()
+            }
+        })
+        .max()
+        .unwrap()
+}
+
+// ---- solution (value_solution.kara) --------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn maximum_value(strs: Vec[String]) -> i32 {
+        strs.iter()
+            .map(|s| i32.parse(s).unwrap_or(s.len() as i32))
+            .max()
+            .unwrap()
+    }
+}
+
+fn solution_maximum_value(strs: Vec[String]) -> i64 {
+    Solution.maximum_value(strs)
+}
+
+// ---- the statement read literally
+
+fn all_digits(s: String) -> bool {
+    s.chars().all(|c| "0123456789".chars().any(|d| d == c))
+}
+
+fn literal_worth(s: String) -> i64 {
+    if not all_digits(s) {
+        return s.len();
+    }
+    let chars: Vec[char] = s.chars().collect();
+    let mut number = 0;
+    for i in 0..chars.len() {
+        let mut place = 1;
+        for _ in 0..chars.len() - 1 - i {
+            place *= 10;
+        }
+        let mut digit = 0;
+        while "0123456789".chars().nth(digit).unwrap() != chars[i] {
+            digit += 1;
+        }
+        number += digit * place;
+    }
+    number
+}
+
+fn literal(strs: Vec[String]) -> i64 {
+    let mut best = literal_worth(strs[0]);
+    for s in strs.iter() {
+        best = best.max(literal_worth(s));
+    }
+    best
+}
+
+// ---- cases
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_string(digit_in: i64, seed: mut ref i64) -> String {
+    let length = next_random(mut seed) % 9 + 1;
+    let mut s = String.new();
+    for _ in 0..length {
+        let k = next_random(mut seed);
+        if k % 4 < digit_in {
+            s.push((b'0' + (k / 4 % 10) as u8) as char);
+        } else {
+            s.push((b'a' + (k / 4 % 26) as u8) as char);
+        }
+    }
+    s
+}
+
+fn answer(arm: i64, strs: Vec[String]) -> i64 {
+    match arm {
+        0 => star_maximum_value(strs),
+        1 => rec_maximum_value(strs),
+        2 => parse_maximum_value(strs),
+        3 => bytes_maximum_value(strs),
+        4 => iter_maximum_value(strs),
+        _ => solution_maximum_value(strs),
+    }
+}
+
+fn main() {
+    let names = ["star", "rec", "parse", "bytes", "iter", "solution"];
+    let mut seed = 2496;
+    let mut problems: Vec[Vec[String]] = Vec.new();
+    for t in 0..360 {
+        let count = if t < 300 { next_random(mut seed) % 8 + 1 } else if t < 320 { 1 } else { 100 };
+        let digit_in = next_random(mut seed) % 5;
+        let mut strs: Vec[String] = Vec.new();
+        for _ in 0..count {
+            strs.push(random_string(digit_in, mut seed));
+        }
+        problems.push(strs);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for strs in problems.iter() {
+        let truth = literal(strs);
+        check = (check * 31 + truth) % 1000000007;
+        let reversed: Vec[String] = strs.iter().rev().cloned().collect();
+        let padded: Vec[String] = strs.iter().map(|s| if all_digits(s) and s.len() < 9 { f"0{s}" } else { s.clone() }).collect();
+        let short = strs.iter().all(|s| s.len() <= 8);
+        let longest = strs.iter().map(|s| s.len()).max().unwrap();
+        let lettered: Vec[String] = strs.iter().map(|s| f"{s}a").collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, strs)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                strs.iter().any(|s| literal_worth(s) == x) and strs.iter().all(|s| all_digits(s) or s.len() <= x),
+                answer(arm, reversed) == x,
+                answer(arm, padded) == x,
+                not short or answer(arm, lettered) == longest + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{strs.len()} strings, first {strs[0]}, arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

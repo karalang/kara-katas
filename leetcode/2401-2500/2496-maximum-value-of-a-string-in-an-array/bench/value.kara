@@ -1,0 +1,62 @@
+// LeetCode #2496: Maximum Value of a String in an Array -- benchmark of
+// the ★ arm (value.kara): 2000 lists of 100 strings, built once, then 90
+// passes; each puts the checksum so far, written in digits, in place of
+// one string of every list, asks, and puts it back, folding the answer
+// plus the pass into the checksum.
+
+fn maximum_value(strs: Vec[String]) -> i64 {
+    let mut best = 0;
+    for s in strs.iter() {
+        let mut number = 0;
+        let mut digits = true;
+        for c in s.chars() {
+            if c.is_ascii_digit() {
+                number = number * 10 + (c as i64 - '0' as i64);
+            } else {
+                digits = false;
+            }
+        }
+        let worth = if digits { number } else { s.len() };
+        best = best.max(worth);
+    }
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let passes = 90;
+    let mut seed = 2496;
+    let mut lists: Vec[Vec[String]] = Vec.new();
+    for _ in 0..2000 {
+        let mut strs: Vec[String] = Vec.new();
+        for _ in 0..100 {
+            let length = next_random(mut seed) % 9 + 1;
+            let mut s = String.new();
+            for _ in 0..length {
+                let k = next_random(mut seed);
+                if k % 2 == 0 {
+                    s.push((b'0' + (k / 2 % 10) as u8) as char);
+                } else {
+                    s.push((b'a' + (k / 2 % 26) as u8) as char);
+                }
+            }
+            strs.push(s);
+        }
+        lists.push(strs);
+    }
+    let mut check = 0;
+    for p in 0..passes {
+        for l in 0..2000 {
+            let at = check % 100;
+            let was = lists[l][at].clone();
+            lists[l][at] = f"{check % 1000000000}";
+            check = (check * 31 + maximum_value(lists[l]) + p) % 1000000007;
+            lists[l][at] = was;
+        }
+    }
+    println(f"{passes} passes over 2000 lists of 100: checksum {check}");
+}

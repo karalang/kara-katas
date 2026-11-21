@@ -1,0 +1,86 @@
+// LeetCode #2496: Maximum Value of a String in an Array -- iterators: each
+// string `map`ped to its worth, the characters asked by `all` whether
+// they are digits and, if so, `fold`ed into the number, else the length;
+// then the `max` of the worths. O(total length).
+
+fn maximum_value(strs: Vec[String]) -> i64 {
+    strs.iter()
+        .map(|s| {
+            if s.chars().all(|c| c.is_ascii_digit()) {
+                s.chars().fold(0, |number, c| number * 10 + (c as i64 - '0' as i64))
+            } else {
+                s.len()
+            }
+        })
+        .max()
+        .unwrap()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random string of 1 to 9 characters, each a digit with chance
+// `digit_in` in 8, else a lowercase letter
+fn random_string(digit_in: i64, seed: mut ref i64) -> String {
+    let length = next_random(mut seed) % 9 + 1;
+    let mut s = String.new();
+    for _ in 0..length {
+        let k = next_random(mut seed);
+        if k % 8 < digit_in {
+            s.push((b'0' + (k / 8 % 10) as u8) as char);
+        } else {
+            s.push((b'a' + (k / 8 % 26) as u8) as char);
+        }
+    }
+    s
+}
+
+fn list_of(words: Vec[Str]) -> Vec[String] {
+    words.iter().map(|w| w.to_string()).collect()
+}
+
+fn main() {
+    // LeetCode's two examples, then seven more
+    let cases: Vec[Vec[String]] = [
+        list_of(["alic3", "bob", "3", "4", "00000"].to_vec()),
+        list_of(["1", "01", "001", "0001"].to_vec()),
+        list_of(["a"].to_vec()),
+        list_of(["0"].to_vec()),
+        list_of(["0000", "a"].to_vec()),
+        list_of(["999999999", "abcdefghi"].to_vec()),
+        list_of(["12a", "7", "ab"].to_vec()),
+        list_of(["000000012", "11", "abcdefghi"].to_vec()),
+        list_of(["x1", "1x", "10"].to_vec()),
+    ].to_vec();
+    for strs in cases.iter() {
+        println(f"{strs.len()} strings, first {strs[0]} -> {maximum_value(strs)}");
+    }
+    // 2000 random lists of 1 to 100 strings for each chance of a digit,
+    // from none in 8 to all: a checksum each
+    let mut seed = 2496;
+    for digit_in in 0..9 {
+        let mut check = 0;
+        for _ in 0..2000 {
+            let count = next_random(mut seed) % 100 + 1;
+            let mut strs: Vec[String] = Vec.new();
+            for _ in 0..count {
+                strs.push(random_string(digit_in, mut seed));
+            }
+            check = (check * 31 + maximum_value(strs)) % 1000000007;
+        }
+        println(f"2000 random, digits {digit_in} in 8: checksum {check}");
+    }
+    // the constraints' largest, 100 strings of 9: all nines, all letters,
+    // and the nines last behind 99 strings with a letter
+    let nines: Vec[String] = (0..100).map(|_| "999999999".to_string()).collect();
+    let letters: Vec[String] = (0..100).map(|i| if i % 2 == 0 { "abcdefghi".to_string() } else { "12345678z".to_string() }).collect();
+    let mut last: Vec[String] = (0..99).map(|_| "a99999999".to_string()).collect();
+    last.push("100000000".to_string());
+    for (name, strs) in [("nines", nines), ("letters", letters), ("last", last)] {
+        println(f"100 {name} -> {maximum_value(strs)}");
+    }
+}
