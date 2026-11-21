@@ -13,7 +13,11 @@ fn next_random(seed: &mut i64) -> i64 {
 
 fn random_word(seed: &mut i64, longest: i64, letters: i64) -> String {
     let length = next_random(seed) % longest + 1;
-    (0..length).map(|_| (b'a' + (next_random(seed) % letters) as u8) as char).collect()
+    let mut bytes: Vec<u8> = Vec::new();
+    for _ in 0..length {
+        bytes.push(b'a' + (next_random(seed) % letters) as u8);
+    }
+    String::from_utf8(bytes).unwrap()
 }
 
 fn main() {

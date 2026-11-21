@@ -18,7 +18,10 @@ def next_random():
 
 def random_word(longest, letters):
     length = next_random() % longest + 1
-    return "".join("abcde"[next_random() % letters] for _ in range(length))
+    data = bytearray()
+    for _ in range(length):
+        data.append(ord("a") + next_random() % letters)
+    return data.decode()
 
 
 def main():

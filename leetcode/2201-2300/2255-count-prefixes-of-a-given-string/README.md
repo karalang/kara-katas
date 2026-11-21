@@ -154,7 +154,11 @@ the 200 * 1000 words.
 The bench answers 500 cases of 1000 words of up to 10 letters, from one
 to five letters, and an `s` of up to 10, with the ★ arm in all five
 languages. Making the words is most of the work, as it is in the
-harness. Every implementation prints `500 cases of 1000 words: checksum
-965480548`.
+harness, so every language makes them the same way: each word's letters
+pushed one at a time into a byte buffer of its own, which then becomes
+the string (`String.from_utf8` in Kāra and Rust, `bytearray.decode` in
+Python, `string(b)` in Go), and in C the buffer itself, one allocation
+per word. Every implementation prints `500 cases of 1000 words:
+checksum 965480548`.
 
 BENCHTAB
