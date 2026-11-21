@@ -1,0 +1,276 @@
+// LeetCode #2350: Shortest Impossible Sequence of Rolls -- the
+// differential. The six arms, against the statement read literally: for
+// each length from 1 up, every sequence of that length over the faces 1
+// to k is tried in turn, each matched against the rolls from the left,
+// and the first length with a sequence the rolls do not hold is the
+// answer. No pieces. 300 random cases of 1 to 10 rolls of a die with 1 to
+// 3 faces; then 30 of up to 300 rolls of a die with up to 20 faces; then
+// 30 of up to 300 rolls of a die with up to 3. Every case is drawn
+// before any arm answers.
+//
+// P1  up to 10 rolls, the answer is the literal reading's
+// P2  from 1 to n / k + 1, and 1 exactly when some face is never rolled
+// P3  the rolls reversed: the same answer
+// P4  every face f made k + 1 - f: the same answer
+// P5  the faces 1 to k rolled once more at the end: one more
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn holds(rolls: Vec[i64], sequence: Vec[i64]) -> bool {
+    let mut at = 0;
+    for r in rolls.iter() {
+        if at < sequence.len() and r == sequence[at] {
+            at += 1;
+        }
+    }
+    at == sequence.len()
+}
+
+fn shortest_literally(rolls: Vec[i64], k: i64) -> i64 {
+    let mut length = 1;
+    loop {
+        let mut count = 1;
+        for _ in 0..length {
+            count *= k;
+        }
+        for code in 0..count {
+            let mut sequence: Vec[i64] = Vec.new();
+            let mut rest = code;
+            for _ in 0..length {
+                sequence.push(rest % k + 1);
+                rest /= k;
+            }
+            if not holds(rolls, sequence) {
+                return length;
+            }
+        }
+        length += 1;
+    }
+}
+
+// ---- star (rolls.kara) ---------------------------------------------------
+
+fn star_shortest_sequence(rolls: Vec[i64], k: i64) -> i64 {
+    let mut seen: Vec[bool] = Vec.filled(k + 1, false);
+    let mut distinct = 0;
+    let mut pieces = 0;
+    for r in rolls {
+        if not seen[r] {
+            seen[r] = true;
+            distinct += 1;
+            if distinct == k {
+                pieces += 1;
+                distinct = 0;
+                seen = Vec.filled(k + 1, false);
+            }
+        }
+    }
+    pieces + 1
+}
+
+// ---- set (rolls_set.kara) ------------------------------------------------
+
+fn set_shortest_sequence(rolls: Vec[i64], k: i64) -> i64 {
+    let mut faces: Set[i64] = Set.new();
+    let mut length = 1;
+    for r in rolls {
+        faces.insert(r);
+        if faces.len() == k {
+            length += 1;
+            faces.clear();
+        }
+    }
+    length
+}
+
+// ---- stamp (rolls_stamp.kara) --------------------------------------------
+
+fn stamp_shortest_sequence(rolls: Vec[i64], k: i64) -> i64 {
+    let mut stamp: Vec[i64] = Vec.filled(k + 1, -1);
+    let mut piece = 0;
+    let mut distinct = 0;
+    for r in rolls {
+        if stamp[r] != piece {
+            stamp[r] = piece;
+            distinct += 1;
+            if distinct == k {
+                piece += 1;
+                distinct = 0;
+            }
+        }
+    }
+    piece + 1
+}
+
+// ---- jumps (rolls_jumps.kara) --------------------------------------------
+
+fn jumps_next_place(places: Vec[i64], from: i64) -> i64 {
+    let mut lo = 0;
+    let mut hi = places.len();
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if places[mid] < from {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    if lo < places.len() { places[lo] } else { -1 }
+}
+
+fn jumps_shortest_sequence(rolls: Vec[i64], k: i64) -> i64 {
+    let mut places: Vec[Vec[i64]] = Vec.filled(k + 1, Vec.new());
+    for (i, r) in rolls.iter().enumerate() {
+        places[r].push(i);
+    }
+    let mut at = 0;
+    let mut length = 1;
+    loop {
+        let mut latest = 0;
+        for face in 1..k + 1 {
+            let p = jumps_next_place(places[face], at);
+            if p < 0 {
+                return length;
+            }
+            latest = latest.max(p);
+        }
+        length += 1;
+        at = latest + 1;
+    }
+}
+
+// ---- iter (rolls_iter.kara) ----------------------------------------------
+
+fn iter_shortest_sequence(rolls: Vec[i64], k: i64) -> i64 {
+    let (_, pieces) = rolls.iter().fold((SortedSet.new(), 0), |(faces, pieces), r| {
+        let mut faces = faces;
+        faces.insert(r);
+        if faces.len() == k { (SortedSet.new(), pieces + 1) } else { (faces, pieces) }
+    });
+    pieces + 1
+}
+
+// ---- solution (rolls_solution.kara) --------------------------------------
+
+impl Solution {
+    pub fn shortest_sequence(rolls: Vec[i32], k: i32) -> i32 {
+        let mut seen = Set.new();
+        let mut ans = 1;
+        for r in rolls {
+            seen.insert(r);
+            if seen.len() == k {
+                ans += 1;
+                seen.clear();
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_shortest_sequence(rolls: Vec[i64], k: i64) -> i64 {
+    let rolls: Vec[i32] = rolls.iter().map(|x| x as i32).collect();
+    Solution.shortest_sequence(rolls, k as i32)
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn answer(arm: i64, rolls: Vec[i64], k: i64) -> i64 {
+    match arm {
+        0 => star_shortest_sequence(rolls, k),
+        1 => set_shortest_sequence(rolls, k),
+        2 => stamp_shortest_sequence(rolls, k),
+        3 => jumps_shortest_sequence(rolls, k),
+        4 => iter_shortest_sequence(rolls, k),
+        _ => solution_shortest_sequence(rolls, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "set", "stamp", "jumps", "iter", "solution"];
+    let mut seed = 2350;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..360 {
+        let (most, faces) = if c < 300 {
+            (10, 3)
+        } else if c < 330 {
+            (300, 20)
+        } else {
+            (300, 3)
+        };
+        let n = 1 + next_random(mut seed) % most;
+        let k = 1 + next_random(mut seed) % faces;
+        let rolls: Vec[i64] = (0..n).map(|_| 1 + next_random(mut seed) % k).collect();
+        cases.push((rolls, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (rolls, k) = cases[c].clone();
+        let small = c < 300;
+        let truth = if small { shortest_literally(rolls, k) } else { -1 };
+        if small {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let mut missing = false;
+        for face in 1..k + 1 {
+            if not rolls.contains(face) {
+                missing = true;
+            }
+        }
+        let reversed: Vec[i64] = rolls.iter().rev().collect();
+        let relabelled: Vec[i64] = rolls.iter().map(|f| k + 1 - f).collect();
+        let mut extended = rolls.clone();
+        for face in 1..k + 1 {
+            extended.push(face);
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, rolls, k)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                value >= 1 and value <= rolls.len() / k + 1 and (value == 1) == missing,
+                answer(arm, reversed, k) == value,
+                answer(arm, relabelled, k) == value,
+                answer(arm, extended, k) == value + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
