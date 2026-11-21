@@ -1,0 +1,329 @@
+// LeetCode #2492: Minimum Score of a Path Between Two Cities -- the
+// differential. The six arms against the statement read literally: a
+// road can be on a path from 1 to `n` when one of its cities can be
+// reached from 1 and the other can reach `n`, found by sweeping the roads
+// until nothing more is reached; the score is the least distance of such
+// a road. 300 random maps of 2 to 10 cities with up to 12 more roads,
+// distances to 3 or to 20; then 20 of two cities, and 40 of 30 to 60
+// cities with 20 to 80 more roads, distances to 10^4; every one drawn
+// before any arm answers.
+//
+// P1  the score is the statement read literally
+// P2  the score is a road's distance, at most the least on a road at 1
+// P3  the roads in the other order: the same score
+// P4  the cities numbered backwards, 1 and `n` changing places: the same
+// P5  a road of distance 1 added from `n` to 1: 1
+// P6  each arm agrees with at least three of the other five
+
+// ---- star (score.kara) ---------------------------------------------------
+
+fn star_min_score(n: i64, roads: Vec[Vec[i64]]) -> i64 {
+    let mut next: Vec[Vec[(i64, i64)]] = Vec.filled(n + 1, Vec.new());
+    for road in roads.iter() {
+        next[road[0]].push((road[1], road[2]));
+        next[road[1]].push((road[0], road[2]));
+    }
+    let mut seen: Vec[bool] = Vec.filled(n + 1, false);
+    let mut queue: Vec[i64] = [1].to_vec();
+    seen[1] = true;
+    let mut head = 0;
+    let mut least = i64.MAX;
+    while head < queue.len() {
+        let city = queue[head];
+        head += 1;
+        for (other, distance) in next[city].iter() {
+            least = least.min(distance);
+            if not seen[other] {
+                seen[other] = true;
+                queue.push(other);
+            }
+        }
+    }
+    least
+}
+
+// ---- rec (score_rec.kara) ------------------------------------------------
+
+fn rec_least_from(city: i64, next: Vec[Vec[(i64, i64)]], seen: mut ref Vec[bool]) -> i64 {
+    seen[city] = true;
+    let mut least = i64.MAX;
+    for (other, distance) in next[city].iter() {
+        least = least.min(distance);
+        if not seen[other] {
+            least = least.min(rec_least_from(other, next, mut seen));
+        }
+    }
+    least
+}
+
+fn rec_min_score(n: i64, roads: Vec[Vec[i64]]) -> i64 {
+    let mut next: Vec[Vec[(i64, i64)]] = Vec.filled(n + 1, Vec.new());
+    for road in roads.iter() {
+        next[road[0]].push((road[1], road[2]));
+        next[road[1]].push((road[0], road[2]));
+    }
+    let mut seen: Vec[bool] = Vec.filled(n + 1, false);
+    rec_least_from(1, next, mut seen)
+}
+
+// ---- union (score_union.kara) --------------------------------------------
+
+fn union_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+fn union_min_score(n: i64, roads: Vec[Vec[i64]]) -> i64 {
+    let mut parent: Vec[i64] = (0..n + 1).collect();
+    let mut size: Vec[i64] = Vec.filled(n + 1, 1);
+    for road in roads.iter() {
+        let a = union_find(mut parent, road[0]);
+        let b = union_find(mut parent, road[1]);
+        if a != b {
+            let (big, small) = if size[a] >= size[b] { (a, b) } else { (b, a) };
+            parent[small] = big;
+            size[big] += size[small];
+        }
+    }
+    let home = union_find(mut parent, 1);
+    let mut least = i64.MAX;
+    for road in roads.iter() {
+        if union_find(mut parent, road[0]) == home {
+            least = least.min(road[2]);
+        }
+    }
+    least
+}
+
+// ---- stack (score_stack.kara) --------------------------------------------
+
+fn stack_min_score(n: i64, roads: Vec[Vec[i64]]) -> i64 {
+    let mut beside: Map[i64, Vec[i64]] = Map.new();
+    for road in roads.iter() {
+        beside.entry(road[0]).or_insert(Vec.new()).push(road[1]);
+        beside.entry(road[1]).or_insert(Vec.new()).push(road[0]);
+    }
+    let mut reached: Set[i64] = Set.new();
+    reached.insert(1);
+    let mut stack: Vec[i64] = [1].to_vec();
+    while let Some(city) = stack.pop() {
+        for other in beside[city].iter() {
+            if reached.insert(other) {
+                stack.push(other);
+            }
+        }
+    }
+    let mut least = i64.MAX;
+    for road in roads.iter() {
+        if reached.contains(road[0]) {
+            least = least.min(road[2]);
+        }
+    }
+    least
+}
+
+// ---- iter (score_iter.kara) ----------------------------------------------
+
+fn iter_min_score(n: i64, roads: Vec[Vec[i64]]) -> i64 {
+    let mut next: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.new());
+    for road in roads.iter() {
+        next[road[0]].push(road[1]);
+        next[road[1]].push(road[0]);
+    }
+    let mut seen: Vec[bool] = Vec.filled(n + 1, false);
+    seen[1] = true;
+    let mut wave: Vec[i64] = [1].to_vec();
+    while wave.len() > 0 {
+        wave = wave
+            .iter()
+            .flat_map(|city| next[city].iter().cloned())
+            .filter(|city| {
+                let new = not seen[city];
+                seen[city] = true;
+                new
+            })
+            .collect();
+    }
+    roads.iter().filter(|road| seen[road[0]]).map(|road| road[2]).min().unwrap()
+}
+
+// ---- solution (score_solution.kara) --------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_score(n: i32, roads: Vec[Vec[i32]]) -> i32 {
+        let n = n as i64;
+        let mut g = Vec.filled(n + 1, Vec.new());
+        for r in ref roads {
+            let (a, b, d) = (r[0] as i64, r[1] as i64, r[2]);
+            g[a].push((b, d));
+            g[b].push((a, d));
+        }
+        let mut vis = Vec.filled(n + 1, false);
+        let mut q = VecDeque.new();
+        q.push_back(1);
+        vis[1] = true;
+        let mut ans = i32.MAX;
+        while let Some(u) = q.pop_front() {
+            for (v, d) in ref g[u] {
+                ans = ans.min(d);
+                if not vis[v] {
+                    vis[v] = true;
+                    q.push_back(v);
+                }
+            }
+        }
+        ans
+    }
+}
+
+fn solution_min_score(n: i64, roads: Vec[Vec[i64]]) -> i64 {
+    let asked: Vec[Vec[i32]] = roads.iter().map(|r| r.iter().map(|v| v as i32).collect()).collect();
+    Solution.min_score(n as i32, asked)
+}
+
+// ---- the statement read literally
+
+// the cities that can reach `from`, the roads swept until none adds one
+fn reach(n: i64, roads: Vec[Vec[i64]], from: i64) -> Vec[bool] {
+    let mut reached: Vec[bool] = Vec.filled(n + 1, false);
+    reached[from] = true;
+    let mut grew = true;
+    while grew {
+        grew = false;
+        for road in roads.iter() {
+            if reached[road[0]] != reached[road[1]] {
+                reached[road[0]] = true;
+                reached[road[1]] = true;
+                grew = true;
+            }
+        }
+    }
+    reached
+}
+
+fn literal(n: i64, roads: Vec[Vec[i64]]) -> i64 {
+    let from_one = reach(n, roads, 1);
+    let to_n = reach(n, roads, n);
+    let mut least = -1;
+    for road in roads.iter() {
+        let on = (from_one[road[0]] and to_n[road[1]]) or (from_one[road[1]] and to_n[road[0]]);
+        if on and (least == -1 or road[2] < least) {
+            least = road[2];
+        }
+    }
+    least
+}
+
+fn answer(arm: i64, n: i64, roads: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_min_score(n, roads),
+        1 => rec_min_score(n, roads),
+        2 => union_min_score(n, roads),
+        3 => stack_min_score(n, roads),
+        4 => iter_min_score(n, roads),
+        _ => solution_min_score(n, roads),
+    }
+}
+
+// ---- maps
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_roads(n: i64, extra: i64, top: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut roads: Vec[Vec[i64]] = Vec.new();
+    let mut at = 1;
+    while at != n {
+        let mut next = next_random(mut seed) % n + 1;
+        if next == at {
+            next = n;
+        }
+        roads.push([at, next, next_random(mut seed) % top + 1].to_vec());
+        at = next;
+    }
+    for _ in 0..extra {
+        let a = next_random(mut seed) % n + 1;
+        let mut b = next_random(mut seed) % n + 1;
+        if b == a {
+            b = a % n + 1;
+        }
+        roads.push([a, b, next_random(mut seed) % top + 1].to_vec());
+    }
+    roads
+}
+
+fn main() {
+    let names = ["star", "rec", "union", "stack", "iter", "solution"];
+    let mut seed = 2492;
+    let mut problems: Vec[(i64, Vec[Vec[i64]])] = Vec.new();
+    for t in 0..360 {
+        let (n, extra, top) = if t < 300 {
+            (next_random(mut seed) % 9 + 2, next_random(mut seed) % 13, if next_random(mut seed) % 2 == 0 { 3 } else { 20 })
+        } else if t < 320 {
+            (2, next_random(mut seed) % 3, 20)
+        } else {
+            (next_random(mut seed) % 31 + 30, next_random(mut seed) % 61 + 20, 10000)
+        };
+        problems.push((n, random_roads(n, extra, top, mut seed)));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (n, roads) in problems.iter() {
+        let truth = literal(n, roads);
+        check = (check * 31 + truth) % 1000000007;
+        let at_one = roads.iter().filter(|r| r[0] == 1 or r[1] == 1).map(|r| r[2]).min().unwrap();
+        let reversed: Vec[Vec[i64]] = roads.iter().rev().cloned().collect();
+        let backwards: Vec[Vec[i64]] = roads.iter().map(|r| [n + 1 - r[0], n + 1 - r[1], r[2]].to_vec()).collect();
+        let mut joined = roads.clone();
+        joined.push([n, 1, 1].to_vec());
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, n, roads)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                roads.iter().any(|r| r[2] == x) and x <= at_one,
+                answer(arm, n, reversed) == x,
+                answer(arm, n, backwards) == x,
+                answer(arm, n, joined) == 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{n} cities, {roads.len()} roads, arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

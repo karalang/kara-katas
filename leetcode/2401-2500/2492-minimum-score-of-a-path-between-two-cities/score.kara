@@ -1,0 +1,110 @@
+// LeetCode #2492: Minimum Score of a Path Between Two Cities -- the ★ arm.
+// A path may use a road as often as it likes, so a path from 1 to `n` can
+// take in every road of the part of the map that holds 1, and the score
+// is the least distance in that part. A breadth-first search from 1 over
+// adjacency lists visits it, the least distance kept on every road
+// looked at. O(n + m).
+
+fn min_score(n: i64, roads: Vec[Vec[i64]]) -> i64 {
+    let mut next: Vec[Vec[(i64, i64)]] = Vec.filled(n + 1, Vec.new());
+    for road in roads.iter() {
+        next[road[0]].push((road[1], road[2]));
+        next[road[1]].push((road[0], road[2]));
+    }
+    let mut seen: Vec[bool] = Vec.filled(n + 1, false);
+    let mut queue: Vec[i64] = [1].to_vec();
+    seen[1] = true;
+    let mut head = 0;
+    let mut least = i64.MAX;
+    while head < queue.len() {
+        let city = queue[head];
+        head += 1;
+        for (other, distance) in next[city].iter() {
+            least = least.min(distance);
+            if not seen[other] {
+                seen[other] = true;
+                queue.push(other);
+            }
+        }
+    }
+    least
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// `n` cities: a path from 1 to `n` through a random few of them, then
+// `extra` random roads, distances from 1 to `top`
+fn random_roads(n: i64, extra: i64, top: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut roads: Vec[Vec[i64]] = Vec.new();
+    let mut at = 1;
+    while at != n {
+        let mut next = wide(mut seed) % n + 1;
+        if next == at {
+            next = n;
+        }
+        roads.push([at, next, wide(mut seed) % top + 1].to_vec());
+        at = next;
+    }
+    for _ in 0..extra {
+        let a = wide(mut seed) % n + 1;
+        let mut b = wide(mut seed) % n + 1;
+        if b == a {
+            b = a % n + 1;
+        }
+        roads.push([a, b, wide(mut seed) % top + 1].to_vec());
+    }
+    roads
+}
+
+fn main() {
+    // LeetCode's two examples, then five more
+    let cases: Vec[(i64, Vec[Vec[i64]])] = [
+        (4, [[1, 2, 9].to_vec(), [2, 3, 6].to_vec(), [2, 4, 5].to_vec(), [1, 4, 7].to_vec()].to_vec()),
+        (4, [[1, 2, 2].to_vec(), [1, 3, 4].to_vec(), [3, 4, 7].to_vec()].to_vec()),
+        (2, [[1, 2, 5].to_vec()].to_vec()),
+        (4, [[1, 4, 10].to_vec(), [2, 3, 1].to_vec()].to_vec()),
+        (3, [[1, 2, 8].to_vec(), [1, 2, 3].to_vec(), [2, 3, 9].to_vec()].to_vec()),
+        (5, [[5, 4, 6].to_vec(), [4, 1, 7].to_vec(), [2, 3, 1].to_vec(), [3, 1, 4].to_vec()].to_vec()),
+        (6, [[1, 6, 9].to_vec(), [2, 3, 1].to_vec(), [3, 4, 2].to_vec(), [4, 2, 3].to_vec(), [5, 6, 4].to_vec()].to_vec()),
+    ].to_vec();
+    for (n, roads) in cases.iter() {
+        println(f"{n} cities, {roads.len()} roads -> {min_score(n, roads)}");
+    }
+    // 2000 random maps of 2 to 50 cities with up to 60 more roads, the
+    // distances to 10^4 and to 5: a checksum
+    let mut seed = 2492;
+    for top in [10000, 5] {
+        let mut check = 0;
+        for _ in 0..2000 {
+            let n = next_random(mut seed) % 49 + 2;
+            let extra = next_random(mut seed) % 61;
+            let roads = random_roads(n, extra, top, mut seed);
+            check = (check * 31 + min_score(n, roads)) % 1000000007;
+        }
+        println(f"2000 random to {top}: checksum {check}");
+    }
+    // the constraints' largest, 10^5 cities and 10^5 roads: a chain from
+    // 1 to n; a star round 1 with the least distance on a road between
+    // two of its leaves; and a random map of all but three cities, its
+    // distances from 2, joined to the city n and beside a far road of
+    // distance 1 between the other two
+    let n = 100000;
+    let chain: Vec[Vec[i64]] = (1..n).map(|i| [i, i + 1, 10000 - i % 9000].to_vec()).collect();
+    let mut star: Vec[Vec[i64]] = (2..n + 1).map(|i| [1, i, i % 10000 + 1].to_vec()).collect();
+    star.push([2, 3, 1].to_vec());
+    let mut parted: Vec[Vec[i64]] = random_roads(n - 3, 40000, 9999, mut seed).iter().map(|r| [r[0], r[1], r[2] + 1].to_vec()).collect();
+    parted.push([n - 3, n, 5000].to_vec());
+    parted.push([n - 2, n - 1, 1].to_vec());
+    for (name, cities, roads) in [("chain", n, chain), ("star", n, star), ("random", n, parted)] {
+        println(f"10^5 {name}: {roads.len()} roads -> {min_score(cities, roads)}");
+    }
+}
