@@ -93,13 +93,6 @@ the Rust-template arm. Each kept one is killed, fails the same way under
 both backends and not by a crash, and no two kept ones fail the same
 checks.
 
-Thirty-one edits to the differential, six to the ★ arm and five to
-each of the others, each run under both `karac __mir-llvm-run` and
-`karac __mir-run`. Seventeen are kept, three to each Kāra arm and two to
-the Rust-template arm. Each kept one is killed, fails the same way under
-both backends and not by a crash, and no two kept ones fail the same
-checks.
-
 | # | mutation | failures by property |
 |---|---|---|
 | M1 | ★: word2 not given the letter | P1 126, P2 42, P3 188, P5 4, P6 126 |
