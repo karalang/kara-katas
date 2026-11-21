@@ -1,0 +1,117 @@
+// LeetCode #2451: Odd String Difference -- the ★ arm: each word's
+// difference array, and the common one read off the first three words,
+// since two of any three share it; the answer is the word whose array is
+// not that one. O(m n).
+
+fn differences(word: String) -> Vec[i64] {
+    let b = word.bytes();
+    let mut steps: Vec[i64] = Vec.new();
+    for j in 1..b.len() {
+        steps.push(b[j] as i64 - b[j - 1] as i64);
+    }
+    steps
+}
+
+fn odd_string(words: Vec[String]) -> String {
+    let a = differences(words[0]);
+    let b = differences(words[1]);
+    let c = differences(words[2]);
+    let common = if a == b or a == c { a } else { b };
+    for w in words.iter() {
+        if differences(w) != common {
+            return w.clone();
+        }
+    }
+    words[0].clone()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random difference pattern of `len - 1` steps that some word fits
+fn random_steps(len: i64, reach: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut steps: Vec[i64] = Vec.new();
+    let mut at = 0;
+    let mut low = 0;
+    let mut high = 0;
+    for _ in 1..len {
+        let mut step = next_random(mut seed) % (2 * reach + 1) - reach;
+        if high.max(at + step) - low.min(at + step) > 25 {
+            step = 0;
+        }
+        steps.push(step);
+        at += step;
+        low = low.min(at);
+        high = high.max(at);
+    }
+    steps
+}
+
+// a random word whose differences are `steps`
+fn word_of(steps: Vec[i64], seed: mut ref i64) -> String {
+    let mut at = 0;
+    let mut low = 0;
+    let mut high = 0;
+    for s in steps.iter() {
+        at += s;
+        low = low.min(at);
+        high = high.max(at);
+    }
+    let first = -low + next_random(mut seed) % (26 - (high - low));
+    let mut letters: Vec[u8] = [(97 + first) as u8].to_vec();
+    let mut code = first;
+    for s in steps.iter() {
+        code += s;
+        letters.push((97 + code) as u8);
+    }
+    String.from_utf8(letters).unwrap()
+}
+
+// `count` words of `len` letters, all of one pattern but the one at
+// `odd`, and that one's pattern differs in at least one step
+fn random_case(count: i64, len: i64, odd: i64, reach: i64, seed: mut ref i64) -> Vec[String] {
+    let common = random_steps(len, reach, mut seed);
+    let mut other = random_steps(len, reach, mut seed);
+    while other == common {
+        other = random_steps(len, reach, mut seed);
+    }
+    let mut words: Vec[String] = Vec.new();
+    for i in 0..count {
+        words.push(word_of(if i == odd { other.clone() } else { common.clone() }, mut seed));
+    }
+    words
+}
+
+fn main() {
+    // LeetCode's two examples; the odd word first, and last; two letters
+    // each, a and z
+    println(f"example 1: {odd_string(["adc", "wzy", "abc"].iter().map(|w| w.to_string()).collect())}");
+    println(f"example 2: {odd_string(["aaa", "bob", "ccc", "ddd"].iter().map(|w| w.to_string()).collect())}");
+    println(f"odd first: {odd_string(["az", "ab", "bc", "yz"].iter().map(|w| w.to_string()).collect())}");
+    println(f"odd last: {odd_string(["ab", "bc", "yz", "za"].iter().map(|w| w.to_string()).collect())}");
+    // 100 words of 20 letters, the constraints' most, the odd one at each
+    // of three places
+    let mut seed = 2451;
+    for odd in [0, 57, 99].iter() {
+        let words = random_case(100, 20, odd, 3, mut seed);
+        let answer = odd_string(words);
+        println(f"100 of 20, odd at {odd}: {answer}, found at {words.iter().position(|w| w == answer).unwrap()}");
+    }
+    // 3000 random cases of 3 to 8 words of 2 to 6 letters, steps up to 2
+    // either way: a checksum of where each answer stands
+    let mut check = 0;
+    for _ in 0..3000 {
+        let count = 3 + next_random(mut seed) % 6;
+        let len = 2 + next_random(mut seed) % 5;
+        let odd = next_random(mut seed) % count;
+        let words = random_case(count, len, odd, 2, mut seed);
+        let answer = odd_string(words);
+        let place = words.iter().position(|w| w == answer).unwrap();
+        check = (check * 31 + place + 1) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}

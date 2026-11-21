@@ -1,0 +1,354 @@
+// LeetCode #2451: Odd String Difference -- the differential. The six
+// arms against the statement read literally: each word's difference
+// array built as the statement defines it, `difference[j] = word[j + 1] -
+// word[j]` by each letter's place in the alphabet, and the answer the
+// word whose array differs from every other word's while the others all
+// agree with one another. No array is counted or hashed, and none is
+// chosen from the first three. 360 cases: 300 random lists of 3 to 8
+// words of 2 to 6 letters; then 30 of up to 40 words of up to 20
+// letters; then 30 of 3 to 10 words where the odd one's array differs in
+// one step by one. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the words in reverse order: the same word
+// P3  each word moved along the alphabet as far as it stays in it: the
+//     word at the same place
+// P4  the letters of each word reversed: the word at the same place
+// P5  the answer moved to the front of the list: the same word
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn letter_place(c: u8) -> i64 {
+    let alphabet = "abcdefghijklmnopqrstuvwxyz".bytes();
+    let mut place = 0;
+    while alphabet[place] != c {
+        place += 1;
+    }
+    place
+}
+
+fn difference_array(word: String) -> Vec[i64] {
+    let b = word.bytes();
+    let mut difference: Vec[i64] = Vec.new();
+    for j in 0..b.len() - 1 {
+        difference.push(letter_place(b[j + 1]) - letter_place(b[j]));
+    }
+    difference
+}
+
+fn odd_literally(words: Vec[String]) -> i64 {
+    let arrays: Vec[Vec[i64]] = words.iter().map(|w| difference_array(w)).collect();
+    let m = words.len();
+    for i in 0..m {
+        let mut fits = true;
+        for a in 0..m {
+            for b in 0..m {
+                if a != i and b != i and arrays[a] != arrays[b] {
+                    fits = false;
+                }
+                if a != i and b == i and arrays[a] == arrays[b] {
+                    fits = false;
+                }
+            }
+        }
+        if fits {
+            return i;
+        }
+    }
+    -1
+}
+
+// ---- star (odd.kara) -----------------------------------------------------
+
+fn star_differences(word: String) -> Vec[i64] {
+    let b = word.bytes();
+    let mut steps: Vec[i64] = Vec.new();
+    for j in 1..b.len() {
+        steps.push(b[j] as i64 - b[j - 1] as i64);
+    }
+    steps
+}
+
+fn star_odd_string(words: Vec[String]) -> String {
+    let a = star_differences(words[0]);
+    let b = star_differences(words[1]);
+    let c = star_differences(words[2]);
+    let common = if a == b or a == c { a } else { b };
+    for w in words.iter() {
+        if star_differences(w) != common {
+            return w.clone();
+        }
+    }
+    words[0].clone()
+}
+
+// ---- naive (odd_naive.kara) ----------------------------------------------
+
+fn naive_same_steps(x: String, y: String) -> bool {
+    let a = x.bytes();
+    let b = y.bytes();
+    for j in 1..a.len() {
+        if a[j] as i64 - a[j - 1] as i64 != b[j] as i64 - b[j - 1] as i64 {
+            return false;
+        }
+    }
+    true
+}
+
+fn naive_odd_string(words: Vec[String]) -> String {
+    for i in 0..words.len() {
+        let mut matched = false;
+        for k in 0..words.len() {
+            if k != i and naive_same_steps(words[i], words[k]) {
+                matched = true;
+            }
+        }
+        if not matched {
+            return words[i].clone();
+        }
+    }
+    words[0].clone()
+}
+
+// ---- map (odd_map.kara) --------------------------------------------------
+
+fn map_odd_string(words: Vec[String]) -> String {
+    let mut counts: Map[Vec[i64], i64] = Map.new();
+    let mut keys: Vec[Vec[i64]] = Vec.new();
+    for w in words.iter() {
+        let b = w.bytes();
+        let key: Vec[i64] = (1..b.len()).map(|j| b[j] as i64 - b[j - 1] as i64).collect();
+        *counts.entry(key.clone()).or_insert(0) += 1;
+        keys.push(key);
+    }
+    for i in 0..words.len() {
+        if counts[keys[i]] == 1 {
+            return words[i].clone();
+        }
+    }
+    words[0].clone()
+}
+
+// ---- column (odd_column.kara) --------------------------------------------
+
+fn column_step(word: String, j: i64) -> i64 {
+    let b = word.bytes();
+    b[j] as i64 - b[j - 1] as i64
+}
+
+fn column_odd_string(words: Vec[String]) -> String {
+    let m = words.len();
+    let n = words[0].len();
+    for j in 1..n {
+        let first = column_step(words[0], j);
+        let mut differ: Vec[i64] = Vec.new();
+        for i in 1..m {
+            if column_step(words[i], j) != first {
+                differ.push(i);
+            }
+        }
+        if differ.len() == m - 1 {
+            return words[0].clone();
+        }
+        if differ.len() == 1 {
+            return words[differ[0]].clone();
+        }
+    }
+    words[0].clone()
+}
+
+// ---- iter (odd_iter.kara) ------------------------------------------------
+
+fn iter_odd_string(words: Vec[String]) -> String {
+    let arrays: Vec[Vec[i64]] = words
+        .iter()
+        .map(|w| w.bytes().to_vec().windows(2).into_iter().map(|p| p[1] as i64 - p[0] as i64).collect())
+        .collect();
+    let common = arrays[..3].iter().find(|a| arrays[..3].iter().filter(|b| b == a).count() > 1).unwrap().clone();
+    let place = arrays.iter().position(|a| a != common).unwrap();
+    words[place].clone()
+}
+
+// ---- solution (odd_solution.kara) ----------------------------------------
+
+impl Solution {
+    pub fn odd_string(words: Vec[String]) -> String {
+        let diff: Fn(ref String) -> Vec[i32] = |w: ref String| { w.bytes().windows(2).into_iter().map(|p| p[1] as i32 - p[0] as i32).collect() };
+        let d: Vec[Vec[i32]] = words.iter().map(diff).collect();
+        for i in 0..d.len() {
+            let j = (i + 1) % d.len();
+            let k = (i + 2) % d.len();
+            if d[i] != d[j] and d[i] != d[k] {
+                return words[i].clone();
+            }
+        }
+        String.new()
+    }
+}
+
+struct Solution {}
+
+fn solution_odd_string(words: Vec[String]) -> String {
+    Solution.odd_string(words)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, words: Vec[String]) -> String {
+    match arm {
+        0 => star_odd_string(words),
+        1 => naive_odd_string(words),
+        2 => map_odd_string(words),
+        3 => column_odd_string(words),
+        4 => iter_odd_string(words),
+        _ => solution_odd_string(words),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the lowest and highest letter a pattern of steps reaches from 0
+fn reach_of(steps: Vec[i64]) -> (i64, i64) {
+    let mut at = 0;
+    let mut low = 0;
+    let mut high = 0;
+    for s in steps.iter() {
+        at += s;
+        low = low.min(at);
+        high = high.max(at);
+    }
+    (low, high)
+}
+
+fn random_steps(len: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut steps: Vec[i64] = Vec.new();
+    for _ in 1..len {
+        steps.push(next_random(mut seed) % 7 - 3);
+    }
+    steps
+}
+
+fn word_of(steps: Vec[i64], seed: mut ref i64) -> String {
+    let (low, high) = reach_of(steps);
+    let first = -low + next_random(mut seed) % (26 - (high - low));
+    let mut letters: Vec[u8] = [(97 + first) as u8].to_vec();
+    let mut code = first;
+    for s in steps.iter() {
+        code += s;
+        letters.push((97 + code) as u8);
+    }
+    String.from_utf8(letters).unwrap()
+}
+
+// the word moved along the alphabet by a random amount that keeps it in
+fn moved(word: String, seed: mut ref i64) -> String {
+    let b = word.bytes();
+    let mut low = 25;
+    let mut high = 0;
+    for c in b.iter() {
+        low = low.min(c as i64 - 97);
+        high = high.max(c as i64 - 97);
+    }
+    let shift = -low + next_random(mut seed) % (26 - (high - low));
+    let letters: Vec[u8] = b.iter().map(|c| (c as i64 + shift) as u8).collect();
+    String.from_utf8(letters).unwrap()
+}
+
+fn main() {
+    let arms = ["star", "naive", "map", "column", "iter", "solution"];
+    let mut seed = 2451;
+    let mut cases: Vec[Vec[String]] = Vec.new();
+    for t in 0..360 {
+        let (count, len) = if t < 300 {
+            (3 + next_random(mut seed) % 6, 2 + next_random(mut seed) % 5)
+        } else if t < 330 {
+            (3 + next_random(mut seed) % 38, 2 + next_random(mut seed) % 19)
+        } else {
+            (3 + next_random(mut seed) % 8, 2 + next_random(mut seed) % 5)
+        };
+        let odd = next_random(mut seed) % count;
+        let mut common = random_steps(len, mut seed);
+        let (low, high) = reach_of(common);
+        if high - low > 25 {
+            common = Vec.filled(len - 1, 0);
+        }
+        let mut other = common.clone();
+        let place = next_random(mut seed) % (len - 1);
+        if t < 330 {
+            other = random_steps(len, mut seed);
+        }
+        if other == common {
+            other[place] += if common[place] > 0 { -1 } else { 1 };
+        }
+        let (low, high) = reach_of(other);
+        if high - low > 25 {
+            other = Vec.filled(len - 1, 0);
+            other[place] = if common[place] == 1 { 2 } else { 1 };
+        }
+        let mut words: Vec[String] = Vec.new();
+        for i in 0..count {
+            words.push(word_of(if i == odd { other.clone() } else { common.clone() }, mut seed));
+        }
+        cases.push(words);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let words = cases[c].clone();
+        let truth = odd_literally(words);
+        check = (check * 31 + truth + 1) % 1000000007;
+        let mut backwards = words.clone();
+        backwards.reverse();
+        let shifted: Vec[String] = words.iter().map(|w| moved(w, mut seed)).collect();
+        let flipped: Vec[String] = words.iter().map(|w| String.from_utf8(w.bytes().iter().rev().cloned().collect()).unwrap()).collect();
+        let got: Vec[String] = (0..6).map(|arm| answer(arm, words)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let place = words.iter().position(|w| w == value).unwrap();
+            let mut front = words.clone();
+            let first = front.remove(place);
+            front.insert(0, first);
+            let verdicts = [
+                value == words[truth],
+                answer(arm, backwards) == value,
+                answer(arm, shifted) == shifted[place],
+                answer(arm, flipped) == flipped[place],
+                answer(arm, front) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
