@@ -1,0 +1,83 @@
+// LeetCode #2461: Maximum Sum of Distinct Subarrays With Length K -- the
+// last place of each value: walking right, the window ending here can
+// start no earlier than one past the latest repeat seen, so it is
+// distinct when that bound is `k` or more places back, and its sum comes
+// from prefix sums. O(n).
+
+fn maximum_subarray_sum(nums: Vec[i64], k: i64) -> i64 {
+    let n = nums.len();
+    let mut prefix: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        prefix[i + 1] = prefix[i] + nums[i];
+    }
+    let mut last: Map[i64, i64] = Map.new();
+    let mut from = 0;
+    let mut best = 0;
+    for i in 0..n {
+        if let Some(j) = last.get(nums[i]) {
+            from = from.max(j + 1);
+        }
+        last[nums[i]] = i;
+        if i + 1 - from >= k {
+            best = best.max(prefix[i + 1] - prefix[i + 1 - k]);
+        }
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; then k of 1, k of the whole array, a
+    // repeat only at the ends, every window distinct but one, and the
+    // best window at the very end
+    let cases: Vec[(Vec[i64], i64)] = [
+        ([1, 5, 4, 2, 9, 9, 9].to_vec(), 3),
+        ([4, 4, 4].to_vec(), 3),
+        ([3, 1, 3].to_vec(), 1),
+        ([1, 2, 3, 4].to_vec(), 4),
+        ([7, 1, 2, 7].to_vec(), 4),
+        ([1, 2, 1, 3, 4, 5].to_vec(), 3),
+        ([5, 5, 1, 2, 9, 8].to_vec(), 2),
+    ].to_vec();
+    for (nums, k) in cases.into_iter() {
+        let shown = f"{nums}";
+        println(f"{shown}, k = {k} -> {maximum_subarray_sum(nums, k)}");
+    }
+    // the constraints' largest values: 2000 of them distinct from
+    // 10^5 down, with k = 1000 and k = 2000, and 2000 equal ones
+    let high: Vec[i64] = (0..2000).map(|i| 100000 - i).collect();
+    println(f"2000 distinct from 10^5 down, k = 1000: {maximum_subarray_sum(high, 1000)}");
+    println(f"2000 distinct from 10^5 down, k = 2000: {maximum_subarray_sum(high, 2000)}");
+    let same: Vec[i64] = Vec.filled(2000, 100000);
+    println(f"2000 of 10^5, k = 2: {maximum_subarray_sum(same, 2)}");
+    // 10^5 random values from 1 to 10^5, with k = 5 and k = 40, and 10^5
+    // from 1 to 50, with k = 8
+    let mut seed = 2461;
+    let wide: Vec[i64] = (0..100000).map(|_| 1 + wide_random(mut seed) % 100000).collect();
+    for k in [5, 40].iter() {
+        println(f"10^5 random to 10^5, k = {k}: {maximum_subarray_sum(wide, k)}");
+    }
+    let narrow: Vec[i64] = (0..100000).map(|_| 1 + next_random(mut seed) % 50).collect();
+    println(f"10^5 random to 50, k = 8: {maximum_subarray_sum(narrow, 8)}");
+    // 3000 random arrays of 1 to 12 values from 1 to 6, each with a random
+    // k: a checksum of every answer in order
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 12;
+        let nums: Vec[i64] = (0..n).map(|_| 1 + next_random(mut seed) % 6).collect();
+        let k = 1 + next_random(mut seed) % n;
+        check = (check * 31 + maximum_subarray_sum(nums, k)) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}

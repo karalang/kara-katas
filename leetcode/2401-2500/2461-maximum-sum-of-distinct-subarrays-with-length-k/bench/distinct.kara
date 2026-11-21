@@ -1,0 +1,48 @@
+// LeetCode #2461: Maximum Sum of Distinct Subarrays With Length K -- the
+// bench, the ★ arm: a sliding window of `k` with a `Map` counting each
+// value in it and the window's sum.
+
+fn maximum_subarray_sum(nums: Vec[i64], k: i64) -> i64 {
+    let mut count: Map[i64, i64] = Map.new();
+    let mut sum = 0;
+    let mut best = 0;
+    for i in 0..nums.len() {
+        count[nums[i]] = count.get(nums[i]).unwrap_or(0) + 1;
+        sum += nums[i];
+        if i >= k {
+            let out = nums[i - k];
+            count[out] -= 1;
+            if count[out] == 0 {
+                count.remove(out);
+            }
+            sum -= out;
+        }
+        if i + 1 >= k and count.len() == k {
+            best = best.max(sum);
+        }
+    }
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 10 arrays of 10^5 values from 1 to 2000 built once; then 28
+    // passes, each setting one value of every array from the checksum so
+    // far, then answering every array with k = 5 + 7 p % 40, folding the
+    // answer plus the pass into the checksum
+    let mut seed = 2461;
+    let mut arrays: Vec[Vec[i64]] = (0..10).map(|_| (0..100000).map(|_| 1 + next_random(mut seed) % 2000).collect()).collect();
+    let mut check = 0;
+    for p in 0..28 {
+        let k = 5 + 7 * p % 40;
+        for a in 0..arrays.len() {
+            arrays[a][(check + a) % 100000] = 1 + check % 2000;
+            check = (check * 31 + maximum_subarray_sum(arrays[a], k) + p) % 1000000007;
+        }
+    }
+    println(f"28 passes over 10 arrays of 10^5: checksum {check}");
+}
