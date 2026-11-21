@@ -1,0 +1,135 @@
+// LeetCode #2499: Minimum Total Cost to Make Arrays Unequal -- the ★ arm.
+// Every place where the arrays agree must take part in a swap, and each
+// can be paid for once by its own index: the agreeing places can swap
+// among themselves, through index 0 at no cost, as long as no value
+// holds more than half of them. When one value, the mode, holds more,
+// each place short is made up by the lowest other place whose two values
+// both differ from the mode, at its index. A count per value finds the
+// mode. O(n).
+
+fn minimum_total_cost(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let mut count: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut equal = 0;
+    let mut cost = 0;
+    for i in 0..n {
+        if nums1[i] == nums2[i] {
+            count[nums1[i]] += 1;
+            equal += 1;
+            cost += i;
+        }
+    }
+    let mut mode = 0;
+    for v in 1..n + 1 {
+        if count[v] > count[mode] {
+            mode = v;
+        }
+    }
+    let mut short = 2 * count[mode] - equal;
+    for j in 0..n {
+        if short <= 0 {
+            break;
+        }
+        if nums1[j] != nums2[j] and nums1[j] != mode and nums2[j] != mode {
+            cost += j;
+            short -= 1;
+        }
+    }
+    if short > 0 { -1 } else { cost }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// two arrays of `n` values from 1 to `top`, at most n; each place of the
+// second agrees with the first with chance `agree_in` in 4
+fn random_pair(n: i64, top: i64, agree_in: i64, seed: mut ref i64) -> (Vec[i64], Vec[i64]) {
+    let mut nums1: Vec[i64] = Vec.new();
+    let mut nums2: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        let a = wide(mut seed) % top + 1;
+        nums1.push(a);
+        if next_random(mut seed) % 4 < agree_in {
+            nums2.push(a);
+        } else {
+            nums2.push(wide(mut seed) % top + 1);
+        }
+    }
+    (nums1, nums2)
+}
+
+fn main() {
+    // LeetCode's three examples, then six more
+    let cases: Vec[(Vec[i64], Vec[i64])] = [
+        ([1, 2, 3, 4, 5].to_vec(), [1, 2, 3, 4, 5].to_vec()),
+        ([2, 2, 2, 1, 3].to_vec(), [1, 2, 2, 3, 3].to_vec()),
+        ([1, 2, 2].to_vec(), [1, 2, 2].to_vec()),
+        ([1].to_vec(), [1].to_vec()),
+        ([1].to_vec(), [2].to_vec()),
+        ([1, 1].to_vec(), [2, 2].to_vec()),
+        ([1, 2].to_vec(), [1, 2].to_vec()),
+        ([3, 3, 3, 1, 2].to_vec(), [3, 3, 3, 2, 1].to_vec()),
+        ([1, 1, 1, 2, 3, 4].to_vec(), [1, 1, 5, 2, 4, 3].to_vec()),
+    ].to_vec();
+    for (nums1, nums2) in cases.iter() {
+        println(f"{nums1.len()} places -> {minimum_total_cost(nums1, nums2)}");
+    }
+    // 2000 random pairs of 1 to 40 places for each chance of agreeing,
+    // from none in 4 to all, values to 3 or to n: how many can be made
+    // unequal, and a checksum
+    let mut seed = 2499;
+    for agree_in in 0..5 {
+        let mut able = 0;
+        let mut check = 0;
+        for t in 0..2000 {
+            let n = next_random(mut seed) % 40 + 1;
+            let top = if t % 2 == 0 { n.min(3) } else { n };
+            let (nums1, nums2) = random_pair(n, top, agree_in, mut seed);
+            let cost = minimum_total_cost(nums1, nums2);
+            if cost >= 0 {
+                able += 1;
+            }
+            check = (check * 31 + cost + 1) % 1000000007;
+        }
+        println(f"2000 random, agreeing {agree_in} in 4: {able} can, checksum {check}");
+    }
+    // the constraints' largest, 10^5 places: equal arrays of 1 to n;
+    // values to 2 agreeing on three places in four; one value on a third
+    // of the places, both arrays, and random elsewhere; and the same with
+    // the value on two thirds
+    let n = 100000;
+    let same: Vec[i64] = (1..n + 1).collect();
+    let (two1, two2) = random_pair(n, 2, 3, mut seed);
+    let mut third1: Vec[i64] = Vec.new();
+    let mut third2: Vec[i64] = Vec.new();
+    let mut most1: Vec[i64] = Vec.new();
+    let mut most2: Vec[i64] = Vec.new();
+    for i in 0..n {
+        if i % 3 == 0 {
+            third1.push(7);
+            third2.push(7);
+        } else {
+            third1.push(wide(mut seed) % n + 1);
+            third2.push(wide(mut seed) % n + 1);
+        }
+        if i % 3 != 2 {
+            most1.push(7);
+            most2.push(7);
+        } else {
+            most1.push(wide(mut seed) % n + 1);
+            most2.push(wide(mut seed) % n + 1);
+        }
+    }
+    println(f"10^5 same -> {minimum_total_cost(same, same)}");
+    println(f"10^5 two values -> {minimum_total_cost(two1, two2)}");
+    println(f"10^5 a third of 7s -> {minimum_total_cost(third1, third2)}");
+    println(f"10^5 two thirds of 7s -> {minimum_total_cost(most1, most2)}");
+}

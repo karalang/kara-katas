@@ -1,0 +1,378 @@
+// LeetCode #2499: Minimum Total Cost to Make Arrays Unequal -- the
+// differential. The six arms against the statement read literally: every
+// order of nums1 that swaps can reach is a state, each swap of places i
+// and j an edge of cost i + j, and a least-cost search from the given
+// order, a `PriorityQueue` of states by cost so far, stops at the first
+// order that differs from nums2 everywhere; -1 if none is reached. 300
+// random pairs of 1 to 6 places, values to 3 or to n, agreeing with a
+// chance from none in 4 to all; then 20 of one place, and 40 of 6 places
+// with values to 3 agreeing three times in four; every one drawn before
+// any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  -1, or at least the sum of the agreeing places' indices and at most
+//     the sum of all of them
+// P3  the two arrays exchanged: the same answer
+// P4  every value v written n + 1 - v in both: the same answer
+// P5  nums2 made a copy of nums1: -1 when one value fills more than half
+//     the places, else the sum of all the indices
+// P6  each arm agrees with at least three of the other five
+
+// ---- star (unequal.kara) -------------------------------------------------
+
+fn star_minimum_total_cost(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let mut count: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut equal = 0;
+    let mut cost = 0;
+    for i in 0..n {
+        if nums1[i] == nums2[i] {
+            count[nums1[i]] += 1;
+            equal += 1;
+            cost += i;
+        }
+    }
+    let mut mode = 0;
+    for v in 1..n + 1 {
+        if count[v] > count[mode] {
+            mode = v;
+        }
+    }
+    let mut short = 2 * count[mode] - equal;
+    for j in 0..n {
+        if short <= 0 {
+            break;
+        }
+        if nums1[j] != nums2[j] and nums1[j] != mode and nums2[j] != mode {
+            cost += j;
+            short -= 1;
+        }
+    }
+    if short > 0 { -1 } else { cost }
+}
+
+// ---- map (unequal_map.kara) ----------------------------------------------
+
+fn map_minimum_total_cost(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let mut count: Map[i64, i64] = Map.new();
+    let mut in_play = 0;
+    let mut cost = 0;
+    for i in 0..n {
+        if nums1[i] == nums2[i] {
+            *count.entry(nums1[i]).or_insert(0) += 1;
+            in_play += 1;
+            cost += i;
+        }
+    }
+    let mut mode = 0;
+    let mut most = 0;
+    for (value, times) in count.iter() {
+        if times > most {
+            mode = value;
+            most = times;
+        }
+    }
+    let mut j = 0;
+    while 2 * most > in_play and j < n {
+        if nums1[j] != nums2[j] and nums1[j] != mode and nums2[j] != mode {
+            cost += j;
+            in_play += 1;
+        }
+        j += 1;
+    }
+    if 2 * most > in_play { -1 } else { cost }
+}
+
+// ---- sort (unequal_sort.kara) --------------------------------------------
+
+fn sort_minimum_total_cost(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let mut agreeing: Vec[i64] = Vec.new();
+    let mut cost = 0;
+    for i in 0..n {
+        if nums1[i] == nums2[i] {
+            agreeing.push(nums1[i]);
+            cost += i;
+        }
+    }
+    agreeing.sort();
+    let mut mode = 0;
+    let mut longest = 0;
+    let mut start = 0;
+    while start < agreeing.len() {
+        let mut end = start;
+        while end < agreeing.len() and agreeing[end] == agreeing[start] {
+            end += 1;
+        }
+        if end - start > longest {
+            longest = end - start;
+            mode = agreeing[start];
+        }
+        start = end;
+    }
+    let mut short = 2 * longest - agreeing.len();
+    let mut j = 0;
+    while short > 0 and j < n {
+        if nums1[j] != nums2[j] and nums1[j] != mode and nums2[j] != mode {
+            cost += j;
+            short -= 1;
+        }
+        j += 1;
+    }
+    if short > 0 { -1 } else { cost }
+}
+
+// ---- rec (unequal_rec.kara) ----------------------------------------------
+
+fn rec_make_up(nums1: Vec[i64], nums2: Vec[i64], mode: i64, j: i64, short: i64) -> i64 {
+    if short <= 0 {
+        return 0;
+    }
+    if j == nums1.len() {
+        return -1;
+    }
+    let helps = nums1[j] != nums2[j] and nums1[j] != mode and nums2[j] != mode;
+    let rest = rec_make_up(nums1, nums2, mode, j + 1, if helps { short - 1 } else { short });
+    if rest < 0 {
+        -1
+    } else if helps {
+        rest + j
+    } else {
+        rest
+    }
+}
+
+fn rec_minimum_total_cost(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let mut count: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut equal = 0;
+    let mut cost = 0;
+    let mut mode = 0;
+    for i in 0..n {
+        if nums1[i] == nums2[i] {
+            count[nums1[i]] += 1;
+            equal += 1;
+            cost += i;
+            if count[nums1[i]] > count[mode] {
+                mode = nums1[i];
+            }
+        }
+    }
+    let more = rec_make_up(nums1, nums2, mode, 0, 2 * count[mode] - equal);
+    if more < 0 { -1 } else { cost + more }
+}
+
+// ---- iter (unequal_iter.kara) --------------------------------------------
+
+fn iter_minimum_total_cost(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let agreeing: Vec[i64] = (0..n).filter(|i| nums1[i] == nums2[i]).collect();
+    let mut count: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in agreeing.iter() {
+        count[nums1[i]] += 1;
+    }
+    let mode = (1..n + 1).fold(0, |best, v| if count[v] > count[best] { v } else { best });
+    let short = (2 * count[mode] - agreeing.len()).max(0);
+    let helping: Vec[i64] = (0..n)
+        .filter(|j| nums1[j] != nums2[j] and nums1[j] != mode and nums2[j] != mode)
+        .take(short)
+        .collect();
+    if helping.len() < short {
+        return -1;
+    }
+    agreeing.iter().sum() + helping.iter().sum()
+}
+
+// ---- solution (unequal_solution.kara) ------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_total_cost(nums1: Vec[i32], nums2: Vec[i32]) -> i64 {
+        let n = nums1.len();
+        let mut cnt = Vec.filled(n + 1, 0usize);
+        let mut (ans, swaps, mode, mode_cnt) = (0, 0usize, 0usize, 0usize);
+        for i in 0..n {
+            if nums1[i] == nums2[i] {
+                let x = nums1[i] as usize;
+                ans += i;
+                swaps += 1;
+                cnt[x] += 1;
+                if cnt[x] > mode_cnt {
+                    mode_cnt = cnt[x];
+                    mode = x;
+                }
+            }
+        }
+        for i in 0..n {
+            if mode_cnt * 2 <= swaps {
+                break;
+            }
+            let (a, b) = (nums1[i] as usize, nums2[i] as usize);
+            if a != b and a != mode and b != mode {
+                ans += i;
+                swaps += 1;
+            }
+        }
+        if mode_cnt * 2 > swaps { -1 } else { ans }
+    }
+}
+
+fn solution_minimum_total_cost(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    Solution.minimum_total_cost(nums1.iter().map(|v| v as i32).collect(), nums2.iter().map(|v| v as i32).collect())
+}
+
+// ---- the statement read literally
+
+// an order of values from 1 to 6 as one number, base 7
+fn code_of(values: Vec[i64]) -> i64 {
+    let mut code = 0;
+    for v in values.iter() {
+        code = code * 7 + v;
+    }
+    code
+}
+
+fn literal(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let mut best: Map[i64, i64] = Map.new();
+    let mut queue: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    best.insert(code_of(nums1), 0);
+    queue.push((0, code_of(nums1)));
+    while let Some((cost, code)) = queue.pop() {
+        if best[code] < cost {
+            continue;
+        }
+        let mut order: Vec[i64] = Vec.filled(n, 0);
+        let mut rest = code;
+        for i in (0..n).rev() {
+            order[i] = rest % 7;
+            rest /= 7;
+        }
+        if (0..n).all(|i| order[i] != nums2[i]) {
+            return cost;
+        }
+        for i in 0..n {
+            for j in i + 1..n {
+                order.swap(i, j);
+                let next = code_of(order);
+                order.swap(i, j);
+                let through = cost + i + j;
+                let known = match best.get(next) {
+                    Some(c) => c,
+                    None => -1,
+                };
+                if known == -1 or through < known {
+                    best.insert(next, through);
+                    queue.push((through, next));
+                }
+            }
+        }
+    }
+    -1
+}
+
+// ---- cases
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn answer(arm: i64, nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_minimum_total_cost(nums1, nums2),
+        1 => map_minimum_total_cost(nums1, nums2),
+        2 => sort_minimum_total_cost(nums1, nums2),
+        3 => rec_minimum_total_cost(nums1, nums2),
+        4 => iter_minimum_total_cost(nums1, nums2),
+        _ => solution_minimum_total_cost(nums1, nums2),
+    }
+}
+
+fn main() {
+    let names = ["star", "map", "sort", "rec", "iter", "solution"];
+    let mut seed = 2499;
+    let mut problems: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    for t in 0..360 {
+        let (n, top, agree_in) = if t < 300 {
+            let n = next_random(mut seed) % 6 + 1;
+            (n, if t % 2 == 0 { n.min(3) } else { n }, next_random(mut seed) % 5)
+        } else if t < 320 {
+            (1, 1, next_random(mut seed) % 5)
+        } else {
+            (6, 3, 3)
+        };
+        let mut nums1: Vec[i64] = Vec.new();
+        let mut nums2: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            let a = next_random(mut seed) % top + 1;
+            nums1.push(a);
+            if next_random(mut seed) % 4 < agree_in {
+                nums2.push(a);
+            } else {
+                nums2.push(next_random(mut seed) % top + 1);
+            }
+        }
+        problems.push((nums1, nums2));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut able = 0;
+    for (nums1, nums2) in problems.iter() {
+        let n = nums1.len();
+        let truth = literal(nums1, nums2);
+        check = (check * 31 + truth + 1) % 1000000007;
+        if truth >= 0 {
+            able += 1;
+        }
+        let floor: i64 = (0..n).filter(|i| nums1[i] == nums2[i]).sum();
+        let ceiling = n * (n - 1) / 2;
+        let flipped1: Vec[i64] = nums1.iter().map(|v| n + 1 - v).collect();
+        let flipped2: Vec[i64] = nums2.iter().map(|v| n + 1 - v).collect();
+        let fullest = (1..n + 1).map(|v| nums1.iter().filter(|x| x == v).count()).max().unwrap();
+        let copied = if 2 * fullest > n { -1 } else { ceiling };
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums1, nums2)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                x == -1 or (x >= floor and x <= ceiling),
+                answer(arm, nums2, nums1) == x,
+                answer(arm, flipped1, flipped2) == x,
+                answer(arm, nums1, nums1) == copied,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{n} places, arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} cases, {able} can: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

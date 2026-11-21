@@ -1,0 +1,75 @@
+// LeetCode #2499: Minimum Total Cost to Make Arrays Unequal -- benchmark
+// of the ★ arm (unequal.kara): 20 pairs of arrays of 10^5 values to 4,
+// built once, then 33 passes; each sets one place of every nums2 from
+// the checksum so far, asks, and puts it back, folding the answer plus
+// the pass into the checksum.
+
+fn minimum_total_cost(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let mut count: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut equal = 0;
+    let mut cost = 0;
+    for i in 0..n {
+        if nums1[i] == nums2[i] {
+            count[nums1[i]] += 1;
+            equal += 1;
+            cost += i;
+        }
+    }
+    let mut mode = 0;
+    for v in 1..n + 1 {
+        if count[v] > count[mode] {
+            mode = v;
+        }
+    }
+    let mut short = 2 * count[mode] - equal;
+    for j in 0..n {
+        if short <= 0 {
+            break;
+        }
+        if nums1[j] != nums2[j] and nums1[j] != mode and nums2[j] != mode {
+            cost += j;
+            short -= 1;
+        }
+    }
+    if short > 0 { -1 } else { cost }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let n = 100000;
+    let passes = 33;
+    let mut seed = 2499;
+    let mut firsts: Vec[Vec[i64]] = Vec.new();
+    let mut seconds: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..20 {
+        let mut nums1: Vec[i64] = Vec.new();
+        let mut nums2: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            let a = next_random(mut seed) % 4 + 1;
+            nums1.push(a);
+            if next_random(mut seed) % 2 == 0 {
+                nums2.push(a);
+            } else {
+                nums2.push(next_random(mut seed) % 4 + 1);
+            }
+        }
+        firsts.push(nums1);
+        seconds.push(nums2);
+    }
+    let mut check = 0;
+    for p in 0..passes {
+        for q in 0..20 {
+            let at = check % n;
+            let was = seconds[q][at];
+            seconds[q][at] = if (check / n + p) % 2 == 0 { firsts[q][at] } else { check % 4 + 1 };
+            check = (check * 31 + minimum_total_cost(firsts[q], seconds[q]) + 1 + p) % 1000000007;
+            seconds[q][at] = was;
+        }
+    }
+    println(f"{passes} passes over 20 pairs of 10^5: checksum {check}");
+}
