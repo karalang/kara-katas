@@ -1,0 +1,400 @@
+// LeetCode #2463: Minimum Total Distance Traveled -- the differential.
+// The six arms against the statement read literally: every way to send
+// each robot, in the order given, to a factory that still has room, tried
+// by a recursion with nothing sorted or remembered, and the least total
+// distance kept. 360 cases: 300 random of 1 to 6 robots and 1 to 4
+// factories over the 21 places from -10 to 10, limits up to 3; then 30
+// of up to 6 robots and 3 factories over the whole line from -10^9 to
+// 10^9; then 30 of up to 6 robots whose factories have exactly room for
+// them. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  every position negated: the same answer
+// P3  a robot added on a factory no robot stands on, its limit raised by one: the same answer
+// P4  every limit raised by one: an answer no larger
+// P5  every limit the number of robots: each robot's distance to its nearest factory, added
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn send(i: i64, robot: Vec[i64], factory: Vec[Vec[i64]], room: mut ref Vec[i64]) -> i64 {
+    if i == robot.len() {
+        return 0;
+    }
+    let mut best = -1;
+    for j in 0..factory.len() {
+        if room[j] > 0 {
+            room[j] -= 1;
+            let rest = send(i + 1, robot, factory, mut room);
+            room[j] += 1;
+            if rest >= 0 {
+                let total = (robot[i] - factory[j][0]).abs() + rest;
+                if best < 0 or total < best {
+                    best = total;
+                }
+            }
+        }
+    }
+    best
+}
+
+fn distance_literally(robot: Vec[i64], factory: Vec[Vec[i64]]) -> i64 {
+    let mut room: Vec[i64] = factory.iter().map(|f| f[1]).collect();
+    send(0, robot, factory, mut room)
+}
+
+// ---- star (distance.kara) ------------------------------------------------
+
+const NONE: i64 = 9000000000000000000;
+
+fn star_minimum_total_distance(robot: Vec[i64], factory: Vec[Vec[i64]]) -> i64 {
+    let mut robots = robot.clone();
+    robots.sort();
+    let mut factories = factory.clone();
+    factories.sort();
+    let n = robots.len();
+    let m = factories.len();
+    let mut best: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.filled(m + 1, NONE));
+    for j in 0..m + 1 {
+        best[n][j] = 0;
+    }
+    for j in (0..m).rev() {
+        let (at, limit) = (factories[j][0], factories[j][1]);
+        for i in (0..n).rev() {
+            let mut least = best[i][j + 1];
+            let mut run = 0;
+            for t in 1..limit.min(n - i) + 1 {
+                run += (robots[i + t - 1] - at).abs();
+                if best[i + t][j + 1] < NONE {
+                    least = least.min(run + best[i + t][j + 1]);
+                }
+            }
+            best[i][j] = least;
+        }
+    }
+    best[0][0]
+}
+
+// ---- memo (distance_memo.kara) -------------------------------------------
+
+fn memo_least(i: i64, j: i64, room: i64, robots: Vec[i64], factories: Vec[Vec[i64]], memo: mut ref Map[(i64, i64, i64), i64]) -> i64 {
+    if i == robots.len() {
+        return 0;
+    }
+    if j == factories.len() {
+        return NONE;
+    }
+    if let Some(v) = memo.get((i, j, room)) {
+        return v;
+    }
+    let mut answer = if j + 1 < factories.len() {
+        memo_least(i, j + 1, factories[j + 1][1], robots, factories, mut memo)
+    } else {
+        NONE
+    };
+    if room > 0 {
+        let rest = memo_least(i + 1, j, room - 1, robots, factories, mut memo);
+        if rest < NONE {
+            answer = answer.min((robots[i] - factories[j][0]).abs() + rest);
+        }
+    }
+    memo[(i, j, room)] = answer;
+    answer
+}
+
+fn memo_minimum_total_distance(robot: Vec[i64], factory: Vec[Vec[i64]]) -> i64 {
+    let mut robots = robot.clone();
+    robots.sort();
+    let mut factories = factory.clone();
+    factories.sort();
+    let mut memo: Map[(i64, i64, i64), i64] = Map.new();
+    memo_least(0, 0, factories[0][1], robots, factories, mut memo)
+}
+
+// ---- slots (distance_slots.kara) -----------------------------------------
+
+fn slots_minimum_total_distance(robot: Vec[i64], factory: Vec[Vec[i64]]) -> i64 {
+    let mut robots = robot.clone();
+    robots.sort();
+    let mut factories = factory.clone();
+    factories.sort();
+    let mut slots: Vec[i64] = Vec.new();
+    for f in factories.iter() {
+        for _ in 0..f[1] {
+            slots.push(f[0]);
+        }
+    }
+    let s = slots.len();
+    let n = robots.len();
+    let mut after: Vec[i64] = Vec.filled(s + 1, 0);
+    for i in (0..n).rev() {
+        let mut here: Vec[i64] = Vec.filled(s + 1, NONE);
+        for k in (0..s).rev() {
+            here[k] = here[k + 1];
+            if after[k + 1] < NONE {
+                here[k] = here[k].min((robots[i] - slots[k]).abs() + after[k + 1]);
+            }
+        }
+        after = here;
+    }
+    after[0]
+}
+
+// ---- flow (distance_flow.kara) -------------------------------------------
+
+struct Edge {
+    to: i64,
+    room: i64,
+    cost: i64,
+}
+
+fn flow_add_edge(edges: mut ref Vec[Edge], out: mut ref Vec[Vec[i64]], a: i64, b: i64, room: i64, cost: i64) {
+    out[a].push(edges.len());
+    edges.push(Edge { to: b, room: room, cost: cost });
+    out[b].push(edges.len());
+    edges.push(Edge { to: a, room: 0, cost: -cost });
+}
+
+fn flow_minimum_total_distance(robot: Vec[i64], factory: Vec[Vec[i64]]) -> i64 {
+    let n = robot.len();
+    let m = factory.len();
+    let source = n + m;
+    let sink = n + m + 1;
+    let mut edges: Vec[Edge] = Vec.new();
+    let mut out: Vec[Vec[i64]] = Vec.filled(n + m + 2, Vec.new());
+    for i in 0..n {
+        flow_add_edge(mut edges, mut out, source, i, 1, 0);
+        for j in 0..m {
+            flow_add_edge(mut edges, mut out, i, n + j, 1, (robot[i] - factory[j][0]).abs());
+        }
+    }
+    for j in 0..m {
+        flow_add_edge(mut edges, mut out, n + j, sink, factory[j][1], 0);
+    }
+    let mut total = 0;
+    for _ in 0..n {
+        let mut dist: Vec[i64] = Vec.filled(n + m + 2, NONE);
+        let mut via: Vec[i64] = Vec.filled(n + m + 2, -1);
+        dist[source] = 0;
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for a in 0..n + m + 2 {
+                if dist[a] == NONE {
+                    continue;
+                }
+                for e in out[a].iter() {
+                    let edge = ref edges[e];
+                    if edge.room > 0 and dist[a] + edge.cost < dist[edge.to] {
+                        dist[edge.to] = dist[a] + edge.cost;
+                        via[edge.to] = e;
+                        changed = true;
+                    }
+                }
+            }
+        }
+        total += dist[sink];
+        let mut at = sink;
+        while at != source {
+            let e = via[at];
+            edges[e].room -= 1;
+            edges[e ^ 1].room += 1;
+            at = edges[e ^ 1].to;
+        }
+    }
+    total
+}
+
+// ---- iter (distance_iter.kara) -------------------------------------------
+
+fn iter_minimum_total_distance(robot: Vec[i64], factory: Vec[Vec[i64]]) -> i64 {
+    let mut robots = robot.clone();
+    robots.sort();
+    let mut factories = factory.clone();
+    factories.sort();
+    let slots: Vec[i64] = factories.iter().flat_map(|f| repeat(f[0]).take(f[1])).collect();
+    let s = slots.len();
+    let start: Vec[i64] = Vec.filled(s + 1, 0);
+    let last = robots.iter().rev().fold(start, |after, r| {
+        let mut row: Vec[i64] = (0..s).rev().scan(NONE, |right, k| {
+            let placed = if after[k + 1] < NONE { (r - slots[k]).abs() + after[k + 1] } else { NONE };
+            let here = right.min(placed);
+            Some((here, here))
+        }).collect();
+        row.reverse();
+        row.push(NONE);
+        row
+    });
+    last[0]
+}
+
+// ---- solution (distance_solution.kara) -----------------------------------
+
+impl Solution {
+    pub fn minimum_total_distance(robot: own Vec[i32], factory: own Vec[Vec[i32]]) -> i64 {
+        let mut robot = robot;
+        let mut factory = factory;
+        robot.sort();
+        factory.sort_by_key(|f| f[0]);
+        let (n, m) = (robot.len(), factory.len());
+        let mut dp = Vec.filled(n + 1, Vec.filled(m + 1, i64.MAX));
+        for j in 0..=m {
+            dp[n][j] = 0;
+        }
+        for j in (0..m).rev() {
+            let (pos, limit) = (factory[j][0] as i64, factory[j][1] as i64);
+            for i in (0..n).rev() {
+                let mut best = dp[i][j + 1];
+                let mut sum: i64 = 0;
+                for t in 1..=limit.min(n - i) {
+                    sum += (robot[i + t - 1] - pos).abs();
+                    if dp[i + t][j + 1] != i64.MAX {
+                        best = best.min(sum + dp[i + t][j + 1]);
+                    }
+                }
+                dp[i][j] = best;
+            }
+        }
+        dp[0][0]
+    }
+}
+
+struct Solution {}
+
+fn solution_minimum_total_distance(robot: Vec[i64], factory: Vec[Vec[i64]]) -> i64 {
+    let robots: Vec[i32] = robot.iter().map(|v| v as i32).collect();
+    let factories: Vec[Vec[i32]] = factory.iter().map(|f| f.iter().map(|v| v as i32).collect()).collect();
+    Solution.minimum_total_distance(robots, factories)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn answer(arm: i64, robot: Vec[i64], factory: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_minimum_total_distance(robot, factory),
+        1 => memo_minimum_total_distance(robot, factory),
+        2 => slots_minimum_total_distance(robot, factory),
+        3 => flow_minimum_total_distance(robot, factory),
+        4 => iter_minimum_total_distance(robot, factory),
+        _ => solution_minimum_total_distance(robot, factory),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+// `n` distinct robots and `m` distinct factories from `-top` to `top`,
+// limits up to `cap`, then raised in turn until they hold every robot
+fn random_case(n: i64, m: i64, top: i64, cap: i64, seed: mut ref i64) -> (Vec[i64], Vec[Vec[i64]]) {
+    let mut taken: Set[i64] = Set.new();
+    let mut robot: Vec[i64] = Vec.new();
+    while robot.len() < n {
+        let p = wide_random(mut seed) % (2 * top + 1) - top;
+        if taken.insert(p) {
+            robot.push(p);
+        }
+    }
+    let mut places: Set[i64] = Set.new();
+    let mut factory: Vec[Vec[i64]] = Vec.new();
+    while factory.len() < m {
+        let p = wide_random(mut seed) % (2 * top + 1) - top;
+        if places.insert(p) {
+            factory.push([p, next_random(mut seed) % (cap + 1)].to_vec());
+        }
+    }
+    let mut room: i64 = factory.iter().map(|f| f[1]).sum();
+    let mut j = 0;
+    while room < n {
+        factory[j % m][1] += 1;
+        room += 1;
+        j += 1;
+    }
+    (robot, factory)
+}
+
+fn main() {
+    let arms = ["star", "memo", "slots", "flow", "iter", "solution"];
+    let mut seed = 2463;
+    let mut cases: Vec[(Vec[i64], Vec[Vec[i64]])] = Vec.new();
+    for t in 0..360 {
+        if t < 300 {
+            let n = 1 + next_random(mut seed) % 6;
+            let m = 1 + next_random(mut seed) % 4;
+            cases.push(random_case(n, m, 10, 3, mut seed));
+        } else if t < 330 {
+            let n = 1 + next_random(mut seed) % 6;
+            let m = 1 + next_random(mut seed) % 3;
+            cases.push(random_case(n, m, 1000000000, 3, mut seed));
+        } else {
+            let n = 1 + next_random(mut seed) % 6;
+            let m = 1 + next_random(mut seed) % 3;
+            cases.push(random_case(n, m, 10, 0, mut seed));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (robot, factory) = cases[c].clone();
+        let truth = distance_literally(robot, factory);
+        check = (check * 31 + truth % 1000000007) % 1000000007;
+        let negated: (Vec[i64], Vec[Vec[i64]]) = (robot.iter().map(|p| -p).collect(), factory.iter().map(|f| [-f[0], f[1]].to_vec()).collect());
+        let free = (0..factory.len()).find(|j| not robot.contains(factory[j][0]));
+        let mut joined = robot.clone();
+        let mut widened = factory.clone();
+        if let Some(j) = free {
+            joined.push(factory[j][0]);
+            widened[j][1] += 1;
+        }
+        let roomier: Vec[Vec[i64]] = factory.iter().map(|f| [f[0], f[1] + 1].to_vec()).collect();
+        let open: Vec[Vec[i64]] = factory.iter().map(|f| [f[0], robot.len()].to_vec()).collect();
+        let nearest: i64 = robot.iter().map(|p| factory.iter().map(|f| (p - f[0]).abs()).min().unwrap()).sum();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, robot, factory)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, negated.0, negated.1) == value,
+                free.is_none() or answer(arm, joined, widened) == value,
+                answer(arm, robot, roomier) <= value,
+                answer(arm, robot, open) == nearest,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,151 @@
+// LeetCode #2463: Minimum Total Distance Traveled -- a minimum-cost flow:
+// a source to every robot, every robot to every factory at the distance
+// between them, every factory to a sink with its limit, and one robot's
+// worth of flow pushed at a time along the cheapest path left, found by
+// Bellman-Ford over the residual edges, whose backward edges cost the
+// negated distance. No sorting is needed. O(n^2 m (n + m)).
+
+const NONE: i64 = 9000000000000000000;
+
+struct Edge {
+    to: i64,
+    room: i64,
+    cost: i64,
+}
+
+fn add_edge(edges: mut ref Vec[Edge], out: mut ref Vec[Vec[i64]], a: i64, b: i64, room: i64, cost: i64) {
+    out[a].push(edges.len());
+    edges.push(Edge { to: b, room: room, cost: cost });
+    out[b].push(edges.len());
+    edges.push(Edge { to: a, room: 0, cost: -cost });
+}
+
+fn minimum_total_distance(robot: Vec[i64], factory: Vec[Vec[i64]]) -> i64 {
+    let n = robot.len();
+    let m = factory.len();
+    let source = n + m;
+    let sink = n + m + 1;
+    let mut edges: Vec[Edge] = Vec.new();
+    let mut out: Vec[Vec[i64]] = Vec.filled(n + m + 2, Vec.new());
+    for i in 0..n {
+        add_edge(mut edges, mut out, source, i, 1, 0);
+        for j in 0..m {
+            add_edge(mut edges, mut out, i, n + j, 1, (robot[i] - factory[j][0]).abs());
+        }
+    }
+    for j in 0..m {
+        add_edge(mut edges, mut out, n + j, sink, factory[j][1], 0);
+    }
+    let mut total = 0;
+    for _ in 0..n {
+        let mut dist: Vec[i64] = Vec.filled(n + m + 2, NONE);
+        let mut via: Vec[i64] = Vec.filled(n + m + 2, -1);
+        dist[source] = 0;
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for a in 0..n + m + 2 {
+                if dist[a] == NONE {
+                    continue;
+                }
+                for e in out[a].iter() {
+                    let edge = ref edges[e];
+                    if edge.room > 0 and dist[a] + edge.cost < dist[edge.to] {
+                        dist[edge.to] = dist[a] + edge.cost;
+                        via[edge.to] = e;
+                        changed = true;
+                    }
+                }
+            }
+        }
+        total += dist[sink];
+        let mut at = sink;
+        while at != source {
+            let e = via[at];
+            edges[e].room -= 1;
+            edges[e ^ 1].room += 1;
+            at = edges[e ^ 1].to;
+        }
+    }
+    total
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+// `n` distinct robots and `m` distinct factories, positions from `-top`
+// to `top`, the limits random up to `cap` and then raised in turn until
+// they hold every robot
+fn random_case(n: i64, m: i64, top: i64, cap: i64, seed: mut ref i64) -> (Vec[i64], Vec[Vec[i64]]) {
+    let mut taken: Set[i64] = Set.new();
+    let mut robot: Vec[i64] = Vec.new();
+    while robot.len() < n {
+        let p = wide_random(mut seed) % (2 * top + 1) - top;
+        if taken.insert(p) {
+            robot.push(p);
+        }
+    }
+    let mut places: Set[i64] = Set.new();
+    let mut factory: Vec[Vec[i64]] = Vec.new();
+    while factory.len() < m {
+        let p = wide_random(mut seed) % (2 * top + 1) - top;
+        if places.insert(p) {
+            factory.push([p, next_random(mut seed) % (cap + 1)].to_vec());
+        }
+    }
+    let mut room: i64 = factory.iter().map(|f| f[1]).sum();
+    let mut j = 0;
+    while room < n {
+        factory[j % m][1] += 1;
+        room += 1;
+        j += 1;
+    }
+    (robot, factory)
+}
+
+fn main() {
+    // LeetCode's two examples; then one robot on a factory; a factory
+    // with no room; robots that must cross to the far factory; and the
+    // constraints' widest line, robots and factories at both ends
+    let cases: Vec[(Vec[i64], Vec[Vec[i64]])] = [
+        ([0, 4, 6].to_vec(), [[2, 2].to_vec(), [6, 2].to_vec()].to_vec()),
+        ([1, -1].to_vec(), [[-2, 1].to_vec(), [2, 1].to_vec()].to_vec()),
+        ([5].to_vec(), [[5, 1].to_vec()].to_vec()),
+        ([0, 1].to_vec(), [[0, 0].to_vec(), [10, 2].to_vec()].to_vec()),
+        ([1, 2, 3].to_vec(), [[2, 1].to_vec(), [100, 2].to_vec()].to_vec()),
+        ([-1000000000, 1000000000].to_vec(), [[1000000000, 1].to_vec(), [-1000000000, 1].to_vec()].to_vec()),
+    ].to_vec();
+    for (robot, factory) in cases.into_iter() {
+        let shown = f"{robot} {factory}";
+        println(f"{shown} -> {minimum_total_distance(robot, factory)}");
+    }
+    // the constraints' largest: 100 robots and 100 factories over the
+    // whole line, limits up to 3; 100 robots and 3 factories of tight
+    // room; 100 robots packed in 200 places with 100 factories
+    let mut seed = 2463;
+    let (r1, f1) = random_case(100, 100, 1000000000, 3, mut seed);
+    println(f"100 robots, 100 factories over 2 10^9: {minimum_total_distance(r1, f1)}");
+    let (r2, f2) = random_case(100, 3, 1000000000, 0, mut seed);
+    println(f"100 robots, 3 factories: {minimum_total_distance(r2, f2)}");
+    let (r3, f3) = random_case(100, 100, 100, 2, mut seed);
+    println(f"100 robots, 100 factories over 201 places: {minimum_total_distance(r3, f3)}");
+    // 1000 random cases of 1 to 6 robots and 1 to 4 factories over 21
+    // places, limits up to 3: a checksum of every answer in order
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n = 1 + next_random(mut seed) % 6;
+        let m = 1 + next_random(mut seed) % 4;
+        let (robot, factory) = random_case(n, m, 10, 3, mut seed);
+        check = (check * 31 + minimum_total_distance(robot, factory)) % 1000000007;
+    }
+    println(f"1000 random: checksum {check}");
+}
