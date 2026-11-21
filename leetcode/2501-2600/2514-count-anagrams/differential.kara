@@ -1,0 +1,360 @@
+// LeetCode #2514: Count Anagrams -- the differential. The six arms
+// against the statement read literally: each word's distinct
+// rearrangements counted one by one, a letter chosen for the first place
+// from those left, skipping one already tried there, and the rest
+// arranged in turn; the counts multiplied word by word. No factorial is
+// taken. 300 random sentences of 1 to 4 words of 1 to 6 letters, from 3
+// letters or from 26; then 20 of one word of 1 to 8 letters from 2, and
+// 40 of 10 words of 1 to 4 letters from 2; every one drawn before any
+// arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the words in the reverse order: the same answer
+// P3  every letter written as its mirror in the alphabet, a as z and z
+//     as a: the same answer
+// P4  the sentence, a space and the sentence again: the answer squared
+// P5  one more word, "ab": twice the answer
+// P6  each arm agrees with at least three of the other five
+
+const MOD: i64 = 1000000007;
+
+// ---- the statement read literally
+
+fn arrangements(rest: Vec[u8]) -> i64 {
+    if rest.len() == 0 {
+        return 1;
+    }
+    let mut total = 0;
+    for i in 0..rest.len() {
+        let mut tried = false;
+        for j in 0..i {
+            if rest[j] == rest[i] {
+                tried = true;
+            }
+        }
+        if not tried {
+            let mut left = rest.clone();
+            left.remove(i);
+            total += arrangements(left);
+        }
+    }
+    total
+}
+
+fn literal(s: String) -> i64 {
+    let mut product = 1;
+    for word in s.split(" ") {
+        product = product * arrangements(word.bytes().to_vec()) % MOD;
+    }
+    product
+}
+
+// ---- star (anagrams.kara) ------------------------------------------------
+
+fn star_power(base: i64, exponent: i64) -> i64 {
+    let mut (result, b, e) = (1, base % MOD, exponent);
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % MOD;
+        }
+        b = b * b % MOD;
+        e /= 2;
+    }
+    result
+}
+
+fn star_count_anagrams(s: String) -> i64 {
+    let mut factorial: Vec[i64] = Vec.filled(s.len() + 1, 1);
+    for i in 1..s.len() + 1 {
+        factorial[i] = factorial[i - 1] * i % MOD;
+    }
+    let mut answer = 1;
+    for word in s.split(" ") {
+        let mut counts: Vec[i64] = Vec.filled(26, 0);
+        for b in word.bytes().iter() {
+            counts[b - b'a'] += 1;
+        }
+        answer = answer * factorial[word.len()] % MOD;
+        for c in counts.iter() {
+            answer = answer * star_power(factorial[c], MOD - 2) % MOD;
+        }
+    }
+    answer
+}
+
+// ---- inverse (anagrams_inverse.kara) -------------------------------------
+
+fn inverse_power(base: i64, exponent: i64) -> i64 {
+    let mut (result, b, e) = (1, base % MOD, exponent);
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % MOD;
+        }
+        b = b * b % MOD;
+        e /= 2;
+    }
+    result
+}
+
+fn inverse_count_anagrams(s: String) -> i64 {
+    let n = s.len();
+    let mut factorial: Vec[i64] = Vec.filled(n + 1, 1);
+    for i in 1..n + 1 {
+        factorial[i] = factorial[i - 1] * i % MOD;
+    }
+    let mut inverse: Vec[i64] = Vec.filled(n + 1, 1);
+    inverse[n] = inverse_power(factorial[n], MOD - 2);
+    for i in (1..n + 1).rev() {
+        inverse[i - 1] = inverse[i] * i % MOD;
+    }
+    let mut answer = 1;
+    for word in s.split(" ") {
+        let mut counts: Vec[i64] = Vec.filled(26, 0);
+        for b in word.bytes().iter() {
+            counts[b - b'a'] += 1;
+        }
+        answer = answer * factorial[word.len()] % MOD;
+        for c in counts.iter() {
+            answer = answer * inverse[c] % MOD;
+        }
+    }
+    answer
+}
+
+// ---- running (anagrams_running.kara) -------------------------------------
+
+fn running_count_anagrams(s: String) -> i64 {
+    let n = s.len();
+    let mut inv: Vec[i64] = Vec.filled(n + 2, 1);
+    for i in 2..n + 2 {
+        inv[i] = (MOD - MOD / i) * inv[MOD % i] % MOD;
+    }
+    let mut answer = 1;
+    let mut counts: Vec[i64] = Vec.filled(26, 0);
+    let mut k = 0;
+    for b in s.bytes().iter() {
+        if b == b' ' {
+            counts = Vec.filled(26, 0);
+            k = 0;
+        } else {
+            k += 1;
+            counts[b - b'a'] += 1;
+            answer = answer * k % MOD * inv[counts[b - b'a']] % MOD;
+        }
+    }
+    answer
+}
+
+// ---- rec (anagrams_rec.kara) ---------------------------------------------
+
+fn rec_power(base: i64, exponent: i64) -> i64 {
+    if exponent == 0 {
+        1
+    } else {
+        let half = rec_power(base, exponent / 2);
+        let square = half * half % MOD;
+        if exponent % 2 == 1 { square * base % MOD } else { square }
+    }
+}
+
+fn rec_count_from(words: Vec[Str], i: i64, factorial: Vec[i64]) -> i64 {
+    if i == words.len() {
+        return 1;
+    }
+    let mut counts: Vec[i64] = Vec.filled(26, 0);
+    for b in words[i].bytes().iter() {
+        counts[b - b'a'] += 1;
+    }
+    let mut here = factorial[words[i].len()];
+    for c in counts.iter() {
+        here = here * rec_power(factorial[c], MOD - 2) % MOD;
+    }
+    here * rec_count_from(words, i + 1, factorial) % MOD
+}
+
+fn rec_count_anagrams(s: String) -> i64 {
+    let mut factorial: Vec[i64] = Vec.filled(s.len() + 1, 1);
+    for i in 1..s.len() + 1 {
+        factorial[i] = factorial[i - 1] * i % MOD;
+    }
+    let words: Vec[Str] = s.split(" ").collect();
+    rec_count_from(words, 0, factorial)
+}
+
+// ---- iter (anagrams_iter.kara) -------------------------------------------
+
+fn iter_power(base: i64, exponent: i64) -> i64 {
+    (0..31).fold((1, base % MOD), |(r, b), bit| (if (exponent >> bit) % 2 == 1 { r * b % MOD } else { r }, b * b % MOD)).0
+}
+
+fn iter_count_anagrams(s: String) -> i64 {
+    let mut factorial: Vec[i64] = [1].to_vec();
+    factorial.extend((1..s.len() + 1).scan(1, |f, i| {
+        let f = f * i % MOD;
+        Some((f, f))
+    }));
+    s.split(" ").fold(1, |answer, word| {
+        let counts: Vec[i64] = word.bytes().iter().fold(Vec.filled(26, 0), |c, b| {
+            let mut c = c;
+            c[b - b'a'] += 1;
+            c
+        });
+        counts.iter().fold(answer * factorial[word.len()] % MOD, |a, c| a * iter_power(factorial[c], MOD - 2) % MOD)
+    })
+}
+
+// ---- solution (anagrams_solution.kara) -----------------------------------
+
+struct Solution {}
+
+const M: u64 = 1_000_000_007;
+
+fn solution_pow(b: u64, e: u64) -> u64 {
+    let mut b = b;
+    let mut e = e;
+    let mut r = 1;
+    b %= M;
+    while e > 0 {
+        if e & 1 == 1 {
+            r = r * b % M;
+        }
+        b = b * b % M;
+        e >>= 1;
+    }
+    r
+}
+
+impl Solution {
+    pub fn count_anagrams(s: String) -> i32 {
+        let n = s.len();
+        let mut fact = Vec.filled(n + 1, 1u64);
+        for i in 1..=n {
+            fact[i] = fact[i - 1] * i as u64 % M;
+        }
+        let mut ans: u64 = 1;
+        for w in s.split(" ") {
+            let mut cnt = [0usize; 26];
+            for b in w.bytes() {
+                cnt[(b - b'a') as usize] += 1;
+            }
+            ans = ans * fact[w.len()] % M;
+            for c in cnt.iter() {
+                ans = ans * solution_pow(fact[c], M - 2) % M;
+            }
+        }
+        ans as i32
+    }
+}
+
+fn solution_count_anagrams(s: String) -> i64 {
+    Solution.count_anagrams(s)
+}
+
+// ---- the differential --------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn answer(arm: i64, s: String) -> i64 {
+    match arm {
+        0 => star_count_anagrams(s),
+        1 => inverse_count_anagrams(s),
+        2 => running_count_anagrams(s),
+        3 => rec_count_anagrams(s),
+        4 => iter_count_anagrams(s),
+        _ => solution_count_anagrams(s),
+    }
+}
+
+fn sentence(words: i64, most: i64, letters: i64, seed: mut ref i64) -> String {
+    let mut text = String.new();
+    for w in 0..words {
+        if w > 0 {
+            text.push(' ');
+        }
+        let length = next_random(mut seed) % most + 1;
+        for _ in 0..length {
+            text.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+        }
+    }
+    text
+}
+
+fn main() {
+    let names = ["star", "inverse", "running", "rec", "iter", "solution"];
+    let mut seed = 2514;
+    let mut problems: Vec[String] = Vec.new();
+    for t in 0..360 {
+        let s = if t < 300 {
+            let words = next_random(mut seed) % 4 + 1;
+            let letters = if next_random(mut seed) % 2 == 0 { 3 } else { 26 };
+            sentence(words, 6, letters, mut seed)
+        } else if t < 320 {
+            sentence(1, 8, 2, mut seed)
+        } else {
+            sentence(10, 4, 2, mut seed)
+        };
+        problems.push(s);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut single = 0;
+    for s in problems.iter() {
+        let truth = literal(s);
+        if truth == 1 {
+            single += 1;
+        }
+        check = (check * 31 + truth) % 1000000007;
+        let words: Vec[Str] = s.split(" ").collect();
+        let reversed = Vec[Str].from_iter(words.iter().rev().cloned()).join(" ");
+        let mut mirrored = String.new();
+        for b in s.bytes().iter() {
+            mirrored.push(if b == b' ' { ' ' } else { (b'z' - (b - b'a')) as char });
+        }
+        let twice = f"{s} {s}";
+        let more = f"{s} ab";
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, s)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, reversed) == x,
+                answer(arm, mirrored) == x,
+                answer(arm, twice) == x * x % MOD,
+                answer(arm, more) == 2 * x % MOD,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"\"{s}\", arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} cases, {single} with one arrangement only: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

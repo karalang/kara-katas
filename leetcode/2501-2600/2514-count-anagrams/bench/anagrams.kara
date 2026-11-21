@@ -1,0 +1,72 @@
+// LeetCode #2514: Count Anagrams -- benchmark of the ★ arm
+// (anagrams.kara): 20 sentences of 10^5 characters built once from its
+// own generator, words of 1 to 200 letters; then the passes, each asking
+// every sentence once from the place the checksum so far picks.
+
+const MOD: i64 = 1000000007;
+
+fn power(base: i64, exponent: i64) -> i64 {
+    let mut (result, b, e) = (1, base % MOD, exponent);
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % MOD;
+        }
+        b = b * b % MOD;
+        e /= 2;
+    }
+    result
+}
+
+fn count_anagrams(s: String) -> i64 {
+    let mut factorial: Vec[i64] = Vec.filled(s.len() + 1, 1);
+    for i in 1..s.len() + 1 {
+        factorial[i] = factorial[i - 1] * i % MOD;
+    }
+    let mut answer = 1;
+    for word in s.split(" ") {
+        let mut counts: Vec[i64] = Vec.filled(26, 0);
+        for b in word.bytes().iter() {
+            counts[b - b'a'] += 1;
+        }
+        answer = answer * factorial[word.len()] % MOD;
+        for c in counts.iter() {
+            answer = answer * power(factorial[c], MOD - 2) % MOD;
+        }
+    }
+    answer
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2514;
+    let mut sentences: Vec[String] = Vec.new();
+    for _ in 0..20 {
+        let mut text = String.new();
+        loop {
+            let length = next_random(mut seed) % 200 + 1;
+            if text.len() + 1 + length > 100000 {
+                break;
+            }
+            if text.len() > 0 {
+                text.push(' ');
+            }
+            for _ in 0..length {
+                text.push((b'a' + (next_random(mut seed) % 26) as u8) as char);
+            }
+        }
+        sentences.push(text);
+    }
+    let passes = 4;
+    let mut check = 0;
+    for p in 0..passes {
+        let start = check % 20;
+        for k in 0..20 {
+            check = (check * 31 + count_anagrams(sentences[(start + k) % 20]) + p) % 1000000007;
+        }
+    }
+    println(f"{passes} passes over 20 sentences of 10^5: checksum {check}");
+}

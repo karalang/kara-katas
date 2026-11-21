@@ -1,0 +1,113 @@
+// LeetCode #2514: Count Anagrams -- the factorials and their inverses
+// both built once: one Fermat power for the inverse of the greatest
+// factorial, then each inverse factorial below it by multiplying back
+// down, so no word asks a power of its own. O(n + log M).
+
+const MOD: i64 = 1000000007;
+
+fn power(base: i64, exponent: i64) -> i64 {
+    let mut (result, b, e) = (1, base % MOD, exponent);
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % MOD;
+        }
+        b = b * b % MOD;
+        e /= 2;
+    }
+    result
+}
+
+fn count_anagrams(s: String) -> i64 {
+    let n = s.len();
+    let mut factorial: Vec[i64] = Vec.filled(n + 1, 1);
+    for i in 1..n + 1 {
+        factorial[i] = factorial[i - 1] * i % MOD;
+    }
+    let mut inverse: Vec[i64] = Vec.filled(n + 1, 1);
+    inverse[n] = power(factorial[n], MOD - 2);
+    for i in (1..n + 1).rev() {
+        inverse[i - 1] = inverse[i] * i % MOD;
+    }
+    let mut answer = 1;
+    for word in s.split(" ") {
+        let mut counts: Vec[i64] = Vec.filled(26, 0);
+        for b in word.bytes().iter() {
+            counts[b - b'a'] += 1;
+        }
+        answer = answer * factorial[word.len()] % MOD;
+        for c in counts.iter() {
+            answer = answer * inverse[c] % MOD;
+        }
+    }
+    answer
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `words` words of 1 to `most` letters from the first `letters`, one
+// space between each two
+fn sentence(words: i64, most: i64, letters: i64, seed: mut ref i64) -> String {
+    let mut text = String.new();
+    for w in 0..words {
+        if w > 0 {
+            text.push(' ');
+        }
+        let length = next_random(mut seed) % most + 1;
+        for _ in 0..length {
+            text.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+        }
+    }
+    text
+}
+
+fn main() {
+    // LeetCode's two examples, then five more
+    let cases: Vec[Str] = ["too hot", "aa", "a", "abc", "aab bba", "abcdefghijklmnopqrstuvwxyz", "zz zz zz y"].to_vec();
+    for s in cases.iter() {
+        println(f"\"{s}\" -> {count_anagrams(s.to_string())}");
+    }
+    // 2000 random sentences of 1 to 6 words of 1 to 8 letters from 3, and
+    // 2000 of 1 to 20 words of 1 to 30 from 26: the sum and a checksum
+    let mut seed = 2514;
+    for (most, letters) in [(8, 3), (30, 26)] {
+        let mut total = 0;
+        let mut check = 0;
+        for _ in 0..2000 {
+            let words = next_random(mut seed) % (if letters == 3 { 6 } else { 20 }) + 1;
+            let a = count_anagrams(sentence(words, most, letters, mut seed));
+            total = (total + a) % 1000000007;
+            check = (check * 31 + a) % 1000000007;
+        }
+        println(f"2000 random of words to {most} letters from {letters}: total {total}, checksum {check}");
+    }
+    // the constraints' largest, to 10^5 characters: one random word;
+    // one word of a's; 20000 words of 1 to 4 letters; and words of 1 to
+    // 999 letters until 99000 characters are passed
+    let mut long = String.new();
+    for _ in 0..100000 {
+        long.push((b'a' + (next_random(mut seed) % 26) as u8) as char);
+    }
+    println(f"one random word of 10^5: {count_anagrams(long)}");
+    let mut a = String.new();
+    for _ in 0..100000 {
+        a.push('a');
+    }
+    println(f"10^5 a's: {count_anagrams(a)}");
+    println(f"20000 words of four: {count_anagrams(sentence(20000, 4, 26, mut seed))}");
+    let mut mixed = String.new();
+    while mixed.len() < 99000 {
+        if mixed.len() > 0 {
+            mixed.push(' ');
+        }
+        let length = next_random(mut seed) % 999 + 1;
+        for _ in 0..length {
+            mixed.push((b'a' + (next_random(mut seed) % 26) as u8) as char);
+        }
+    }
+    println(f"{mixed.len()} characters of long words: {count_anagrams(mixed)}");
+}
