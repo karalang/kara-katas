@@ -1,0 +1,475 @@
+// LeetCode #2421: Number of Good Paths -- the differential. The six arms
+// against the statement read literally: every pair of nodes of one
+// value, the tree's path between them found by a walk from one end, and
+// the pair counted when no node on it is larger; plus the one-node
+// paths. No union-find. 360 cases, each tree's edges shuffled: 300
+// random trees of 1 to 10 nodes with values 1 to 1 to 4; then 30 of up
+// to 120 nodes with values up to 20; then 30 of up to 120 with values 1
+// to 3. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the answer is at least n and at most n plus, for each value, the
+//     pairs of its nodes
+// P3  the nodes renamed, i as n - 1 - i: the same answer
+// P4  every value v made 2 v + 3: the same answer
+// P5  a leaf of the largest value hung on a node of the largest value:
+//     the answer plus 1 and plus the count of the largest value
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn paths_literally(vals: Vec[i64], edges: Vec[(i64, i64)]) -> i64 {
+    let n = vals.len();
+    let mut adj: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in edges.iter() {
+        adj[a].push(b);
+        adj[b].push(a);
+    }
+    let mut good = n;
+    for a in 0..n {
+        // the node before each one on its path from `a`
+        let mut before: Vec[i64] = Vec.filled(n, -1);
+        before[a] = a;
+        let mut queue: Vec[i64] = [a].to_vec();
+        let mut head = 0;
+        while head < queue.len() {
+            let u = queue[head];
+            head += 1;
+            for v in adj[u].iter() {
+                if before[v] < 0 {
+                    before[v] = u;
+                    queue.push(v);
+                }
+            }
+        }
+        for b in a + 1..n {
+            if vals[b] != vals[a] {
+                continue;
+            }
+            let mut ok = true;
+            let mut at = b;
+            while at != a {
+                if vals[at] > vals[a] {
+                    ok = false;
+                }
+                at = before[at];
+            }
+            if ok {
+                good += 1;
+            }
+        }
+    }
+    good
+}
+
+// ---- star (paths.kara) ---------------------------------------------------
+
+fn star_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+fn star_number_of_good_paths(vals: Vec[i64], edges: Vec[(i64, i64)]) -> i64 {
+    let n = vals.len();
+    let mut adj: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in edges.iter() {
+        adj[a].push(b);
+        adj[b].push(a);
+    }
+    let mut parent: Vec[i64] = (0..n).collect();
+    let mut order: Vec[i64] = (0..n).collect();
+    order.sort_by_key(|i| vals[i]);
+    let mut good = n;
+    let mut i = 0;
+    while i < n {
+        let mut j = i;
+        while j < n and vals[order[j]] == vals[order[i]] {
+            j += 1;
+        }
+        for t in i..j {
+            let u = order[t];
+            for v in adj[u].iter() {
+                if vals[v] <= vals[u] {
+                    let ru = star_find(mut parent, u);
+                    let rv = star_find(mut parent, v);
+                    parent[ru] = rv;
+                }
+            }
+        }
+        let mut count: Map[i64, i64] = Map.new();
+        for t in i..j {
+            let root = star_find(mut parent, order[t]);
+            count[root] = count.get(root).unwrap_or(0) + 1;
+        }
+        for c in count.values() {
+            good += c * (c - 1) / 2;
+        }
+        i = j;
+    }
+    good
+}
+
+// ---- naive (paths_naive.kara) --------------------------------------------
+
+fn naive_number_of_good_paths(vals: Vec[i64], edges: Vec[(i64, i64)]) -> i64 {
+    let n = vals.len();
+    let mut adj: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in edges.iter() {
+        adj[a].push(b);
+        adj[b].push(a);
+    }
+    let mut good = n;
+    for s in 0..n {
+        let mut seen: Vec[bool] = Vec.filled(n, false);
+        let mut stack: Vec[i64] = [s].to_vec();
+        seen[s] = true;
+        while let Some(u) = stack.pop() {
+            if u > s and vals[u] == vals[s] {
+                good += 1;
+            }
+            for v in adj[u].iter() {
+                if not seen[v] and vals[v] <= vals[s] {
+                    seen[v] = true;
+                    stack.push(v);
+                }
+            }
+        }
+    }
+    good
+}
+
+// ---- edges (paths_edges.kara) --------------------------------------------
+
+fn edges_root(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+fn edges_number_of_good_paths(vals: Vec[i64], edges: Vec[(i64, i64)]) -> i64 {
+    let n = vals.len();
+    let mut parent: Vec[i64] = (0..n).collect();
+    let top: Vec[i64] = vals.clone();
+    let mut count: Vec[i64] = Vec.filled(n, 1);
+    let mut sorted = edges.clone();
+    sorted.sort_by_key(|(a, b)| vals[a].max(vals[b]));
+    let mut good = n;
+    for (a, b) in sorted.iter() {
+        let ra = edges_root(mut parent, a);
+        let rb = edges_root(mut parent, b);
+        if top[ra] == top[rb] {
+            good += count[ra] * count[rb];
+            count[ra] += count[rb];
+            parent[rb] = ra;
+        } else if top[ra] > top[rb] {
+            parent[rb] = ra;
+        } else {
+            parent[ra] = rb;
+        }
+    }
+    good
+}
+
+// ---- struct (paths_struct.kara) ------------------------------------------
+
+struct UnionFind {
+    parent: Vec[i64],
+    size: Vec[i64],
+}
+
+impl UnionFind {
+    fn new(n: i64) -> UnionFind {
+        UnionFind { parent: (0..n).collect(), size: Vec.filled(n, 1) }
+    }
+
+    fn find(mut ref self, x: i64) -> i64 {
+        let mut x = x;
+        while self.parent[x] != x {
+            self.parent[x] = self.parent[self.parent[x]];
+            x = self.parent[x];
+        }
+        x
+    }
+
+    fn union(mut ref self, a: i64, b: i64) {
+        let mut ra = self.find(a);
+        let mut rb = self.find(b);
+        if ra == rb {
+            return;
+        }
+        if self.size[ra] < self.size[rb] {
+            let t = ra;
+            ra = rb;
+            rb = t;
+        }
+        self.parent[rb] = ra;
+        self.size[ra] += self.size[rb];
+    }
+}
+
+fn struct_number_of_good_paths(vals: Vec[i64], edges: Vec[(i64, i64)]) -> i64 {
+    let n = vals.len();
+    let mut adj: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in edges.iter() {
+        adj[a].push(b);
+        adj[b].push(a);
+    }
+    let mut groups: SortedMap[i64, Vec[i64]] = SortedMap.new();
+    for i in 0..n {
+        groups.entry(vals[i]).or_insert(Vec.new()).push(i);
+    }
+    let mut sets = UnionFind.new(n);
+    let mut good = 0;
+    for (value, nodes) in groups.iter() {
+        for u in nodes.iter() {
+            for v in adj[u].iter() {
+                if vals[v] <= value {
+                    sets.union(u, v);
+                }
+            }
+        }
+        let mut count: Map[i64, i64] = Map.new();
+        for u in nodes.iter() {
+            let r = sets.find(u);
+            count[r] = count.get(r).unwrap_or(0) + 1;
+        }
+        for c in count.values() {
+            good += c * (c + 1) / 2;
+        }
+    }
+    good
+}
+
+// ---- iter (paths_iter.kara) ----------------------------------------------
+
+fn iter_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+fn iter_number_of_good_paths(vals: Vec[i64], edges: Vec[(i64, i64)]) -> i64 {
+    let n = vals.len();
+    let mut adj: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in edges.iter() {
+        adj[a].push(b);
+        adj[b].push(a);
+    }
+    let mut order: Vec[i64] = (0..n).collect();
+    order.sort_by_key(|i| vals[i]);
+    let mut parent: Vec[i64] = (0..n).collect();
+    let mut good = n;
+    let mut i = 0;
+    while i < n {
+        let value = vals[order[i]];
+        let run: Vec[i64] = order[i..n].iter().take_while(|u| vals[u] == value).collect();
+        for u in run.iter() {
+            for v in adj[u].iter().filter(|v| vals[v] <= value) {
+                let ru = iter_find(mut parent, u);
+                let rv = iter_find(mut parent, v);
+                parent[ru] = rv;
+            }
+        }
+        let count: Map[i64, i64] = run.iter().fold(Map.new(), |m, u| {
+            let r = iter_find(mut parent, u);
+            let mut m = m;
+            m[r] = m.get(r).unwrap_or(0) + 1;
+            m
+        });
+        good += count.values().map(|c| c * (c - 1) / 2).sum();
+        i += run.len();
+    }
+    good
+}
+
+// ---- solution (paths_solution.kara) --------------------------------------
+
+fn solution_find(p: mut ref Vec[i64], x: i64) -> i64 {
+    if p[x] != x {
+        let r = solution_find(mut p, p[x]);
+        p[x] = r;
+    }
+    p[x]
+}
+
+impl Solution {
+    pub fn number_of_good_paths(vals: Vec[i32], edges: Vec[Vec[i32]]) -> i32 {
+        let n = vals.len();
+        let mut adj = Vec.filled(n, Vec.new());
+        for e in ref edges {
+            let (a, b) = (e[0] as i64, e[1] as i64);
+            adj[a].push(b);
+            adj[b].push(a);
+        }
+        let mut idx: Vec[i64] = (0..n).collect();
+        idx.sort_by_key(|i| vals[i]);
+        let mut parent: Vec[i64] = (0..n).collect();
+        let mut ans = n as i32;
+        let mut i = 0;
+        while i < n {
+            let mut j = i;
+            while j < n and vals[idx[j]] == vals[idx[i]] {
+                j += 1;
+            }
+            for k in i..j {
+                let u = idx[k];
+                for v in ref adj[u] {
+                    if vals[v] <= vals[u] {
+                        let (ru, rv) = (solution_find(mut parent, u), solution_find(mut parent, v));
+                        parent[ru] = rv;
+                    }
+                }
+            }
+            let mut cnt: Map[i64, i32] = Map.new();
+            for k in i..j {
+                *cnt.entry(solution_find(mut parent, idx[k])).or_insert(0) += 1;
+            }
+            for c in cnt.values() {
+                ans += c * (c - 1) / 2;
+            }
+            i = j;
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_number_of_good_paths(vals: Vec[i64], edges: Vec[(i64, i64)]) -> i64 {
+    let vals: Vec[i32] = vals.iter().map(|v| v as i32).collect();
+    let edges: Vec[Vec[i32]] = edges.iter().map(|(a, b)| [a as i32, b as i32].to_vec()).collect();
+    Solution.number_of_good_paths(vals, edges)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, vals: Slice[i64], edges: Slice[(i64, i64)]) -> i64 {
+    let vals = vals.to_vec();
+    let edges = edges.to_vec();
+    match arm {
+        0 => star_number_of_good_paths(vals, edges),
+        1 => naive_number_of_good_paths(vals, edges),
+        2 => edges_number_of_good_paths(vals, edges),
+        3 => struct_number_of_good_paths(vals, edges),
+        4 => iter_number_of_good_paths(vals, edges),
+        _ => solution_number_of_good_paths(vals, edges),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "naive", "edges", "struct", "iter", "solution"];
+    let mut seed = 2421;
+    let mut cases: Vec[(Vec[i64], Vec[(i64, i64)])] = Vec.new();
+    for t in 0..360 {
+        let (n, top) = if t < 300 {
+            (1 + next_random(mut seed) % 10, 1 + next_random(mut seed) % 4)
+        } else if t < 330 {
+            (1 + next_random(mut seed) % 120, 20)
+        } else {
+            (1 + next_random(mut seed) % 120, 3)
+        };
+        let vals: Vec[i64] = (0..n).map(|_| 1 + next_random(mut seed) % top).collect();
+        let mut edges: Vec[(i64, i64)] = Vec.new();
+        for i in 1..n {
+            let p = next_random(mut seed) % i;
+            if next_random(mut seed) % 2 == 0 {
+                edges.push((p, i));
+            } else {
+                edges.push((i, p));
+            }
+        }
+        for i in (1..edges.len()).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            edges.swap(i, j);
+        }
+        cases.push((vals, edges));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (vals, edges) = cases[c].clone();
+        let n = vals.len();
+        let truth = paths_literally(vals, edges);
+        check = (check * 31 + truth) % 1000000007;
+        let mut most = n;
+        let mut largest = 0;
+        for v in vals.iter() {
+            largest = largest.max(v);
+        }
+        let mut tops = 0;
+        let mut a_top = 0;
+        for i in 0..n {
+            let same = vals.iter().filter(|w| w == vals[i]).count();
+            most += same - 1;
+            if vals[i] == largest {
+                tops += 1;
+                a_top = i;
+            }
+        }
+        // `most` counted each pair twice
+        most = n + (most - n) / 2;
+        let renamed_vals: Vec[i64] = (0..n).map(|i| vals[n - 1 - i]).collect();
+        let renamed_edges: Vec[(i64, i64)] = edges.iter().map(|(a, b)| (n - 1 - a, n - 1 - b)).collect();
+        let raised: Vec[i64] = vals.iter().map(|v| 2 * v + 3).collect();
+        let mut grown_vals = vals.clone();
+        grown_vals.push(largest);
+        let mut grown_edges = edges.clone();
+        grown_edges.push((a_top, n));
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, vals, edges)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                value >= n and value <= most,
+                answer(arm, renamed_vals, renamed_edges) == value,
+                answer(arm, raised, edges) == value,
+                answer(arm, grown_vals, grown_edges) == value + 1 + tops,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

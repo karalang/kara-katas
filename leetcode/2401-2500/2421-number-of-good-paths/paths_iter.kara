@@ -1,0 +1,109 @@
+// LeetCode #2421: Number of Good Paths -- iterators. The ★ arm's
+// union-find, with the nodes in order of value by `sort_by_key`, each
+// value's run of them found by `take_while`, and its count of good paths
+// by `fold` into a `Map` of roots, then `map` and `sum`. O(n log n).
+
+fn find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+fn number_of_good_paths(vals: Vec[i64], edges: Vec[(i64, i64)]) -> i64 {
+    let n = vals.len();
+    let mut adj: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in edges.iter() {
+        adj[a].push(b);
+        adj[b].push(a);
+    }
+    let mut order: Vec[i64] = (0..n).collect();
+    order.sort_by_key(|i| vals[i]);
+    let mut parent: Vec[i64] = (0..n).collect();
+    let mut good = n;
+    let mut i = 0;
+    while i < n {
+        let value = vals[order[i]];
+        let run: Vec[i64] = order[i..n].iter().take_while(|u| vals[u] == value).collect();
+        for u in run.iter() {
+            for v in adj[u].iter().filter(|v| vals[v] <= value) {
+                let ru = find(mut parent, u);
+                let rv = find(mut parent, v);
+                parent[ru] = rv;
+            }
+        }
+        let count: Map[i64, i64] = run.iter().fold(Map.new(), |m, u| {
+            let r = find(mut parent, u);
+            let mut m = m;
+            m[r] = m.get(r).unwrap_or(0) + 1;
+            m
+        });
+        good += count.values().map(|c| c * (c - 1) / 2).sum();
+        i += run.len();
+    }
+    good
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A random tree on `n` nodes: node i joined to one of the nodes before
+// it, the two ends in either order, and the edges shuffled; values from 1
+// to `top`.
+fn random_tree(seed: mut ref i64, n: i64, top: i64) -> (Vec[i64], Vec[(i64, i64)]) {
+    let mut vals: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        vals.push(1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % top);
+    }
+    let mut edges: Vec[(i64, i64)] = Vec.new();
+    for i in 1..n {
+        let p = next_random(mut seed) % i;
+        if next_random(mut seed) % 2 == 0 {
+            edges.push((p, i));
+        } else {
+            edges.push((i, p));
+        }
+    }
+    for i in (1..edges.len()).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        edges.swap(i, j);
+    }
+    (vals, edges)
+}
+
+fn main() {
+    // LeetCode's three examples; a line of one value; a star whose centre
+    // is the largest; a line rising to the middle and falling
+    println(f"{number_of_good_paths([1, 3, 2, 1, 3].to_vec(), [(0, 1), (0, 2), (2, 3), (2, 4)].to_vec())}");
+    println(f"{number_of_good_paths([1, 1, 2, 2, 3].to_vec(), [(0, 1), (1, 2), (2, 3), (2, 4)].to_vec())}");
+    println(f"{number_of_good_paths([1].to_vec(), Vec.new())}");
+    println(f"{number_of_good_paths([4, 4, 4, 4, 4].to_vec(), [(0, 1), (1, 2), (2, 3), (3, 4)].to_vec())}");
+    println(f"{number_of_good_paths([9, 2, 2, 2, 2].to_vec(), [(0, 1), (0, 2), (0, 3), (0, 4)].to_vec())}");
+    println(f"{number_of_good_paths([1, 2, 3, 2, 1].to_vec(), [(0, 1), (1, 2), (2, 3), (3, 4)].to_vec())}");
+    // the constraints' largest, 3 * 10^4 nodes with values up to 10^5, and
+    // 3 * 10^4 with values 1 to 3
+    let mut seed = 2421;
+    let (vals, edges) = random_tree(mut seed, 30000, 100000);
+    println(f"{number_of_good_paths(vals, edges)}");
+    let (vals, edges) = random_tree(mut seed, 30000, 3);
+    println(f"{number_of_good_paths(vals, edges)}");
+    // 3000 random trees of 1 to 12 nodes with values 1 to 4; a checksum of
+    // the answers and their total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 12;
+        let top = 1 + next_random(mut seed) % 4;
+        let (vals, edges) = random_tree(mut seed, n, top);
+        let a = number_of_good_paths(vals, edges);
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}, total {total}");
+}
