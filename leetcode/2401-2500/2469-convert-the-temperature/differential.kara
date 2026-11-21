@@ -1,0 +1,164 @@
+// LeetCode #2469: Convert the Temperature -- the differential. The six
+// arms against the statement read literally, in exact integers: with
+// `celsius` a whole number of hundredths `h`, `Kelvin = Celsius + 273.15`
+// is `100 * h + 2731500` and `Fahrenheit = Celsius * 1.80 + 32.00` is
+// `180 * h + 320000`, both in ten-thousandths, which the statement's own
+// decimals need. 360 random temperatures from 0 to 1000 with two
+// decimals. Every case is drawn before any arm answers.
+//
+// P1  each value within 10^-5 of the literal reading's, the statement's
+//     own tolerance
+// P2  kelvin less celsius is 273.15, within 10^-9
+// P3  five degrees Celsius more: nine degrees Fahrenheit more, within
+//     10^-9
+// P4  a hundredth more: both values larger
+// P5  kelvin times 1.8 less 459.67 is the Fahrenheit value, within 10^-9
+// P6  each arm agrees with at least three of the other five, within
+//     10^-9
+
+// ---- the statement read literally ------------------------------------------
+
+// both values in ten-thousandths, exactly
+fn convert_literally(hundredths: i64) -> (i64, i64) {
+    (100 * hundredths + 2731500, 180 * hundredths + 320000)
+}
+
+fn near(a: f64, b: f64, within: f64) -> bool {
+    (a - b).abs() <= within
+}
+
+// ---- star (convert.kara) -------------------------------------------------
+
+fn star_convert_temperature(celsius: f64) -> Vec[f64] {
+    [celsius + 273.15, celsius * 1.80 + 32.00].to_vec()
+}
+
+// ---- ratio (convert_ratio.kara) ------------------------------------------
+
+fn ratio_convert_temperature(celsius: f64) -> Vec[f64] {
+    let kelvin = celsius + 273.15;
+    let fahrenheit = celsius * 9.0 / 5.0 + 32.0;
+    [kelvin, fahrenheit].to_vec()
+}
+
+// ---- kelvin (convert_kelvin.kara) ----------------------------------------
+
+fn kelvin_convert_temperature(celsius: f64) -> Vec[f64] {
+    let kelvin = celsius + 273.15;
+    let rankine = kelvin * 1.8;
+    [kelvin, rankine - 459.67].to_vec()
+}
+
+// ---- exact (convert_exact.kara) ------------------------------------------
+
+fn exact_convert_temperature(celsius: f64) -> Vec[f64] {
+    let hundredths = (celsius * 100.0).round() as i64;
+    let kelvin = hundredths + 27315;
+    let fahrenheit = hundredths * 18 + 32000;
+    [kelvin as f64 / 100.0, fahrenheit as f64 / 1000.0].to_vec()
+}
+
+// ---- iter (convert_iter.kara) --------------------------------------------
+
+fn iter_convert_temperature(celsius: f64) -> Vec[f64] {
+    let scales: Vec[(f64, f64)] = [(1.0, 273.15), (1.8, 32.0)].to_vec();
+    scales.iter().map(|(factor, offset)| celsius * factor + offset).collect()
+}
+
+// ---- solution (convert_solution.kara) ------------------------------------
+
+impl Solution {
+    pub fn convert_temperature(celsius: f64) -> Vec[f64] {
+        [celsius + 273.15, celsius * 1.80 + 32.00]
+    }
+}
+
+struct Solution {}
+
+fn solution_convert_temperature(celsius: f64) -> Vec[f64] {
+    Solution.convert_temperature(celsius)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn answer(arm: i64, celsius: f64) -> Vec[f64] {
+    match arm {
+        0 => star_convert_temperature(celsius),
+        1 => ratio_convert_temperature(celsius),
+        2 => kelvin_convert_temperature(celsius),
+        3 => exact_convert_temperature(celsius),
+        4 => iter_convert_temperature(celsius),
+        _ => solution_convert_temperature(celsius),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "ratio", "kelvin", "exact", "iter", "solution"];
+    let mut seed = 2469;
+    let cases: Vec[i64] = (0..360).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % 100001).collect();
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let h = cases[c];
+        let celsius = h as f64 / 100.0;
+        let (kelvin, fahrenheit) = convert_literally(h);
+        check = (check * 31 + kelvin) % 1000000007;
+        check = (check * 31 + fahrenheit) % 1000000007;
+        // five degrees and a hundredth away, kept within 0 to 1000
+        let five = if h <= 99500 { 5.0 } else { -5.0 };
+        let step = if h < 100000 { 1 } else { -1 };
+        let got: Vec[Vec[f64]] = (0..6).map(|arm| answer(arm, celsius)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and near(got[o][0], value[0], 0.000000001) and near(got[o][1], value[1], 0.000000001) {
+                    same += 1;
+                }
+            }
+            let shifted = answer(arm, (h as f64 + 100.0 * five) / 100.0);
+            let next = answer(arm, (h + step) as f64 / 100.0);
+            let rises = if step > 0 {
+                next[0] > value[0] and next[1] > value[1]
+            } else {
+                next[0] < value[0] and next[1] < value[1]
+            };
+            let verdicts = [
+                value.len() == 2 and near(value[0], kelvin as f64 / 10000.0, 0.00001) and near(value[1], fahrenheit as f64 / 10000.0, 0.00001),
+                near(value[0] - celsius, 273.15, 0.000000001),
+                near(shifted[1] - value[1], 1.8 * five, 0.000000001),
+                rises,
+                near(value[0] * 1.8 - 459.67, value[1], 0.000000001),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
