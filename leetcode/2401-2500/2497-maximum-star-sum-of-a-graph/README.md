@@ -103,7 +103,7 @@ failure it prints the first ten and then the count by property.
 
 The first differential drew values from `-top` to `top` and `k` from
 0 to `n - 1`, with P4 the nodes numbered backwards and P5 every value
-doubled. It was too weak: four of the edits below were killed on one
+doubled. It was too weak: six of the edits below were killed on one
 case only, the select arm's pivot's place not fixed survived, and P4
 and P5 killed nothing, since both hold for every edit that keeps the
 answer's shape. The cases were drawn again as above, and P4 and P5
