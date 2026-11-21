@@ -1,0 +1,68 @@
+// LeetCode #2349: Design a Number Container System -- the bench, the ★
+// arm: a map from each index to its number, and for each number a
+// min-first `PriorityQueue` of every index ever given it, popped lazily
+// by find.
+
+struct NumberContainers {
+    at: Map[i64, i64],
+    heaps: Map[i64, PriorityQueue[i64]],
+}
+
+impl NumberContainers {
+    fn new() -> NumberContainers {
+        NumberContainers { at: Map.new(), heaps: Map.new() }
+    }
+
+    fn change(mut ref self, index: i64, number: i64) {
+        self.at[index] = number;
+        if not self.heaps.contains_key(number) {
+            self.heaps[number] = PriorityQueue.new();
+        }
+        self.heaps[number].push(index);
+    }
+
+    fn find(mut ref self, number: i64) -> i64 {
+        if not self.heaps.contains_key(number) {
+            return -1;
+        }
+        while let Some(top) = self.heaps[number].peek() {
+            if self.at[top] == number {
+                return top;
+            }
+            self.heaps[number].pop();
+        }
+        -1
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // two changes to every find, over 10^5 indices and 1000 numbers
+    let mut seed = 2349;
+    let mut calls: Vec[(i64, i64, i64)] = Vec.new();
+    for _ in 0..200000 {
+        if next_random(mut seed) % 3 < 2 {
+            let high = next_random(mut seed);
+            let index = (high * 32768 + next_random(mut seed)) % 100000 + 1;
+            calls.push((0, index, next_random(mut seed) % 1000 + 1));
+        } else {
+            calls.push((1, next_random(mut seed) % 1000 + 1, 0));
+        }
+    }
+    let mut check = 0;
+    for p in 0..20 {
+        let mut containers = NumberContainers.new();
+        for (kind, a, b) in calls.iter() {
+            if kind == 0 {
+                containers.change(a, b);
+            } else {
+                check = (check * 31 + containers.find(a) + p + 2) % 1000000007;
+            }
+        }
+    }
+    println(f"20 passes over 2 * 10^5 calls: checksum {check}");
+}
