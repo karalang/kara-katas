@@ -121,8 +121,7 @@ three.
 Fourteen are not kept. Seven fail exactly as a kept one: the ★ arm's
 `num1`'s own count (M5) as the bits arm's `num1` returned (M21); the
 adjust arm's `num2` adjusted (M10) as the feasible arm's `num2`'s bits
-matched (M14), both answering `num2` where the two counts already
-agree; the feasible arm's clear bit set one late and the template's set
+matched (M14), both answering `num2` itself; the feasible arm's clear bit set one late and the template's set
 bit filled again (M16, M30) as the adjust arm's one bit short (M11); the
 bits arm's every set bit kept and the template's every set bit of
 `num1` kept (M18, M27) as the feasible arm's every set bit matched
