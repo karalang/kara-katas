@@ -1,0 +1,91 @@
+// LeetCode #2518: Number of Great Partitions -- the sums reached: a
+// `SortedMap` from each sum below k that some subset reaches to the number
+// of subsets that reach it, every number adding a shifted copy of the
+// sums it still fits under k. Only the sums reached are held.
+
+const MOD: i64 = 1000000007;
+
+fn count_partitions(nums: Vec[i64], k: i64) -> i64 {
+    if nums.iter().sum() < 2 * k {
+        return 0;
+    }
+    let mut reached: SortedMap[i64, i64] = SortedMap.new();
+    reached.insert(0, 1);
+    let mut all = 1;
+    for x in nums.iter() {
+        all = all * 2 % MOD;
+        let mut more: Vec[(i64, i64)] = Vec.new();
+        for (s, w) in reached.iter() {
+            if s + x < k {
+                more.push((s + x, w));
+            }
+        }
+        for (s, w) in more.iter() {
+            let before = reached.get(s) ?? 0;
+            reached.insert(s, (before + w) % MOD);
+        }
+    }
+    let mut short = 0;
+    for (_, w) in reached.iter() {
+        short = (short + w) % MOD;
+    }
+    ((all - 2 * short) % MOD + MOD) % MOD
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a draw from 0 to top - 1, two draws wide, for tops past 32768
+fn below(top: i64, seed: mut ref i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % top
+}
+
+fn main() {
+    // LeetCode's three examples, then five more
+    let cases: Vec[(Vec[i64], i64)] = [
+        ([1, 2, 3, 4].to_vec(), 4),
+        ([3, 3, 3].to_vec(), 4),
+        ([6, 6].to_vec(), 2),
+        ([5].to_vec(), 1),
+        ([1, 1].to_vec(), 1),
+        ([1000000000, 1000000000].to_vec(), 1000),
+        ([2, 3, 5, 7, 11].to_vec(), 10),
+        ([1, 2, 3, 4, 5, 6].to_vec(), 11),
+    ].to_vec();
+    for (nums, k) in cases.iter() {
+        println(f"{nums} k {k} -> {count_partitions(nums, k)}");
+    }
+    // 2000 random lists of 1 to 10 numbers to 20 with k from 1 to 30; and
+    // 2000 of 1 to 200 numbers to 10, and 2000 to 10^9, each with k to
+    // 1000: the lists with none, and a checksum
+    let mut seed = 2518;
+    for (most, top, most_k) in [(10, 20, 30), (200, 10, 1000), (200, 1000000000, 1000)] {
+        let mut none = 0;
+        let mut check = 0;
+        for _ in 0..2000 {
+            let n = next_random(mut seed) % most + 1;
+            let nums: Vec[i64] = (0..n).map(|_| below(top, mut seed) + 1).collect();
+            let k = next_random(mut seed) % most_k + 1;
+            let a = count_partitions(nums, k);
+            if a == 0 {
+                none += 1;
+            }
+            check = (check * 31 + a) % 1000000007;
+        }
+        println(f"2000 random of up to {most} numbers to {top}: {none} with none, checksum {check}");
+    }
+    // the constraints' largest, 1000 numbers with k 1000: all 1, all 1000,
+    // 1 to 1000, and random to 10^9
+    let ones: Vec[i64] = (0..1000).map(|_| 1).collect();
+    let thousands: Vec[i64] = (0..1000).map(|_| 1000).collect();
+    let run: Vec[i64] = (1..1001).collect();
+    let wide: Vec[i64] = (0..1000).map(|_| below(1000000000, mut seed) + 1).collect();
+    println(f"1000 ones: {count_partitions(ones, 1000)}");
+    println(f"1000 thousands: {count_partitions(thousands, 1000)}");
+    println(f"1 to 1000: {count_partitions(run, 1000)}");
+    println(f"1000 random to 10^9: {count_partitions(wide, 1000)}");
+}
