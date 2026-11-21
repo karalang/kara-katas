@@ -1,0 +1,62 @@
+// LeetCode #2365: Task Scheduler II -- no map: the places sorted by
+// (type, place), so that each place's previous one of the same type
+// stands just before it, and then the days filled in order, each the day
+// after the last or the previous same type's day plus `space` plus one.
+// O(n log n).
+
+fn task_scheduler_ii(tasks: Vec[i64], space: i64) -> i64 {
+    let n = tasks.len();
+    let mut order: Vec[(i64, i64)] = (0..n).map(|i| (tasks[i], i)).collect();
+    order.sort();
+    let mut prev: Vec[i64] = Vec.filled(n, -1);
+    for k in 1..n {
+        if order[k].0 == order[k - 1].0 {
+            prev[order[k].1] = order[k - 1].1;
+        }
+    }
+    let mut days: Vec[i64] = Vec.filled(n, 0);
+    for i in 0..n {
+        let mut day = if i == 0 { 1 } else { days[i - 1] + 1 };
+        if prev[i] >= 0 {
+            day = day.max(days[prev[i]] + space + 1);
+        }
+        days[i] = day;
+    }
+    days[n - 1]
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; one task; 10^5 tasks of one type with a
+    // space of 10^5; 10^5 tasks of two types in turn with a space of 1 and
+    // of 2; 10^5 distinct tasks; then 2000 random lists of 1 to 40 tasks of
+    // 1 to 6 types, with a space of 0 to 8
+    println(f"{task_scheduler_ii([1, 2, 1, 2, 3, 1], 3)}");
+    println(f"{task_scheduler_ii([5, 8, 8, 5], 2)}");
+    println(f"{task_scheduler_ii([1000000000], 100000)}");
+    let same: Vec[i64] = (0..100000).map(|_| 7).collect();
+    println(f"{task_scheduler_ii(same, 100000)}");
+    let pair: Vec[i64] = (0..100000).map(|i| 1 + i % 2).collect();
+    println(f"{task_scheduler_ii(pair, 1)} {task_scheduler_ii(pair, 2)}");
+    let distinct: Vec[i64] = (0..100000).map(|i| 1000000000 - i).collect();
+    println(f"{task_scheduler_ii(distinct, 100000)}");
+    let mut seed = 2365;
+    let mut check = 0;
+    let mut idle = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 40;
+        let kinds = 1 + next_random(mut seed) % 6;
+        let space = next_random(mut seed) % 9;
+        let tasks: Vec[i64] = (0..n).map(|_| 1 + next_random(mut seed) % kinds).collect();
+        let days = task_scheduler_ii(tasks, space);
+        check = (check * 31 + days) % 1000000007;
+        idle += days - n;
+    }
+    println(f"2000 lists: checksum {check}, {idle} idle days");
+}

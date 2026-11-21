@@ -1,0 +1,239 @@
+// LeetCode #2365: Task Scheduler II -- the differential. The six arms,
+// against the statement read literally: the days played one at a time,
+// and on each the next task done if its type last ran more than `space`
+// days before, or a break taken. No jumps. 300 random lists of 1 to 40
+// tasks of 1 to 6 types with a space of 0 to 8; then 30 of up to 2000
+// tasks of up to 50 types with a space of up to 50; then 30 of up to 300
+// tasks of types up to 10^9 with a space of up to 300. Every case is
+// drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  from n to 1 + (n - 1) (space + 1)
+// P3  every type t written 10^9 - t: the same answer
+// P4  a task of a type not in the list appended: one more
+// P5  the last task repeated: space + 1 more days
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn days_literally(tasks: Vec[i64], space: i64) -> i64 {
+    let mut ran: Vec[i64] = Vec.new();
+    let mut on: Vec[i64] = Vec.new();
+    let mut day = 0;
+    let mut next = 0;
+    while next < tasks.len() {
+        day += 1;
+        let mut ready = true;
+        for k in 0..ran.len() {
+            if ran[k] == tasks[next] and day - on[k] <= space {
+                ready = false;
+            }
+        }
+        if ready {
+            ran.push(tasks[next]);
+            on.push(day);
+            next += 1;
+        }
+    }
+    day
+}
+
+// ---- star (tasks.kara) ---------------------------------------------------
+
+fn star_task_scheduler_ii(tasks: Vec[i64], space: i64) -> i64 {
+    let mut last: Map[i64, i64] = Map.new();
+    let mut day = 0;
+    for task in tasks.iter() {
+        day += 1;
+        if let Some(before) = last.get(task) {
+            day = day.max(before + space + 1);
+        }
+        last[task] = day;
+    }
+    day
+}
+
+// ---- allowed (tasks_allowed.kara) ----------------------------------------
+
+fn allowed_task_scheduler_ii(tasks: Vec[i64], space: i64) -> i64 {
+    let mut allowed: SortedMap[i64, i64] = SortedMap.new();
+    let mut day = 0;
+    for task in tasks.iter() {
+        day = (day + 1).max(allowed.get(task).unwrap_or(0));
+        allowed.insert(task, day + space + 1);
+    }
+    day
+}
+
+// ---- prev (tasks_prev.kara) ----------------------------------------------
+
+fn prev_task_scheduler_ii(tasks: Vec[i64], space: i64) -> i64 {
+    let n = tasks.len();
+    let mut order: Vec[(i64, i64)] = (0..n).map(|i| (tasks[i], i)).collect();
+    order.sort();
+    let mut prev: Vec[i64] = Vec.filled(n, -1);
+    for k in 1..n {
+        if order[k].0 == order[k - 1].0 {
+            prev[order[k].1] = order[k - 1].1;
+        }
+    }
+    let mut days: Vec[i64] = Vec.filled(n, 0);
+    for i in 0..n {
+        let mut day = if i == 0 { 1 } else { days[i - 1] + 1 };
+        if prev[i] >= 0 {
+            day = day.max(days[prev[i]] + space + 1);
+        }
+        days[i] = day;
+    }
+    days[n - 1]
+}
+
+// ---- compress (tasks_compress.kara) --------------------------------------
+
+fn compress_task_scheduler_ii(tasks: Vec[i64], space: i64) -> i64 {
+    let mut types = tasks.clone();
+    types.sort();
+    types.dedup();
+    let mut last: Vec[i64] = Vec.filled(types.len(), -1);
+    let mut day = 0;
+    for task in tasks.iter() {
+        let t = types.binary_search(task).unwrap();
+        day += 1;
+        if last[t] >= 0 {
+            day = day.max(last[t] + space + 1);
+        }
+        last[t] = day;
+    }
+    day
+}
+
+// ---- iter (tasks_iter.kara) ----------------------------------------------
+
+fn iter_task_scheduler_ii(tasks: Vec[i64], space: i64) -> i64 {
+    let (day, _) = tasks.iter().fold((0, Map.new()), |state: own (i64, Map[i64, i64]), task| {
+        let mut (day, last) = state;
+        let next = (day + 1).max(last.get(task).map(|before| before + space + 1).unwrap_or(0));
+        last[task] = next;
+        (next, last)
+    });
+    day
+}
+
+// ---- solution (tasks_solution.kara) --------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn task_scheduler_ii(tasks: Vec[i32], space: i32) -> i64 {
+        let space = space as i64;
+        let mut last: Map[i32, i64] = Map.new();
+        let mut day: i64 = 0;
+        for t in ref tasks {
+            day += 1;
+            if let Some(d) = last.get(t).cloned() {
+                day = day.max(d + space + 1);
+            }
+            last.insert(t, day);
+        }
+        day
+    }
+}
+
+fn solution_task_scheduler_ii(tasks: Vec[i64], space: i64) -> i64 {
+    let tasks: Vec[i32] = tasks.iter().map(|x| x as i32).collect();
+    Solution.task_scheduler_ii(tasks, space as i32)
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn answer(arm: i64, tasks: Vec[i64], space: i64) -> i64 {
+    match arm {
+        0 => star_task_scheduler_ii(tasks, space),
+        1 => allowed_task_scheduler_ii(tasks, space),
+        2 => prev_task_scheduler_ii(tasks, space),
+        3 => compress_task_scheduler_ii(tasks, space),
+        4 => iter_task_scheduler_ii(tasks, space),
+        _ => solution_task_scheduler_ii(tasks, space),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "allowed", "prev", "compress", "iter", "solution"];
+    let mut seed = 2365;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..360 {
+        let (n, kinds, space) = if c < 300 {
+            (1 + next_random(mut seed) % 40, 1 + next_random(mut seed) % 6, next_random(mut seed) % 9)
+        } else if c < 330 {
+            (1 + next_random(mut seed) % 2000, 1 + next_random(mut seed) % 50, next_random(mut seed) % 51)
+        } else {
+            (1 + next_random(mut seed) % 300, 1 + next_random(mut seed) % 300, next_random(mut seed) % 301)
+        };
+        let tasks: Vec[i64] = if c < 330 {
+            (0..n).map(|_| 1 + next_random(mut seed) % kinds).collect()
+        } else {
+            let types: Vec[i64] = (0..kinds).map(|_| 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000).collect();
+            (0..n).map(|_| types[next_random(mut seed) % kinds]).collect()
+        };
+        cases.push((tasks, space));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (tasks, space) = cases[c].clone();
+        let n = tasks.len();
+        let truth = days_literally(tasks, space);
+        check = (check * 31 + truth) % 1000000007;
+        let flipped: Vec[i64] = tasks.iter().map(|t| 1000000000 - t).collect();
+        let mut fresh = tasks.clone();
+        fresh.push(0);
+        let mut again = tasks.clone();
+        again.push(tasks[n - 1]);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, tasks, space)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                value >= n and value <= 1 + (n - 1) * (space + 1),
+                answer(arm, flipped, space) == value,
+                answer(arm, fresh, space) == value + 1,
+                answer(arm, again, space) == value + space + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
