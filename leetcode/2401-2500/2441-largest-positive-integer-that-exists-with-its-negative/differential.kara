@@ -1,0 +1,243 @@
+// LeetCode #2441: Largest Positive Integer That Exists With Its
+// Negative -- the differential. The six arms against the statement read
+// literally: every `k` from 1000 down to 1 tried in turn, the array
+// scanned once for `k` and once for `-k`, and the first `k` found both
+// ways is the answer, -1 when none is. No table, sort or set. 360 cases:
+// 300 random arrays of 1 to 10 values from -m to m, `m` from 1 to 6;
+// then 30 of 50 to 300 values from -1000 to 1000; then 30 of 2 to 40
+// values from -50 to 50, every one positive but one. Every case is drawn
+// before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the array reversed: the same answer
+// P3  every value negated: the same answer
+// P4  the answer is -1, or both it and its negative are in the array
+// P5  a pair `a` and `-a` added, `a` from 1 to 1000: the larger of `a`
+//     and the answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn holds(nums: Vec[i64], v: i64) -> bool {
+    for x in nums.iter() {
+        if x == v {
+            return true;
+        }
+    }
+    false
+}
+
+fn largest_literally(nums: Vec[i64]) -> i64 {
+    let mut k = 1000;
+    while k >= 1 {
+        if holds(nums, k) and holds(nums, -k) {
+            return k;
+        }
+        k -= 1;
+    }
+    -1
+}
+// ---- star (largest.kara) -------------------------------------------------
+
+fn star_find_max_k(nums: Vec[i64]) -> i64 {
+    let mut seen: Vec[bool] = Vec.filled(2001, false);
+    let mut best = -1;
+    for x in nums.iter() {
+        if seen[1000 - x] {
+            best = best.max(x.abs());
+        }
+        seen[1000 + x] = true;
+    }
+    best
+}
+
+// ---- naive (largest_naive.kara) ------------------------------------------
+
+fn naive_find_max_k(nums: Vec[i64]) -> i64 {
+    let mut best = -1;
+    for i in 0..nums.len() {
+        for j in i + 1..nums.len() {
+            if nums[i] + nums[j] == 0 and nums[i].abs() > best {
+                best = nums[i].abs();
+            }
+        }
+    }
+    best
+}
+
+// ---- sorted (largest_sorted.kara) ----------------------------------------
+
+fn sorted_find_max_k(nums: Vec[i64]) -> i64 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut i = 0;
+    let mut j = sorted.len() - 1;
+    while i < j {
+        let sum = sorted[i] + sorted[j];
+        if sum == 0 {
+            return sorted[j];
+        }
+        if sum < 0 {
+            i += 1;
+        } else {
+            j -= 1;
+        }
+    }
+    -1
+}
+
+// ---- set (largest_set.kara) ----------------------------------------------
+
+fn set_find_max_k(nums: Vec[i64]) -> i64 {
+    let mut values: Set[i64] = Set.new();
+    for x in nums.iter() {
+        values.insert(x);
+    }
+    let mut best = -1;
+    for x in nums.iter() {
+        if x > best and values.contains(-x) {
+            best = x;
+        }
+    }
+    best
+}
+
+// ---- iter (largest_iter.kara) --------------------------------------------
+
+fn iter_find_max_k(nums: Vec[i64]) -> i64 {
+    nums.iter()
+        .filter(|x| x > 0 and nums.iter().any(|y| y == -x))
+        .max()
+        .unwrap_or(-1)
+}
+
+// ---- solution (largest_solution.kara) ------------------------------------
+
+impl Solution {
+    pub fn find_max_k(nums: Vec[i32]) -> i32 {
+        let s: Set[i32] = nums.iter().cloned().collect();
+        nums.iter().filter(|x| x > 0 and s.contains(-x)).max().cloned().unwrap_or(-1)
+    }
+}
+
+struct Solution {}
+
+fn solution_find_max_k(nums: Vec[i64]) -> i64 {
+    let values: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.find_max_k(values)
+}
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_find_max_k(nums),
+        1 => naive_find_max_k(nums),
+        2 => sorted_find_max_k(nums),
+        3 => set_find_max_k(nums),
+        4 => iter_find_max_k(nums),
+        _ => solution_find_max_k(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn nonzero(m: i64, seed: mut ref i64) -> i64 {
+    let v = 1 + next_random(mut seed) % m;
+    if next_random(mut seed) % 2 == 0 { v } else { -v }
+}
+
+fn main() {
+    let arms = ["star", "naive", "sorted", "set", "iter", "solution"];
+    let mut seed = 2441;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let mut nums: Vec[i64] = Vec.new();
+        if t < 300 {
+            let m = 1 + next_random(mut seed) % 6;
+            for _ in 0..1 + next_random(mut seed) % 10 {
+                nums.push(nonzero(m, mut seed));
+            }
+        } else if t < 330 {
+            for _ in 0..50 + next_random(mut seed) % 251 {
+                nums.push(nonzero(1000, mut seed));
+            }
+        } else {
+            let len = 2 + next_random(mut seed) % 39;
+            for _ in 0..len {
+                nums.push(1 + next_random(mut seed) % 50);
+            }
+            let at = next_random(mut seed) % len;
+            nums[at] = -nums[at];
+        }
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let nums = cases[c].clone();
+        let truth = largest_literally(nums);
+        check = (check * 31 + truth + 1) % 1000000007;
+        let mut reversed = nums.clone();
+        reversed.reverse();
+        let negated: Vec[i64] = nums.iter().map(|x| -x).collect();
+        let a = 1 + next_random(mut seed) % 1000;
+        let mut added = nums.clone();
+        let at = next_random(mut seed) % (nums.len() + 1);
+        added.insert(at, a);
+        added.push(-a);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut present = false;
+            let mut opposite = false;
+            for x in nums.iter() {
+                if x == value {
+                    present = true;
+                }
+                if x == -value {
+                    opposite = true;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, reversed) == value,
+                answer(arm, negated) == value,
+                value == -1 or (value > 0 and present and opposite),
+                answer(arm, added) == a.max(value),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

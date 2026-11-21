@@ -1,0 +1,79 @@
+// LeetCode #2441: Largest Positive Integer That Exists With Its Negative
+// -- LeetCode's Rust template, as Rust writes it, carried by karac fix:
+// `use std::collections::HashSet`, the set collected from
+// `nums.iter().cloned()`, and the positive values with their negative in
+// it by a `filter(|&&x| ..)` closure that asks `s.contains(&-x)`, the
+// largest by `max().cloned().unwrap_or(-1)`.
+
+impl Solution {
+    pub fn find_max_k(nums: Vec[i32]) -> i32 {
+        let s: Set[i32] = nums.iter().cloned().collect();
+        nums.iter().filter(|x| x > 0 and s.contains(-x)).max().cloned().unwrap_or(-1)
+    }
+}
+
+struct Solution {}
+
+fn find_max_k(nums: Vec[i64]) -> i64 {
+    let values: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.find_max_k(values)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random nonzero value from -m to m
+fn nonzero(m: i64, seed: mut ref i64) -> i64 {
+    let v = 1 + next_random(mut seed) % m;
+    if next_random(mut seed) % 2 == 0 { v } else { -v }
+}
+
+fn main() {
+    // LeetCode's three examples; the constraints' extremes; one value;
+    // a value with only itself
+    let cases: Vec[Vec[i64]] = [
+        [-1, 2, -3, 3].to_vec(),
+        [-1, 10, 6, 7, -7, 1].to_vec(),
+        [-10, 8, 6, 7, -2, -3].to_vec(),
+        [1000, -1000].to_vec(),
+        [-1000].to_vec(),
+        [4, 4, 4, -3].to_vec(),
+    ].to_vec();
+    for nums in cases.into_iter() {
+        println(f"{nums}: {find_max_k(nums)}");
+    }
+    // 1000 values, the constraints' most: every value from 1 to 500 with
+    // its negative for every one but 500; then 1000 random values from
+    // -1000 to 1000
+    let mut seed = 2441;
+    let mut paired: Vec[i64] = Vec.new();
+    for v in 1..501 {
+        paired.push(v);
+        paired.push(if v == 500 { 499 } else { -v });
+    }
+    println(f"paired: {find_max_k(paired)}");
+    let mut random: Vec[i64] = Vec.new();
+    for _ in 0..1000 {
+        random.push(nonzero(1000, mut seed));
+    }
+    println(f"random: {find_max_k(random)}");
+    // 3000 random arrays of 1 to 10 values from -6 to 6: a checksum and
+    // the total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let len = 1 + next_random(mut seed) % 10;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..len {
+            nums.push(nonzero(6, mut seed));
+        }
+        let answer = find_max_k(nums);
+        check = (check * 31 + answer + 1) % 1000000007;
+        total += answer;
+    }
+    println(f"3000 random: checksum {check}, total {total}");
+}
