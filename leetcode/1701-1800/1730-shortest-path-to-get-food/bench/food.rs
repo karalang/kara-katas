@@ -63,7 +63,7 @@ fn main() {
                 .collect();
             grid.push(row);
         }
-        let at = next_random(&mut seed) % (side * side);
+        let at = (next_random(&mut seed) * 32768 + next_random(&mut seed)) % (side * side);
         grid[(at / side) as usize][(at % side) as usize] = b'*';
         problems.push(grid);
     }

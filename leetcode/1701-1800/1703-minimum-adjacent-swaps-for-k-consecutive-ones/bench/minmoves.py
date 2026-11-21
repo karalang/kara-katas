@@ -36,7 +36,7 @@ def main():
         # each value a 1 with a chance of its array's own, 1 to 10 in 10
         lean = next_random(seed) % 10 + 1
         nums = [1 if next_random(seed) % 10 < lean else 0 for _ in range(n)]
-        k = next_random(seed) % nums.count(1) + 1
+        k = (next_random(seed) * 32768 + next_random(seed)) % nums.count(1) + 1
         arrays.append((nums, k))
     total = 0
     check = 0

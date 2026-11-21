@@ -32,7 +32,7 @@ def batch(count, most):
     check = 0
     found = 0
     for _ in range(count):
-        n = next_random() % (most - 1) + 2
+        n = (next_random() * 32768 + next_random()) % (most - 1) + 2
         own = next_random() % 4 + 1
         arr = [next_random() % own + 1 for _ in range(n)]
         m = next_random() % 4 + 1

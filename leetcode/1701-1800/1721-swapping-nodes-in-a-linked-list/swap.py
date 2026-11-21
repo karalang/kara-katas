@@ -59,7 +59,7 @@ def batch(count, longest):
     nodes = 0
     check = 0
     for _ in range(count):
-        n = next_random() % longest + 1
+        n = (next_random() * 32768 + next_random()) % longest + 1
         k = next_random() % n + 1
         values = [next_random() % 101 for _ in range(n)]
         got = swapped(values, k)

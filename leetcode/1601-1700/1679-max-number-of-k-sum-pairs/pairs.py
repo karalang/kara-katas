@@ -29,7 +29,7 @@ def batch(count, longest, most):
     total = 0
     check = 0
     for _ in range(count):
-        n = next_random() % longest + 1
+        n = (next_random() * 32768 + next_random()) % longest + 1
         nums = [(next_random() * 32768 + next_random()) % most + 1 for _ in range(n)]
         k = (next_random() * 32768 + next_random()) % (2 * most - 1) + 2
         operations = max_operations(nums, k)

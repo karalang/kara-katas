@@ -51,9 +51,9 @@ the ★ arm and its output is byte-identical.
 0
 1
 0
-3000 strings of up to 10 letters from 2: lengths add to 5070, checksum 797901456
-1000 strings of up to 100 letters from 3: lengths add to 25531, checksum 7245651
-20 strings of up to 100000 letters from 3: lengths add to 171166, checksum 462230405
+3000 strings of up to 10 letters from 2: lengths add to 5155, checksum 61166158
+1000 strings of up to 100 letters from 3: lengths add to 24573, checksum 64656057
+20 strings of up to 100000 letters from 3: lengths add to 335490, checksum 682141874
 ```
 
 ## Differential

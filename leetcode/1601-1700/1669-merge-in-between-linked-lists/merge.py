@@ -65,8 +65,8 @@ def batch(count, longest):
         m = next_random() % longest + 1
         a = next_random() % (n - 2) + 1
         b = a + next_random() % (n - 1 - a)
-        list1 = [next_random() % 1000001 for _ in range(n)]
-        list2 = [next_random() % 1000001 for _ in range(m)]
+        list1 = [(next_random() * 32768 + next_random()) % 1000001 for _ in range(n)]
+        list2 = [(next_random() * 32768 + next_random()) % 1000001 for _ in range(m)]
         got = merged(list1, a, b, list2)
         nodes += len(got)
         for v in got:

@@ -52,7 +52,7 @@ func main() {
 		for i := range code {
 			code[i] = int32(nextRandom()%100 + 1)
 		}
-		k := int32(nextRandom()%(2*n-1) - (n - 1))
+		k := int32((nextRandom() * 32768 + nextRandom())%(2*n-1) - (n - 1))
 		codes = append(codes, problem{code, k})
 	}
 	var check, total int64

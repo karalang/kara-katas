@@ -34,7 +34,7 @@ func expression(size int64, out *strings.Builder) {
 	left := size
 	for {
 		if left > 1 && nextRandom()%3 == 0 {
-			inner := nextRandom()%left + 1
+			inner := (nextRandom() * 32768 + nextRandom())%left + 1
 			out.WriteByte('(')
 			expression(inner, out)
 			out.WriteByte(')')

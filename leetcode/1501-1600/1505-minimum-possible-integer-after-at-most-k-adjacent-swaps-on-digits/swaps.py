@@ -58,7 +58,7 @@ def random_case(most_n, most_k):
     n = next_random() % most_n + 1
     digits = next_random() % 10 + 1
     num = "".join(chr(48 + next_random() % digits) for _ in range(n))
-    return num, next_random() % (most_k + 1)
+    return num, (next_random() * 32768 + next_random()) % (most_k + 1)
 
 
 def batch(count, most_n, most_k):

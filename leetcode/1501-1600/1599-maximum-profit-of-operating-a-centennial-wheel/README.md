@@ -129,7 +129,7 @@ All four arms print the same output as `wheel.py` under
 error. `karac run` and a `karac build` binary print the same output for
 them, the differential and the bench. `karac check` reports nothing on
 any of them, and `karac fix` has nothing left to change. Checked at kara
-`5dc4418bbd`.
+`21cdf88b69`.
 
 ## Writing it
 

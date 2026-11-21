@@ -28,7 +28,7 @@ for p in range(200):
         if p % 2 == 0:
             nums.append(3 * i - 700)
         else:
-            nums.append(next_random() % 200001 - 100000)
+            nums.append((next_random() * 32768 + next_random()) % 200001 - 100000)
     for i in range(499, 0, -1):
         j = next_random() % (i + 1)
         nums[i], nums[j] = nums[j], nums[i]

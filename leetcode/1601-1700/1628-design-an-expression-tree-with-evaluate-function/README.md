@@ -112,35 +112,36 @@ division (exit 101), or with `integer overflow` at its multiplication.
 
 The bench draws 20000 random postfix expressions of 50 operands up to
 `10^5`, all of them first, then builds each into a tree and evaluates it
-by the ★ arm in all five languages: Rust with `Box<dyn Node>`, Go with an
-interface, C with a pointer to a table of methods in each heap node, as a
-trait object is. Every implementation prints `20000 expressions of 50
-operands: values sum to 423304508813, checksum 121452414`. The C build
+by the ★ arm in all five languages: Rust with `Box<dyn Node>`, Go with
+an interface, C with a pointer to a table of methods in each heap node,
+as a trait object is. Every implementation prints `20000 expressions of
+50 operands: values sum to 145832590487, checksum 63745765`. The C build
 also runs clean under gcc's AddressSanitizer and
 UndefinedBehaviorSanitizer.
 
 Timings on a 4-core container, medians of eight interleaved runs of each
-compiled program and one of Python, with kara `60902ec48` on LLVM 22:
+compiled program and one of Python, with kara `21cdf88b69` on LLVM 22:
 
 | | median |
 |---|---|
-| Rust (`rustc -O`) | 0.279 s |
-| C (`clang -O3`) | 0.281 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 0.291 s |
-| Go | 0.359 s |
-| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.361 s |
-| Kāra (`karac build`) | 0.351 s |
-| Python | 1.7 s |
+| Rust (`rustc -O`) | 0.245 s |
+| C (`clang -O3`) | 0.255 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.257 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.328 s |
+| Kāra (`karac build`) | 0.335 s |
+| Go | 0.344 s |
+| Python | 1.6 s |
 
-Kāra is level with Go and a quarter behind Rust and C. The time includes
-drawing the expressions, a recursive generator building 2 million token
-strings, which every language does the same way; how it splits between
-that and the trees was not measured.
+The sequential Kāra build takes 1.34x Rust's time and 1.28x that of Rust
+with overflow checks on, the equal-safety comparison (BENCHMARKS.md).
+The time includes drawing the expressions, a recursive generator
+building 2 million token strings, which every language does the same
+way; how it splits between that and the trees was not measured.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
-the sequential lane. A plain `karac build` parallelizes
-nothing here: its user time is not above its real time (0.288 s and
-0.345 s on one run).
+the sequential lane. A plain `karac build` parallelizes nothing here:
+its user time is not above its real time (0.292 s and 0.343 s on one
+run).
 
 ## Verification
 
@@ -150,7 +151,7 @@ All three arms print the same output as `expression.py` under
 error. `karac run` and a `karac build` binary print the same output for
 them, the differential and the bench. `karac check` reports nothing on
 any of them, and `karac fix` has nothing left to change. Checked at kara
-`60902ec48`.
+`21cdf88b69`.
 
 ## Writing it
 

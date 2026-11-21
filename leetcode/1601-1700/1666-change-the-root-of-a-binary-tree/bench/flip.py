@@ -47,13 +47,13 @@ def next_random():
 def random_tree(n):
     values = list(range(n))
     for i in range(n - 1, 0, -1):
-        j = next_random() % (i + 1)
+        j = (next_random() * 32768 + next_random()) % (i + 1)
         values[i], values[j] = values[j], values[i]
     nodes = []
     for i in range(n):
         node = Node(values[i])
         if i > 0:
-            at = nodes[next_random() % i]
+            at = nodes[(next_random() * 32768 + next_random()) % i]
             while True:
                 if next_random() % 2 == 0:
                     if at.left is not None:
@@ -76,7 +76,7 @@ def random_tree(n):
 trees = []
 for _ in range(30):
     nodes = random_tree(100000)
-    starts = [next_random() % 100000 for _ in range(50000)]
+    starts = [(next_random() * 32768 + next_random()) % 100000 for _ in range(50000)]
     trees.append((nodes, starts))
 check = 0
 steps = 0

@@ -34,11 +34,11 @@ def batch(count, most, days, span, top, most_k):
     total = 0
     check = 0
     for _ in range(count):
-        n = next_random() % most + 1
+        n = (next_random() * 32768 + next_random()) % most + 1
         events = []
         for _ in range(n):
             start = wide() % days + 1
-            end = min(start + next_random() % span, days)
+            end = min(start + (next_random() * 32768 + next_random()) % span, days)
             value = wide() % top + 1
             events.append([start, end, value])
         k = next_random() % most_k + 1

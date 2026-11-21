@@ -37,9 +37,9 @@ random arrays of up to 8 values within 5, 300 of up to 1000 within
 7
 14
 1000000000
-3000 arrays of up to 8 values within 5: answers add to 22671, checksum 102884432
-300 arrays of up to 1000 values within 10000: answers add to 214224584, checksum 980439349
-10 arrays of up to 100000 values within 10000: answers add to 221944398, checksum 970228772
+3000 arrays of up to 8 values within 5: answers add to 22598, checksum 586896597
+300 arrays of up to 1000 values within 10000: answers add to 213688316, checksum 289601489
+10 arrays of up to 100000 values within 10000: answers add to 870796534, checksum 149706256
 ```
 
 ## Differential

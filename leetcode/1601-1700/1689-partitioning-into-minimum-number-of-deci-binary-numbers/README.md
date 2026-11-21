@@ -40,9 +40,9 @@ its output is byte-identical.
 9
 1
 1
-3000 numbers of up to 10 digits: answers sum to 13042, checksum 267565153
-300 numbers of up to 1000 digits: answers sum to 1512, checksum 945972698
-10 numbers of up to 100000 digits: answers sum to 46, checksum 635857583
+3000 numbers of up to 10 digits: answers sum to 13016, checksum 436506849
+300 numbers of up to 1000 digits: answers sum to 1468, checksum 721277462
+10 numbers of up to 100000 digits: answers sum to 41, checksum 840757317
 ```
 
 ## Differential
@@ -128,7 +128,7 @@ __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `9b0b5eb92c`.
+them, and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

@@ -47,9 +47,9 @@ takes a half away from zero and Python's `round()` to even.
 3.25000
 4.00000
 2.00000
-3000 lists of up to 12 customers: answers sum to 16072.23662, checksum 118817374
-300 lists of up to 1000 customers: answers sum to 163033.26261, checksum 28056714
-10 lists of up to 100000 customers: answers sum to 2100444.93518, checksum 266808736
+3000 lists of up to 12 customers: answers sum to 15853.93745, checksum 152792606
+300 lists of up to 1000 customers: answers sum to 169152.24822, checksum 684800238
+10 lists of up to 100000 customers: answers sum to 4316746.21163, checksum 707919495
 ```
 
 ## Differential
@@ -138,7 +138,7 @@ __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `9b0b5eb92c`.
+them, and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

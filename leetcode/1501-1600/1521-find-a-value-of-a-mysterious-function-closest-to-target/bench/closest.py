@@ -37,7 +37,7 @@ def main():
     targets = []
     for _ in range(count):
         n = next_random() % 4000 + 1
-        base = next_random() % 1000000 + 1
+        base = (next_random() * 32768 + next_random()) % 1000000 + 1
         arr = []
         for _ in range(n):
             if next_random() % 2 == 0:

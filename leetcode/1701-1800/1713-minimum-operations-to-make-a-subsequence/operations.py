@@ -35,9 +35,9 @@ def batch(count, most, top, seed):
             a = next_random(seed)
             j = (a * 32768 + next_random(seed)) % (i + 1)
             values[i], values[j] = values[j], values[i]
-        t = next_random(seed) % min(most, top) + 1
+        t = (next_random(seed) * 32768 + next_random(seed)) % min(most, top) + 1
         target = values[:t]
-        n = next_random(seed) % most + 1
+        n = (next_random(seed) * 32768 + next_random(seed)) % most + 1
         arr = []
         for _ in range(n):
             a = next_random(seed)

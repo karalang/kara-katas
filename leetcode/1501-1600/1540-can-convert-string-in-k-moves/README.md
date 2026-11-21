@@ -119,7 +119,7 @@ All five arms print the same output as `convert.py` under
 `karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no
 error. `karac run` and a `karac build` binary print the same output for
 them and the differential. `karac check` reports nothing on any of them,
-and `karac fix` has nothing left to change. Checked at kara `3d1fc8e26`.
+and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

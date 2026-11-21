@@ -155,13 +155,13 @@ million digits is part of every timing.
 
 ## Verification
 
-All five arms print the same output as `swaps.py` under
-`karac __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and
-`karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no
-error. `karac run` and a `karac build` binary print the same output for
-them and the differential. `karac check` reports nothing on any of them.
-Under `karac __mir-run` the arms take 0.5 to 0.6 s and the differential
-0.8 s.
+All five arms print the same output as `swaps.py` under `karac
+__mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
+__mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
+`karac run` and a `karac build` binary print the same output for them
+and the differential. `karac check` reports nothing on any of them.
+Checked at kara `21cdf88b69`. Under `karac __mir-run` the arms take 0.4
+to 0.7 s, the iterator arm 4.4 s, and the differential 1.2 s.
 
 ## Writing it
 

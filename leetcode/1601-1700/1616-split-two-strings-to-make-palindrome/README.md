@@ -95,23 +95,33 @@ directly.
 
 ## Benchmarks
 
-The bench makes 10 pairs of 500000 letters from two that split, one letter of b then changed one time in two, all of it first. Then: each pair checked 30 times with two pointers. Every implementation prints `10 pairs of 500000 letters from 2, each checked 30 times: 270 split, checksum 966791751`.
+The bench makes 10 pairs of 500000 letters from two that split, one
+letter of b then changed one time in two, all of it first. Then: each
+pair checked 30 times with two pointers. Every implementation prints `10
+pairs of 500000 letters from 2, each checked 30 times: 240 split,
+checksum 725862079`.
 
 Timings on a 4-core container, medians of eight interleaved runs of each
-compiled program and one of Python, with kara `5bb1708545` on LLVM 22:
+compiled program and one of Python, with kara `21cdf88b69` on LLVM 22:
 
 | | median |
 |---|---|
-| C (`clang -O3`) | 0.041 s |
-| Rust (`rustc -O`) | 0.057 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 0.057 s |
-| Kāra (`karac build`) | 0.065 s |
-| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.065 s |
-| Go | 0.099 s |
-| Python | 4.7 s |
+| C (`clang -O3`) | 0.050 s |
+| Rust (`rustc -O`) | 0.068 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.072 s |
+| Kāra (`karac build`) | 0.077 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.083 s |
+| Go | 0.115 s |
+| Python | 5.1 s |
+
+The sequential Kāra build takes 1.22x Rust's time and 1.15x that of Rust
+with overflow checks on, the equal-safety comparison (BENCHMARKS.md). C
+is the fastest here at 0.050 s.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
-the sequential lane. A plain `karac build` parallelizes nothing here: its user time is not above its real time (0.061 s and 0.066 s on one run).
+the sequential lane. A plain `karac build` parallelizes nothing here:
+its user time is not above its real time (0.071 s and 0.083 s on one
+run).
 
 ## Verification
 
@@ -121,7 +131,7 @@ All four arms print the same output as `split.py` under
 error. `karac run` and a `karac build` binary print the same output for
 them, the differential and the bench. `karac check` reports nothing on
 any of them, and `karac fix` has nothing left to change. Checked at kara
-`5bb1708545`.
+`21cdf88b69`.
 
 ## Writing it
 

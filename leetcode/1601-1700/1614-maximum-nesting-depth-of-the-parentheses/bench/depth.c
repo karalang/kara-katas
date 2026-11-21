@@ -38,11 +38,16 @@ static int64_t next_random(void) {
     return seed / 65536;
 }
 
+static int64_t wide(void) {
+    int64_t a = next_random();
+    return a * 32768 + next_random();
+}
+
 static void expression(int64_t size, Str *out) {
     int64_t left = size;
     for (;;) {
         if (left > 1 && next_random() % 3 == 0) {
-            int64_t inner = next_random() % left + 1;
+            int64_t inner = wide() % left + 1;
             push(out, '(');
             expression(inner, out);
             push(out, ')');

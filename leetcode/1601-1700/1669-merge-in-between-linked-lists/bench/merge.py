@@ -45,14 +45,14 @@ def build(values):
 
 start = 100000
 rounds = 10000
-values = [next_random() % 1000001 for _ in range(start)]
+values = [(next_random() * 32768 + next_random()) % 1000001 for _ in range(start)]
 length = start
 cuts = []
 for _ in range(rounds):
     m = next_random() % 8 + 1
     a = (next_random() * 32768 + next_random()) % (length - 2) + 1
     b = a + next_random() % min(8, length - 1 - a)
-    list2 = [next_random() % 1000001 for _ in range(m)]
+    list2 = [(next_random() * 32768 + next_random()) % 1000001 for _ in range(m)]
     length += m - (b - a + 1)
     cuts.append((a, b, list2))
 lst = build(values)

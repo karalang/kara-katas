@@ -64,7 +64,7 @@ func main() {
 				}
 			}
 		}
-		at := int(nextRandom(&seed) % int64(side*side))
+		at := int((nextRandom(&seed)*32768 + nextRandom(&seed)) % int64(side*side))
 		grid[at/side][at%side] = '*'
 		problems[p] = grid
 	}

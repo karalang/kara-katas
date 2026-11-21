@@ -51,9 +51,9 @@ queries. `paths.py` mirrors the ★ arm and its output is byte-identical.
 [true, false]
 [false, true]
 [true, false]
-3000 graphs of up to 6 nodes, lengths up to 5: 5007 true, checksum 618701383
-300 graphs of up to 100 nodes, lengths up to 100: 6616 true, checksum 24606381
-10 graphs of up to 2000 nodes, lengths up to 1000000000: 6632 true, checksum 101934422
+3000 graphs of up to 6 nodes, lengths up to 5: 4820 true, checksum 156534330
+300 graphs of up to 100 nodes, lengths up to 100: 7650 true, checksum 872608540
+10 graphs of up to 2000 nodes, lengths up to 1000000000: 4379 true, checksum 802611846
 ```
 
 ## Differential
@@ -143,7 +143,7 @@ __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `9b0b5eb92c`.
+them, and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

@@ -56,10 +56,10 @@ def batch(count, most, top, swaps):
     total = 0
     check = 0
     for _ in range(count):
-        n = next_random() % most + 1
+        n = (next_random() * 32768 + next_random()) % most + 1
         source = [wide() % top + 1 for _ in range(n)]
         target = [wide() % top + 1 for _ in range(n)]
-        m = next_random() % (swaps + 1) if n > 1 else 0
+        m = (next_random() * 32768 + next_random()) % (swaps + 1) if n > 1 else 0
         allowed = []
         for _ in range(m):
             a = wide() % n

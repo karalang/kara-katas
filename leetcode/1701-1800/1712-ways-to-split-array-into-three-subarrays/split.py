@@ -31,7 +31,7 @@ def batch(count, most, top, seed):
     total = 0
     check = 0
     for _ in range(count):
-        n = next_random(seed) % (most - 2) + 3
+        n = (next_random(seed) * 32768 + next_random(seed)) % (most - 2) + 3
         nums = [next_random(seed) % (top + 1) for _ in range(n)]
         answer = ways_to_split(nums)
         total += answer

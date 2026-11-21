@@ -44,7 +44,7 @@ def random_pairs(n):
         else:
             pairs.append([values[i], values[i - 1]])
     for i in range(len(pairs) - 1, 0, -1):
-        j = next_random() % (i + 1)
+        j = (next_random() * 32768 + next_random()) % (i + 1)
         pairs[i], pairs[j] = pairs[j], pairs[i]
     return pairs
 

@@ -43,7 +43,7 @@ def batch(count, size, values, customers, most):
     check = 0
     served = 0
     for _ in range(count):
-        n = next_random() % size + 1
+        n = (next_random() * 32768 + next_random()) % size + 1
         distinct = next_random() % values + 1
         nums = [next_random() % distinct + 1 for _ in range(n)]
         m = next_random() % customers + 1

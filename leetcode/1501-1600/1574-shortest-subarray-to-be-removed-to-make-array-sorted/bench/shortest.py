@@ -49,7 +49,7 @@ def main():
             if i == start + middle:
                 v = next_random() % 1000
             if start <= i < start + middle:
-                arr.append(next_random() % 4000000)
+                arr.append((next_random() * 32768 + next_random()) % 4000000)
             else:
                 v += next_random() % 8
                 arr.append(v)

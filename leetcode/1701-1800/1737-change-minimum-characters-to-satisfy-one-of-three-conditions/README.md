@@ -47,9 +47,9 @@ mirrors the ★ arm and its output is byte-identical.
 0
 0
 2
-3000 pairs of up to 6 letters from 4: changes sum to 5264, checksum 760829754
-1000 pairs of up to 100 letters from 26: changes sum to 32296, checksum 973441487
-10 pairs of up to 100000 letters from 26: changes sum to 83368, checksum 459354505
+3000 pairs of up to 6 letters from 4: changes sum to 5314, checksum 222083343
+1000 pairs of up to 100 letters from 26: changes sum to 32023, checksum 484522491
+10 pairs of up to 100000 letters from 26: changes sum to 268562, checksum 305721583
 ```
 
 ## Differential
@@ -144,7 +144,7 @@ __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `ad6400d909`.
+them, and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

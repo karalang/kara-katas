@@ -47,9 +47,9 @@ byte-identical.
 [0,1,1000000,1000001,1000002,1000003,1000004,6]
 [1,9,3]
 [1,7,8,5]
-3000 problems of up to 12 nodes: 35609 nodes merged, checksum 97285295
-300 problems of up to 1000 nodes: 265837 nodes merged, checksum 164022511
-10 problems of up to 10000 nodes: 72821 nodes merged, checksum 877433623
+3000 problems of up to 12 nodes: 36033 nodes merged, checksum 374194788
+300 problems of up to 1000 nodes: 250070 nodes merged, checksum 728630496
+10 problems of up to 10000 nodes: 88235 nodes merged, checksum 89810460
 ```
 
 ## Differential
@@ -105,34 +105,34 @@ harness's walk follows until memory runs out, so it was dropped.
 The bench draws one list of `10^5` nodes and 10000 cuts of it, each at a
 random place with 1 to 8 nodes taken out and a new list of 1 to 8 put
 in, all of them first; then it builds the list and makes every cut in
-turn by the ★ arm, each new list built just before its merge, in all five
-languages: Kāra's `shared struct`, Rust's `Rc<RefCell<ListNode>>`,
-pointer nodes in Go and Python, and nodes malloc'd one by one in C, which
-frees the cut nodes as the walk steps over them. Every implementation
-prints `100000 nodes, 10000 merges: 99817 nodes, checksum 160989718`.
-The C build also runs clean under gcc's AddressSanitizer and
-UndefinedBehaviorSanitizer.
+turn by the ★ arm, each new list built just before its merge, in all
+five languages: Kāra's `shared struct`, Rust's `Rc<RefCell<ListNode>>`,
+pointer nodes in Go and Python, and nodes malloc'd one by one in C,
+which frees the cut nodes as the walk steps over them. Every
+implementation prints `100000 nodes, 10000 merges: 100780 nodes,
+checksum 553656051`. The C build also runs clean under gcc's
+AddressSanitizer and UndefinedBehaviorSanitizer.
 
 Timings on a 4-core container, medians of eight interleaved runs of each
-compiled program and one of Python, with kara `9b0b5eb92c` on LLVM 22:
+compiled program and one of Python, with kara `21cdf88b69` on LLVM 22:
 
 | | median |
 |---|---|
-| Go | 1.039 s |
-| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 2.281 s |
-| Kāra (`karac build`) | 2.294 s |
-| C (`clang -O3`) | 3.504 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 3.514 s |
-| Rust (`rustc -O`) | 3.976 s |
-| Python | 10.0 s |
+| Go | 1.257 s |
+| Kāra (`karac build`) | 2.629 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 2.639 s |
+| C (`clang -O3`) | 3.837 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 4.214 s |
+| Rust (`rustc -O`) | 4.240 s |
+| Python | 12 s |
 
-The sequential Kāra build is 43% faster than Rust and 35% faster than
+The sequential Kāra build is 38% faster than Rust and 37% faster than
 Rust with overflow checks on, the equal-safety comparison
-(BENCHMARKS.md).
+(BENCHMARKS.md). Go is the fastest here at 1.257 s.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
 the sequential lane. A plain `karac build` parallelizes nothing here:
-its user time is not above its real time (1.852 s and 1.859 s on one
+its user time is not above its real time (2.713 s and 2.731 s on one
 run).
 
 ## Verification
@@ -142,7 +142,7 @@ All four arms print the same output as `merge.py` under `karac __mir-run`
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `9b0b5eb92c`.
+them, and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

@@ -75,7 +75,7 @@ func abs(x int64) int64 {
 
 func expression(leaves, top int64, tokens *[]string) int64 {
 	if leaves == 1 {
-		v := nextRandom() % top
+		v := (nextRandom() * 32768 + nextRandom()) % top
 		*tokens = append(*tokens, strconv.FormatInt(v, 10))
 		return v
 	}

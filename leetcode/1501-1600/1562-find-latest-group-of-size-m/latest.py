@@ -50,7 +50,7 @@ def batch(count, most):
         if next_random() % 2 == 0:
             m = next_random() % min(n, 8) + 1
         else:
-            m = next_random() % n + 1
+            m = (next_random() * 32768 + next_random()) % n + 1
         step = find_latest_step(arr, m)
         if step >= 0:
             found += 1

@@ -43,6 +43,11 @@ static int64_t next_random(void) {
     return seed / 65536;
 }
 
+static int64_t wide(void) {
+    int64_t a = next_random();
+    return a * 32768 + next_random();
+}
+
 static int64_t mix(int64_t check, int64_t x) {
     return (check * 31 + x + 1) % 1000000007;
 }
@@ -54,7 +59,7 @@ int main(void) {
     static int64_t targets[COUNT];
     for (int c = 0; c < COUNT; c++) {
         int64_t n = next_random() % 4000 + 1;
-        int64_t base = next_random() % 1000000 + 1;
+        int64_t base = wide() % 1000000 + 1;
         int64_t *arr = malloc((size_t)n * sizeof(int64_t));
         for (int64_t i = 0; i < n; i++) {
             int64_t x;

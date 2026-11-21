@@ -126,7 +126,7 @@ All four arms print the same output as `restore.py` under
 error. `karac run` and a `karac build` binary print the same output for
 them, the differential and the bench. `karac check` reports nothing on
 any of them, and `karac fix` has nothing left to change. Checked at kara
-`5bb1708545`.
+`21cdf88b69`.
 
 ## Writing it
 

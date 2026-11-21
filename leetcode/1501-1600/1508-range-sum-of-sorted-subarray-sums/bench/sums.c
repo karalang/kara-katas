@@ -46,6 +46,11 @@ static long next_random(long *seed) {
     return *seed / 65536;
 }
 
+static long wide(long *seed) {
+    long a = next_random(seed);
+    return a * 32768 + next_random(seed);
+}
+
 int main(void) {
     long seed = 1508;
     static long arrays[40][1000];
@@ -54,8 +59,8 @@ int main(void) {
     long total = 1000 * 1001 / 2, check = 0;
     for (int r = 0; r < 25; r++) {
         for (int k = 0; k < 40; k++) {
-            long a = next_random(&seed) % total + 1;
-            long b = next_random(&seed) % total + 1;
+            long a = wide(&seed) % total + 1;
+            long b = wide(&seed) % total + 1;
             long lo = a < b ? a : b, hi = a < b ? b : a;
             check = (check * 31 + range_sum(arrays[k], 1000, lo, hi) + 1) % 1000000007;
         }

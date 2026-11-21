@@ -121,33 +121,34 @@ P4, whose border moves that edge.
 
 The bench draws 10 random 200 by 200 grids, LeetCode's largest, each
 cell an obstacle with a chance of 1 in 4 and food 1 in 20000, so that a
-grid holds two foods on average and the search covers much of it, all
-of them first, then answers each 200 times by the ★ arm in all five
+grid holds two foods on average and the search covers much of it, all of
+them first, then answers each 200 times by the ★ arm in all five
 languages. Every implementation prints `10 grids of 200 by 200, 200
-rounds: answers sum to 247600, checksum 431990536`. Kāra, Rust and
+rounds: answers sum to 248000, checksum 512956020`. Kāra, Rust and
 Python keep a deque of (row, column) pairs, Go a slice of them it
 appends to, and C an array of cell numbers. The C build also runs clean
 under gcc's AddressSanitizer and UndefinedBehaviorSanitizer.
 
 Timings on a 4-core container, medians of eight interleaved runs of each
-compiled program and one of Python, with kara `9b0b5eb92c` on LLVM 22:
+compiled program and one of Python, with kara `21cdf88b69` on LLVM 22:
 
 | | median |
 |---|---|
-| Kāra (`karac build`) | 0.522 s |
-| C (`clang -O3`) | 0.523 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 0.528 s |
-| Rust (`rustc -O`) | 0.530 s |
-| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.546 s |
-| Go | 1.821 s |
+| C (`clang -O3`) | 0.558 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.615 s |
+| Kāra (`karac build`) | 0.634 s |
+| Rust (`rustc -O`) | 0.643 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.657 s |
+| Go | 1.677 s |
 | Python | 15 s |
 
-The sequential Kāra build is level with Rust and level with Rust with
-overflow checks on, the equal-safety comparison (BENCHMARKS.md).
+The sequential Kāra build is level with Rust and 6% faster than Rust
+with overflow checks on, the equal-safety comparison (BENCHMARKS.md). C
+is the fastest here at 0.558 s.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
 the sequential lane. A plain `karac build` parallelizes nothing here:
-its user time is not above its real time (0.554 s and 0.557 s on one
+its user time is not above its real time (0.621 s and 0.625 s on one
 run).
 
 ## Verification
@@ -157,7 +158,7 @@ __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `9b0b5eb92c`.
+them, and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

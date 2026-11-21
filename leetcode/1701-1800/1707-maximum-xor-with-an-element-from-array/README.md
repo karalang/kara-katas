@@ -41,9 +41,9 @@ output is byte-identical.
 [15, -1, 5]
 [-1, -1]
 [610612735]
-3000 problems of up to 8 values below 16: answers sum to 105629, checksum 193206648
-300 problems of up to 1000 values below 1000000000: answers sum to 117877962406938, checksum 259365112
-3 problems of up to 100000 values below 1000000000: answers sum to 52638312486749, checksum 769961453
+3000 problems of up to 8 values below 16: answers sum to 105281, checksum 275379831
+300 problems of up to 1000 values below 1000000000: answers sum to 111506949462541, checksum 888836732
+3 problems of up to 100000 values below 1000000000: answers sum to 130822038185179, checksum 760327025
 ```
 
 ## Differential
@@ -129,7 +129,7 @@ All four arms print the same output as `xor.py` under `karac __mir-run`
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `9b0b5eb92c`.
+them, and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

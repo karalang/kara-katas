@@ -34,7 +34,7 @@ n = 100000
 codes = []
 for _ in range(400):
     code = [next_random() % 100 + 1 for _ in range(n)]
-    k = next_random() % (2 * n - 1) - (n - 1)
+    k = (next_random() * 32768 + next_random()) % (2 * n - 1) - (n - 1)
     codes.append((code, k))
 check = 0
 total = 0

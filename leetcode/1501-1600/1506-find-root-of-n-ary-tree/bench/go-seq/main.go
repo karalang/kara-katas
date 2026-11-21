@@ -35,7 +35,7 @@ func nextRandom() int64 {
 func mix(check, x int64) int64 { return (check*31 + x + 1) % 1000000007 }
 
 func randomTree(most int64) []*Node {
-	n := int(nextRandom()%most + 1)
+	n := int((nextRandom() * 32768 + nextRandom())%most + 1)
 	vals := []int64{}
 	seen := map[int64]bool{}
 	for len(vals) < n {

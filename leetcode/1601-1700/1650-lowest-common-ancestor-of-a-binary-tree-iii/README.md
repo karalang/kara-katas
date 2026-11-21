@@ -106,30 +106,30 @@ pair by the ★ arm in all five languages: Kāra's `shared struct` with a
 `weak` parent, Rust's `Rc<RefCell<Node>>` with a `Weak` parent, pointer
 nodes in Go and Python, and nodes malloc'd one by one in C. Every
 implementation prints `30 trees of 100000 nodes, 50000 pairs each:
-answers sum to 80348337452, checksum 504282657`. The C build also runs
+answers sum to 73875586045, checksum 743918665`. The C build also runs
 clean under gcc's AddressSanitizer and UndefinedBehaviorSanitizer.
 
 Timings on a 4-core container, medians of eight interleaved runs of each
-compiled program and one of Python, with kara `ee08f070a` on LLVM 22:
+compiled program and one of Python, with kara `21cdf88b69` on LLVM 22:
 
 | | median |
 |---|---|
-| C (`clang -O3`) | 0.769 s |
-| Go | 0.796 s |
-| Kāra (`karac build`) | 1.019 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 1.028 s |
-| Rust (`rustc -O`) | 1.029 s |
-| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 1.046 s |
-| Python | 17 s |
+| C (`clang -O3`) | 1.162 s |
+| Go | 1.175 s |
+| Rust (`rustc -O`) | 1.484 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 1.514 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 1.522 s |
+| Kāra (`karac build`) | 1.536 s |
+| Python | 18 s |
 
 The sequential Kāra build is level with Rust and level with Rust with
 overflow checks on, the equal-safety comparison (BENCHMARKS.md). C is
-the fastest here at 0.769 s.
+the fastest here at 1.162 s.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
-the sequential lane. A plain `karac build` parallelizes
-nothing here: its user time is not above its real time (0.897 s and
-1.018 s on one run).
+the sequential lane. A plain `karac build` parallelizes nothing here:
+its user time is not above its real time (1.439 s and 1.561 s on one
+run).
 
 ## Verification
 
@@ -138,7 +138,7 @@ All four arms print the same output as `lca.py` under `karac __mir-run`
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `336218278`.
+them, and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

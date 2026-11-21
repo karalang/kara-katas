@@ -141,7 +141,7 @@ def batch(count, most):
     check = 0
     broken = 0
     for _ in range(count):
-        n = next_random() % (most - 1) + 2
+        n = (next_random() * 32768 + next_random()) % (most - 1) + 2
         nodes = random_tree(n)
         leaves = [v for v in nodes[1:] if v.left is None and v.right is None]
         pick = leaves[(next_random() * 32768 + next_random()) % len(leaves)]

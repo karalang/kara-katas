@@ -34,11 +34,11 @@ def batch(count, most, letters):
     check = 0
     close = 0
     for _ in range(count):
-        n = next_random() % most + 1
+        n = (next_random() * 32768 + next_random()) % most + 1
         alphabet = next_random() % letters + 1
         word1 = random_word(n, alphabet)
         if next_random() % 2 == 0:
-            word2 = random_word(next_random() % most + 1, alphabet)
+            word2 = random_word((next_random() * 32768 + next_random()) % most + 1, alphabet)
         else:
             cs = list(word1)
             for i in range(len(cs) - 1, 0, -1):

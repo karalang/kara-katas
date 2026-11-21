@@ -93,39 +93,40 @@ The bench builds 2000 random arrays of 1 to 4000 numbers below 10^6 once
 and answers each 3 times by the ★ arm, in all five languages. Each place's
 list of ANDs is a fresh allocation, as the arm writes it (`malloc` and
 `free` in C). Every implementation prints `3 passes over 2000 arrays of up
-to 4000 numbers: distances sum to 10022793, checksum 230450745`.
+to 4000 numbers: distances sum to 8205453, checksum 554941967`.
 
 Timings on a 4-core container, medians of eight interleaved runs of each
-compiled program and one of Python, with kara `218952d3b` on LLVM 22:
+compiled program and one of Python, with kara `21cdf88b69` on LLVM 22:
 
 | | median |
 |---|---|
-| C (`clang -O3`) | 0.309 s |
-| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.532 s |
-| Kāra (`karac build`) | 0.537 s |
-| Rust (`rustc -O`) | 0.543 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 0.595 s |
-| Go | 0.836 s |
-| Python | 6.10 s |
+| C (`clang -O3`) | 0.367 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.592 s |
+| Kāra (`karac build`) | 0.593 s |
+| Rust (`rustc -O`) | 0.668 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.723 s |
+| Go | 1.028 s |
+| Python | 7.6 s |
+
+The sequential Kāra build is 11% faster than Rust and 18% faster than
+Rust with overflow checks on, the equal-safety comparison
+(BENCHMARKS.md). C is the fastest here at 0.367 s. C is ahead because it
+allocates each list at its final size: Kāra, Rust and Go start it at one
+element and grow it as values are pushed.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
-the sequential lane. A plain `karac build` parallelizes nothing here: its
-user time is below its real time (0.51 s and 0.54 s on one run).
-
-Kāra is 0.89x Rust under overflow checks by median. C is ahead of all of
-them because it allocates each list at its final size: Kāra, Rust and Go
-start it at one element and grow it as values are pushed. Rust built with
-`Vec::with_capacity(ends.len() + 1)` instead ran in about 0.34 s (five
-runs, not committed), so most of the gap is the regrowth.
+the sequential lane. A plain `karac build` parallelizes nothing here:
+its user time is not above its real time (0.535 s and 0.555 s on one
+run).
 
 ## Verification
 
-All five arms print the same output as `closest.py` under
-`karac __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and
-`karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no
-error. `karac run` and a `karac build` binary print the same output for
-them and the differential. `karac check` reports nothing on any of them,
-and `karac fix` has nothing left to change.
+All five arms print the same output as `closest.py` under `karac
+__mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
+__mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
+`karac run` and a `karac build` binary print the same output for them
+and the differential. `karac check` reports nothing on any of them, and
+`karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

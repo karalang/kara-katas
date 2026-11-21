@@ -31,7 +31,7 @@ def batch(count, most, top, reach, seed):
     total = 0
     check = 0
     for _ in range(count):
-        n = seed.next() % most + 1
+        n = (seed.next() * 32768 + seed.next()) % most + 1
         nums = [seed.next() % (2 * top + 1) - top for _ in range(n)]
         k = seed.next() % min(n, reach) + 1
         answer = max_result(nums, k)

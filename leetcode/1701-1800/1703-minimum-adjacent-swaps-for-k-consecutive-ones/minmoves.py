@@ -31,7 +31,7 @@ def batch(count, most, seed):
     total = 0
     check = 0
     for _ in range(count):
-        n = next_random(seed) % most + 1
+        n = (next_random(seed) * 32768 + next_random(seed)) % most + 1
         lean = next_random(seed) % 11
         nums = [1 if next_random(seed) % 10 < lean else 0 for _ in range(n)]
         if all(v == 0 for v in nums):

@@ -111,43 +111,45 @@ hand edit.
 
 ## Benchmarks
 
-The bench builds 40 arrays of 1000 numbers once and asks 25 random ranges
-of places of each by the ★ arm in all five languages. Every
+The bench builds 40 arrays of 1000 numbers once and asks 25 random
+ranges of places of each by the ★ arm in all five languages. Every
 implementation prints `1000 ranges over 40 arrays of 1000 numbers:
-checksum 987121753`.
+checksum 67988618`.
 
 Timings on a 4-core container, medians of eight interleaved runs of each
-compiled program and one of Python, with kara `acb9d4c5b` on LLVM 22:
+compiled program and one of Python, with kara `21cdf88b69` on LLVM 22:
 
 | | median |
 |---|---|
-| C (`clang -O3`) | 0.209 s |
-| Rust (`rustc -O`) | 0.210 s |
-| Go | 0.247 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 0.270 s |
-| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.283 s |
-| Kāra (`karac build`) | 0.286 s |
-| Python | 5.55 s |
+| Rust (`rustc -O`) | 0.153 s |
+| C (`clang -O3`) | 0.167 s |
+| Go | 0.198 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.207 s |
+| Kāra (`karac build`) | 0.215 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.217 s |
+| Python | 5.3 s |
+
+The sequential Kāra build takes 1.35x Rust's time and 0.95x that of Rust
+with overflow checks on, the equal-safety comparison (BENCHMARKS.md).
+The two-pointer sweep's multiplications are checked in Kāra and in the
+overflow-checked Rust build; plain `rustc -O` wraps.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
-the sequential lane. A plain `karac build` parallelizes nothing here: its
-user time is its real time (0.273 s and 0.277 s on one run).
-
-Kāra is 1.05x Rust under overflow checks by median. The two-pointer
-sweep's multiplications are checked in Kāra and in that Rust build; plain
-`rustc -O` wraps.
+the sequential lane. A plain `karac build` parallelizes nothing here:
+its user time is not above its real time (0.253 s and 0.253 s on one
+run).
 
 ## Verification
 
 All five arms print the same output as `sums.py` under `karac __mir-run`
-(the v2 MIR interpreter), `karac __mir-llvm-run`, and
-`karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no
-error. `karac run` and a `karac build` binary print the same output for
-them and the differential. `karac check` reports nothing on any of them
-(the Rust arm with its hand edit). Under `karac __mir-run` the ★ arm
-takes 0.6 s, the sort and Rust arms 1.5 to 1.9 s, the iterator arm 8.5 s
-and the heap arm 10.6 s (it pops 500500 sums for the largest example);
-the differential takes 4.9 s.
+(the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
+__mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
+`karac run` and a `karac build` binary print the same output for them
+and the differential. `karac check` reports nothing on any of them.
+Checked at kara `21cdf88b69`. Under `karac __mir-run` the ★ arm takes
+0.8 s, the sort and Rust arms 1.1 to 1.7 s, the iterator arm 5.5 s and
+the heap arm 16.1 s (it pops 500500 sums for the largest example); the
+differential takes 5.6 s.
 
 ## Writing it
 

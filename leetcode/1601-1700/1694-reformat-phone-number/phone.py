@@ -31,7 +31,7 @@ def batch(count, most, seed):
     dashes = 0
     check = 0
     for _ in range(count):
-        length = seed.next() % (most - 1) + 2
+        length = (seed.next() * 32768 + seed.next()) % (most - 1) + 2
         first = seed.next() % length
         second = (first + 1 + seed.next() % (length - 1)) % length
         number = []

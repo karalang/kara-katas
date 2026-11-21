@@ -117,7 +117,7 @@ All four arms print the same output as `vertices.py` under
 `karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no
 error. `karac run` and a `karac build` binary print the same output for
 them and the differential. `karac check` reports nothing on any of them,
-and `karac fix` has nothing left to change. Checked at kara `5a1b79539`.
+and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

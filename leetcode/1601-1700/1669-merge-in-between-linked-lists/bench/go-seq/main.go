@@ -49,7 +49,7 @@ func main() {
 	const rounds = 10000
 	values := make([]int64, start)
 	for i := range values {
-		values[i] = nextRandom() % 1000001
+		values[i] = (nextRandom() * 32768 + nextRandom()) % 1000001
 	}
 	length := int64(start)
 	type cut struct {
@@ -63,7 +63,7 @@ func main() {
 		b := a + nextRandom()%min(8, length-1-a)
 		list2 := make([]int64, m)
 		for i := range list2 {
-			list2[i] = nextRandom() % 1000001
+			list2[i] = (nextRandom() * 32768 + nextRandom()) % 1000001
 		}
 		length += m - (b - a + 1)
 		cuts = append(cuts, cut{a, b, list2})

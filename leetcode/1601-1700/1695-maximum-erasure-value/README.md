@@ -40,9 +40,9 @@ to 1000 values up to 100, and 10 of up to `10^5` values up to `10^4`.
 1
 3
 15
-3000 arrays of up to 12 values up to 5: answers sum to 28791, checksum 6888153
-300 arrays of up to 1000 values up to 100: answers sum to 463215, checksum 895560572
-10 arrays of up to 100000 values up to 10000: answers sum to 15801566, checksum 429732124
+3000 arrays of up to 12 values up to 5: answers sum to 28547, checksum 584323140
+300 arrays of up to 1000 values up to 100: answers sum to 459307, checksum 985941344
+10 arrays of up to 100000 values up to 10000: answers sum to 18234015, checksum 392967580
 ```
 
 ## Differential
@@ -127,7 +127,7 @@ __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `9b0b5eb92c`.
+them, and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

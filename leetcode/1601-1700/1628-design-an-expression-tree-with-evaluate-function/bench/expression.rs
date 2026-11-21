@@ -102,7 +102,7 @@ fn next_random(seed: &mut i64) -> i64 {
 
 fn expression(leaves: i64, top: i64, seed: &mut i64, tokens: &mut Vec<String>) -> i64 {
     if leaves == 1 {
-        let v = next_random(seed) % top;
+        let v = (next_random(seed) * 32768 + next_random(seed)) % top;
         tokens.push(v.to_string());
         return v;
     }

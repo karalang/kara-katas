@@ -48,9 +48,9 @@ is byte-identical.
 1000000
 6
 15
-3000 problems of up to 8 events in 12 days: values add to 40314, checksum 608204370
-300 problems of up to 1000 events in 1000000000 days: values add to 60126750651, checksum 690669860
-5 problems of up to 100000 events in 1000000000 days: values add to 18997612, checksum 950905461
+3000 problems of up to 8 events in 12 days: values add to 40615, checksum 641918250
+300 problems of up to 1000 events in 1000000000 days: values add to 50859577659, checksum 111974874
+5 problems of up to 100000 events in 1000000000 days: values add to 20996240, checksum 19442607
 ```
 
 ## Differential

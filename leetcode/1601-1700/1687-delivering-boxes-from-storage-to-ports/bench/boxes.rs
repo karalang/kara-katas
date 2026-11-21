@@ -56,7 +56,7 @@ fn main() {
     for _ in 0..count {
         let ports_count = next_random(&mut seed) % 100 + 1;
         let max_boxes = next_random(&mut seed) % 1000 + 1;
-        let max_weight = next_random(&mut seed) % 99001 + 1000;
+        let max_weight = (next_random(&mut seed) * 32768 + next_random(&mut seed)) % 99001 + 1000;
         let mut boxes = Vec::new();
         for _ in 0..size {
             let port = next_random(&mut seed) % ports_count + 1;

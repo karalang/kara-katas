@@ -86,7 +86,7 @@ int main(void) {
             }
         }
         for (int64_t i = N - 2; i >= 1; i--) {
-            int64_t j = next_random() % (i + 1);
+            int64_t j = wide() % (i + 1);
             int32_t a = pairs[c][i][0], b = pairs[c][i][1];
             pairs[c][i][0] = pairs[c][j][0];
             pairs[c][i][1] = pairs[c][j][1];

@@ -41,10 +41,15 @@ static int64_t next_random(void) {
     return seed / 65536;
 }
 
+static int64_t wide(void) {
+    int64_t a = next_random();
+    return a * 32768 + next_random();
+}
+
 int main(void) {
     static int32_t lists[LISTS][N];
     for (int l = 0; l < LISTS; l++)
-        for (int i = 0; i < N; i++) lists[l][i] = (int32_t)(next_random() % 100000 + 1);
+        for (int i = 0; i < N; i++) lists[l][i] = (int32_t)(wide() % 100000 + 1);
     int64_t check = 0, total = 0;
     for (int l = 0; l < LISTS; l++) {
         int64_t cost = create_sorted_array(lists[l], N);

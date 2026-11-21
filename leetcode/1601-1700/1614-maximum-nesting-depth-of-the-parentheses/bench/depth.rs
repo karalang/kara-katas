@@ -25,7 +25,7 @@ fn expression(size: i64, out: &mut String, seed: &mut i64) {
     let mut left = size;
     loop {
         if left > 1 && next_random(seed) % 3 == 0 {
-            let inner = next_random(seed) % left + 1;
+            let inner = (next_random(seed) * 32768 + next_random(seed)) % left + 1;
             out.push('(');
             expression(inner, out, seed);
             out.push(')');

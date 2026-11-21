@@ -43,9 +43,9 @@ byte-identical.
 0
 0
 1
-3000 lists of up to 12 dishes up to 16: answers sum to 9057, checksum 922222922
-300 lists of up to 1000 dishes up to 4096: answers sum to 24292, checksum 586414885
-10 lists of up to 100000 dishes up to 1000: answers sum to 3777198, checksum 119351022
+3000 lists of up to 12 dishes up to 16: answers sum to 8725, checksum 17405122
+300 lists of up to 1000 dishes up to 4096: answers sum to 24732, checksum 806819621
+10 lists of up to 100000 dishes up to 1000: answers sum to 44504632, checksum 543893686
 ```
 
 ## Differential
@@ -135,7 +135,7 @@ __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `9b0b5eb92c`.
+them, and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

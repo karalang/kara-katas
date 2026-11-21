@@ -44,7 +44,7 @@ fn pair(n: usize, seed: &mut i64) -> (String, String) {
         a.push(b'a' + (next_random(seed) % 2) as u8);
         b.push(b'a' + (next_random(seed) % 2) as u8);
     }
-    let k = next_random(seed) as usize % (n / 2 + 1);
+    let k = (next_random(seed) * 32768 + next_random(seed)) as usize % (n / 2 + 1);
     for j in 0..k {
         b[n - 1 - j] = a[j];
     }
@@ -52,7 +52,7 @@ fn pair(n: usize, seed: &mut i64) -> (String, String) {
         b[n - k - 1 - j] = b[k + j];
     }
     if next_random(seed) % 2 == 0 {
-        let i = next_random(seed) as usize % n;
+        let i = (next_random(seed) * 32768 + next_random(seed)) as usize % n;
         b[i] = b'a' + (next_random(seed) % 2) as u8;
     }
     (String::from_utf8(a).unwrap(), String::from_utf8(b).unwrap())

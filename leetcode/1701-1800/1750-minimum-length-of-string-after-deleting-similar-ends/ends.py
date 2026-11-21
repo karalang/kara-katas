@@ -27,7 +27,7 @@ def next_random():
 def draw(size, letters):
     alphabet = "abc"
     if next_random() % 2 == 1:
-        n = next_random() % size + 1
+        n = (next_random() * 32768 + next_random()) % size + 1
         return "".join(alphabet[next_random() % letters] for _ in range(n))
     s = ""
     for _ in range(next_random() % 3):

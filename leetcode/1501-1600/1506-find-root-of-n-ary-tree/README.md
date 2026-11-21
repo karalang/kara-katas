@@ -97,45 +97,42 @@ the root).
 ## Benchmarks
 
 The bench builds 20 trees of up to 50000 nodes once and finds each root
-10 times by the ★ arm in all five languages. Every implementation prints `200 roots over 20 trees of up to 50000
-nodes: checksum 453798400`.
+10 times by the ★ arm in all five languages. Every implementation prints
+`200 roots over 20 trees of up to 50000 nodes: checksum 866628377`.
 
 Timings on a 4-core container, medians of eight interleaved runs of each
-compiled program and one of Python, with kara `acb9d4c5b` on LLVM 22:
+compiled program and one of Python, with kara `21cdf88b69` on LLVM 22:
 
 | | median |
 |---|---|
-| C (`clang -O3`) | 0.100 s |
-| Rust (`rustc -O`) | 0.181 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 0.189 s |
-| Kāra (`karac build`) | 0.271 s |
-| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.277 s |
-| Go | 0.280 s |
-| Python | 2.02 s |
+| C (`clang -O3`) | 0.132 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.255 s |
+| Kāra (`karac build`) | 0.256 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.296 s |
+| Rust (`rustc -O`) | 0.323 s |
+| Go | 0.377 s |
+| Python | 3.3 s |
+
+The sequential Kāra build is 21% faster than Rust and 14% faster than
+Rust with overflow checks on, the equal-safety comparison
+(BENCHMARKS.md). C is the fastest here at 0.132 s. Until B-2026-11-08-14
+was fixed in kara `4fdf0cf1e3`, the run-time borrow flags taken on every
+`node.children.iter()` made it 1.47x Rust with overflow checks on.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
-the sequential lane. A plain `karac build` parallelizes nothing here: its
-user time (0.273 s) is below its real time (0.343 s).
-
-Kāra is 1.47x Rust under overflow checks by median. The gap is the
-run-time borrow flags, B-2026-11-08-14: `Node` is a `shared struct` and
-`children` is not a `mut` field, yet each `node.children.iter()` takes a
-flag through `karac_mir_flag_acquire` and gives it back through
-`karac_mir_flag_release`. Under callgrind those two are 23% and 16% of the
-bench's instructions; on a ten-line program that only walks
-`node.children` they are 46% and 31%. The flag pass flags every non-`Copy`
-field of a shared value because MIR does not record which fields are
-`mut`, but a field that is not `mut` can never be written, so its flag
-never catches anything.
+the sequential lane. A plain `karac build` parallelizes nothing here:
+its user time is not above its real time (0.180 s and 0.208 s on one
+run).
 
 ## Verification
 
 The four arms print the same output as `root.py` under `karac __mir-run`
-(the v2 MIR interpreter), `karac __mir-llvm-run`, and
-`karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no
-error. `karac run` and a `karac build` binary print the same output for
-them and the differential. `karac check` reports nothing on any of them.
-Under `karac __mir-run` the differential takes 2.5 s.
+(the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
+__mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
+`karac run` and a `karac build` binary print the same output for them
+and the differential. `karac check` reports nothing on any of them.
+Checked at kara `21cdf88b69`. Under `karac __mir-run` the arms take 3.1
+to 4.3 s and the differential 2.0 s.
 
 ## Writing it
 

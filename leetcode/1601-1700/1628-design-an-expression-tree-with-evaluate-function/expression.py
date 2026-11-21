@@ -85,7 +85,7 @@ def mix(check, x):
 
 def expression(leaves, top, tokens):
     if leaves == 1:
-        v = next_random() % top
+        v = (next_random() * 32768 + next_random()) % top
         tokens.append(str(v))
         return v
     left = next_random() % (leaves - 1) + 1

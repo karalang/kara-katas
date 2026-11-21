@@ -38,7 +38,7 @@ def next_random():
     return seed // 65536
 
 
-lists = [[next_random() % 100000 + 1 for _ in range(100000)] for _ in range(60)]
+lists = [[(next_random() * 32768 + next_random()) % 100000 + 1 for _ in range(100000)] for _ in range(60)]
 check = 0
 total = 0
 for instructions in lists:

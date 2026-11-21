@@ -53,9 +53,9 @@ byte-identical.
 12-34
 123-45
 123-45-67
-3000 numbers of up to 12 characters: 4057 dashes, checksum 8734951
-300 numbers of up to 100 characters: 4033 dashes, checksum 984070247
-10 numbers of up to 100000 characters: 41149 dashes, checksum 434945384
+3000 numbers of up to 12 characters: 4183 dashes, checksum 553500610
+300 numbers of up to 100 characters: 4016 dashes, checksum 8760743
+10 numbers of up to 100000 characters: 132247 dashes, checksum 801915659
 ```
 
 ## Differential
@@ -142,7 +142,7 @@ __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `9b0b5eb92c`.
+them, and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

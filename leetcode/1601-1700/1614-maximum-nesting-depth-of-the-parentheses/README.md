@@ -86,23 +86,32 @@ replaced.
 
 ## Benchmarks
 
-The bench makes 10 random expressions of 200000 terms, all of it first. Then: each read 10 times by one pass counting open parentheses. Every implementation prints `10 expressions of 200000 terms, each read 10 times: 54333160 characters, checksum 359966919`.
+The bench makes 10 random expressions of 200000 terms, all of it first.
+Then: each read 10 times by one pass counting open parentheses. Every
+implementation prints `10 expressions of 200000 terms, each read 10
+times: 54350580 characters, checksum 310300578`.
 
 Timings on a 4-core container, medians of eight interleaved runs of each
-compiled program and one of Python, with kara `5bb1708545` on LLVM 22:
+compiled program and one of Python, with kara `21cdf88b69` on LLVM 22:
 
 | | median |
 |---|---|
-| C (`clang -O3`) | 0.145 s |
-| Go | 0.154 s |
-| Rust (`rustc -O`) | 0.182 s |
-| Kāra (`karac build`) | 0.183 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 0.184 s |
-| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.186 s |
-| Python | 3.2 s |
+| C (`clang -O3`) | 0.180 s |
+| Go | 0.188 s |
+| Rust (`rustc -O`) | 0.220 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.227 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.231 s |
+| Kāra (`karac build`) | 0.233 s |
+| Python | 4.2 s |
+
+The sequential Kāra build is level with Rust and level with Rust with
+overflow checks on, the equal-safety comparison (BENCHMARKS.md). C is
+the fastest here at 0.180 s.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
-the sequential lane. A plain `karac build` parallelizes nothing here: its user time is not above its real time (0.195 s and 0.199 s on one run).
+the sequential lane. A plain `karac build` parallelizes nothing here:
+its user time is not above its real time (0.261 s and 0.266 s on one
+run).
 
 ## Verification
 
@@ -112,7 +121,7 @@ All four arms print the same output as `depth.py` under
 error. `karac run` and a `karac build` binary print the same output for
 them, the differential and the bench. `karac check` reports nothing on
 any of them, and `karac fix` has nothing left to change. Checked at kara
-`5bb1708545`.
+`21cdf88b69`.
 
 ## Writing it
 

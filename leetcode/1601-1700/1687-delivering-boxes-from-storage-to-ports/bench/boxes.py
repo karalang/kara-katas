@@ -42,7 +42,7 @@ def main():
     for _ in range(count):
         ports_count = next_random() % 100 + 1
         max_boxes = next_random() % 1000 + 1
-        max_weight = next_random() % 99001 + 1000
+        max_weight = (next_random() * 32768 + next_random()) % 99001 + 1000
         boxes = []
         for _ in range(size):
             port = next_random() % ports_count + 1

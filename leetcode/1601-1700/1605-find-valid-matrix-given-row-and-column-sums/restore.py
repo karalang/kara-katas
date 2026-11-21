@@ -53,7 +53,7 @@ def batch(count, most, top, rng):
         col_sum = [0] * cols
         for i in range(rows):
             for j in range(cols):
-                x = rng.next() % (top + 1)
+                x = (rng.next() * 32768 + rng.next()) % (top + 1)
                 row_sum[i] += x
                 col_sum[j] += x
         m = restore_matrix(row_sum, col_sum)

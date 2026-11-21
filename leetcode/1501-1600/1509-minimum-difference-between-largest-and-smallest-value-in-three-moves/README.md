@@ -132,12 +132,13 @@ the Rust program would use the same algorithm as Kāra (not measured here).
 ## Verification
 
 The ★, scan, heap and iterator arms print the same output as `moves.py`
-under `karac __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`,
-and `karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no
-error. `karac run` and a `karac build` binary print the same output for
-them and the differential. `karac check` reports nothing on any of them.
-Under `karac __mir-run` the arms take 0.4 to 0.6 s, the heap arm 3.4 s,
-and the differential 1.9 s.
+under `karac __mir-run` (the v2 MIR interpreter), `karac
+__mir-llvm-run`, and `karac __mir-llvm-asan` (AddressSanitizer and
+LeakSanitizer) with no error. `karac run` and a `karac build` binary
+print the same output for them and the differential. `karac check`
+reports nothing on any of them. Checked at kara `21cdf88b69`. Under
+`karac __mir-run` the arms take 0.5 to 0.9 s, the heap arm 5.3 s, and
+the differential 1.8 s.
 
 ## Writing it
 

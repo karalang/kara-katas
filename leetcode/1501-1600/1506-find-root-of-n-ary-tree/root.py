@@ -56,7 +56,7 @@ def mix(check, x):
 # 1 to `most` nodes with distinct values in 0..=50000, each node after the
 # first the child of an earlier one, built leaves first, then shuffled.
 def random_tree(most):
-    n = next_random() % most + 1
+    n = (next_random() * 32768 + next_random()) % most + 1
     vals = []
     seen = set()
     while len(vals) < n:

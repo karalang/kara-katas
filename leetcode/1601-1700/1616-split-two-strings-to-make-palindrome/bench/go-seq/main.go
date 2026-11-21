@@ -49,7 +49,7 @@ func pair(n int) (string, string) {
 		a[i] = byte('a' + nextRandom()%2)
 		b[i] = byte('a' + nextRandom()%2)
 	}
-	k := int(nextRandom() % int64(n/2+1))
+	k := int((nextRandom()*32768 + nextRandom()) % int64(n/2+1))
 	for j := 0; j < k; j++ {
 		b[n-1-j] = a[j]
 	}
@@ -57,7 +57,7 @@ func pair(n int) (string, string) {
 		b[n-k-1-j] = b[k+j]
 	}
 	if nextRandom()%2 == 0 {
-		i := int(nextRandom() % int64(n))
+		i := int((nextRandom()*32768 + nextRandom()) % int64(n))
 		b[i] = byte('a' + nextRandom()%2)
 	}
 	return string(a), string(b)

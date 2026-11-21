@@ -69,8 +69,8 @@ func main() {
 	var check int64
 	for r := 0; r < 25; r++ {
 		for _, nums := range arrays {
-			a := nextRandom(&seed)%total + 1
-			b := nextRandom(&seed)%total + 1
+			a := (nextRandom(&seed) * 32768 + nextRandom(&seed))%total + 1
+			b := (nextRandom(&seed) * 32768 + nextRandom(&seed))%total + 1
 			lo, hi := a, b
 			if b < a {
 				lo, hi = b, a

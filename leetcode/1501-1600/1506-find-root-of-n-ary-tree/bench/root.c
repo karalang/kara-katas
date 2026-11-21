@@ -30,10 +30,15 @@ static int64_t next_random(int64_t *seed) {
     return *seed / 65536;
 }
 
+static int64_t wide(int64_t *seed) {
+    int64_t a = next_random(seed);
+    return a * 32768 + next_random(seed);
+}
+
 static int64_t mix(int64_t check, int64_t x) { return (check * 31 + x + 1) % 1000000007; }
 
 static Node **random_tree(int64_t most, int64_t *seed, int64_t *len) {
-    int64_t n = next_random(seed) % most + 1;
+    int64_t n = wide(seed) % most + 1;
     int64_t *vals = malloc(n * sizeof(int64_t));
     char *seen = calloc(50001, 1);
     int64_t count = 0;

@@ -28,7 +28,7 @@ def batch(count, most, top, seed):
     total = 0
     check = 0
     for _ in range(count):
-        n = seed.next() % (most - 1) + 2
+        n = (seed.next() * 32768 + seed.next()) % (most - 1) + 2
         nums = sorted(seed.next() % top + 1 for _ in range(n))
         for v in sum_differences(nums):
             total += v

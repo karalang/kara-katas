@@ -29,7 +29,7 @@ def batch(count, most):
     check = 0
     total = 0
     for _ in range(count):
-        n = next_random() % most + 1
+        n = (next_random() * 32768 + next_random()) % most + 1
         s = "".join("a" if next_random() % 2 == 0 else "b" for _ in range(n))
         answer = minimum_deletions(s)
         total += answer

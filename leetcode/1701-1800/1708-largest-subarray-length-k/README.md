@@ -43,9 +43,9 @@ byte-identical.
 [5]
 [3, 1, 2]
 [2, 9]
-3000 arrays of up to 10 values: first values sum to 157136, checksum 913345431
-300 arrays of up to 1000 values: first values sum to 1425220, checksum 372143771
-10 arrays of up to 100000 values: first values sum to 1333224, checksum 749457996
+3000 arrays of up to 10 values: first values sum to 157711, checksum 757585065
+300 arrays of up to 1000 values: first values sum to 1459432, checksum 166434442
+10 arrays of up to 100000 values: first values sum to 6518304, checksum 346461742
 ```
 
 ## Differential
@@ -132,7 +132,7 @@ __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `9b0b5eb92c`.
+them, and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

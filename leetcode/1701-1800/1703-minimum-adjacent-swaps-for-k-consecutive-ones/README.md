@@ -39,9 +39,9 @@ output is byte-identical.
 0
 0
 2
-3000 arrays of up to 12 values: answers sum to 1290, checksum 133793502
-300 arrays of up to 1000 values: answers sum to 1245743, checksum 905955647
-10 arrays of up to 100000 values: answers sum to 48369388, checksum 972752756
+3000 arrays of up to 12 values: answers sum to 1281, checksum 74059467
+300 arrays of up to 1000 values: answers sum to 1139330, checksum 144334074
+10 arrays of up to 100000 values: answers sum to 292371340, checksum 929125095
 ```
 
 ## Differential
@@ -98,29 +98,30 @@ The bench draws 50 random arrays of `10^5` values, LeetCode's longest,
 each value a 1 with a chance of its array's own (1 to 10 in 10), each
 with a random k, all of them first, then answers each 40 times by the ★
 arm in all five languages. Every implementation prints `50 arrays of
-100000 values, 40 rounds: answers sum to 123452751320, checksum
-790359604`. The C build also runs clean under gcc's AddressSanitizer and
+100000 values, 40 rounds: answers sum to 260140959400, checksum
+535184941`. The C build also runs clean under gcc's AddressSanitizer and
 UndefinedBehaviorSanitizer.
 
 Timings on a 4-core container, medians of eight interleaved runs of each
-compiled program and one of Python, with kara `9b0b5eb92c` on LLVM 22:
+compiled program and one of Python, with kara `21cdf88b69` on LLVM 22:
 
 | | median |
 |---|---|
-| Kāra (`karac build`) | 1.061 s |
-| C (`clang -O3`) | 1.062 s |
-| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 1.089 s |
-| Rust (`rustc -O`) | 1.143 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 1.312 s |
-| Go | 2.084 s |
-| Python | 33 s |
+| C (`clang -O3`) | 1.052 s |
+| Kāra (`karac build`) | 1.092 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 1.169 s |
+| Rust (`rustc -O`) | 1.172 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 1.492 s |
+| Go | 2.112 s |
+| Python | 29 s |
 
-The sequential Kāra build is level with Rust and 17% faster than Rust
-with overflow checks on, the equal-safety comparison (BENCHMARKS.md).
+The sequential Kāra build is level with Rust and 22% faster than Rust
+with overflow checks on, the equal-safety comparison (BENCHMARKS.md). C
+is the fastest here at 1.052 s.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
 the sequential lane. A plain `karac build` parallelizes nothing here:
-its user time is not above its real time (1.021 s and 1.034 s on one
+its user time is not above its real time (1.058 s and 1.062 s on one
 run).
 
 ## Verification
@@ -130,7 +131,7 @@ __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `9b0b5eb92c`.
+them, and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

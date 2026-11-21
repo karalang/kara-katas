@@ -41,6 +41,11 @@ static int64_t next_random(void) {
     return seed / 65536;
 }
 
+static int64_t wide(void) {
+    int64_t a = next_random();
+    return a * 32768 + next_random();
+}
+
 static struct ListNode *build(const int64_t *values, int64_t n) {
     struct ListNode *head = NULL;
     for (int64_t i = n - 1; i >= 0; i--) {
@@ -55,14 +60,14 @@ static struct ListNode *build(const int64_t *values, int64_t n) {
 int main(void) {
     static int64_t values[START];
     static int64_t cut_a[ROUNDS], cut_b[ROUNDS], cut_m[ROUNDS], list2[ROUNDS][8];
-    for (int64_t i = 0; i < START; i++) values[i] = next_random() % 1000001;
+    for (int64_t i = 0; i < START; i++) values[i] = wide() % 1000001;
     int64_t len = START;
     for (int r = 0; r < ROUNDS; r++) {
         int64_t m = next_random() % 8 + 1;
         int64_t a = (next_random() * 32768 + next_random()) % (len - 2) + 1;
         int64_t room = len - 1 - a < 8 ? len - 1 - a : 8;
         int64_t b = a + next_random() % room;
-        for (int64_t i = 0; i < m; i++) list2[r][i] = next_random() % 1000001;
+        for (int64_t i = 0; i < m; i++) list2[r][i] = wide() % 1000001;
         len += m - (b - a + 1);
         cut_a[r] = a;
         cut_b[r] = b;

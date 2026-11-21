@@ -36,7 +36,7 @@ def batch(count, most, seed):
     check = 0
     for _ in range(count):
         n = next_random(seed) % most + 1
-        base = next_random(seed) % 1000000 + 1
+        base = (next_random(seed) * 32768 + next_random(seed)) % 1000000 + 1
         arr = []
         for _ in range(n):
             if next_random(seed) % 2 == 0:

@@ -45,13 +45,13 @@ def pair(n):
     for _ in range(n):
         a.append(chr(ord("a") + next_random() % 2))
         b.append(chr(ord("a") + next_random() % 2))
-    k = next_random() % (n // 2 + 1)
+    k = (next_random() * 32768 + next_random()) % (n // 2 + 1)
     for j in range(k):
         b[n - 1 - j] = a[j]
     for j in range((n - 2 * k) // 2):
         b[n - k - 1 - j] = b[k + j]
     if next_random() % 2 == 0:
-        i = next_random() % n
+        i = (next_random() * 32768 + next_random()) % n
         b[i] = chr(ord("a") + next_random() % 2)
     return "".join(a), "".join(b)
 

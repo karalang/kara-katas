@@ -34,13 +34,13 @@ def next_random():
 def random_tree(n):
     values = list(range(n))
     for i in range(n - 1, 0, -1):
-        j = next_random() % (i + 1)
+        j = (next_random() * 32768 + next_random()) % (i + 1)
         values[i], values[j] = values[j], values[i]
     nodes = []
     for i in range(n):
         node = Node(values[i])
         if i > 0:
-            at = nodes[next_random() % i]
+            at = nodes[(next_random() * 32768 + next_random()) % i]
             while True:
                 if next_random() % 2 == 0:
                     if at.left is not None:
@@ -65,8 +65,8 @@ for _ in range(30):
     nodes = random_tree(100000)
     pairs = []
     for _ in range(50000):
-        p = next_random() % 100000
-        q = next_random() % 100000
+        p = (next_random() * 32768 + next_random()) % 100000
+        q = (next_random() * 32768 + next_random()) % 100000
         if q == p:
             q = (q + 1) % 100000
         pairs.append((p, q))

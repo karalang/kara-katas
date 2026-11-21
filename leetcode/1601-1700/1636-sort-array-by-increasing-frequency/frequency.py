@@ -23,7 +23,7 @@ def next_random():
 def batch(count, most, spread):
     check = 0
     for _ in range(count):
-        n = next_random() % most + 1
+        n = (next_random() * 32768 + next_random()) % most + 1
         nums = [next_random() % (2 * spread + 1) - spread for _ in range(n)]
         for x in frequency_sort(nums):
             check = (check * 31 + x + 1000) % 1000000007

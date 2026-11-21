@@ -26,7 +26,7 @@ def batch(count, most, gap, top, seed):
     total = 0.0
     check = 0
     for _ in range(count):
-        n = seed.next() % most + 1
+        n = (seed.next() * 32768 + seed.next()) % most + 1
         customers = []
         arrival = 0
         for _ in range(n):

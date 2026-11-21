@@ -32,7 +32,7 @@ def mix(check, x):
 def batch(count, most):
     check = 0
     for _ in range(count):
-        n = next_random() % most + 1
+        n = (next_random() * 32768 + next_random()) % most + 1
         tenths = next_random() % 11
         s = "".join("1" if next_random() % 10 < tenths else "0" for _ in range(n))
         check = mix(check, num_sub(s))

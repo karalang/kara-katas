@@ -20,7 +20,7 @@ def batch(count, most, seed):
     firsts = 0
     check = 0
     for _ in range(count):
-        n = next_random(seed) % most + 1
+        n = (next_random(seed) * 32768 + next_random(seed)) % most + 1
         nums = list(range(1, n + 1))
         for i in range(n - 1, 0, -1):
             j = next_random(seed) % (i + 1)

@@ -54,7 +54,7 @@ total = 1000 * 1001 // 2
 check = 0
 for _ in range(25):
     for nums in arrays:
-        a = next_random() % total + 1
-        b = next_random() % total + 1
+        a = (next_random() * 32768 + next_random()) % total + 1
+        b = (next_random() * 32768 + next_random()) % total + 1
         check = (check * 31 + range_sum(nums, 1000, min(a, b), max(a, b)) + 1) % 1000000007
 print(f"1000 ranges over 40 arrays of 1000 numbers: checksum {check}")

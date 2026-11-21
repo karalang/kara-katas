@@ -40,9 +40,9 @@ nodes, 300 of up to 1000, and 10 of up to `10^5`, each with a random k.
 [1]
 [2,1]
 [1,2,3]
-3000 lists of up to 12 nodes: 19582 nodes, checksum 254406322
-300 lists of up to 1000 nodes: 144679 nodes, checksum 655796649
-10 lists of up to 100000 nodes: 153661 nodes, checksum 497065662
+3000 lists of up to 12 nodes: 19570 nodes, checksum 505811868
+300 lists of up to 1000 nodes: 153493 nodes, checksum 50249123
+10 lists of up to 100000 nodes: 413592 nodes, checksum 320492239
 ```
 
 ## Differential
@@ -136,7 +136,7 @@ __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `9b0b5eb92c`.
+them, and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

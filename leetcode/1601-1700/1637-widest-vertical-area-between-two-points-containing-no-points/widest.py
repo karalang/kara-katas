@@ -23,11 +23,11 @@ def batch(count, most, top):
     check = 0
     total = 0
     for _ in range(count):
-        n = next_random() % (most - 1) + 2
+        n = (next_random() * 32768 + next_random()) % (most - 1) + 2
         points = []
         for _ in range(n):
             x = (next_random() * 32768 + next_random()) % (top + 1)
-            y = next_random() % (top + 1)
+            y = (next_random() * 32768 + next_random()) % (top + 1)
             points.append([x, y])
         width = max_width_of_vertical_area(points)
         total += width

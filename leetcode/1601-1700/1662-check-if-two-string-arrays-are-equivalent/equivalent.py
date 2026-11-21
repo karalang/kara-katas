@@ -63,7 +63,7 @@ def batch(count, longest, gap):
     check = 0
     letters = 0
     for k in range(count):
-        n = next_random() % longest + 1
+        n = (next_random() * 32768 + next_random()) % longest + 1
         kinds = next_random() % 3 + 1
         text = random_text(n, kinds)
         other = text if k % 2 == 0 else spoil(text)

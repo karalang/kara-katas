@@ -72,6 +72,11 @@ static int64_t next_random(void) {
     return seed / 65536;
 }
 
+static int64_t wide(void) {
+    int64_t a = next_random();
+    return a * 32768 + next_random();
+}
+
 typedef struct {
     char **tokens;
     int count;
@@ -84,7 +89,7 @@ static void push(Postfix *p, const char *s) {
 
 static int64_t expression(int64_t leaves, int64_t top, Postfix *tokens) {
     if (leaves == 1) {
-        int64_t v = next_random() % top;
+        int64_t v = wide() % top;
         char buf[24];
         snprintf(buf, sizeof buf, "%lld", (long long)v);
         push(tokens, buf);

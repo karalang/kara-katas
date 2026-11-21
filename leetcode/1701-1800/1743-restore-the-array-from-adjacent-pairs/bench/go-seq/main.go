@@ -61,7 +61,7 @@ func randomPairs(n int) [][2]int32 {
 		}
 	}
 	for i := len(pairs) - 1; i >= 1; i-- {
-		j := nextRandom() % int64(i+1)
+		j := (nextRandom()*32768 + nextRandom()) % int64(i+1)
 		pairs[i], pairs[j] = pairs[j], pairs[i]
 	}
 	return pairs

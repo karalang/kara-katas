@@ -89,33 +89,33 @@ the same way under both backends.
 ## Benchmarks
 
 The bench draws 400 random codes of `10^5` numbers from 1 to 100, each
-with a `k` from -99999 to 99999, all of them first, then decrypts each by
-the ★ arm in all five languages and sums and checksums every answer.
+with a `k` from -99999 to 99999, all of them first, then decrypts each
+by the ★ arm in all five languages and sums and checksums every answer.
 Every implementation prints `400 codes of 100000 numbers: answers sum to
-169336435775564, checksum 477717491`. The C build also runs clean under
+101961258288403, checksum 455946774`. The C build also runs clean under
 gcc's AddressSanitizer and UndefinedBehaviorSanitizer.
 
 Timings on a 4-core container, medians of eight interleaved runs of each
-compiled program and one of Python, with kara `ee08f070a` on LLVM 22:
+compiled program and one of Python, with kara `21cdf88b69` on LLVM 22:
 
 | | median |
 |---|---|
-| C (`clang -O3`) | 0.529 s |
-| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.654 s |
-| Kāra (`karac build`) | 0.656 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 0.658 s |
-| Rust (`rustc -O`) | 0.784 s |
-| Go | 1.057 s |
-| Python | 24 s |
+| C (`clang -O3`) | 0.466 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.533 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.552 s |
+| Kāra (`karac build`) | 0.560 s |
+| Rust (`rustc -O`) | 0.610 s |
+| Go | 0.880 s |
+| Python | 18 s |
 
-The sequential Kāra build is 17% faster than Rust and level with Rust
+The sequential Kāra build is 10% faster than Rust and level with Rust
 with overflow checks on, the equal-safety comparison (BENCHMARKS.md). C
-is the fastest here at 0.529 s.
+is the fastest here at 0.466 s.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
-the sequential lane. A plain `karac build` parallelizes
-nothing here: its user time is not above its real time (0.574 s and
-0.656 s on one run).
+the sequential lane. A plain `karac build` parallelizes nothing here:
+its user time is not above its real time (0.494 s and 0.583 s on one
+run).
 
 ## Verification
 
@@ -124,7 +124,7 @@ __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `336218278`.
+them, and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

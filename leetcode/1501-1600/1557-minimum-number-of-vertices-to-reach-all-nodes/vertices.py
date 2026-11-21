@@ -34,14 +34,14 @@ def batch(count, most, wide):
         n = (next_random() * 32768 + next_random()) % (most - 1) + 2
         order = list(range(n))
         for i in range(n - 1, 0, -1):
-            j = next_random() % (i + 1)
+            j = (next_random() * 32768 + next_random()) % (i + 1)
             order[i], order[j] = order[j], order[i]
-        draws = next_random() % (wide * n) + 1
+        draws = (next_random() * 32768 + next_random()) % (wide * n) + 1
         taken = set()
         edges = []
         for _ in range(draws):
-            a = next_random() % n
-            b = next_random() % n
+            a = (next_random() * 32768 + next_random()) % n
+            b = (next_random() * 32768 + next_random()) % n
             if a < b and (a, b) not in taken:
                 taken.add((a, b))
                 edges.append((order[a], order[b]))

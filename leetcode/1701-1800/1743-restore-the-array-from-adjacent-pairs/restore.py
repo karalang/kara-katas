@@ -57,7 +57,7 @@ def batch(count, most):
     total = 0
     check = 0
     for _ in range(count):
-        n = next_random() % (most - 1) + 2
+        n = (next_random() * 32768 + next_random()) % (most - 1) + 2
         order = canonical(restore_array(random_pairs(n)))
         for v in order:
             check = (check * 31 + v + 100000) % 1000000007

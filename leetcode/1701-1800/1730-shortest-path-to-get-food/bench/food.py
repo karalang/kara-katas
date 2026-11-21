@@ -46,7 +46,7 @@ def main():
     problems = []
     for _ in range(count):
         grid = [[cell(seed) for _ in range(side)] for _ in range(side)]
-        at = next_random(seed) % (side * side)
+        at = (next_random(seed) * 32768 + next_random(seed)) % (side * side)
         grid[at // side][at % side] = "*"
         problems.append(grid)
     total = 0

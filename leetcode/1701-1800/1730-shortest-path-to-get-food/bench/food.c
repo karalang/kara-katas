@@ -53,6 +53,11 @@ static int64_t next_random(int64_t *seed) {
     return *seed / 65536;
 }
 
+static int64_t wide(int64_t *seed) {
+    int64_t a = next_random(seed);
+    return a * 32768 + next_random(seed);
+}
+
 int main(void) {
     static char problems[COUNT][SIDE][SIDE];
     int64_t seed = 1730;
@@ -63,7 +68,7 @@ int main(void) {
                 problems[p][r][c] = x < 5000 ? 'X' : (x < 5001 ? '#' : 'O');
             }
         }
-        int64_t at = next_random(&seed) % (SIDE * SIDE);
+        int64_t at = wide(&seed) % (SIDE * SIDE);
         problems[p][at / SIDE][at % SIDE] = '*';
     }
     int64_t sum = 0, check = 0;

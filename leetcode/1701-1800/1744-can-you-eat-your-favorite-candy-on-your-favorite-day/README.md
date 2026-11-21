@@ -60,9 +60,9 @@ Days reach a little past the last candy, and one cap in ten is `10^9`.
 [false, true, true, false, false]
 [true, false]
 [false, false, true, true, false]
-3000 problems of up to 6 types of up to 5 candies, 6 queries each: 8665 yes, checksum 397224980
-100 problems of up to 1000 types of up to 100000 candies, 1000 queries each: 40861 yes, checksum 511648792
-2 problems of up to 100000 types of up to 100000 candies, 100000 queries each: 78123 yes, checksum 676566824
+3000 problems of up to 6 types of up to 5 candies, 6 queries each: 8904 yes, checksum 2713288
+100 problems of up to 1000 types of up to 100000 candies, 1000 queries each: 40672 yes, checksum 945250564
+2 problems of up to 100000 types of up to 100000 candies, 100000 queries each: 129447 yes, checksum 955044815
 ```
 
 ## Differential

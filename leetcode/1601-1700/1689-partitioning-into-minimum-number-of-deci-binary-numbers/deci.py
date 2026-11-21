@@ -23,7 +23,7 @@ def batch(count, most, seed):
     total = 0
     check = 0
     for _ in range(count):
-        length = seed.next() % most + 1
+        length = (seed.next() * 32768 + seed.next()) % most + 1
         top = seed.next() % 9 + 1
         n = digits[seed.next() % top + 1]
         n += "".join(digits[seed.next() % (top + 1)] for _ in range(1, length))

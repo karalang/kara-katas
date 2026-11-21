@@ -38,9 +38,9 @@ mirrors the ★ arm and its output is byte-identical.
 0
 2
 0
-3000 arrays of up to 12 values up to 6: 2674 operations, checksum 334939830
-300 arrays of up to 1000 values up to 1000: 14367 operations, checksum 842918545
-10 arrays of up to 100000 values up to 100000: 8366 operations, checksum 174632332
+3000 arrays of up to 12 values up to 6: 2763 operations, checksum 682540589
+300 arrays of up to 1000 values up to 1000: 13391 operations, checksum 485247370
+10 arrays of up to 100000 values up to 100000: 25107 operations, checksum 611491201
 ```
 
 ## Differential
@@ -127,7 +127,7 @@ All four arms print the same output as `pairs.py` under `karac __mir-run`
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `9b0b5eb92c`.
+them, and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

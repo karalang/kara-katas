@@ -28,7 +28,7 @@ fn main() {
             if p % 2 == 0 {
                 nums.push((3 * i - 700) as i32);
             } else {
-                nums.push((next_random(&mut seed) % 200001 - 100000) as i32);
+                nums.push(((next_random(&mut seed) * 32768 + next_random(&mut seed)) % 200001 - 100000) as i32);
             }
         }
         for i in (1..500usize).rev() {

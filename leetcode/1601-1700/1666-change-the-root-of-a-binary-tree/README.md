@@ -58,9 +58,9 @@ random node already placed, down a random walk to the first free child.
 [0,1,null,3,8,5,null,null,null,6,2,null,null,7,4]
 [2,1]
 [4,2,null,1,5,null,3]
-3000 trees of up to 8 nodes: 0 with broken parent links, checksum 216978973
-300 trees of up to 1000 nodes: 0 with broken parent links, checksum 209481202
-30 trees of up to 100000 nodes: 0 with broken parent links, checksum 552473977
+3000 trees of up to 8 nodes: 0 with broken parent links, checksum 143655397
+300 trees of up to 1000 nodes: 0 with broken parent links, checksum 149039773
+30 trees of up to 100000 nodes: 0 with broken parent links, checksum 858137710
 ```
 
 ## Differential
@@ -111,35 +111,35 @@ that the properties can see.
 ## Benchmarks
 
 The bench draws 30 random trees of `10^5` nodes and 50000 start nodes in
-each, all of them first. Then, for each start, it walks down at random to
-a leaf and turns the tree to hang from it by the ★ arm, so each turn
+each, all of them first. Then, for each start, it walks down at random
+to a leaf and turns the tree to hang from it by the ★ arm, so each turn
 starts from the tree the last one left, in all five languages: Kāra's
 `shared struct` with a `weak` parent, Rust's `Rc<RefCell<Node>>` with a
 `Weak` parent, pointer nodes in Go and Python, and nodes malloc'd one by
 one in C. Every implementation prints `30 trees of 100000 nodes, 50000
-turns each: 4486482 steps down, checksum 774923103`. The C build also
+turns each: 2447860 steps down, checksum 561062415`. The C build also
 runs clean under gcc's AddressSanitizer and UndefinedBehaviorSanitizer.
 
 Timings on a 4-core container, medians of eight interleaved runs of each
-compiled program and one of Python, with kara `9b0b5eb92c` on LLVM 22:
+compiled program and one of Python, with kara `21cdf88b69` on LLVM 22:
 
 | | median |
 |---|---|
-| C (`clang -O3`) | 1.195 s |
-| Go | 1.222 s |
-| Rust (`rustc -O`) | 1.710 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 1.782 s |
-| Kāra (`karac build`) | 1.964 s |
-| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 2.027 s |
-| Python | 17 s |
+| C (`clang -O3`) | 1.372 s |
+| Go | 1.395 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 1.878 s |
+| Rust (`rustc -O`) | 1.951 s |
+| Kāra (`karac build`) | 2.126 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 2.330 s |
+| Python | 20 s |
 
-The sequential Kāra build takes 1.19x Rust's time and 1.14x that of Rust
+The sequential Kāra build takes 1.19x Rust's time and 1.24x that of Rust
 with overflow checks on, the equal-safety comparison (BENCHMARKS.md). C
-is the fastest here at 1.195 s.
+is the fastest here at 1.372 s.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
 the sequential lane. A plain `karac build` parallelizes nothing here:
-its user time is not above its real time (1.812 s and 1.890 s on one
+its user time is not above its real time (2.237 s and 2.345 s on one
 run).
 
 ## Verification
@@ -149,7 +149,7 @@ All three arms print the same output as `flip.py` under `karac __mir-run`
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `9b0b5eb92c`.
+them, and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

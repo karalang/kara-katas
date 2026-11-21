@@ -34,8 +34,8 @@ def batch(count, most, top):
     check = 0
     total = 0
     for _ in range(count):
-        n = next_random() % most + 1
-        heights = [next_random() % top + 1 for _ in range(n)]
+        n = (next_random() * 32768 + next_random()) % most + 1
+        heights = [(next_random() * 32768 + next_random()) % top + 1 for _ in range(n)]
         bricks = (next_random() * 32768 + next_random()) % (top * (n // 3 + 1))
         ladders = next_random() % (n // 10 + 2)
         furthest = furthest_building(heights, bricks, ladders)

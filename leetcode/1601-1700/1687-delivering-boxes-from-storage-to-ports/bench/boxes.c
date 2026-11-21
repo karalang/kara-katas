@@ -48,13 +48,18 @@ static int64_t next_random(void) {
     return seed / 65536;
 }
 
+static int64_t wide(void) {
+    int64_t a = next_random();
+    return a * 32768 + next_random();
+}
+
 int main(void) {
     static int32_t boxes[COUNT][SIZE][2];
     static int32_t max_boxes[COUNT], max_weight[COUNT];
     for (int c = 0; c < COUNT; c++) {
         int64_t ports_count = next_random() % 100 + 1;
         max_boxes[c] = (int32_t)(next_random() % 1000 + 1);
-        max_weight[c] = (int32_t)(next_random() % 99001 + 1000);
+        max_weight[c] = (int32_t)(wide() % 99001 + 1000);
         for (int i = 0; i < SIZE; i++) {
             boxes[c][i][0] = (int32_t)(next_random() % ports_count + 1);
             boxes[c][i][1] = (int32_t)(next_random() % 1000 + 1);

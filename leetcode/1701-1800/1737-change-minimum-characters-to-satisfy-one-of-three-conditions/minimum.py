@@ -33,7 +33,7 @@ def next_random():
 
 
 def word(most, letters):
-    n = next_random() % most + 1
+    n = (next_random() * 32768 + next_random()) % most + 1
     return "".join(chr(97 + next_random() % letters) for _ in range(n))
 
 

@@ -97,32 +97,33 @@ long runs are sometimes arithmetic, and the rest random numbers up to
 `10^5` in size. Each query is answered by the ★ arm in all five
 languages, each sorting with its standard library (C with `qsort`).
 Every implementation prints `200 problems of 500 numbers and 500
-queries: 1363 arithmetic, checksum 662061079`. The C build also runs
+queries: 1402 arithmetic, checksum 114377511`. The C build also runs
 clean under gcc's AddressSanitizer and UndefinedBehaviorSanitizer.
 
 Timings on a 4-core container, medians of eight interleaved runs of each
-compiled program and one of Python, with kara `60902ec48` on LLVM 22:
+compiled program and one of Python, with kara `21cdf88b69` on LLVM 22:
 
 | | median |
 |---|---|
-| Kāra (`karac build`) | 0.154 s |
-| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.158 s |
-| Rust (`rustc -O`) | 0.169 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 0.170 s |
-| Go | 0.491 s |
-| C (`clang -O3`) | 0.688 s |
-| Python | 1.3 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.144 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.146 s |
+| Kāra (`karac build`) | 0.149 s |
+| Rust (`rustc -O`) | 0.164 s |
+| Go | 0.482 s |
+| C (`clang -O3`) | 0.634 s |
+| Python | 1.2 s |
 
-Kāra is level with Rust, both well ahead of Go and C. The work is
-100000 sorts of runs averaging about 125 numbers; Kāra's and Rust's
-sorts are inlined and specialized to `i32`, while C's `qsort` calls its
-comparator through a pointer for every comparison, so the C row here
-measures `qsort` more than the algorithm.
+The sequential Kāra build is 12% faster than Rust and level with Rust
+with overflow checks on, the equal-safety comparison (BENCHMARKS.md).
+The work is 100000 sorts of runs averaging about 125 numbers; Kāra's and
+Rust's sorts are inlined and specialized to `i32`, while C's `qsort`
+calls its comparator through a pointer for every comparison, so the C
+row here measures `qsort` more than the algorithm.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
-the sequential lane. A plain `karac build` parallelizes
-nothing here: its user time is not above its real time (0.148 s and
-0.149 s on one run).
+the sequential lane. A plain `karac build` parallelizes nothing here:
+its user time is not above its real time (0.115 s and 0.119 s on one
+run).
 
 ## Verification
 
@@ -132,7 +133,7 @@ All four arms print the same output as `subarrays.py` under
 error. `karac run` and a `karac build` binary print the same output for
 them, the differential and the bench. `karac check` reports nothing on
 any of them, and `karac fix` has nothing left to change. Checked at kara
-`60902ec48`.
+`21cdf88b69`.
 
 ## Writing it
 

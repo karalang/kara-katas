@@ -48,7 +48,7 @@ func main() {
 	for l := range lists {
 		lists[l] = make([]int32, 100000)
 		for i := range lists[l] {
-			lists[l][i] = int32(nextRandom()%100000 + 1)
+			lists[l][i] = int32((nextRandom() * 32768 + nextRandom())%100000 + 1)
 		}
 	}
 	var check, total int64

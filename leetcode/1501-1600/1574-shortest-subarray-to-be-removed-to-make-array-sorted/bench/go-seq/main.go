@@ -53,7 +53,7 @@ func main() {
 				v = nextRandom() % 1000
 			}
 			if i >= start && i < start+middle {
-				arr = append(arr, nextRandom()%4000000)
+				arr = append(arr, (nextRandom()*32768+nextRandom())%4000000)
 			} else {
 				v += nextRandom() % 8
 				arr = append(arr, v)

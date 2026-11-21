@@ -26,7 +26,7 @@ def batch(count, most, pile, asked):
     yes = 0
     check = 0
     for _ in range(count):
-        n = next_random() % most + 1
+        n = (next_random() * 32768 + next_random()) % most + 1
         candies = [wide() % pile + 1 for _ in range(n)]
         total = sum(candies)
         queries = []

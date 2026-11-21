@@ -49,6 +49,11 @@ static int64_t next_random(void) {
     return seed / 65536;
 }
 
+static int64_t wide(void) {
+    int64_t a = next_random();
+    return a * 32768 + next_random();
+}
+
 int main(void) {
     int32_t *arrays = malloc((size_t)COUNT * N * sizeof *arrays);
     int32_t ks[COUNT];
@@ -61,7 +66,7 @@ int main(void) {
             arrays[(int64_t)c * N + i] = v;
             ones += v;
         }
-        ks[c] = (int32_t)(next_random() % ones + 1);
+        ks[c] = (int32_t)(wide() % ones + 1);
     }
     int64_t sum = 0, check = 0;
     for (int64_t r = 0; r < ROUNDS; r++) {

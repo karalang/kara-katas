@@ -37,14 +37,14 @@ def batch(count, most, top):
     total = 0
     impossible = 0
     for _ in range(count):
-        n = next_random() % most + 1
+        n = (next_random() * 32768 + next_random()) % most + 1
         nums = [next_random() % top + 1 for _ in range(n)]
         if next_random() % 2 == 0:
             left = next_random() % (n + 1)
             right = next_random() % (n - left + 1)
             x = max(sum(nums[:left]) + sum(nums[n - right:]), 1)
         else:
-            x = next_random() % (top * n) + 1
+            x = (next_random() * 32768 + next_random()) % (top * n) + 1
         answer = min_operations(nums, x)
         if answer < 0:
             impossible += 1

@@ -34,11 +34,16 @@ static int64_t next_random(void) {
     return seed / 65536;
 }
 
+static int64_t wide(void) {
+    int64_t a = next_random();
+    return a * 32768 + next_random();
+}
+
 static void random_tree(int64_t n, struct Node **nodes) {
     int32_t *values = malloc((size_t)n * sizeof *values);
     for (int64_t i = 0; i < n; i++) values[i] = (int32_t)i;
     for (int64_t i = n - 1; i >= 1; i--) {
-        int64_t j = next_random() % (i + 1);
+        int64_t j = wide() % (i + 1);
         int32_t t = values[i];
         values[i] = values[j];
         values[j] = t;
@@ -47,7 +52,7 @@ static void random_tree(int64_t n, struct Node **nodes) {
         struct Node *node = calloc(1, sizeof *node);
         node->val = values[i];
         if (i > 0) {
-            struct Node *at = nodes[next_random() % i];
+            struct Node *at = nodes[wide() % i];
             for (;;) {
                 if (next_random() % 2 == 0) {
                     if (at->left) at = at->left;
@@ -69,8 +74,8 @@ int main(void) {
     for (int t = 0; t < TREES; t++) {
         random_tree(NODES, nodes[t]);
         for (int k = 0; k < PAIRS; k++) {
-            int64_t p = next_random() % NODES;
-            int64_t q = next_random() % NODES;
+            int64_t p = wide() % NODES;
+            int64_t q = wide() % NODES;
             if (q == p) q = (q + 1) % NODES;
             pairs[t][k][0] = (int32_t)p;
             pairs[t][k][1] = (int32_t)q;

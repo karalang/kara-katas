@@ -58,7 +58,7 @@ func main() {
 	for c := 0; c < count; c++ {
 		portsCount := nextRandom()%100 + 1
 		maxBoxes := int32(nextRandom()%1000 + 1)
-		maxWeight := int32(nextRandom()%99001 + 1000)
+		maxWeight := int32((nextRandom() * 32768 + nextRandom())%99001 + 1000)
 		boxes := make([][2]int32, size)
 		for i := range boxes {
 			boxes[i][0] = int32(nextRandom()%portsCount + 1)

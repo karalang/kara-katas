@@ -61,8 +61,8 @@ fn main() {
     let mut check: i64 = 0;
     for _ in 0..25 {
         for nums in &arrays {
-            let a = next_random(&mut seed) % total + 1;
-            let b = next_random(&mut seed) % total + 1;
+            let a = (next_random(&mut seed) * 32768 + next_random(&mut seed)) % total + 1;
+            let b = (next_random(&mut seed) * 32768 + next_random(&mut seed)) % total + 1;
             check = (check * 31 + range_sum(nums, 1000, a.min(b), a.max(b)) + 1) % 1000000007;
         }
     }

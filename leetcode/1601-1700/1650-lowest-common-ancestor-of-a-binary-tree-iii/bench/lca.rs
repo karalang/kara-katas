@@ -46,14 +46,14 @@ fn next_random(seed: &mut i64) -> i64 {
 fn random_tree(n: i64, seed: &mut i64) -> Vec<Handle> {
     let mut values: Vec<i32> = (0..n as i32).collect();
     for i in (1..n as usize).rev() {
-        let j = (next_random(seed) % (i as i64 + 1)) as usize;
+        let j = ((next_random(seed) * 32768 + next_random(seed)) % (i as i64 + 1)) as usize;
         values.swap(i, j);
     }
     let mut nodes: Vec<Handle> = Vec::new();
     for i in 0..n as usize {
         let node = leaf(values[i]);
         if i > 0 {
-            let mut at = Rc::clone(&nodes[(next_random(seed) % i as i64) as usize]);
+            let mut at = Rc::clone(&nodes[((next_random(seed) * 32768 + next_random(seed)) % i as i64) as usize]);
             loop {
                 let left_side = next_random(seed) % 2 == 0;
                 let child = {
@@ -87,8 +87,8 @@ fn main() {
         let nodes = random_tree(100000, &mut seed);
         let mut pairs = Vec::new();
         for _ in 0..50000 {
-            let p = next_random(&mut seed) % 100000;
-            let mut q = next_random(&mut seed) % 100000;
+            let p = (next_random(&mut seed) * 32768 + next_random(&mut seed)) % 100000;
+            let mut q = (next_random(&mut seed) * 32768 + next_random(&mut seed)) % 100000;
             if q == p {
                 q = (q + 1) % 100000;
             }

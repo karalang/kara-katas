@@ -42,6 +42,11 @@ static int64_t next_random(void) {
     return seed / 65536;
 }
 
+static int64_t wide(void) {
+    int64_t a = next_random();
+    return a * 32768 + next_random();
+}
+
 static int64_t mix(int64_t check, int64_t x) { return (check * 31 + x + 1) % 1000000007; }
 
 static void pair(int64_t n, char *a, char *b) {
@@ -49,11 +54,11 @@ static void pair(int64_t n, char *a, char *b) {
         a[i] = (char)('a' + next_random() % 2);
         b[i] = (char)('a' + next_random() % 2);
     }
-    int64_t k = next_random() % (n / 2 + 1);
+    int64_t k = wide() % (n / 2 + 1);
     for (int64_t j = 0; j < k; j++) b[n - 1 - j] = a[j];
     for (int64_t j = 0; j < (n - 2 * k) / 2; j++) b[n - k - 1 - j] = b[k + j];
     if (next_random() % 2 == 0) {
-        int64_t i = next_random() % n;
+        int64_t i = wide() % n;
         b[i] = (char)('a' + next_random() % 2);
     }
 }

@@ -43,14 +43,14 @@ func randomTree(n int64) []*Node {
 		values[i] = int32(i)
 	}
 	for i := n - 1; i >= 1; i-- {
-		j := nextRandom() % (i + 1)
+		j := (nextRandom() * 32768 + nextRandom()) % (i + 1)
 		values[i], values[j] = values[j], values[i]
 	}
 	nodes := make([]*Node, 0, n)
 	for i := int64(0); i < n; i++ {
 		node := &Node{Val: values[i]}
 		if i > 0 {
-			at := nodes[nextRandom()%i]
+			at := nodes[(nextRandom() * 32768 + nextRandom())%i]
 			for {
 				if nextRandom()%2 == 0 {
 					if at.Left != nil {
@@ -86,8 +86,8 @@ func main() {
 		nodes := randomTree(100000)
 		pairs := make([][2]int64, 0, 50000)
 		for k := 0; k < 50000; k++ {
-			p := nextRandom() % 100000
-			q := nextRandom() % 100000
+			p := (nextRandom() * 32768 + nextRandom()) % 100000
+			q := (nextRandom() * 32768 + nextRandom()) % 100000
 			if q == p {
 				q = (q + 1) % 100000
 			}

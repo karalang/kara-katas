@@ -60,7 +60,7 @@ fn main() {
     let mut seed: i64 = 1669;
     let mut values: Vec<i64> = Vec::new();
     for _ in 0..start {
-        values.push(next_random(&mut seed) % 1000001);
+        values.push((next_random(&mut seed) * 32768 + next_random(&mut seed)) % 1000001);
     }
     let mut len = start;
     let mut cuts: Vec<(i64, i64, Vec<i64>)> = Vec::new();
@@ -70,7 +70,7 @@ fn main() {
         let b = a + next_random(&mut seed) % std::cmp::min(8, len - 1 - a);
         let mut list2 = Vec::new();
         for _ in 0..m {
-            list2.push(next_random(&mut seed) % 1000001);
+            list2.push((next_random(&mut seed) * 32768 + next_random(&mut seed)) % 1000001);
         }
         len += m - (b - a + 1);
         cuts.push((a, b, list2));

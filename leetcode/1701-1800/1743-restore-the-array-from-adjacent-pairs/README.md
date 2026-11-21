@@ -57,9 +57,9 @@ is byte-identical.
 [-3, 1, 4, -2]
 [-100000, 100000]
 [1, 2, 3]
-3000 arrays of up to 8 values: first values sum to -101297838, checksum 380719356
-300 arrays of up to 1000 values: first values sum to -10520362, checksum 59102073
-10 arrays of up to 100000 values: first values sum to -423446, checksum 569090066
+3000 arrays of up to 8 values: first values sum to -100277987, checksum 629592475
+300 arrays of up to 1000 values: first values sum to -8834556, checksum 91205841
+10 arrays of up to 100000 values: first values sum to -552095, checksum 627184340
 ```
 
 ## Differential
@@ -118,31 +118,31 @@ languages: Kāra's `Map[i32, Vec[i32]]`, Rust's `HashMap<i32, Vec<i32>>`,
 Go's `map[int32][]int32`, Python's `dict`, and in C an open-addressing
 hash table written for the bench. Every restore rebuilds its map. Every
 implementation prints `10 arrays of 100000 values, 4 rounds: smaller
-ends sum to -2085632, checksum 747507877`. The C build also runs clean
+ends sum to -1687712, checksum 172972578`. The C build also runs clean
 under gcc's AddressSanitizer and UndefinedBehaviorSanitizer.
 
 Timings on a 4-core container, medians of eight interleaved runs of each
-compiled program and one of Python, with kara `ad6400d909` on LLVM 22:
+compiled program and one of Python, with kara `21cdf88b69` on LLVM 22:
 
 | | median |
 |---|---|
-| C (`clang -O3`) | 0.303 s |
-| Go | 1.302 s |
-| Rust (`rustc -O`) | 1.319 s |
-| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 1.393 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 1.397 s |
-| Kāra (`karac build`) | 1.444 s |
-| Python | 6.0 s |
+| C (`clang -O3`) | 0.329 s |
+| Rust (`rustc -O`) | 1.514 s |
+| Go | 1.649 s |
+| Kāra (`karac build`) | 1.682 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 1.696 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 1.696 s |
+| Python | 7.2 s |
 
-The sequential Kāra build takes 1.06x Rust's time and is level with Rust
+The sequential Kāra build takes 1.12x Rust's time and 1.00x that of Rust
 with overflow checks on, the equal-safety comparison (BENCHMARKS.md). C
-is the fastest here at 0.303 s, four times ahead, because its table
-holds at most two neighbours in each slot, where the others allocate a
+is the fastest here at 0.329 s, 5 times ahead, because its table holds
+at most two neighbours in each slot, where the others allocate a
 growable list for every value.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
 the sequential lane. A plain `karac build` parallelizes nothing here:
-its user time is not above its real time (1.095 s and 1.111 s on one
+its user time is not above its real time (1.734 s and 1.770 s on one
 run).
 
 ## Verification
@@ -154,7 +154,7 @@ and the three `Map` arms do so under `KARAC_HASH_SEED` 1, 7 and 99 as
 well. `karac run` and a `karac build` binary print the same output for
 them, the differential and the bench. `karac check` reports nothing on
 any of them, and `karac fix` has nothing left to change. Checked at kara
-`ad6400d909`.
+`21cdf88b69`.
 
 ## Writing it
 

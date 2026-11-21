@@ -54,12 +54,12 @@ def batch(count, most, top, seed):
         for _ in range(seed.next() % (2 * most) + 1):
             u = seed.next() % n
             v = (u + 1 + seed.next() % (n - 1)) % n
-            edges.append([u, v, seed.next() % top + 1])
+            edges.append([u, v, (seed.next() * 32768 + seed.next()) % top + 1])
         queries = []
         for _ in range(seed.next() % most + 1):
             p = seed.next() % n
             q = (p + 1 + seed.next() % (n - 1)) % n
-            queries.append([p, q, seed.next() % top + 1])
+            queries.append([p, q, (seed.next() * 32768 + seed.next()) % top + 1])
         for a in distance_limited_paths_exist(n, edges, queries):
             if a:
                 trues += 1

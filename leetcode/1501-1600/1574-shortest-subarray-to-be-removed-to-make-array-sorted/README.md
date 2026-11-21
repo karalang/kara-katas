@@ -82,27 +82,30 @@ half, a stretch of up to 1000 random values, and a rising second half
 that starts low, so about half of each array goes and the two pointers
 walk all of it; then it answers all 20 three times over, 60 answers, by
 the ★ arm, in all five languages. Every implementation prints `60
-answers over 20 arrays of 500000 values: lengths total 14986209,
-checksum 968275709`.
+answers over 20 arrays of 500000 values: lengths total 14989965,
+checksum 989886989`.
 
 Timings on a 4-core container, medians of eight interleaved runs of each
-compiled program and one of Python, with kara `572956a03` on LLVM 22:
+compiled program and one of Python, with kara `21cdf88b69` on LLVM 22:
 
 | | median |
 |---|---|
-| C (`clang -O3`) | 0.238 s |
-| Rust (`rustc -O`) | 0.264 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 0.275 s |
-| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.275 s |
-| Kāra (`karac build`) | 0.269 s |
-| Go | 0.538 s |
-| Python | 7.7 s |
+| C (`clang -O3`) | 0.235 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.251 s |
+| Rust (`rustc -O`) | 0.258 s |
+| Kāra (`karac build`) | 0.267 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.267 s |
+| Go | 0.473 s |
+| Python | 6.2 s |
+
+The sequential Kāra build takes 1.03x Rust's time and 1.06x that of Rust
+with overflow checks on, the equal-safety comparison (BENCHMARKS.md). C
+is the fastest here at 0.235 s.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
-the sequential lane. A plain `karac build` parallelizes nothing here: its
-user time is below its real time (0.224 s and 0.262 s on one run).
-
-Kāra is 1.00x Rust under overflow checks by median.
+the sequential lane. A plain `karac build` parallelizes nothing here:
+its user time is not above its real time (0.233 s and 0.266 s on one
+run).
 
 ## Verification
 
@@ -111,7 +114,7 @@ All four arms print the same output as `shortest.py` under
 `karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no
 error. `karac run` and a `karac build` binary print the same output for
 them and the differential. `karac check` reports nothing on any of them,
-and `karac fix` has nothing left to change. Checked at kara `572956a03`.
+and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

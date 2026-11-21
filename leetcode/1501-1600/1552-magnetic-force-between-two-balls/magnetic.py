@@ -44,7 +44,7 @@ def batch(count, most, widest):
     for _ in range(count):
         n = (next_random() * 32768 + next_random()) % (most - 1) + 2
         n = min(n, widest)
-        m = next_random() % (n - 1) + 2
+        m = (next_random() * 32768 + next_random()) % (n - 1) + 2
         taken = set()
         position = []
         while len(position) < n:

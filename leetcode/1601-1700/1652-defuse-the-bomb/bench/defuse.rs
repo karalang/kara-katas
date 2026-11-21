@@ -35,7 +35,7 @@ fn main() {
     let mut codes: Vec<(Vec<i32>, i32)> = Vec::new();
     for _ in 0..400 {
         let code: Vec<i32> = (0..n).map(|_| (next_random(&mut seed) % 100 + 1) as i32).collect();
-        let k = (next_random(&mut seed) % (2 * n - 1) - (n - 1)) as i32;
+        let k = ((next_random(&mut seed) * 32768 + next_random(&mut seed)) % (2 * n - 1) - (n - 1)) as i32;
         codes.push((code, k));
     }
     let mut check: i64 = 0;

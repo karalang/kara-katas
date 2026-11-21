@@ -26,7 +26,7 @@ def batch(count, most, top, seed):
     wins = [0, 0, 0]
     check = 0
     for _ in range(count):
-        n = seed.next() % most + 1
+        n = (seed.next() * 32768 + seed.next()) % most + 1
         alice, bob = [], []
         for _ in range(n):
             alice.append(seed.next() % top + 1)

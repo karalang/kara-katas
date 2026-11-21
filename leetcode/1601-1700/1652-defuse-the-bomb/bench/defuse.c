@@ -39,12 +39,17 @@ static int64_t next_random(void) {
     return seed / 65536;
 }
 
+static int64_t wide(void) {
+    int64_t a = next_random();
+    return a * 32768 + next_random();
+}
+
 int main(void) {
     static int32_t codes[CODES][N];
     static int32_t ks[CODES];
     for (int c = 0; c < CODES; c++) {
         for (int i = 0; i < N; i++) codes[c][i] = (int32_t)(next_random() % 100 + 1);
-        ks[c] = (int32_t)(next_random() % (2 * N - 1) - (N - 1));
+        ks[c] = (int32_t)(wide() % (2 * N - 1) - (N - 1));
     }
     int64_t check = 0, total = 0;
     for (int c = 0; c < CODES; c++) {

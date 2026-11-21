@@ -40,9 +40,9 @@ arm and its output is byte-identical.
 [0, 0, 0]
 [9999, 9999]
 [11, 11, 9, 9, 9, 37]
-3000 arrays of up to 12 values up to 10: answers sum to 523712, checksum 193761311
-300 arrays of up to 1000 values up to 10000: answers sum to 350509665266, checksum 387356436
-10 arrays of up to 100000 values up to 10000: answers sum to 10406158883254, checksum 708036931
+3000 arrays of up to 12 values up to 10: answers sum to 498894, checksum 267709699
+300 arrays of up to 1000 values up to 10000: answers sum to 341884904580, checksum 178728026
+10 arrays of up to 100000 values up to 10000: answers sum to 92165463558556, checksum 25242334
 ```
 
 ## Differential
@@ -126,7 +126,7 @@ __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `9b0b5eb92c`.
+them, and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

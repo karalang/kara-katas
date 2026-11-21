@@ -50,7 +50,7 @@ func main() {
 	targets := make([]int64, 0, count)
 	for c := 0; c < count; c++ {
 		n := nextRandom()%4000 + 1
-		base := nextRandom()%1000000 + 1
+		base := (nextRandom()*32768+nextRandom())%1000000 + 1
 		arr := make([]int64, 0)
 		for i := int64(0); i < n; i++ {
 			var x int64

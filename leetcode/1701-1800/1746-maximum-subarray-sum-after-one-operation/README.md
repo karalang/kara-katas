@@ -40,9 +40,9 @@ and its output is byte-identical.
 49
 81
 100020000
-3000 arrays of up to 8 values within 5: sums add to 66890, checksum 66559662
-300 arrays of up to 1000 values within 10000: sums add to 29562892938, checksum 319909545
-10 arrays of up to 100000 values within 10000: sums add to 1000216535, checksum 885443532
+3000 arrays of up to 8 values within 5: sums add to 66976, checksum 732209514
+300 arrays of up to 1000 values within 10000: sums add to 29577878216, checksum 910227893
+10 arrays of up to 100000 values within 10000: sums add to 1000312374, checksum 798185316
 ```
 
 ## Differential

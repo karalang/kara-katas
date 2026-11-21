@@ -46,7 +46,7 @@ fn mix(check: i64, x: i64) -> i64 {
 }
 
 fn random_tree(most: i64, seed: &mut i64) -> Vec<Rc<Node>> {
-    let n = (next_random(seed) % most + 1) as usize;
+    let n = ((next_random(seed) * 32768 + next_random(seed)) % most + 1) as usize;
     let mut vals = Vec::new();
     let mut seen = HashSet::new();
     while vals.len() < n {

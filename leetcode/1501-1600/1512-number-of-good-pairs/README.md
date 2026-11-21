@@ -19,7 +19,7 @@ nums = [1, 2, 3]           ->  0
 | `pairs_map.kara` | the same walk with the counts in a `Map`, so any values do. O(n) |
 | `pairs_sort.kara` | sorted, equal numbers sit in runs, and a run of `r` makes `r (r - 1) / 2` pairs. O(n log n) |
 | `pairs_iter.kara` | the counts by `fold` into a `Map`, then each count's pairs summed over `values()` (a sum, so the map's order does not show) |
-| `pairs_solution.kara` | LeetCode's Rust template (`HashMap::new()`, `for &x in nums.iter()`, `count.entry(x).or_insert(0)`), the ★ arm's walk, carried by `karac fix`. It checks and runs under the interpreter, and crashes compiled: B-2026-11-08-19 |
+| `pairs_solution.kara` | LeetCode's Rust template (`HashMap::new()`, `for &x in nums.iter()`, `count.entry(x).or_insert(0)`), the ★ arm's walk, carried by `karac fix`. It crashed compiled until B-2026-11-08-19 was fixed |
 | `differential.kara` | the four arms that run on every lane against the statement read literally, six properties |
 
 Every arm prints the same 8 lines: LeetCode's three examples and two
@@ -93,8 +93,10 @@ and `karac run` and a `karac build` binary with SIGSEGV. ASan names
 element binding of `nums.iter()`, as `ref i32`, while the key the compiled
 code hands the hash is the copied value. Seven lines reproduce it (in the
 row); writing `let mut count: Map[i32, i32] = Map.new();` makes it run on
-every lane. This is a run-vs-build divergence, so the arm is kept as
-`karac fix` left it and out of the differential until the row lands.
+every lane. This was a run-vs-build divergence, so the arm was kept as
+`karac fix` left it and out of the differential. The row is fixed, and
+the arm now prints the expected output on every lane; it is still
+outside the differential.
 
 ## Benchmarks
 
@@ -125,15 +127,14 @@ million numbers is part of every timing.
 
 ## Verification
 
-The ★, map, sort and iterator arms print the same output as `pairs.py`
-under `karac __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`,
-and `karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no
-error. `karac run` and a `karac build` binary print the same output for
-them and the differential. `karac check` reports nothing on any arm. The
-Rust arm prints the expected output under `karac __mir-run` only (see
-above; ASan reports a stack-buffer-overflow READ of size 8 in
-`hash.ref i32`). Under `karac __mir-run` the arms take 0.3 to 0.8 s and
-the differential 1.0 s.
+All five arms print the same output as `pairs.py` under `karac
+__mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
+__mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
+`karac run` and a `karac build` binary print the same output for them
+and the differential. `karac check` reports nothing on any arm. Checked
+at kara `21cdf88b69`, where B-2026-11-08-19 is fixed and the Rust arm
+runs on every lane too. Under `karac __mir-run` the arms take 0.3 to 0.8
+s and the differential 1.1 s.
 
 ## Writing it
 

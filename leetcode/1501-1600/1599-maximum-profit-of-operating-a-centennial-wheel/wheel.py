@@ -27,7 +27,7 @@ def batch(count, most, seed):
     check = 0
     never = 0
     for _ in range(count):
-        n = next_random(seed) % most + 1
+        n = (next_random(seed) * 32768 + next_random(seed)) % most + 1
         customers = [next_random(seed) % 51 for _ in range(n)]
         boarding = next_random(seed) % 100 + 1
         running = next_random(seed) % 100 + 1

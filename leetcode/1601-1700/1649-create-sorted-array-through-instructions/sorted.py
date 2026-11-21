@@ -45,7 +45,7 @@ def batch(count, most, top):
     total = 0
     for _ in range(count):
         n = next_random() % most + 1
-        instructions = [next_random() % top + 1 for _ in range(n)]
+        instructions = [(next_random() * 32768 + next_random()) % top + 1 for _ in range(n)]
         cost = create_sorted_array(instructions)
         total += cost
         check = (check * 31 + cost + 1) % 1000000007

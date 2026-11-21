@@ -52,9 +52,9 @@ of up to 1000 worth up to 100, and 10 of up to `10^5` worth up to 100.
 -1
 1
 0
-3000 games of up to 10 stones up to 5: Alice 2304, Bob 402, draws 294, checksum 644699359
-300 games of up to 1000 stones up to 100: Alice 149, Bob 151, draws 0, checksum 372844335
-10 games of up to 100000 stones up to 100: Alice 5, Bob 5, draws 0, checksum 774975756
+3000 games of up to 10 stones up to 5: Alice 2290, Bob 401, draws 309, checksum 575662526
+300 games of up to 1000 stones up to 100: Alice 167, Bob 132, draws 1, checksum 869400721
+10 games of up to 100000 stones up to 100: Alice 4, Bob 6, draws 0, checksum 743731519
 ```
 
 ## Differential
@@ -146,7 +146,7 @@ __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `9b0b5eb92c`.
+them, and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

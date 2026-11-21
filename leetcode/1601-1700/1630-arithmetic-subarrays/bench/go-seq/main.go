@@ -41,7 +41,7 @@ func main() {
 			if p%2 == 0 {
 				nums[i] = int32(3*i - 700)
 			} else {
-				nums[i] = int32(nextRandom()%200001 - 100000)
+				nums[i] = int32((nextRandom()*32768+nextRandom())%200001 - 100000)
 			}
 		}
 		for i := 499; i >= 1; i-- {

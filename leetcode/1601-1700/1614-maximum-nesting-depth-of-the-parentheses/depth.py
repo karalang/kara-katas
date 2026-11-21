@@ -31,7 +31,7 @@ def expression(size, out):
     left = size
     while True:
         if left > 1 and next_random() % 3 == 0:
-            inner = next_random() % left + 1
+            inner = (next_random() * 32768 + next_random()) % left + 1
             out.append("(")
             expression(inner, out)
             out.append(")")

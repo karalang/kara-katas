@@ -39,6 +39,11 @@ static int64_t next_random(void) {
     return seed / 65536;
 }
 
+static int64_t wide(void) {
+    int64_t a = next_random();
+    return a * 32768 + next_random();
+}
+
 static int64_t mix(int64_t check, int64_t x) { return (check * 31 + x + 1) % 1000000007; }
 
 int main(void) {
@@ -54,7 +59,7 @@ int main(void) {
                 v = next_random() % 1000;
             }
             if (i >= start && i < start + middle) {
-                arr[i] = next_random() % 4000000;
+                arr[i] = wide() % 4000000;
             } else {
                 v += next_random() % 8;
                 arr[i] = v;

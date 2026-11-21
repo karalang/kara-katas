@@ -63,9 +63,9 @@ to `10^5` boxes with ports and caps up to `10^5`. `boxes.py` mirrors the
 6
 2
 2
-3000 problems of up to 10 boxes, 3 ports, caps up to 5: 29970 trips, checksum 989849374
-300 problems of up to 1000 boxes, 10 ports, caps up to 50: 244152 trips, checksum 139943498
-10 problems of up to 100000 boxes, 100000 ports, caps up to 100000: 289776 trips, checksum 978617450
+3000 problems of up to 10 boxes, 3 ports, caps up to 5: 29306 trips, checksum 776064145
+300 problems of up to 1000 boxes, 10 ports, caps up to 50: 243653 trips, checksum 432102514
+10 problems of up to 100000 boxes, 100000 ports, caps up to 100000: 686990 trips, checksum 967475495
 ```
 
 ## Differential
@@ -131,30 +131,30 @@ weight, and boxes of 1 to 1000, all of them first, then answers each 20
 times by the ★ arm in all five languages: `VecDeque` in Kāra and Rust,
 `collections.deque` in Python, and in C and Go, which have no deque, an
 array with a head and a tail, since each start goes in once. Every
-implementation prints `50 problems of 100000 boxes, 20 rounds: 104005160
-trips, checksum 633687371`. The C build also runs clean under gcc's
+implementation prints `50 problems of 100000 boxes, 20 rounds: 100021160
+trips, checksum 161561252`. The C build also runs clean under gcc's
 AddressSanitizer and UndefinedBehaviorSanitizer.
 
 Timings on a 4-core container, medians of eight interleaved runs of each
-compiled program and one of Python, with kara `9b0b5eb92c` on LLVM 22:
+compiled program and one of Python, with kara `21cdf88b69` on LLVM 22:
 
 | | median |
 |---|---|
-| C (`clang -O3`) | 0.870 s |
-| Go | 0.993 s |
-| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 1.438 s |
-| Kāra (`karac build`) | 1.459 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 1.733 s |
-| Rust (`rustc -O`) | 1.764 s |
-| Python | 49 s |
+| C (`clang -O3`) | 0.939 s |
+| Go | 1.166 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 1.584 s |
+| Kāra (`karac build`) | 1.596 s |
+| Rust (`rustc -O`) | 1.886 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 2.025 s |
+| Python | 56 s |
 
-The sequential Kāra build is 18% faster than Rust and 17% faster than
+The sequential Kāra build is 16% faster than Rust and 22% faster than
 Rust with overflow checks on, the equal-safety comparison
-(BENCHMARKS.md). C is the fastest here at 0.870 s.
+(BENCHMARKS.md). C is the fastest here at 0.939 s.
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
 the sequential lane. A plain `karac build` parallelizes nothing here:
-its user time is not above its real time (1.351 s and 1.491 s on one
+its user time is not above its real time (1.429 s and 1.524 s on one
 run).
 
 ## Verification
@@ -164,7 +164,7 @@ __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for them,
 the differential and the bench. `karac check` reports nothing on any of
-them, and `karac fix` has nothing left to change. Checked at kara `9b0b5eb92c`.
+them, and `karac fix` has nothing left to change. Checked at kara `21cdf88b69`.
 
 ## Writing it
 

@@ -40,10 +40,10 @@ def batch(count, most, ports, limit, seed):
     total = 0
     check = 0
     for _ in range(count):
-        n = seed.next() % most + 1
-        ports_count = seed.next() % ports + 1
-        max_boxes = seed.next() % limit + 1
-        max_weight = seed.next() % limit + 1
+        n = (seed.next() * 32768 + seed.next()) % most + 1
+        ports_count = (seed.next() * 32768 + seed.next()) % ports + 1
+        max_boxes = (seed.next() * 32768 + seed.next()) % limit + 1
+        max_weight = (seed.next() * 32768 + seed.next()) % limit + 1
         boxes = []
         for _ in range(n):
             port = seed.next() % ports_count + 1

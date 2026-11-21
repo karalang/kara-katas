@@ -40,12 +40,17 @@ static int64_t next_random(void) {
     return seed / 65536;
 }
 
+static int64_t wide(void) {
+    int64_t a = next_random();
+    return a * 32768 + next_random();
+}
+
 int main(void) {
     static int32_t nums[PROBLEMS][N], l[PROBLEMS][M], r[PROBLEMS][M];
     for (int p = 0; p < PROBLEMS; p++) {
         for (int i = 0; i < N; i++) {
             if (p % 2 == 0) nums[p][i] = 3 * i - 700;
-            else nums[p][i] = (int32_t)(next_random() % 200001 - 100000);
+            else nums[p][i] = (int32_t)(wide() % 200001 - 100000);
         }
         for (int i = N - 1; i >= 1; i--) {
             int j = (int)(next_random() % (i + 1));

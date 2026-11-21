@@ -46,7 +46,7 @@ fn random_pairs(n: usize, seed: &mut i64) -> Vec<Vec<i32>> {
         }
     }
     for i in (1..pairs.len()).rev() {
-        let j = (next_random(seed) % (i as i64 + 1)) as usize;
+        let j = ((next_random(seed) * 32768 + next_random(seed)) % (i as i64 + 1)) as usize;
         pairs.swap(i, j);
     }
     pairs

@@ -61,7 +61,7 @@ func main() {
 			}
 		}
 		arrays = append(arrays, nums)
-		ks = append(ks, int32(nextRandom()%ones+1))
+		ks = append(ks, int32((nextRandom()*32768+nextRandom())%ones+1))
 	}
 	var sum, check int64
 	for r := int64(0); r < rounds; r++ {

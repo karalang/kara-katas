@@ -59,8 +59,8 @@ def batch(count, most):
         n = next_random() % most + 1
         nums = [next_random() % 100 + 1 for _ in range(n)]
         total = n * (n + 1) // 2
-        a = next_random() % total + 1
-        b = next_random() % total + 1
+        a = (next_random() * 32768 + next_random()) % total + 1
+        b = (next_random() * 32768 + next_random()) % total + 1
         check = mix(check, range_sum(nums, n, min(a, b), max(a, b)))
     return check
 

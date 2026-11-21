@@ -32,7 +32,7 @@ def batch(count, long, letters):
     check = 0
     total = 0
     for _ in range(count):
-        n = next_random() % long + 1
+        n = (next_random() * 32768 + next_random()) % long + 1
         s = "".join(chr(ord("a") + next_random() % letters) for _ in range(n))
         deletions = min_deletions(s)
         total += deletions

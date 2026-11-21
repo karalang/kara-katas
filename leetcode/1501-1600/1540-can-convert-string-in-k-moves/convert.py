@@ -36,8 +36,8 @@ def batch(count, most, letters, top):
     check = 0
     yes = 0
     for _ in range(count):
-        n = next_random() % most + 1
-        m = next_random() % most + 1 if next_random() % 10 == 0 else n
+        n = (next_random() * 32768 + next_random()) % most + 1
+        m = (next_random() * 32768 + next_random()) % most + 1 if next_random() % 10 == 0 else n
         used = next_random() % letters + 1
         s = word(n, used)
         t = word(m, used)

@@ -31,7 +31,7 @@ def batch(count, most, spread, asks):
     yes = 0
     for _ in range(count):
         n = next_random() % (most - 1) + 2
-        nums = [next_random() % (2 * spread + 1) - spread for _ in range(n)]
+        nums = [(next_random() * 32768 + next_random()) % (2 * spread + 1) - spread for _ in range(n)]
         m = next_random() % asks + 1
         l, r = [], []
         for _ in range(m):

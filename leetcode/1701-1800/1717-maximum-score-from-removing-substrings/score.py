@@ -34,7 +34,7 @@ def batch(count, most, other, top, seed):
     total = 0
     check = 0
     for _ in range(count):
-        n = next_random(seed) % most + 1
+        n = (next_random(seed) * 32768 + next_random(seed)) % most + 1
         s = []
         for _ in range(n):
             if next_random(seed) % other == 0:
