@@ -1,0 +1,121 @@
+// LeetCode #2476: Closest Nodes Queries in a Binary Search Tree -- the
+// bench, the ★ arm: an in-order walk reads the values ascending, and a
+// bisection by hand finds the first value at least each query.
+
+fn walk(node: Option[TreeNode], values: mut ref Vec[i64]) {
+    if let Some(n) = node {
+        walk(n.left, mut values);
+        values.push(n.val);
+        walk(n.right, mut values);
+    }
+}
+
+fn closest_nodes(root: Option[TreeNode], queries: Vec[i64]) -> Vec[Vec[i64]] {
+    let mut values: Vec[i64] = Vec.new();
+    walk(root, mut values);
+    let mut answers: Vec[Vec[i64]] = Vec.new();
+    for q in queries.iter() {
+        let mut lo = 0;
+        let mut hi = values.len();
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            if values[mid] < q {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        let ceiling = if lo < values.len() { values[lo] } else { -1 };
+        let floor = if lo < values.len() and values[lo] == q {
+            q
+        } else if lo > 0 {
+            values[lo - 1]
+        } else {
+            -1
+        };
+        answers.push([floor, ceiling].to_vec());
+    }
+    answers
+}
+
+// ---- bench ------------------------------------------------------------------
+
+// LeetCode's own node: an `i32` value
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn leaf(v: i64) -> TreeNode {
+    TreeNode { val: v as i32, left: None, right: None }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+// the search tree of `n` distinct random values from 1 to 10^6, inserted
+// in the order drawn
+fn random_search_tree(n: i64, seed: mut ref i64) -> Option[TreeNode] {
+    let mut used: Set[i64] = Set.new();
+    let mut root: Option[TreeNode] = None;
+    while used.len() < n {
+        let v = 1 + wide_random(mut seed) % 1000000;
+        if used.contains(v) {
+            continue;
+        }
+        used.insert(v);
+        let mut at = match root {
+            None => {
+                root = Some(leaf(v));
+                continue;
+            }
+            Some(r) => r,
+        };
+        loop {
+            if v < at.val {
+                match at.left {
+                    Some(c) => at = c,
+                    None => {
+                        at.left = Some(leaf(v));
+                        break;
+                    }
+                }
+            } else {
+                match at.right {
+                    Some(c) => at = c,
+                    None => {
+                        at.right = Some(leaf(v));
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    root
+}
+
+fn main() {
+    // 10 random search trees of 10^4 nodes built once; then 220 passes,
+    // each asking every tree 1000 values stepped from the checksum so far,
+    // folding every answer and the pass into the checksum
+    let mut seed = 2476;
+    let trees: Vec[Option[TreeNode]] = (0..10).map(|_| random_search_tree(10000, mut seed)).collect();
+    let mut check = 0;
+    for p in 0..220 {
+        for root in trees.iter() {
+            let queries: Vec[i64] = (0..1000).map(|i| 1 + (check + 997 * i) % 1000000).collect();
+            for pair in closest_nodes(root, queries).iter() {
+                check = (check * 31 + pair[0] + pair[1] + 2 + p) % 1000000007;
+            }
+        }
+    }
+    println(f"220 passes over 10 trees of 10^4: checksum {check}");
+}
