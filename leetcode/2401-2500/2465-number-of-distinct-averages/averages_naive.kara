@@ -1,0 +1,73 @@
+// LeetCode #2465: Number of Distinct Averages -- the statement read
+// directly: while numbers are left, the least and the greatest found by a
+// scan and removed, their average taken as an `f64`, and kept when no
+// earlier average equals it. O(n^2).
+
+fn distinct_averages(nums: Vec[i64]) -> i64 {
+    let mut left = nums.clone();
+    let mut averages: Vec[f64] = Vec.new();
+    while left.len() > 0 {
+        let mut low = 0;
+        for i in 0..left.len() {
+            if left[i] < left[low] {
+                low = i;
+            }
+        }
+        let a = left.remove(low);
+        let mut high = 0;
+        for i in 0..left.len() {
+            if left[i] > left[high] {
+                high = i;
+            }
+        }
+        let b = left.remove(high);
+        let average = (a + b) as f64 / 2.0;
+        if not averages.contains(average) {
+            averages.push(average);
+        }
+    }
+    averages.len()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; then every number the same; the two ends of
+    // the range; every pair summing alike; and averages that differ only by
+    // a half
+    let cases: Vec[Vec[i64]] = [
+        [4, 1, 4, 0, 3, 5].to_vec(),
+        [1, 100].to_vec(),
+        [7, 7, 7, 7].to_vec(),
+        [0, 100, 0, 100].to_vec(),
+        [1, 2, 3, 4, 5, 6].to_vec(),
+        [0, 1, 1, 3].to_vec(),
+    ].to_vec();
+    for nums in cases.into_iter() {
+        let shown = f"{nums}";
+        println(f"{shown} -> {distinct_averages(nums)}");
+    }
+    // the constraints' largest: 100 numbers, 0 to 99; then 100 random
+    // from 0 to 100 and 100 random from 0 to 3
+    let all: Vec[i64] = (0..100).collect();
+    println(f"0 to 99: {distinct_averages(all)}");
+    let mut seed = 2465;
+    for top in [101, 4].iter() {
+        let nums: Vec[i64] = (0..100).map(|_| next_random(mut seed) % top).collect();
+        println(f"100 random below {top}: {distinct_averages(nums)}");
+    }
+    // 3000 random lists of 2 to 20 numbers, an even count, from 0 to 100:
+    // a checksum of every answer in order
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 2 * (1 + next_random(mut seed) % 10);
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 101).collect();
+        check = (check * 31 + distinct_averages(nums)) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}

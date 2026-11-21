@@ -1,0 +1,36 @@
+// LeetCode #2465: Number of Distinct Averages -- the bench, the ★ arm:
+// sorted, the `i`th smallest paired with the `i`th largest, and the
+// pairs' sums put in a `Set`.
+
+fn distinct_averages(nums: Vec[i64]) -> i64 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let n = sorted.len();
+    let mut sums: Set[i64] = Set.new();
+    for i in 0..n / 2 {
+        sums.insert(sorted[i] + sorted[n - 1 - i]);
+    }
+    sums.len()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 1000 lists of 100 numbers from 0 to 100 built once; then 900
+    // passes, each setting one number of every list from the checksum so
+    // far, then answering every list and folding the answer plus the pass
+    // into the checksum
+    let mut seed = 2465;
+    let mut lists: Vec[Vec[i64]] = (0..1000).map(|_| (0..100).map(|_| next_random(mut seed) % 101).collect()).collect();
+    let mut check = 0;
+    for p in 0..900 {
+        for a in 0..lists.len() {
+            lists[a][(check + a) % 100] = check % 101;
+            check = (check * 31 + distinct_averages(lists[a]) + p) % 1000000007;
+        }
+    }
+    println(f"900 passes over 1000 lists of 100: checksum {check}");
+}

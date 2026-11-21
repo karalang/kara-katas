@@ -1,0 +1,241 @@
+// LeetCode #2465: Number of Distinct Averages -- the differential. The
+// six arms against the statement read literally: while numbers are
+// left, the least and the greatest removed and their average kept as a
+// fraction in lowest terms, numerator and denominator, a new average
+// counted only when no earlier fraction is the same. 360 cases: 300
+// random lists of 2 to 12 numbers, an even count, from 0 to 10; then 30
+// of up to 100 from 0 to 100; then 30 of up to 100 from 0 to 3. Every
+// case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the list turned by one place: the same answer
+// P3  every number `v` written `100 - v`: the same answer
+// P4  the list followed by itself: the same answer
+// P5  the answer between 1 and half the count
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+fn averages_literally(nums: Vec[i64]) -> i64 {
+    let mut left = nums.clone();
+    let mut kept: Vec[(i64, i64)] = Vec.new();
+    while left.len() > 0 {
+        let low = *left.iter().min().unwrap();
+        let at = left.iter().position(|v| v == low).unwrap();
+        left.remove(at);
+        let high = *left.iter().max().unwrap();
+        let at = left.iter().position(|v| v == high).unwrap();
+        left.remove(at);
+        let top = low + high;
+        let g = gcd(top, 2).max(1);
+        let fraction = (top / g, 2 / g);
+        if not kept.contains(fraction) {
+            kept.push(fraction);
+        }
+    }
+    kept.len()
+}
+
+// ---- star (averages.kara) ------------------------------------------------
+
+fn star_distinct_averages(nums: Vec[i64]) -> i64 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let n = sorted.len();
+    let mut sums: Set[i64] = Set.new();
+    for i in 0..n / 2 {
+        sums.insert(sorted[i] + sorted[n - 1 - i]);
+    }
+    sums.len()
+}
+
+// ---- naive (averages_naive.kara) -----------------------------------------
+
+fn naive_distinct_averages(nums: Vec[i64]) -> i64 {
+    let mut left = nums.clone();
+    let mut averages: Vec[f64] = Vec.new();
+    while left.len() > 0 {
+        let mut low = 0;
+        for i in 0..left.len() {
+            if left[i] < left[low] {
+                low = i;
+            }
+        }
+        let a = left.remove(low);
+        let mut high = 0;
+        for i in 0..left.len() {
+            if left[i] > left[high] {
+                high = i;
+            }
+        }
+        let b = left.remove(high);
+        let average = (a + b) as f64 / 2.0;
+        if not averages.contains(average) {
+            averages.push(average);
+        }
+    }
+    averages.len()
+}
+
+// ---- count (averages_count.kara) -----------------------------------------
+
+fn count_distinct_averages(nums: Vec[i64]) -> i64 {
+    let mut count: Vec[i64] = Vec.filled(101, 0);
+    for v in nums.iter() {
+        count[v] += 1;
+    }
+    let mut seen: Vec[bool] = Vec.filled(201, false);
+    let mut low = 0;
+    let mut high = 100;
+    for _ in 0..nums.len() / 2 {
+        while count[low] == 0 {
+            low += 1;
+        }
+        count[low] -= 1;
+        while count[high] == 0 {
+            high -= 1;
+        }
+        count[high] -= 1;
+        seen[low + high] = true;
+    }
+    seen.iter().filter(|s| *s).count()
+}
+
+// ---- heaps (averages_heaps.kara) -----------------------------------------
+
+fn heaps_distinct_averages(nums: Vec[i64]) -> i64 {
+    let mut least: PriorityQueue[i64] = PriorityQueue.new();
+    let mut most: PriorityQueue[i64] = PriorityQueue.max_first();
+    for v in nums.iter() {
+        least.push(v);
+        most.push(v);
+    }
+    let mut sums: Set[i64] = Set.new();
+    for _ in 0..nums.len() / 2 {
+        sums.insert(least.pop().unwrap() + most.pop().unwrap());
+    }
+    sums.len()
+}
+
+// ---- iter (averages_iter.kara) -------------------------------------------
+
+fn iter_distinct_averages(nums: Vec[i64]) -> i64 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let sums: Set[i64] = sorted.iter().zip(sorted.iter().rev()).take(sorted.len() / 2).map(|(a, b)| a + b).collect();
+    sums.len()
+}
+
+// ---- solution (averages_solution.kara) -----------------------------------
+
+impl Solution {
+    pub fn distinct_averages(nums: own Vec[i32]) -> i32 {
+        let mut nums = nums;
+        nums.sort();
+        let n = nums.len();
+        let mut set: Set[i32] = Set.new();
+        for i in 0..n / 2 {
+            set.insert(nums[i] + nums[n - 1 - i]);
+        }
+        set.len() as i32
+    }
+}
+
+struct Solution {}
+
+fn solution_distinct_averages(nums: Vec[i64]) -> i64 {
+    let asked: Vec[i32] = nums.iter().map(|v| v as i32).collect();
+    Solution.distinct_averages(asked)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_distinct_averages(nums),
+        1 => naive_distinct_averages(nums),
+        2 => count_distinct_averages(nums),
+        3 => heaps_distinct_averages(nums),
+        4 => iter_distinct_averages(nums),
+        _ => solution_distinct_averages(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "naive", "count", "heaps", "iter", "solution"];
+    let mut seed = 2465;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let (n, top) = if t < 300 {
+            (2 * (1 + next_random(mut seed) % 6), 11)
+        } else if t < 330 {
+            (2 * (1 + next_random(mut seed) % 50), 101)
+        } else {
+            (2 * (1 + next_random(mut seed) % 50), 4)
+        };
+        cases.push((0..n).map(|_| next_random(mut seed) % top).collect());
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let nums = cases[c].clone();
+        let n = nums.len();
+        let truth = averages_literally(nums);
+        check = (check * 31 + truth) % 1000000007;
+        let mut turned = nums.clone();
+        turned.rotate_left(1);
+        let flipped: Vec[i64] = nums.iter().map(|v| 100 - v).collect();
+        let mut twice = nums.clone();
+        twice.extend(nums.clone());
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, turned) == value,
+                answer(arm, flipped) == value,
+                answer(arm, twice) == value,
+                1 <= value and value <= n / 2,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
