@@ -1,0 +1,366 @@
+// LeetCode #2382: Maximum Segment Sum After Removals -- the differential.
+// The six arms, against the statement read literally: after each removal,
+// every range of places checked for a removed one, the sum of each range
+// with none, and the largest kept. No union-find, no running segment. 300
+// random arrays of 1 to 12 values, which the literal reading answers;
+// then 30 of up to 300; then 30 of up to 300 values from 1 to 3. Every
+// case is drawn before any arm answers.
+//
+// P1  up to 12 values, the answers are the literal reading's
+// P2  n answers, never rising, the last 0
+// P3  the values and the removals mirrored: the same answers
+// P4  every value doubled: every answer doubled
+// P5  the first answer the larger sum on either side of the first
+//     removal; the one before the last the last value standing
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn segments_literally(nums: Vec[i64], remove_queries: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut removed: Vec[bool] = Vec.filled(n, false);
+    let mut answer: Vec[i64] = Vec.new();
+    for x in remove_queries.iter() {
+        removed[x] = true;
+        let mut best = 0;
+        for i in 0..n {
+            for j in i..n {
+                let mut whole = true;
+                let mut sum = 0;
+                for k in i..j + 1 {
+                    if removed[k] {
+                        whole = false;
+                    }
+                    sum += nums[k];
+                }
+                if whole and sum > best {
+                    best = sum;
+                }
+            }
+        }
+        answer.push(best);
+    }
+    answer
+}
+
+// ---- star (segments.kara) ------------------------------------------------
+
+fn star_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut root = x;
+    while parent[root] != root {
+        parent[root] = parent[parent[root]];
+        root = parent[root];
+    }
+    root
+}
+
+fn star_join(parent: mut ref Vec[i64], sum: mut ref Vec[i64], a: i64, b: i64) {
+    let ra = star_find(mut parent, a);
+    let rb = star_find(mut parent, b);
+    if ra != rb {
+        parent[ra] = rb;
+        sum[rb] += sum[ra];
+    }
+}
+
+fn star_maximum_segment_sum(nums: Vec[i64], remove_queries: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut parent: Vec[i64] = (0..n).collect();
+    let mut sum: Vec[i64] = Vec.filled(n, 0);
+    let mut back: Vec[bool] = Vec.filled(n, false);
+    let mut answer: Vec[i64] = Vec.filled(n, 0);
+    let mut best = 0;
+    for k in (1..n).rev() {
+        let x = remove_queries[k];
+        back[x] = true;
+        sum[x] = nums[x];
+        if x > 0 and back[x - 1] {
+            star_join(mut parent, mut sum, x - 1, x);
+        }
+        if x + 1 < n and back[x + 1] {
+            star_join(mut parent, mut sum, x + 1, x);
+        }
+        best = best.max(sum[star_find(mut parent, x)]);
+        answer[k - 1] = best;
+    }
+    answer
+}
+
+// ---- ends (segments_ends.kara) -------------------------------------------
+
+fn ends_maximum_segment_sum(nums: Vec[i64], remove_queries: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut prefix: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        prefix[i + 1] = prefix[i] + nums[i];
+    }
+    let mut back: Vec[bool] = Vec.filled(n, false);
+    let mut start_of: Vec[i64] = Vec.filled(n, 0);
+    let mut end_of: Vec[i64] = Vec.filled(n, 0);
+    let mut answer: Vec[i64] = Vec.filled(n, 0);
+    let mut best = 0;
+    for k in (1..n).rev() {
+        let x = remove_queries[k];
+        let l = if x > 0 and back[x - 1] { start_of[x - 1] } else { x };
+        let r = if x + 1 < n and back[x + 1] { end_of[x + 1] } else { x };
+        back[x] = true;
+        end_of[l] = r;
+        start_of[r] = l;
+        best = best.max(prefix[r + 1] - prefix[l]);
+        answer[k - 1] = best;
+    }
+    answer
+}
+
+// ---- sorted (segments_sorted.kara) ---------------------------------------
+
+fn sorted_maximum_segment_sum(nums: Vec[i64], remove_queries: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut prefix: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        prefix[i + 1] = prefix[i] + nums[i];
+    }
+    let mut segments: SortedMap[i64, i64] = SortedMap.new();
+    let mut sums: SortedMap[i64, i64] = SortedMap.new();
+    segments.insert(0, n - 1);
+    sums.insert(prefix[n], 1);
+    let mut answer: Vec[i64] = Vec.new();
+    for x in remove_queries.iter() {
+        let (l, r) = segments.floor(x).unwrap();
+        let (l, r) = (l.clone(), r.clone());
+        segments.remove(l);
+        let whole = prefix[r + 1] - prefix[l];
+        if sums[whole] == 1 {
+            sums.remove(whole);
+        } else {
+            sums[whole] -= 1;
+        }
+        if l < x {
+            segments.insert(l, x - 1);
+            let part = prefix[x] - prefix[l];
+            sums[part] = sums.get(part).unwrap_or(0) + 1;
+        }
+        if x < r {
+            segments.insert(x + 1, r);
+            let part = prefix[r + 1] - prefix[x + 1];
+            sums[part] = sums.get(part).unwrap_or(0) + 1;
+        }
+        answer.push(match sums.last() {
+            Some((top, _)) => top,
+            None => 0,
+        });
+    }
+    answer
+}
+
+// ---- rescan (segments_rescan.kara) ---------------------------------------
+
+fn rescan_maximum_segment_sum(nums: Vec[i64], remove_queries: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut removed: Vec[bool] = Vec.filled(n, false);
+    let mut answer: Vec[i64] = Vec.new();
+    for x in remove_queries.iter() {
+        removed[x] = true;
+        let mut best = 0;
+        let mut run = 0;
+        for i in 0..n {
+            if removed[i] {
+                run = 0;
+            } else {
+                run += nums[i];
+                if run > best {
+                    best = run;
+                }
+            }
+        }
+        answer.push(best);
+    }
+    answer
+}
+
+// ---- iter (segments_iter.kara) -------------------------------------------
+
+fn iter_maximum_segment_sum(nums: Vec[i64], remove_queries: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    remove_queries.iter().scan(Vec.filled(n, false), |removed: own Vec[bool], x| {
+        let mut removed = removed;
+        removed[x] = true;
+        let (_, best) = nums.iter().zip(removed.iter()).fold((0, 0), |state: (i64, i64), (v, gone)| {
+            let (run, best) = state;
+            let run = if gone { 0 } else { run + v };
+            (run, best.max(run))
+        });
+        Some((removed, best))
+    }).collect()
+}
+
+// ---- solution (segments_solution.kara) -----------------------------------
+
+struct Solution {}
+
+impl Solution {
+    fn find(p: mut ref Vec[i64], x: i64) -> i64 {
+        if p[x] != x {
+            let px = p[x];
+            p[x] = Solution.find(mut p, px);
+        }
+        p[x]
+    }
+
+    pub fn maximum_segment_sum(nums: Vec[i32], remove_queries: Vec[i32]) -> Vec[i64] {
+        let n = nums.len();
+        let mut p: Vec[i64] = (0..n).collect();
+        let mut sum = Vec.filled(n, 0);
+        let mut ans = Vec.filled(n, 0);
+        let mut best = 0;
+        for i in (1..n).rev() {
+            let x = remove_queries[i] as i64;
+            sum[x] = nums[x] as i64;
+            if x > 0 {
+                let r = Solution.find(mut p, x - 1);
+                if sum[r] > 0 {
+                    p[r] = x;
+                    sum[x] += sum[r];
+                }
+            }
+            if x + 1 < n {
+                let r = Solution.find(mut p, x + 1);
+                if sum[r] > 0 {
+                    p[r] = x;
+                    sum[x] += sum[r];
+                }
+            }
+            best = best.max(sum[x]);
+            ans[i - 1] = best;
+        }
+        ans
+    }
+}
+
+fn solution_maximum_segment_sum(nums: Vec[i64], remove_queries: Vec[i64]) -> Vec[i64] {
+    let nums: Vec[i32] = nums.iter().map(|v| v as i32).collect();
+    let remove_queries: Vec[i32] = remove_queries.iter().map(|q| q as i32).collect();
+    Solution.maximum_segment_sum(nums, remove_queries)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64], remove_queries: Vec[i64]) -> Vec[i64] {
+    match arm {
+        0 => star_maximum_segment_sum(nums, remove_queries),
+        1 => ends_maximum_segment_sum(nums, remove_queries),
+        2 => sorted_maximum_segment_sum(nums, remove_queries),
+        3 => rescan_maximum_segment_sum(nums, remove_queries),
+        4 => iter_maximum_segment_sum(nums, remove_queries),
+        _ => solution_maximum_segment_sum(nums, remove_queries),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+fn fold(check: i64, values: Vec[i64]) -> i64 {
+    let mut c = check;
+    for v in values.iter() {
+        c = (c * 31 + v) % 1000000007;
+    }
+    c
+}
+
+fn main() {
+    let names = ["star", "ends", "sorted", "rescan", "iter", "solution"];
+    let mut seed = 2382;
+    let mut cases: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    for c in 0..360 {
+        let (n, top) = if c < 300 {
+            (1 + next_random(mut seed) % 12, 1 + wide(mut seed) % 1000000000)
+        } else if c < 330 {
+            (1 + next_random(mut seed) % 300, 1 + wide(mut seed) % 1000000000)
+        } else {
+            (1 + next_random(mut seed) % 300, 3)
+        };
+        let nums: Vec[i64] = (0..n).map(|_| 1 + wide(mut seed) % top).collect();
+        let mut order: Vec[i64] = (0..n).collect();
+        for i in (1..n).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            order.swap(i, j);
+        }
+        cases.push((nums, order));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (nums, queries) = cases[c].clone();
+        let n = nums.len();
+        let small = n <= 12;
+        let truth = if small { segments_literally(nums, queries) } else { Vec.new() };
+        if small {
+            check = fold(check, truth);
+        }
+        let mut mirrored = nums.clone();
+        mirrored.reverse();
+        let flipped: Vec[i64] = queries.iter().map(|q| n - 1 - q).collect();
+        let doubled: Vec[i64] = nums.iter().map(|v| 2 * v).collect();
+        let first = queries[0];
+        let left: i64 = nums[0..first].iter().sum();
+        let right: i64 = nums[first + 1..n].iter().sum();
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, nums, queries)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut shaped = value.len() == n and value[n - 1] == 0;
+            if shaped {
+                for i in 1..n {
+                    if value[i] > value[i - 1] {
+                        shaped = false;
+                    }
+                }
+            }
+            let twice: Vec[i64] = value.iter().map(|v| 2 * v).collect();
+            let ends = value.len() == n and value[0] == left.max(right) and (n < 2 or value[n - 2] == nums[queries[n - 1]]);
+            let verdicts = [
+                not small or value == truth,
+                shaped,
+                answer(arm, mirrored, flipped) == value,
+                answer(arm, doubled, queries) == twice,
+                ends,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

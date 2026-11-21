@@ -1,0 +1,89 @@
+// LeetCode #2382: Maximum Segment Sum After Removals -- the removals
+// undone in reverse, each segment known by its two ends. A value put back
+// takes the left end of the segment just before it and the right end of
+// the one just after it, and the two outer ends are told of each other;
+// the segment's sum is a difference of prefix sums. O(n).
+
+fn maximum_segment_sum(nums: Vec[i64], remove_queries: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut prefix: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        prefix[i + 1] = prefix[i] + nums[i];
+    }
+    let mut back: Vec[bool] = Vec.filled(n, false);
+    let mut start_of: Vec[i64] = Vec.filled(n, 0);
+    let mut end_of: Vec[i64] = Vec.filled(n, 0);
+    let mut answer: Vec[i64] = Vec.filled(n, 0);
+    let mut best = 0;
+    for k in (1..n).rev() {
+        let x = remove_queries[k];
+        let l = if x > 0 and back[x - 1] { start_of[x - 1] } else { x };
+        let r = if x + 1 < n and back[x + 1] { end_of[x + 1] } else { x };
+        back[x] = true;
+        end_of[l] = r;
+        start_of[r] = l;
+        best = best.max(prefix[r + 1] - prefix[l]);
+        answer[k - 1] = best;
+    }
+    answer
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+fn fold(check: i64, values: Vec[i64]) -> i64 {
+    let mut c = check;
+    for v in values.iter() {
+        c = (c * 31 + v) % 1000000007;
+    }
+    c
+}
+
+fn shuffled(n: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut order: Vec[i64] = (0..n).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        order.swap(i, j);
+    }
+    order
+}
+
+fn main() {
+    // LeetCode's two examples; one value; 3000 values of 10^9 removed from
+    // the left, and from the middle outward; 3000 random values removed in
+    // a random order, as checksums; then 2000 random arrays of 1 to 40
+    // values up to 1 to 10^9, drawn from 30 random bits, removed in a
+    // random order, with a checksum and the sum of the first answers
+    println(f"{maximum_segment_sum([1, 2, 5, 6, 1], [0, 3, 2, 4, 1])}");
+    println(f"{maximum_segment_sum([3, 2, 11, 1], [3, 2, 1, 0])}");
+    println(f"{maximum_segment_sum([7], [0])}");
+    let n = 3000;
+    let big: Vec[i64] = Vec.filled(n, 1000000000);
+    let left: Vec[i64] = (0..n).collect();
+    let outward: Vec[i64] = (0..n).map(|i| if i % 2 == 0 { n / 2 + i / 2 } else { n / 2 - 1 - i / 2 }).collect();
+    let mut seed = 2382;
+    let values: Vec[i64] = (0..n).map(|_| 1 + wide(mut seed) % 1000000000).collect();
+    let order = shuffled(n, mut seed);
+    println(f"{fold(0, maximum_segment_sum(big, left))} {fold(0, maximum_segment_sum(big, outward))} {fold(0, maximum_segment_sum(values, order))}");
+    let mut check = 0;
+    let mut firsts = 0;
+    for _ in 0..2000 {
+        let len = 1 + next_random(mut seed) % 40;
+        let top = 1 + wide(mut seed) % 1000000000;
+        let nums: Vec[i64] = (0..len).map(|_| 1 + wide(mut seed) % top).collect();
+        let queries = shuffled(len, mut seed);
+        let answer = maximum_segment_sum(nums, queries);
+        check = fold(check, answer);
+        firsts += answer[0];
+    }
+    println(f"2000 arrays: checksum {check}, first answers summing to {firsts}");
+}
