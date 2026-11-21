@@ -1,0 +1,56 @@
+// LeetCode #2517: Maximum Tastiness of Candy Basket -- Rust mirror of the
+// benchmark (tastiness.kara): the same lists, passes, order and checksum.
+
+fn maximum_tastiness(price: &[i64], k: i64) -> i64 {
+    let mut sorted = price.to_vec();
+    sorted.sort();
+    let fits = |d: i64| {
+        let mut count = 1;
+        let mut last = sorted[0];
+        for &p in sorted.iter() {
+            if p - last >= d {
+                count += 1;
+                last = p;
+            }
+        }
+        count >= k
+    };
+    let mut lo = 0;
+    let mut hi = (sorted[sorted.len() - 1] - sorted[0]) / (k - 1);
+    while lo < hi {
+        let mid = lo + (hi - lo + 1) / 2;
+        if fits(mid) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn below(top: i64, seed: &mut i64) -> i64 {
+    let a = next_random(seed);
+    let b = next_random(seed);
+    (a * 32768 + b) % top
+}
+
+fn main() {
+    let mut seed = 2517;
+    let mut lists: Vec<Vec<i64>> = Vec::new();
+    for _ in 0..20 {
+        lists.push((0..100000).map(|_| below(1000000000, &mut seed) + 1).collect());
+    }
+    let passes = 3;
+    let mut check: i64 = 0;
+    for p in 0..passes {
+        for price in lists.iter() {
+            check = (check * 31 + maximum_tastiness(price, check % 1000 + 2) + p) % 1000000007;
+        }
+    }
+    println!("{} passes over 20 lists of 10^5 prices: checksum {}", passes, check);
+}

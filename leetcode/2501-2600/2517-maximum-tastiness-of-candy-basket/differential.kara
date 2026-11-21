@@ -1,0 +1,299 @@
+// LeetCode #2517: Maximum Tastiness of Candy Basket -- the differential.
+// The six arms against the statement read literally: every basket of k
+// distinct candies chosen by a recursion that takes or skips each candy
+// in turn, its tastiness the smallest difference of any two in it found
+// by comparing every pair; the greatest tastiness over the baskets. No
+// sort and no bisection. 300 random lists of 2 to 8 prices to 30 with k
+// from 2 to the length; then 20 of 8 prices from 1 to 3, and 40 of 8
+// prices to 10^6, k 4; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  from 0 to (greatest - least) / (k - 1)
+// P3  the prices in the reverse order: the same answer
+// P4  every price doubled: twice the answer
+// P5  one more candy, while k is below n: at most the answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally
+
+fn baskets(price: Vec[i64], k: i64, at: i64, chosen: mut ref Vec[i64]) -> i64 {
+    if chosen.len() == k {
+        let mut least = -1;
+        for a in 0..k {
+            for b in 0..k {
+                if a != b {
+                    let d = (chosen[a] - chosen[b]).abs();
+                    if least == -1 or d < least {
+                        least = d;
+                    }
+                }
+            }
+        }
+        return least;
+    }
+    if at == price.len() {
+        return -1;
+    }
+    chosen.push(price[at]);
+    let taken = baskets(price, k, at + 1, mut chosen);
+    chosen.pop();
+    taken.max(baskets(price, k, at + 1, mut chosen))
+}
+
+fn literal(price: Vec[i64], k: i64) -> i64 {
+    let mut chosen: Vec[i64] = Vec.new();
+    baskets(price, k, 0, mut chosen)
+}
+
+// ---- star (tastiness.kara) -----------------------------------------------
+
+fn star_maximum_tastiness(price: Vec[i64], k: i64) -> i64 {
+    let mut sorted = price.clone();
+    sorted.sort();
+    let fits = |d: i64| {
+        let mut count = 1;
+        let mut last = sorted[0];
+        for p in sorted.iter() {
+            if p - last >= d {
+                count += 1;
+                last = p;
+            }
+        }
+        count >= k
+    };
+    let mut lo = 0;
+    let mut hi = (sorted[sorted.len() - 1] - sorted[0]) / (k - 1);
+    while lo < hi {
+        let mid = lo + (hi - lo + 1) / 2;
+        if fits(mid) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+// ---- jumps (tastiness_jumps.kara) ----------------------------------------
+
+fn jumps_maximum_tastiness(price: Vec[i64], k: i64) -> i64 {
+    let mut sorted = price.clone();
+    sorted.sort();
+    let n = sorted.len();
+    let fits = |d: i64| {
+        let mut at = 0;
+        for _ in 1..k {
+            let want = sorted[at] + d;
+            at = sorted.partition_point(|p| p < want);
+            if at == n {
+                return false;
+            }
+        }
+        true
+    };
+    let mut lo = 0;
+    let mut hi = (sorted[n - 1] - sorted[0]) / (k - 1);
+    while lo < hi {
+        let mid = lo + (hi - lo + 1) / 2;
+        if fits(mid) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+// ---- bits (tastiness_bits.kara) ------------------------------------------
+
+fn bits_fits(sorted: Vec[i64], k: i64, d: i64) -> bool {
+    let mut count = 1;
+    let mut last = sorted[sorted.len() - 1];
+    for i in (0..sorted.len() - 1).rev() {
+        if last - sorted[i] >= d {
+            count += 1;
+            last = sorted[i];
+        }
+    }
+    count >= k
+}
+
+fn bits_maximum_tastiness(price: Vec[i64], k: i64) -> i64 {
+    let mut sorted = price.clone();
+    sorted.sort();
+    let mut answer = 0;
+    for bit in (0..30).rev() {
+        if bits_fits(sorted, k, answer + (1 << bit)) {
+            answer += 1 << bit;
+        }
+    }
+    answer
+}
+
+// ---- rec (tastiness_rec.kara) --------------------------------------------
+
+fn rec_fits(sorted: Vec[i64], k: i64, d: i64) -> bool {
+    let mut count = 1;
+    let mut last = sorted[0];
+    for i in 1..sorted.len() {
+        if sorted[i] - last >= d {
+            count += 1;
+            last = sorted[i];
+        }
+    }
+    count >= k
+}
+
+fn rec_greatest(sorted: Vec[i64], k: i64, lo: i64, hi: i64) -> i64 {
+    if lo == hi {
+        return lo;
+    }
+    let mid = lo + (hi - lo + 1) / 2;
+    if rec_fits(sorted, k, mid) { rec_greatest(sorted, k, mid, hi) } else { rec_greatest(sorted, k, lo, mid - 1) }
+}
+
+fn rec_maximum_tastiness(price: Vec[i64], k: i64) -> i64 {
+    let mut sorted = price.clone();
+    sorted.sort();
+    rec_greatest(sorted, k, 0, sorted[sorted.len() - 1] - sorted[0])
+}
+
+// ---- iter (tastiness_iter.kara) ------------------------------------------
+
+fn iter_maximum_tastiness(price: Vec[i64], k: i64) -> i64 {
+    let mut sorted = price.clone();
+    sorted.sort();
+    let fits = |d: i64| {
+        let (count, _) = sorted.iter().skip(1).fold((1, sorted[0]), |(count, last), p| if p - last >= d { (count + 1, p) } else { (count, last) });
+        count >= k
+    };
+    (0..30).rev().fold(0, |answer, bit| if fits(answer + (1 << bit)) { answer + (1 << bit) } else { answer })
+}
+
+// ---- solution (tastiness_solution.kara) ----------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn maximum_tastiness(price: own Vec[i32], k: i32) -> i32 {
+        let mut price = price;
+        price.sort();
+        let check = |d: i32| {
+            let mut cnt = 1;
+            let mut last = price[0];
+            for p in price.iter().skip(1) {
+                if p - last >= d {
+                    cnt += 1;
+                    last = p;
+                }
+            }
+            cnt >= k
+        };
+        let mut (lo, hi) = (0i32, price[price.len() - 1] - price[0]);
+        while lo < hi {
+            let mid = lo + (hi - lo + 1) / 2;
+            if check(mid) {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        lo
+    }
+}
+
+fn solution_maximum_tastiness(price: Vec[i64], k: i64) -> i64 {
+    let p: Vec[i32] = price.iter().map(|v| v as i32).collect();
+    Solution.maximum_tastiness(p, k as i32)
+}
+
+// ---- the differential --------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn below(top: i64, seed: mut ref i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % top
+}
+
+fn answer(arm: i64, price: Vec[i64], k: i64) -> i64 {
+    match arm {
+        0 => star_maximum_tastiness(price, k),
+        1 => jumps_maximum_tastiness(price, k),
+        2 => bits_maximum_tastiness(price, k),
+        3 => rec_maximum_tastiness(price, k),
+        4 => iter_maximum_tastiness(price, k),
+        _ => solution_maximum_tastiness(price, k),
+    }
+}
+
+fn main() {
+    let names = ["star", "jumps", "bits", "rec", "iter", "solution"];
+    let mut seed = 2517;
+    let mut problems: Vec[(Vec[i64], i64)] = Vec.new();
+    for t in 0..360 {
+        let (n, top) = if t < 300 { (next_random(mut seed) % 7 + 2, 30) } else if t < 320 { (8, 3) } else { (8, 1000000) };
+        let price: Vec[i64] = (0..n).map(|_| below(top, mut seed) + 1).collect();
+        let k = if t < 300 { next_random(mut seed) % (n - 1) + 2 } else { 4 };
+        problems.push((price, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut flat = 0;
+    for (price, k) in problems.iter() {
+        let n = price.len();
+        let truth = literal(price, k);
+        if truth == 0 {
+            flat += 1;
+        }
+        check = (check * 31 + truth) % 1000000007;
+        let greatest = price.iter().max().unwrap();
+        let least = price.iter().min().unwrap();
+        let mut reversed = price.clone();
+        reversed.reverse();
+        let doubled: Vec[i64] = price.iter().map(|p| 2 * p).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, price, k)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                x >= 0 and x <= (greatest - least) / (k - 1),
+                answer(arm, reversed, k) == x,
+                answer(arm, doubled, k) == 2 * x,
+                k == n or answer(arm, price, k + 1) <= x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{price} k {k}, arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} cases, {flat} with a tastiness of 0: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
