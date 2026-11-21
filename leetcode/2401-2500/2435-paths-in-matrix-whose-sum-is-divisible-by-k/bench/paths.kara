@@ -1,0 +1,59 @@
+// LeetCode #2435: Paths in Matrix Whose Sum Is Divisible by K -- the
+// bench, the ★ arm: one row of counts by remainder, each cell's from
+// above, still in place, and from the left, shifted by its value.
+
+const MOD: i64 = 1000000007;
+
+fn number_of_paths(grid: Vec[Vec[i64]], k: i64) -> i64 {
+    let n = grid[0].len();
+    let mut row: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(k, 0));
+    for i in 0..grid.len() {
+        for j in 0..n {
+            let mut came: Vec[i64] = Vec.filled(k, 0);
+            if i == 0 and j == 0 {
+                came[0] = 1;
+            }
+            for r in 0..k {
+                let left = if j > 0 { row[j - 1][r] } else { 0 };
+                came[r] = (came[r] + row[j][r] + left) % MOD;
+            }
+            let v = grid[i][j];
+            for r in 0..k {
+                row[j][(r + v) % k] = came[r];
+            }
+        }
+    }
+    row[n - 1][0]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2435;
+    // 5 grids of 200 by 250, the constraints' largest, values up to 100
+    let mut grids: Vec[Vec[Vec[i64]]] = Vec.new();
+    for _ in 0..5 {
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..200 {
+            let mut row: Vec[i64] = Vec.new();
+            for _ in 0..250 {
+                row.push(next_random(mut seed) % 101);
+            }
+            grid.push(row);
+        }
+        grids.push(grid);
+    }
+    // pass `p` sets one cell of every grid, then answers every grid with
+    // `k` = 50
+    let mut check = 0;
+    for p in 0..10 {
+        for g in 0..grids.len() {
+            grids[g][(p * 37) % 200][(p * 91) % 250] = p;
+            check = (check * 31 + number_of_paths(grids[g], 50) + p) % 1000000007;
+        }
+    }
+    println(f"10 passes over 5 grids of 200 by 250: checksum {check}");
+}

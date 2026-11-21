@@ -1,0 +1,314 @@
+// LeetCode #2435: Paths in Matrix Whose Sum Is Divisible by K -- the
+// differential. The six arms against the statement read literally: every
+// path walked by recursion, right or down from the top-left, its sum
+// added as it goes, and counted when the bottom-right is reached with a
+// sum divisible by `k`. No remainder is tracked. 360 cases: 300 random
+// grids of 1 to 5 by 1 to 5, values up to 9, `k` from 1 to 8; then 30 of
+// up to 7 by 7, values up to 100, `k` from 1 to 50; then 30 of one or two
+// rows or columns up to 30 long, values up to 100, `k` from 1 to 50.
+// Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the grid transposed: the same answer
+// P3  the grid turned half round: the same answer
+// P4  no more than every path, `C(m + n - 2, m - 1)`
+// P5  `k` = 1: every path, the binomial `C(m + n - 2, m - 1)`
+// P6  each arm agrees with at least three of the other five
+
+const MOD: i64 = 1000000007;
+
+// ---- the statement read literally ------------------------------------------
+
+fn walk(grid: Vec[Vec[i64]], k: i64, i: i64, j: i64, sum: i64) -> i64 {
+    let total = sum + grid[i][j];
+    if i == grid.len() - 1 and j == grid[0].len() - 1 {
+        return if total % k == 0 { 1 } else { 0 };
+    }
+    let mut count = 0;
+    if i + 1 < grid.len() {
+        count += walk(grid, k, i + 1, j, total);
+    }
+    if j + 1 < grid[0].len() {
+        count += walk(grid, k, i, j + 1, total);
+    }
+    count
+}
+
+fn paths_literally(grid: Vec[Vec[i64]], k: i64) -> i64 {
+    walk(grid, k, 0, 0, 0)
+}
+
+// ---- star (paths.kara) ---------------------------------------------------
+
+fn star_number_of_paths(grid: Vec[Vec[i64]], k: i64) -> i64 {
+    let n = grid[0].len();
+    let mut row: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(k, 0));
+    for i in 0..grid.len() {
+        for j in 0..n {
+            let mut came: Vec[i64] = Vec.filled(k, 0);
+            if i == 0 and j == 0 {
+                came[0] = 1;
+            }
+            for r in 0..k {
+                let left = if j > 0 { row[j - 1][r] } else { 0 };
+                came[r] = (came[r] + row[j][r] + left) % MOD;
+            }
+            let v = grid[i][j];
+            for r in 0..k {
+                row[j][(r + v) % k] = came[r];
+            }
+        }
+    }
+    row[n - 1][0]
+}
+
+// ---- naive (paths_naive.kara) --------------------------------------------
+
+fn naive_number_of_paths(grid: Vec[Vec[i64]], k: i64) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut ways: Vec[Vec[Vec[i64]]] = Vec.filled(m, Vec.filled(n, Vec.filled(k, 0)));
+    for i in 0..m {
+        for j in 0..n {
+            let v = grid[i][j];
+            for r in 0..k {
+                let before = ((r - v) % k + k) % k;
+                if i == 0 and j == 0 {
+                    ways[i][j][r] = if v % k == r { 1 } else { 0 };
+                } else {
+                    let up = if i > 0 { ways[i - 1][j][before] } else { 0 };
+                    let left = if j > 0 { ways[i][j - 1][before] } else { 0 };
+                    ways[i][j][r] = (up + left) % MOD;
+                }
+            }
+        }
+    }
+    ways[m - 1][n - 1][0]
+}
+
+// ---- memo (paths_memo.kara) ----------------------------------------------
+
+fn memo_from(grid: Vec[Vec[i64]], k: i64, i: i64, j: i64, r: i64, memo: mut ref Vec[i64]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    if i == m - 1 and j == n - 1 {
+        return if r == 0 { 1 } else { 0 };
+    }
+    let at = (i * n + j) * k + r;
+    if memo[at] >= 0 {
+        return memo[at];
+    }
+    let mut count = 0;
+    if i + 1 < m {
+        count += memo_from(grid, k, i + 1, j, (r + grid[i + 1][j]) % k, mut memo);
+    }
+    if j + 1 < n {
+        count += memo_from(grid, k, i, j + 1, (r + grid[i][j + 1]) % k, mut memo);
+    }
+    memo[at] = count % MOD;
+    memo[at]
+}
+
+fn memo_number_of_paths(grid: Vec[Vec[i64]], k: i64) -> i64 {
+    let mut memo: Vec[i64] = Vec.filled(grid.len() * grid[0].len() * k, -1);
+    memo_from(grid, k, 0, 0, grid[0][0] % k, mut memo)
+}
+
+// ---- flat (paths_flat.kara) ----------------------------------------------
+
+fn flat_number_of_paths(grid: Vec[Vec[i64]], k: i64) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut ways: Vec[i64] = Vec.filled(m * n * k, 0);
+    ways[grid[0][0] % k] = 1;
+    for i in 0..m {
+        for j in 0..n {
+            for r in 0..k {
+                let w = ways[(i * n + j) * k + r];
+                if w == 0 {
+                    continue;
+                }
+                if i + 1 < m {
+                    let at = ((i + 1) * n + j) * k + (r + grid[i + 1][j]) % k;
+                    ways[at] = (ways[at] + w) % MOD;
+                }
+                if j + 1 < n {
+                    let at = (i * n + j + 1) * k + (r + grid[i][j + 1]) % k;
+                    ways[at] = (ways[at] + w) % MOD;
+                }
+            }
+        }
+    }
+    ways[((m - 1) * n + n - 1) * k]
+}
+
+// ---- iter (paths_iter.kara) ----------------------------------------------
+
+fn iter_number_of_paths(grid: Vec[Vec[i64]], k: i64) -> i64 {
+    let n = grid[0].len();
+    let mut start: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(k, 0));
+    // a path into the first cell from nowhere, as if from above
+    start[0][0] = 1;
+    let last = grid.iter().enumerate().fold(start, |above, (i, row)| {
+        let cells: Vec[Vec[i64]] = (0..n).scan(Vec.filled(k, 0), |left, j| {
+            let v = row[j];
+            let came: Vec[i64] = (0..k).map(|r| {
+                let before = ((r - v) % k + k) % k;
+                let from_above = if i == 0 and j > 0 { 0 } else { above[j][before] };
+                (from_above + left[before]) % MOD
+            }).collect();
+            Some((came.clone(), came))
+        }).collect();
+        cells
+    });
+    last[n - 1][0]
+}
+
+// ---- solution (paths_solution.kara) --------------------------------------
+
+impl Solution {
+    pub fn number_of_paths(grid: Vec[Vec[i32]], k: i32) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let (m, n, k) = (grid.len(), grid[0].len(), k as i64);
+        let mut dp = Vec.filled(m, Vec.filled(n, Vec.filled(k, 0)));
+        dp[0][0][grid[0][0] % k] = 1;
+        for i in 0..m {
+            for j in 0..n {
+                for r in 0..k {
+                    let v = dp[i][j][r];
+                    if v == 0 {
+                        continue;
+                    }
+                    if i + 1 < m {
+                        let nr = (r + grid[i + 1][j]) % k;
+                        dp[i + 1][j][nr] = (dp[i + 1][j][nr] + v) % MOD;
+                    }
+                    if j + 1 < n {
+                        let nr = (r + grid[i][j + 1]) % k;
+                        dp[i][j + 1][nr] = (dp[i][j + 1][nr] + v) % MOD;
+                    }
+                }
+            }
+        }
+        dp[m - 1][n - 1][0] as i32
+    }
+}
+
+struct Solution {}
+
+fn solution_number_of_paths(grid: Vec[Vec[i64]], k: i64) -> i64 {
+    let rows: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|x| x as i32).collect()).collect();
+    Solution.number_of_paths(rows, k as i32)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, grid: Vec[Vec[i64]], k: i64) -> i64 {
+    match arm {
+        0 => star_number_of_paths(grid, k),
+        1 => naive_number_of_paths(grid, k),
+        2 => memo_number_of_paths(grid, k),
+        3 => flat_number_of_paths(grid, k),
+        4 => iter_number_of_paths(grid, k),
+        _ => solution_number_of_paths(grid, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn binomial(n: i64, r: i64) -> i64 {
+    let mut row: Vec[i64] = Vec.filled(n + 1, 0);
+    row[0] = 1;
+    for i in 1..n + 1 {
+        for j in (1..i + 1).rev() {
+            row[j] = (row[j] + row[j - 1]) % MOD;
+        }
+    }
+    row[r]
+}
+
+fn main() {
+    let arms = ["star", "naive", "memo", "flat", "iter", "solution"];
+    let mut seed = 2435;
+    let mut cases: Vec[(Vec[Vec[i64]], i64)] = Vec.new();
+    for t in 0..360 {
+        let (m, n, top, k) = if t < 300 {
+            (1 + next_random(mut seed) % 5, 1 + next_random(mut seed) % 5, 9, 1 + next_random(mut seed) % 8)
+        } else if t < 330 {
+            (1 + next_random(mut seed) % 7, 1 + next_random(mut seed) % 7, 100, 1 + next_random(mut seed) % 50)
+        } else {
+            let short = 1 + next_random(mut seed) % 2;
+            let long = 1 + next_random(mut seed) % 30;
+            if next_random(mut seed) % 2 == 0 {
+                (short, long, 100, 1 + next_random(mut seed) % 50)
+            } else {
+                (long, short, 100, 1 + next_random(mut seed) % 50)
+            }
+        };
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..m {
+            let mut row: Vec[i64] = Vec.new();
+            for _ in 0..n {
+                row.push(next_random(mut seed) % (top + 1));
+            }
+            grid.push(row);
+        }
+        cases.push((grid, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (grid, k) = cases[c].clone();
+        let m = grid.len();
+        let n = grid[0].len();
+        let truth = paths_literally(grid, k);
+        check = (check * 31 + truth) % 1000000007;
+        let transposed: Vec[Vec[i64]] = (0..n).map(|j| (0..m).map(|i| grid[i][j]).collect()).collect();
+        let turned: Vec[Vec[i64]] = (0..m).map(|i| (0..n).map(|j| grid[m - 1 - i][n - 1 - j]).collect()).collect();
+        let every = binomial(m + n - 2, m - 1);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, grid, k)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, transposed, k) == value,
+                answer(arm, turned, k) == value,
+                value <= every,
+                answer(arm, grid, 1) == every,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
