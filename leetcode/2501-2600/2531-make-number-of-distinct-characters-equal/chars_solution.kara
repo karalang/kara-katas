@@ -1,0 +1,94 @@
+// LeetCode #2531: Make Number of Distinct Characters Equal -- LeetCode's
+// Rust template: two `String`s in, `bool` out; `[i32; 26]` counts from
+// `bytes()`, and for each pair of present letters the swap done on the
+// counts and undone; carried by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn is_it_possible(word1: String, word2: String) -> bool {
+        let mut one = [0i32; 26];
+        let mut two = [0i32; 26];
+        for b in word1.bytes() {
+            one[(b - b'a') as usize] += 1;
+        }
+        for b in word2.bytes() {
+            two[(b - b'a') as usize] += 1;
+        }
+        for a in 0..26 {
+            for b in 0..26 {
+                if one[a] == 0 or two[b] == 0 {
+                    continue;
+                }
+                one[a] -= 1;
+                one[b] += 1;
+                two[b] -= 1;
+                two[a] += 1;
+                let d1 = one.iter().filter(|c| c > 0).count();
+                let d2 = two.iter().filter(|c| c > 0).count();
+                one[a] += 1;
+                one[b] -= 1;
+                two[b] += 1;
+                two[a] -= 1;
+                if d1 == d2 {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+}
+
+fn is_it_possible(word1: Str, word2: Str) -> bool {
+    Solution.is_it_possible(word1.to_string(), word2.to_string())
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(seed: mut ref i64, length: i64, letters: i64) -> String {
+    let mut word = String.new();
+    for _ in 0..length {
+        word.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+    }
+    word
+}
+
+fn main() {
+    // LeetCode's three examples, then five more
+    let fixed = [
+        ("ac", "b"),
+        ("abcc", "aab"),
+        ("abcde", "fghij"),
+        ("a", "a"),
+        ("a", "bb"),
+        ("aa", "bcd"),
+        ("abcdefghijklmnopqrstuvwxyz", "a"),
+        ("ab", "abcd"),
+    ];
+    for (word1, word2) in fixed.iter() {
+        println(f"{word1} {word2} -> {is_it_possible(word1, word2)}");
+    }
+    // 3000 random pairs of 1 to 8 letters from the first 1 to 6, and 300
+    // of 1 to 2000 letters from all 26: how many are possible
+    let mut seed = 2531;
+    for (count, most, letters) in [(3000, 8, 6), (300, 2000, 26)] {
+        let mut yes = 0;
+        let mut check = 0;
+        for _ in 0..count {
+            let pick = next_random(mut seed) % letters + 1;
+            let word1 = random_word(mut seed, next_random(mut seed) % most + 1, pick);
+            let word2 = random_word(mut seed, next_random(mut seed) % most + 1, next_random(mut seed) % letters + 1);
+            let answer = is_it_possible(word1, word2);
+            if answer {
+                yes += 1;
+            }
+            check = (check * 31 + (if answer { 2 } else { 1 })) % 1000000007;
+        }
+        println(f"{count} random pairs of up to {most} letters: {yes} possible, checksum {check}");
+    }
+}

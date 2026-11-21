@@ -1,0 +1,367 @@
+// LeetCode #2531: Make Number of Distinct Characters Equal -- the
+// differential. The six arms against the statement read literally: for
+// every index `i` of word1 and `j` of word2 the two letters swapped in
+// copies of the words, each copy's distinct letters counted, and the
+// answer whether any swap makes the counts equal. 300 random pairs of 1
+// to 8 letters from the first 1 to 4, and 60 of 1 to 8 from all 26;
+// every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  true only when the distinct counts differ by at most 2, and true when they are equal and a letter is shared
+// P3  the words swapped: the same answer
+// P4  every letter moved on one (z to a): the same answer
+// P5  a letter neither word holds appended to both: a true answer stays true
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally
+
+fn distinct_letters(word: Slice[u8]) -> i64 {
+    let mut seen = [false; 26];
+    let mut count = 0;
+    for b in word.iter() {
+        if not seen[b - b'a'] {
+            seen[b - b'a'] = true;
+            count += 1;
+        }
+    }
+    count
+}
+
+fn literal(word1: Str, word2: Str) -> bool {
+    let one = word1.bytes();
+    let two = word2.bytes();
+    for i in 0..one.len() {
+        for j in 0..two.len() {
+            let mut x = one.to_vec();
+            let mut y = two.to_vec();
+            x[i] = two[j];
+            y[j] = one[i];
+            if distinct_letters(x) == distinct_letters(y) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+// ---- star (chars.kara) ---------------------------------------------------
+
+fn star_distinct(counts: Array[i64, 26]) -> i64 {
+    counts.iter().filter(|c| c > 0).count()
+}
+
+fn star_is_it_possible(word1: Str, word2: Str) -> bool {
+    let mut one = [0; 26];
+    let mut two = [0; 26];
+    for b in word1.bytes() {
+        one[b - b'a'] += 1;
+    }
+    for b in word2.bytes() {
+        two[b - b'a'] += 1;
+    }
+    for a in 0..26 {
+        for b in 0..26 {
+            if one[a] > 0 and two[b] > 0 {
+                one[a] -= 1;
+                one[b] += 1;
+                two[b] -= 1;
+                two[a] += 1;
+                let equal = star_distinct(one) == star_distinct(two);
+                one[a] += 1;
+                one[b] -= 1;
+                two[b] += 1;
+                two[a] -= 1;
+                if equal {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+// ---- delta (chars_delta.kara) --------------------------------------------
+
+fn delta_is_it_possible(word1: Str, word2: Str) -> bool {
+    let mut one = [0; 26];
+    let mut two = [0; 26];
+    for b in word1.bytes() {
+        one[b - b'a'] += 1;
+    }
+    for b in word2.bytes() {
+        two[b - b'a'] += 1;
+    }
+    let d1 = one.iter().filter(|c| c > 0).count();
+    let d2 = two.iter().filter(|c| c > 0).count();
+    for a in 0..26 {
+        for b in 0..26 {
+            if one[a] == 0 or two[b] == 0 {
+                continue;
+            }
+            if a == b {
+                if d1 == d2 {
+                    return true;
+                }
+                continue;
+            }
+            let after1 = d1 - (if one[a] == 1 { 1 } else { 0 }) + (if one[b] == 0 { 1 } else { 0 });
+            let after2 = d2 - (if two[b] == 1 { 1 } else { 0 }) + (if two[a] == 0 { 1 } else { 0 });
+            if after1 == after2 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+// ---- maps (chars_maps.kara) ----------------------------------------------
+
+fn maps_is_it_possible(word1: Str, word2: Str) -> bool {
+    let mut one: Map[u8, i64] = Map.new();
+    let mut two: Map[u8, i64] = Map.new();
+    for b in word1.bytes() {
+        one[b] = one.get(b).unwrap_or(0) + 1;
+    }
+    for b in word2.bytes() {
+        two[b] = two.get(b).unwrap_or(0) + 1;
+    }
+    for (a, ca) in one.iter() {
+        for (b, cb) in two.iter() {
+            let (after1, after2) = if a == b {
+                (one.len(), two.len())
+            } else {
+                (
+                    one.len() - (if ca == 1 { 1 } else { 0 }) + (if one.contains_key(b) { 0 } else { 1 }),
+                    two.len() - (if cb == 1 { 1 } else { 0 }) + (if two.contains_key(a) { 0 } else { 1 }),
+                )
+            };
+            if after1 == after2 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+// ---- rec (chars_rec.kara) ------------------------------------------------
+
+fn rec_distinct(counts: Array[i64, 26]) -> i64 {
+    counts.iter().filter(|c| c > 0).count()
+}
+
+fn rec_try_from(one: mut ref Array[i64, 26], two: mut ref Array[i64, 26], p: i64) -> bool {
+    if p == 676 {
+        return false;
+    }
+    let a = p / 26;
+    let b = p % 26;
+    if one[a] > 0 and two[b] > 0 {
+        one[a] -= 1;
+        one[b] += 1;
+        two[b] -= 1;
+        two[a] += 1;
+        let equal = rec_distinct(one) == rec_distinct(two);
+        one[a] += 1;
+        one[b] -= 1;
+        two[b] += 1;
+        two[a] -= 1;
+        if equal {
+            return true;
+        }
+    }
+    rec_try_from(mut one, mut two, p + 1)
+}
+
+fn rec_is_it_possible(word1: Str, word2: Str) -> bool {
+    let mut one = [0; 26];
+    let mut two = [0; 26];
+    for b in word1.bytes() {
+        one[b - b'a'] += 1;
+    }
+    for b in word2.bytes() {
+        two[b - b'a'] += 1;
+    }
+    rec_try_from(mut one, mut two, 0)
+}
+
+// ---- iter (chars_iter.kara) ----------------------------------------------
+
+fn iter_is_it_possible(word1: Str, word2: Str) -> bool {
+    let one = word1.bytes().iter().fold([0; 26], |c, b| {
+        let mut c = c;
+        c[b - b'a'] += 1;
+        c
+    });
+    let two = word2.bytes().iter().fold([0; 26], |c, b| {
+        let mut c = c;
+        c[b - b'a'] += 1;
+        c
+    });
+    let d1 = one.iter().filter(|c| c > 0).count();
+    let d2 = two.iter().filter(|c| c > 0).count();
+    (0..26).filter(|a| one[a] > 0).any(|a| {
+        (0..26).filter(|b| two[b] > 0).any(|b| {
+            if a == b {
+                d1 == d2
+            } else {
+                let lose1 = if one[a] == 1 { 1 } else { 0 };
+                let gain1 = if one[b] == 0 { 1 } else { 0 };
+                let lose2 = if two[b] == 1 { 1 } else { 0 };
+                let gain2 = if two[a] == 0 { 1 } else { 0 };
+                d1 - lose1 + gain1 == d2 - lose2 + gain2
+            }
+        })
+    })
+}
+
+// ---- solution (chars_solution.kara) --------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn is_it_possible(word1: String, word2: String) -> bool {
+        let mut one = [0i32; 26];
+        let mut two = [0i32; 26];
+        for b in word1.bytes() {
+            one[(b - b'a') as usize] += 1;
+        }
+        for b in word2.bytes() {
+            two[(b - b'a') as usize] += 1;
+        }
+        for a in 0..26 {
+            for b in 0..26 {
+                if one[a] == 0 or two[b] == 0 {
+                    continue;
+                }
+                one[a] -= 1;
+                one[b] += 1;
+                two[b] -= 1;
+                two[a] += 1;
+                let d1 = one.iter().filter(|c| c > 0).count();
+                let d2 = two.iter().filter(|c| c > 0).count();
+                one[a] += 1;
+                one[b] -= 1;
+                two[b] += 1;
+                two[a] -= 1;
+                if d1 == d2 {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+}
+
+fn solution_is_it_possible(word1: Str, word2: Str) -> bool {
+    Solution.is_it_possible(word1.to_string(), word2.to_string())
+}
+
+// ---- the differential --------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(seed: mut ref i64, length: i64, letters: i64) -> String {
+    let mut word = String.new();
+    for _ in 0..length {
+        word.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+    }
+    word
+}
+
+fn moved_on(word: Str) -> String {
+    let mut out = String.new();
+    for b in word.bytes() {
+        out.push((b'a' + (b - b'a' + 1) % 26) as char);
+    }
+    out
+}
+
+fn with_letter(word: Str, letter: u8) -> String {
+    let mut out = word.to_string();
+    out.push(letter as char);
+    out
+}
+
+fn answer(arm: i64, word1: Str, word2: Str) -> bool {
+    match arm {
+        0 => star_is_it_possible(word1, word2),
+        1 => delta_is_it_possible(word1, word2),
+        2 => maps_is_it_possible(word1, word2),
+        3 => rec_is_it_possible(word1, word2),
+        4 => iter_is_it_possible(word1, word2),
+        _ => solution_is_it_possible(word1, word2),
+    }
+}
+
+fn main() {
+    let names = ["star", "delta", "maps", "rec", "iter", "solution"];
+    let mut seed = 2531;
+    let mut problems: Vec[(String, String)] = Vec.new();
+    for t in 0..360 {
+        let letters = if t < 300 { next_random(mut seed) % 4 + 1 } else { 26 };
+        let word1 = random_word(mut seed, next_random(mut seed) % 8 + 1, letters);
+        let word2 = random_word(mut seed, next_random(mut seed) % 8 + 1, letters);
+        problems.push((word1, word2));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut yes = 0;
+    for (word1, word2) in problems.iter() {
+        let truth = literal(word1, word2);
+        if truth {
+            yes += 1;
+        }
+        check = (check * 31 + (if truth { 2 } else { 1 })) % 1000000007;
+        let d1 = distinct_letters(word1.bytes());
+        let d2 = distinct_letters(word2.bytes());
+        let shared = word1.bytes().iter().any(|b| word2.bytes().contains(b));
+        let fresh = (b'a'..b'z' + 1).find(|c| not word1.bytes().contains(c) and not word2.bytes().contains(c));
+        let got: Vec[bool] = (0..6).map(|arm| answer(arm, word1, word2)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                (not x or (d1 - d2).abs() <= 2) and (x or not (d1 == d2 and shared)),
+                answer(arm, word2, word1) == x,
+                answer(arm, moved_on(word1), moved_on(word2)) == x,
+                match fresh {
+                    Some(c) => not x or answer(arm, with_letter(word1, c), with_letter(word2, c)),
+                    None => true,
+                },
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{word1} {word2}, arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} cases, {yes} possible: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
