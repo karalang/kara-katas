@@ -1,0 +1,110 @@
+// LeetCode #2470: Number of Subarrays With LCM Equal to K -- inclusion and
+// exclusion over the primes of `k`: a subarray whose numbers all divide
+// `k` has LCM `k` unless, for some prime `p`, every number divides
+// `k / p`. Counting the subarrays whose numbers all divide `k / d`, for
+// `d` each product of distinct primes of `k`, with alternating signs,
+// leaves the ones with LCM exactly `k`. A run of `r` numbers that all
+// divide a value holds `r * (r + 1) / 2` subarrays. O(n * 2^primes).
+
+fn all_dividing(nums: Vec[i64], m: i64) -> i64 {
+    let mut total = 0;
+    let mut run = 0;
+    for v in nums.iter() {
+        if m % v == 0 {
+            run += 1;
+            total += run;
+        } else {
+            run = 0;
+        }
+    }
+    total
+}
+
+fn subarray_lcm(nums: Vec[i64], k: i64) -> i64 {
+    let mut primes: Vec[i64] = Vec.new();
+    let mut rest = k;
+    let mut p = 2;
+    while p * p <= rest {
+        if rest % p == 0 {
+            primes.push(p);
+            while rest % p == 0 {
+                rest /= p;
+            }
+        }
+        p += 1;
+    }
+    if rest > 1 {
+        primes.push(rest);
+    }
+    let mut count = 0;
+    for mask in 0..(1 << primes.len()) {
+        let mut d = 1;
+        let mut sign = 1;
+        for i in 0..primes.len() {
+            if (mask >> i) & 1 == 1 {
+                d *= primes[i];
+                sign = -sign;
+            }
+        }
+        count += sign * all_dividing(nums, k / d);
+    }
+    count
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` numbers, each a random divisor of `k` but now and then any number
+// from 1 to 1000
+fn random_nums(n: i64, k: i64, seed: mut ref i64) -> Vec[i64] {
+    let divisors: Vec[i64] = (1..k + 1).filter(|d| k % d == 0).collect();
+    (0..n).map(|_| {
+        if next_random(mut seed) % 8 == 0 {
+            1 + next_random(mut seed) % 1000
+        } else {
+            divisors[next_random(mut seed) % divisors.len()]
+        }
+    }).collect()
+}
+
+fn main() {
+    // LeetCode's two examples; then every number 1 with `k` 1; numbers
+    // that never divide `k`; `k` prime; and `k` 840 with its four prime
+    // powers spread apart
+    let cases: Vec[(Vec[i64], i64)] = [
+        ([3, 6, 2, 7, 1].to_vec(), 6),
+        ([3].to_vec(), 2),
+        ([1, 1, 1, 1].to_vec(), 1),
+        ([4, 9, 25].to_vec(), 7),
+        ([7, 1, 7, 14, 7].to_vec(), 7),
+        ([8, 1, 3, 5, 1, 7, 8, 105, 840, 2].to_vec(), 840),
+    ].to_vec();
+    for (nums, k) in cases.into_iter() {
+        let shown = f"{nums}";
+        println(f"{shown}, k {k} -> {subarray_lcm(nums, k)}");
+    }
+    // the constraints' largest, 1000 numbers: every number `k`; random
+    // divisors of 840; random divisors of 720; and any numbers from 1 to
+    // 12 with `k` 12
+    let mut seed = 2470;
+    let same: Vec[i64] = (0..1000).map(|_| 997).collect();
+    println(f"1000 of 997, k 997 -> {subarray_lcm(same, 997)}");
+    println(f"1000 divisors of 840 -> {subarray_lcm(random_nums(1000, 840, mut seed), 840)}");
+    println(f"1000 divisors of 720 -> {subarray_lcm(random_nums(1000, 720, mut seed), 720)}");
+    let any: Vec[i64] = (0..1000).map(|_| 1 + next_random(mut seed) % 12).collect();
+    println(f"1000 of 1 to 12, k 12 -> {subarray_lcm(any, 12)}");
+    // 3000 random lists of 1 to 30 numbers with `k` from 1 to 1000: a
+    // checksum of every answer in order
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let k = 1 + next_random(mut seed) % 1000;
+        let nums = random_nums(n, k, mut seed);
+        check = (check * 31 + subarray_lcm(nums, k)) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}
