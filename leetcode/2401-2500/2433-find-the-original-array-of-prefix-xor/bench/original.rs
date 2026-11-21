@@ -1,0 +1,36 @@
+// LeetCode #2433: Find The Original Array of Prefix Xor -- the bench, the
+// ★ arm: every value its prefix XOR the prefix before, the first its own
+// prefix, gathered into a new list.
+
+fn find_array(pref: &[i64]) -> Vec<i64> {
+    let mut arr: Vec<i64> = Vec::new();
+    let mut before = 0;
+    for &p in pref.iter() {
+        arr.push(p ^ before);
+        before = p;
+    }
+    arr
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2433;
+    let mut pref: Vec<i64> = Vec::new();
+    for _ in 0..100000 {
+        let a = next_random(&mut seed);
+        pref.push((a * 32768 + next_random(&mut seed)) % 1000001);
+    }
+    let mut check: i64 = 0;
+    for p in 0..1000i64 {
+        pref[((p * 7919) % 100000) as usize] = p;
+        let arr = find_array(&pref);
+        for &v in arr.iter() {
+            check = (check * 31 + v) % 1000000007;
+        }
+    }
+    println!("1000 passes over 10^5 prefixes: checksum {}", check);
+}

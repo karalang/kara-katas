@@ -1,0 +1,223 @@
+// LeetCode #2433: Find The Original Array of Prefix Xor -- the
+// differential. The six arms against the statement read literally: each
+// value searched for from 0 upward until the XOR of the values found
+// before it and it equals its prefix. No prefix is XORed with the one
+// before it. 360 cases: 300 random lists of 1 to 12 prefixes from 0 to 1
+// up to 0 to 63; then 30 of up to 200 from 0 to 1023; then 30 of up to
+// 200 from 0 to 1023, each prefix a copy of the one before it half the
+// time. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  every prefix XORed with one constant from 1 to 1023: the answer
+//     with its first value XORed with it, the rest the same
+// P3  the answer's own prefix XORs are the list
+// P4  the list with its last prefix repeated: the answer and a 0
+// P5  the first half of the list, rounded up: the first half of the
+//     answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn original_literally(pref: Vec[i64]) -> Vec[i64] {
+    let mut arr: Vec[i64] = Vec.new();
+    for i in 0..pref.len() {
+        let mut v = 0;
+        loop {
+            let mut x = v;
+            for j in 0..arr.len() {
+                x ^= arr[j];
+            }
+            if x == pref[i] {
+                break;
+            }
+            v += 1;
+        }
+        arr.push(v);
+    }
+    arr
+}
+
+// ---- star (original.kara) ------------------------------------------------
+
+fn star_find_array(pref: Vec[i64]) -> Vec[i64] {
+    let mut arr: Vec[i64] = Vec.new();
+    let mut before = 0;
+    for p in pref.iter() {
+        arr.push(p ^ before);
+        before = p;
+    }
+    arr
+}
+
+// ---- naive (original_naive.kara) -----------------------------------------
+
+fn naive_find_array(pref: Vec[i64]) -> Vec[i64] {
+    let mut arr: Vec[i64] = Vec.new();
+    for i in 0..pref.len() {
+        let mut so_far = 0;
+        for j in 0..i {
+            so_far ^= arr[j];
+        }
+        arr.push(pref[i] ^ so_far);
+    }
+    arr
+}
+
+// ---- inplace (original_inplace.kara) -------------------------------------
+
+fn inplace_find_array(pref: own Vec[i64]) -> Vec[i64] {
+    let mut pref = pref;
+    for i in (1..pref.len()).rev() {
+        pref[i] ^= pref[i - 1];
+    }
+    pref
+}
+
+// ---- bits (original_bits.kara) -------------------------------------------
+
+fn bits_find_array(pref: Vec[i64]) -> Vec[i64] {
+    let n = pref.len();
+    let mut arr: Vec[i64] = Vec.filled(n, 0);
+    for bit in 0..20 {
+        let mut before = 0;
+        for i in 0..n {
+            let now = (pref[i] >> bit) & 1;
+            if now != before {
+                arr[i] |= 1 << bit;
+            }
+            before = now;
+        }
+    }
+    arr
+}
+
+// ---- iter (original_iter.kara) -------------------------------------------
+
+fn iter_find_array(pref: Vec[i64]) -> Vec[i64] {
+    once(0).chain(pref.iter().cloned()).zip(pref.iter()).map(|(before, p)| before ^ p).collect()
+}
+
+// ---- solution (original_solution.kara) -----------------------------------
+
+impl Solution {
+    pub fn find_array(pref: Vec[i32]) -> Vec[i32] {
+        once(pref[0]).chain(pref.windows(2).into_iter().map(|w| w[0] ^ w[1])).collect()
+    }
+}
+
+struct Solution {}
+
+fn solution_find_array(pref: Vec[i64]) -> Vec[i64] {
+    let values: Vec[i32] = pref.iter().map(|x| x as i32).collect();
+    Solution.find_array(values).iter().map(|x| x as i64).collect()
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, pref: Vec[i64]) -> Vec[i64] {
+    match arm {
+        0 => star_find_array(pref),
+        1 => naive_find_array(pref),
+        2 => inplace_find_array(pref.clone()),
+        3 => bits_find_array(pref),
+        4 => iter_find_array(pref),
+        _ => solution_find_array(pref),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "naive", "inplace", "bits", "iter", "solution"];
+    let mut seed = 2433;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for t in 0..360 {
+        let mut pref: Vec[i64] = Vec.new();
+        if t < 300 {
+            let n = 1 + next_random(mut seed) % 12;
+            let top = 1 + next_random(mut seed) % 63;
+            for _ in 0..n {
+                pref.push(next_random(mut seed) % (top + 1));
+            }
+        } else {
+            let n = 1 + next_random(mut seed) % 200;
+            for i in 0..n {
+                if t >= 330 and i > 0 and next_random(mut seed) % 2 == 0 {
+                    pref.push(pref[i - 1]);
+                } else {
+                    pref.push(next_random(mut seed) % 1024);
+                }
+            }
+        }
+        let c = 1 + next_random(mut seed) % 1023;
+        cases.push((pref, c));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for t in 0..cases.len() {
+        let (pref, c) = cases[t].clone();
+        let n = pref.len();
+        let truth = original_literally(pref);
+        for v in truth.iter() {
+            check = (check * 31 + v) % 1000000007;
+        }
+        let flipped: Vec[i64] = pref.iter().map(|p| p ^ c).collect();
+        let mut longer = pref.clone();
+        longer.push(pref[n - 1]);
+        let half: Vec[i64] = pref[0..(n + 1) / 2].to_vec();
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, pref)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut expect_flipped = value.clone();
+            expect_flipped[0] ^= c;
+            let mut back: Vec[i64] = Vec.new();
+            let mut x = 0;
+            for v in value.iter() {
+                x ^= v;
+                back.push(x);
+            }
+            let mut expect_longer = value.clone();
+            expect_longer.push(0);
+            let verdicts = [
+                value == truth,
+                answer(arm, flipped) == expect_flipped,
+                back == pref,
+                answer(arm, longer) == expect_longer,
+                answer(arm, half) == value[0..(n + 1) / 2].to_vec(),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {t}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

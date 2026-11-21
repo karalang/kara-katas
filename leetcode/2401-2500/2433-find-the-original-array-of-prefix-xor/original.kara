@@ -1,0 +1,61 @@
+// LeetCode #2433: Find The Original Array of Prefix Xor -- the ★ arm.
+// Each prefix is the one before it XOR the next value, and XOR undoes
+// itself, so every value is its prefix XOR the prefix before, the first
+// its own prefix. O(n).
+
+fn find_array(pref: Vec[i64]) -> Vec[i64] {
+    let mut arr: Vec[i64] = Vec.new();
+    let mut before = 0;
+    for p in pref.iter() {
+        arr.push(p ^ before);
+        before = p;
+    }
+    arr
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a checksum of a list's values in order
+fn fold(values: Vec[i64]) -> i64 {
+    let mut check = 0;
+    for v in values.iter() {
+        check = (check * 31 + v) % 1000000007;
+    }
+    check
+}
+
+fn main() {
+    // LeetCode's two examples; one zero; every prefix the same, so every
+    // value after the first is 0; the constraints' largest value, 10^6,
+    // against 0 in turn
+    let cases: Vec[Vec[i64]] = [[5, 2, 0, 3, 1].to_vec(), [13].to_vec(), [0].to_vec(), [7, 7, 7, 7].to_vec(), [1000000, 0, 1000000, 0].to_vec()].to_vec();
+    for pref in cases.into_iter() {
+        let shown = f"{pref}";
+        println(f"{shown}: {find_array(pref)}");
+    }
+    // 10^4 random prefixes from 0 to 10^6, then 10^4 that rise by one
+    // from 0, each as a checksum
+    let mut seed = 2433;
+    let random: Vec[i64] = (0..10000).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000001).collect();
+    println(f"10^4 random: checksum {fold(find_array(random))}");
+    let rising: Vec[i64] = (0..10000).collect();
+    println(f"10^4 rising: checksum {fold(find_array(rising))}");
+    // 3000 random lists of 1 to 12 prefixes from 0 to 1 up to 0 to 63: a
+    // checksum of every answer's checksum in order
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 12;
+        let top = 1 + next_random(mut seed) % 63;
+        let mut pref: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            pref.push(next_random(mut seed) % (top + 1));
+        }
+        check = (check * 31 + fold(find_array(pref))) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}
