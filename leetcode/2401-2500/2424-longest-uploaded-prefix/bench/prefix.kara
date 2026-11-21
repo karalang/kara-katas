@@ -1,0 +1,63 @@
+// LeetCode #2424: Longest Uploaded Prefix -- the bench, the ★ arm: a flag
+// for each video and the prefix so far, moved on by `longest` past every
+// flag set beyond it.
+
+struct LuPrefix {
+    uploaded: Vec[bool],
+    prefix: i64,
+}
+
+impl LuPrefix {
+    fn new(n: i64) -> LuPrefix {
+        LuPrefix { uploaded: Vec.filled(n + 2, false), prefix: 0 }
+    }
+
+    fn upload(mut ref self, video: i64) {
+        self.uploaded[video] = true;
+    }
+
+    fn longest(mut ref self) -> i64 {
+        while self.uploaded[self.prefix + 1] {
+            self.prefix += 1;
+        }
+        self.prefix
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let n = 100000;
+    let mut seed = 2424;
+    // script `s`: videos 1 to n in order, shuffled within windows of
+    // 2^(s + 3), so the prefix grows in steps of every size
+    let mut scripts: Vec[Vec[i64]] = Vec.new();
+    for s in 0..10 {
+        let width = 1 << (s + 3);
+        let mut order: Vec[i64] = (1..n + 1).collect();
+        let mut start = 0;
+        while start < n {
+            let end = (start + width).min(n);
+            for i in (start + 1..end).rev() {
+                let j = start + (next_random(mut seed) * 32768 + next_random(mut seed)) % (i - start + 1);
+                order.swap(i, j);
+            }
+            start = end;
+        }
+        scripts.push(order);
+    }
+    let mut check = 0;
+    for p in 0..50 {
+        for order in scripts.iter() {
+            let mut server = LuPrefix.new(n);
+            for v in order.iter() {
+                server.upload(v);
+                check = (check * 31 + server.longest() + p) % 1000000007;
+            }
+        }
+    }
+    println(f"50 passes over 10 scripts of 10^5 uploads: checksum {check}");
+}

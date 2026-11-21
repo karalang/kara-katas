@@ -1,0 +1,456 @@
+// LeetCode #2424: Longest Uploaded Prefix -- the differential. The six
+// arms against the statement read literally: at each call to `longest`,
+// the videos 1, 2, 3, ... each looked for among the uploads so far by a
+// walk of them, and the answer is how many are found before the first
+// that is not. No flags kept. 360 cases: 300 random scripts of 1 to 10
+// videos, each uploading a random number of them in a random order; then
+// 30 of up to 100 videos, all uploaded; then 30 of up to 100, all
+// uploaded in order but for a few neighbours swapped. A `longest`
+// follows an upload with probability 1 in 1 to 3. Every case is drawn
+// before any arm answers.
+//
+// P1  the answers are the literal reading's
+// P2  the answers never fall, and none passes the uploads so far
+// P3  every `longest` called twice: every answer twice
+// P4  the uploads between two calls to `longest` reversed: the same
+//     answers
+// P5  the videos never uploaded uploaded at the end, then `longest`: the
+//     answers and then `n`
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn longest_literally(n: i64, calls: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut seen: Vec[i64] = Vec.new();
+    let mut answers: Vec[i64] = Vec.new();
+    for (kind, video) in calls.iter() {
+        if kind == 0 {
+            seen.push(video);
+            continue;
+        }
+        // 1 to `length + 1` all uploaded makes `length + 1` a prefix too
+        let mut length = 0;
+        let mut going = true;
+        while going and length < n {
+            let mut found = false;
+            for s in seen.iter() {
+                if s == length + 1 {
+                    found = true;
+                }
+            }
+            if found {
+                length += 1;
+            } else {
+                going = false;
+            }
+        }
+        answers.push(length);
+    }
+    answers
+}
+
+// ---- star (prefix.kara) --------------------------------------------------
+
+struct StarLuPrefix {
+    uploaded: Vec[bool],
+    prefix: i64,
+}
+
+impl StarLuPrefix {
+    fn new(n: i64) -> StarLuPrefix {
+        StarLuPrefix { uploaded: Vec.filled(n + 2, false), prefix: 0 }
+    }
+
+    fn upload(mut ref self, video: i64) {
+        self.uploaded[video] = true;
+    }
+
+    fn longest(mut ref self) -> i64 {
+        while self.uploaded[self.prefix + 1] {
+            self.prefix += 1;
+        }
+        self.prefix
+    }
+}
+
+fn star_run(n: i64, calls: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut server = StarLuPrefix.new(n);
+    let mut answers: Vec[i64] = Vec.new();
+    for (kind, video) in calls.iter() {
+        if kind == 0 {
+            server.upload(video);
+        } else {
+            answers.push(server.longest());
+        }
+    }
+    answers
+}
+
+// ---- set (prefix_set.kara) -----------------------------------------------
+
+struct SetLuPrefix {
+    missing: SortedSet[i64],
+}
+
+impl SetLuPrefix {
+    fn new(n: i64) -> SetLuPrefix {
+        let mut missing: SortedSet[i64] = SortedSet.new();
+        for v in 1..n + 2 {
+            missing.insert(v);
+        }
+        SetLuPrefix { missing }
+    }
+
+    fn upload(mut ref self, video: i64) {
+        self.missing.remove(video);
+    }
+
+    fn longest(self) -> i64 {
+        self.missing.min().unwrap() - 1
+    }
+}
+
+fn set_run(n: i64, calls: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut server = SetLuPrefix.new(n);
+    let mut answers: Vec[i64] = Vec.new();
+    for (kind, video) in calls.iter() {
+        if kind == 0 {
+            server.upload(video);
+        } else {
+            answers.push(server.longest());
+        }
+    }
+    answers
+}
+
+// ---- union (prefix_union.kara) -------------------------------------------
+
+struct UnionLuPrefix {
+    parent: Vec[i64],
+    uploaded: Vec[bool],
+}
+
+impl UnionLuPrefix {
+    fn new(n: i64) -> UnionLuPrefix {
+        let mut uploaded: Vec[bool] = Vec.filled(n + 2, false);
+        uploaded[0] = true;
+        UnionLuPrefix { parent: (0..n + 2).collect(), uploaded }
+    }
+
+    fn root(mut ref self, x: i64) -> i64 {
+        let mut x = x;
+        while self.parent[x] != x {
+            self.parent[x] = self.parent[self.parent[x]];
+            x = self.parent[x];
+        }
+        x
+    }
+
+    fn upload(mut ref self, video: i64) {
+        self.uploaded[video] = true;
+        if self.uploaded[video - 1] {
+            let low = self.root(video - 1);
+            self.parent[low] = video;
+        }
+        if self.uploaded[video + 1] {
+            let high = self.root(video + 1);
+            self.parent[video] = high;
+        }
+    }
+
+    fn longest(mut ref self) -> i64 {
+        self.root(0)
+    }
+}
+
+fn union_run(n: i64, calls: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut server = UnionLuPrefix.new(n);
+    let mut answers: Vec[i64] = Vec.new();
+    for (kind, video) in calls.iter() {
+        if kind == 0 {
+            server.upload(video);
+        } else {
+            answers.push(server.longest());
+        }
+    }
+    answers
+}
+
+// ---- naive (prefix_naive.kara) -------------------------------------------
+
+struct NaiveLuPrefix {
+    uploaded: Set[i64],
+}
+
+impl NaiveLuPrefix {
+    fn new(n: i64) -> NaiveLuPrefix {
+        NaiveLuPrefix { uploaded: Set.new() }
+    }
+
+    fn upload(mut ref self, video: i64) {
+        self.uploaded.insert(video);
+    }
+
+    fn longest(self) -> i64 {
+        let mut i = 0;
+        while self.uploaded.contains(i + 1) {
+            i += 1;
+        }
+        i
+    }
+}
+
+fn naive_run(n: i64, calls: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut server = NaiveLuPrefix.new(n);
+    let mut answers: Vec[i64] = Vec.new();
+    for (kind, video) in calls.iter() {
+        if kind == 0 {
+            server.upload(video);
+        } else {
+            answers.push(server.longest());
+        }
+    }
+    answers
+}
+
+// ---- iter (prefix_iter.kara) ---------------------------------------------
+
+struct IterLuPrefix {
+    uploaded: Vec[bool],
+    prefix: i64,
+}
+
+impl IterLuPrefix {
+    fn new(n: i64) -> IterLuPrefix {
+        IterLuPrefix { uploaded: Vec.filled(n + 1, false), prefix: 0 }
+    }
+
+    fn upload(mut ref self, video: i64) {
+        self.uploaded[video] = true;
+    }
+
+    fn longest(mut ref self) -> i64 {
+        self.prefix += self.uploaded[self.prefix + 1..].iter().take_while(|u| u).count();
+        self.prefix
+    }
+}
+
+fn iter_run(n: i64, calls: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut server = IterLuPrefix.new(n);
+    let mut answers: Vec[i64] = Vec.new();
+    for (kind, video) in calls.iter() {
+        if kind == 0 {
+            server.upload(video);
+        } else {
+            answers.push(server.longest());
+        }
+    }
+    answers
+}
+
+// ---- solution (prefix_solution.kara) -------------------------------------
+
+struct SolutionLuPrefix {
+    up: Vec[bool],
+    p: i64,
+}
+
+impl SolutionLuPrefix {
+    fn new(n: i32) -> Self {
+        SolutionLuPrefix {
+            up: Vec.filled(n as i64 + 2, false),
+            p: 0,
+        }
+    }
+
+    fn upload(mut ref self, video: i32) {
+        self.up[video] = true;
+    }
+
+    fn longest(mut ref self) -> i32 {
+        while self.up[self.p + 1] {
+            self.p += 1;
+        }
+        self.p as i32
+    }
+}
+
+fn solution_run(n: i64, calls: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut server = SolutionLuPrefix.new(n as i32);
+    let mut answers: Vec[i64] = Vec.new();
+    for (kind, video) in calls.iter() {
+        if kind == 0 {
+            server.upload(video as i32);
+        } else {
+            answers.push(server.longest());
+        }
+    }
+    answers
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, n: i64, calls: Vec[(i64, i64)]) -> Vec[i64] {
+    let calls = calls.clone();
+    match arm {
+        0 => star_run(n, calls),
+        1 => set_run(n, calls),
+        2 => union_run(n, calls),
+        3 => naive_run(n, calls),
+        4 => iter_run(n, calls),
+        _ => solution_run(n, calls),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "set", "union", "naive", "iter", "solution"];
+    let mut seed = 2424;
+    let mut cases: Vec[(i64, Vec[(i64, i64)])] = Vec.new();
+    for t in 0..360 {
+        let n = if t < 300 { 1 + next_random(mut seed) % 10 } else { 1 + next_random(mut seed) % 100 };
+        let mut order: Vec[i64] = (1..n + 1).collect();
+        if t < 330 {
+            for i in (1..n).rev() {
+                let j = next_random(mut seed) % (i + 1);
+                order.swap(i, j);
+            }
+        } else {
+            for _ in 0..1 + next_random(mut seed) % 5 {
+                if n > 1 {
+                    let i = next_random(mut seed) % (n - 1);
+                    order.swap(i, i + 1);
+                }
+            }
+        }
+        let count = if t < 300 { next_random(mut seed) % (n + 1) } else { n };
+        let ask = 1 + next_random(mut seed) % 3;
+        let mut calls: Vec[(i64, i64)] = Vec.new();
+        if next_random(mut seed) % 4 == 0 {
+            calls.push((1, 0));
+        }
+        for k in 0..count {
+            calls.push((0, order[k]));
+            if next_random(mut seed) % ask == 0 {
+                calls.push((1, 0));
+            }
+        }
+        calls.push((1, 0));
+        cases.push((n, calls));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (n, calls) = cases[c].clone();
+        let truth = longest_literally(n, calls);
+        for a in truth.iter() {
+            check = (check * 31 + a + 1) % 1000000007;
+        }
+        check = (check * 31 + 500) % 1000000007;
+        // P2: the uploads before each call
+        let mut so_far: Vec[i64] = Vec.new();
+        let mut uploads = 0;
+        for (kind, _) in calls.iter() {
+            if kind == 0 {
+                uploads += 1;
+            } else {
+                so_far.push(uploads);
+            }
+        }
+        // P3: every call to `longest` doubled
+        let mut doubled: Vec[(i64, i64)] = Vec.new();
+        for call in calls.iter() {
+            doubled.push(call);
+            if call.0 == 1 {
+                doubled.push(call);
+            }
+        }
+        // P4: each run of uploads reversed
+        let mut reversed: Vec[(i64, i64)] = Vec.new();
+        let mut run: Vec[(i64, i64)] = Vec.new();
+        for call in calls.iter() {
+            if call.0 == 0 {
+                run.push(call);
+            } else {
+                run.reverse();
+                reversed.extend(run);
+                run = Vec.new();
+                reversed.push(call);
+            }
+        }
+        // P5: the rest uploaded, then `longest`
+        let mut done: Vec[bool] = Vec.filled(n + 1, false);
+        for (kind, video) in calls.iter() {
+            if kind == 0 {
+                done[video] = true;
+            }
+        }
+        let mut finished = calls.clone();
+        for v in (1..n + 1).rev() {
+            if not done[v] {
+                finished.push((0, v));
+            }
+        }
+        finished.push((1, 0));
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, n, calls)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut rising = value.len() == so_far.len();
+            if rising {
+                for i in 0..value.len() {
+                    if value[i] < 0 or value[i] > so_far[i] or (i > 0 and value[i] < value[i - 1]) {
+                        rising = false;
+                    }
+                }
+            }
+            let mut twice: Vec[i64] = Vec.new();
+            for a in value.iter() {
+                twice.push(a);
+                twice.push(a);
+            }
+            let mut ended = value.clone();
+            ended.push(n);
+            let verdicts = [
+                value == truth,
+                rising,
+                answer(arm, n, doubled) == twice,
+                answer(arm, n, reversed) == value,
+                answer(arm, n, finished) == ended,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

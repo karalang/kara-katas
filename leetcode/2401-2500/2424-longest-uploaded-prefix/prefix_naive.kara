@@ -1,0 +1,116 @@
+// LeetCode #2424: Longest Uploaded Prefix -- the statement read directly:
+// the uploaded videos kept as a `Set`, and `longest` counting up from 1
+// while each next video is in it. O(n) per call to `longest`.
+
+struct LuPrefix {
+    uploaded: Set[i64],
+}
+
+impl LuPrefix {
+    fn new(n: i64) -> LuPrefix {
+        LuPrefix { uploaded: Set.new() }
+    }
+
+    fn upload(mut ref self, video: i64) {
+        self.uploaded.insert(video);
+    }
+
+    fn longest(self) -> i64 {
+        let mut i = 0;
+        while self.uploaded.contains(i + 1) {
+            i += 1;
+        }
+        i
+    }
+}
+
+fn run(n: i64, calls: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut server = LuPrefix.new(n);
+    let mut answers: Vec[i64] = Vec.new();
+    for (kind, video) in calls.iter() {
+        if kind == 0 {
+            server.upload(video);
+        } else {
+            answers.push(server.longest());
+        }
+    }
+    answers
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// Videos 1 to `n` in a random order, each upload followed by a call to
+// `longest` with probability 1 in `ask`: `(0, video)` an upload, `(1, 0)`
+// a call to `longest`.
+fn random_script(seed: mut ref i64, n: i64, ask: i64) -> Vec[(i64, i64)] {
+    let mut order: Vec[i64] = (1..n + 1).collect();
+    for i in (1..n).rev() {
+        let j = (next_random(mut seed) * 32768 + next_random(mut seed)) % (i + 1);
+        order.swap(i, j);
+    }
+    let mut calls: Vec[(i64, i64)] = Vec.new();
+    for v in order.iter() {
+        calls.push((0, v));
+        if next_random(mut seed) % ask == 0 {
+            calls.push((1, 0));
+        }
+    }
+    calls
+}
+
+fn show(answers: Vec[i64]) -> String {
+    let parts: Vec[String] = answers.iter().map(|a| f"{a}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn digest(answers: Vec[i64]) -> String {
+    let mut h = 0;
+    let mut total = 0;
+    for a in answers.iter() {
+        h = (h * 31 + a) % 1000000007;
+        total += a;
+    }
+    f"{answers.len()} answers: {h} {total}"
+}
+
+fn main() {
+    // LeetCode's example; videos in order; videos backwards; video 1 last
+    println(show(run(4, [(0, 3), (1, 0), (0, 1), (1, 0), (0, 2), (1, 0)].to_vec())));
+    println(show(run(3, [(0, 1), (1, 0), (0, 2), (1, 0), (0, 3), (1, 0)].to_vec())));
+    println(show(run(3, [(0, 3), (1, 0), (0, 2), (1, 0), (0, 1), (1, 0)].to_vec())));
+    println(show(run(4, [(1, 0), (0, 2), (0, 3), (0, 4), (1, 0), (0, 1), (1, 0)].to_vec())));
+    // the constraints' largest, 10^5 videos in a random order and a
+    // `longest` after every upload; and 10^5 with one after every tenth on
+    // average
+    let mut seed = 2424;
+    println(digest(run(100000, random_script(mut seed, 100000, 1))));
+    println(digest(run(100000, random_script(mut seed, 100000, 10))));
+    // 10^5 videos in blocks of 100, each block backwards, a `longest`
+    // after every block
+    let mut blocks: Vec[(i64, i64)] = Vec.new();
+    for b in 0..1000 {
+        for k in 0..100 {
+            blocks.push((0, 100 * b + 100 - k));
+        }
+        blocks.push((1, 0));
+    }
+    println(digest(run(100000, blocks)));
+    // 3000 random scripts of 1 to 12 videos; a checksum of every answer
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 12;
+        let calls = random_script(mut seed, n, 1 + next_random(mut seed) % 3);
+        for a in run(n, calls).iter() {
+            check = (check * 31 + a + 1) % 1000000007;
+            total += a;
+        }
+        check = (check * 31 + 100) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}, total {total}");
+}
