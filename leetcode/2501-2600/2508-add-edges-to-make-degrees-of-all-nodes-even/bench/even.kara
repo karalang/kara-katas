@@ -1,0 +1,72 @@
+// LeetCode #2508: Add Edges to Make Degrees of All Nodes Even --
+// benchmark of the ★ arm (even.kara): four graphs built once, two rings
+// of 10^5 nodes and two of 33000 nodes whose two odd nodes are joined to
+// every other, then the passes; each takes out one edge of every graph,
+// chosen by the checksum so far, asks, and puts it back.
+
+fn is_possible(n: i64, edges: Vec[Vec[i64]]) -> bool {
+    let mut degree: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut present: Set[i64] = Set.new();
+    for edge in edges.iter() {
+        let (a, b) = (edge[0], edge[1]);
+        degree[a] += 1;
+        degree[b] += 1;
+        present.insert(a.min(b) * (n + 1) + a.max(b));
+    }
+    let free = |a: i64, b: i64| not present.contains(a.min(b) * (n + 1) + a.max(b));
+    let odd: Vec[i64] = (1..n + 1).filter(|v| degree[v] % 2 == 1).collect();
+    match odd.len() {
+        0 => true,
+        2 => {
+            let (a, b) = (odd[0], odd[1]);
+            free(a, b) or (1..n + 1).any(|c| c != a and c != b and free(a, c) and free(b, c))
+        }
+        4 => {
+            let (a, b, c, d) = (odd[0], odd[1], odd[2], odd[3]);
+            (free(a, b) and free(c, d)) or (free(a, c) and free(b, d)) or (free(a, d) and free(b, c))
+        }
+        _ => false,
+    }
+}
+
+fn ring_of(n: i64, step: i64) -> Vec[Vec[i64]] {
+    (1..n + 1).map(|v| [v, (v + step - 1) % n + 1].to_vec()).collect()
+}
+
+fn joined_ring(spare: i64) -> Vec[Vec[i64]] {
+    let mut edges: Vec[Vec[i64]] = (3..33000).map(|v| [v, v + 1].to_vec()).collect();
+    edges.push([33000, 3].to_vec());
+    edges.push([1, 2].to_vec());
+    for v in 3..33001 {
+        if v != spare {
+            for h in [1, 2] {
+                edges.push([h, v].to_vec());
+            }
+        }
+    }
+    edges
+}
+
+fn main() {
+    let passes = 90;
+    let mut graphs: Vec[(i64, Vec[Vec[i64]])] = [
+        (100000, ring_of(100000, 1)),
+        (100000, ring_of(100000, 2)),
+        (33000, joined_ring(0)),
+        (33000, joined_ring(17000)),
+    ].to_vec();
+    let mut check = 0;
+    for p in 0..passes {
+        for g in graphs.iter_mut() {
+            let n = g.0;
+            let at = check % g.1.len();
+            let taken = g.1.swap_remove(at);
+            let answer = if is_possible(n, g.1) { 2 } else { 1 };
+            check = (check * 31 + answer + p) % 1000000007;
+            g.1.push(taken);
+            let last = g.1.len() - 1;
+            g.1.swap(at, last);
+        }
+    }
+    println(f"{passes} passes over 4 graphs: checksum {check}");
+}

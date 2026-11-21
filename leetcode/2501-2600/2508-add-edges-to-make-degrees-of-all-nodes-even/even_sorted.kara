@@ -1,0 +1,135 @@
+// LeetCode #2508: Add Edges to Make Degrees of All Nodes Even -- the
+// edges as one number each in a sorted `Vec`, an edge's presence asked
+// by `binary_search`; the same cases as the ★ arm on the odd nodes.
+// O(n log edges + edges log edges).
+
+fn has_edge(codes: Vec[i64], n: i64, a: i64, b: i64) -> bool {
+    codes.binary_search(a.min(b) * (n + 1) + a.max(b)).is_some()
+}
+
+fn is_possible(n: i64, edges: Vec[Vec[i64]]) -> bool {
+    let mut degree: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut codes: Vec[i64] = Vec.new();
+    for edge in edges.iter() {
+        degree[edge[0]] += 1;
+        degree[edge[1]] += 1;
+        codes.push(edge[0].min(edge[1]) * (n + 1) + edge[0].max(edge[1]));
+    }
+    codes.sort();
+    let mut odd: Vec[i64] = Vec.new();
+    for v in 1..n + 1 {
+        if degree[v] % 2 == 1 {
+            odd.push(v);
+        }
+    }
+    if odd.len() == 0 {
+        true
+    } else if odd.len() == 2 {
+        let (a, b) = (odd[0], odd[1]);
+        if not has_edge(codes, n, a, b) {
+            return true;
+        }
+        for c in 1..n + 1 {
+            if c != a and c != b and not has_edge(codes, n, a, c) and not has_edge(codes, n, b, c) {
+                return true;
+            }
+        }
+        false
+    } else if odd.len() == 4 {
+        let (a, b, c, d) = (odd[0], odd[1], odd[2], odd[3]);
+        (not has_edge(codes, n, a, b) and not has_edge(codes, n, c, d))
+            or (not has_edge(codes, n, a, c) and not has_edge(codes, n, b, d))
+            or (not has_edge(codes, n, a, d) and not has_edge(codes, n, b, c))
+    } else {
+        false
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// up to `wanted` distinct edges, drawn until that many or 4 `wanted`
+// draws
+fn random_graph(n: i64, wanted: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut seen: Set[(i64, i64)] = Set.new();
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..4 * wanted {
+        if edges.len() == wanted {
+            break;
+        }
+        let a = next_random(mut seed) % n + 1;
+        let b = next_random(mut seed) % n + 1;
+        if a != b and not seen.contains((a.min(b), a.max(b))) {
+            seen.insert((a.min(b), a.max(b)));
+            edges.push([a, b].to_vec());
+        }
+    }
+    edges
+}
+
+fn edges_of(pairs: Vec[(i64, i64)]) -> Vec[Vec[i64]] {
+    pairs.iter().map(|(a, b)| [a, b].to_vec()).collect()
+}
+
+fn main() {
+    // LeetCode's three examples, then five more
+    let cases: Vec[(i64, Vec[Vec[i64]])] = [
+        (5, edges_of([(1, 2), (2, 3), (3, 4), (4, 2), (1, 4), (2, 5)].to_vec())),
+        (4, edges_of([(1, 2), (3, 4)].to_vec())),
+        (4, edges_of([(1, 2), (1, 3), (1, 4)].to_vec())),
+        (3, edges_of([(1, 2)].to_vec())),
+        (3, edges_of([(1, 2), (2, 3), (1, 3)].to_vec())),
+        (4, edges_of([(1, 2), (1, 3), (1, 4), (2, 3), (2, 4)].to_vec())),
+        (6, edges_of([(1, 2), (3, 4), (5, 6)].to_vec())),
+        (5, edges_of([(1, 2), (1, 3), (1, 4), (1, 5), (2, 3), (2, 4), (2, 5)].to_vec())),
+    ].to_vec();
+    for (n, edges) in cases.iter() {
+        println(f"{n} nodes, {edges.len()} edges -> {is_possible(n, edges)}");
+    }
+    // 2000 random graphs of 3 to 8 nodes and of 3 to 30, with 1 to every
+    // possible edge: how many can be mended, and a checksum of the answers
+    let mut seed = 2508;
+    for most in [8, 30] {
+        let mut check = 0;
+        let mut yes = 0;
+        for _ in 0..2000 {
+            let n = next_random(mut seed) % (most - 2) + 3;
+            let wanted = next_random(mut seed) % (n * (n - 1) / 2) + 1;
+            let a = is_possible(n, random_graph(n, wanted, mut seed));
+            if a {
+                yes += 1;
+            }
+            check = (check * 2 + if a { 1 } else { 0 }) % 1000000007;
+        }
+        println(f"2000 random to {most} nodes: {yes} possible, checksum {check}");
+    }
+    // the constraints' largest: a star and a path on 10^5 nodes; 33000
+    // nodes, 3 to n in a ring, 1 and 2 joined, and both joined to every
+    // node of the ring, then the same with one ring node left alone; and
+    // 10^5 random edges on 10^5 nodes
+    let star: Vec[Vec[i64]] = (2..100001).map(|v| [1, v].to_vec()).collect();
+    println(f"10^5 nodes, a star -> {is_possible(100000, star)}");
+    let path: Vec[Vec[i64]] = (1..100000).map(|v| [v, v + 1].to_vec()).collect();
+    println(f"10^5 nodes, a path -> {is_possible(100000, path)}");
+    let mut ring: Vec[Vec[i64]] = (3..33000).map(|v| [v, v + 1].to_vec()).collect();
+    ring.push([33000, 3].to_vec());
+    ring.push([1, 2].to_vec());
+    let mut joined = ring.clone();
+    let mut spared = ring.clone();
+    for v in 3..33001 {
+        for h in [1, 2] {
+            joined.push([h, v].to_vec());
+            if v != 17000 {
+                spared.push([h, v].to_vec());
+            }
+        }
+    }
+    println(f"33000 nodes, two odd joined to all -> {is_possible(33000, joined)}");
+    println(f"33000 nodes, two odd joined to all but one -> {is_possible(33000, spared)}");
+    let big = random_graph(100000, 100000, mut seed);
+    println(f"10^5 nodes, {big.len()} random edges -> {is_possible(100000, big)}");
+}

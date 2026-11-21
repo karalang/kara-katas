@@ -1,0 +1,363 @@
+// LeetCode #2508: Add Edges to Make Degrees of All Nodes Even -- the
+// differential. The six arms against the statement read literally: no
+// edge added, every absent edge added alone, and every two absent edges
+// added together, each tried by counting every node's degree afresh.
+// 300 random graphs of 3 to 7 nodes with 1 to every possible edge; then
+// 20 of 3 nodes, and 40 of 8 nodes; every one drawn before any arm
+// answers.
+//
+// P1  the answer is the statement read literally
+// P2  true only when 0, 2 or 4 nodes have an odd degree
+// P3  every node v renumbered n + 1 - v: the same answer
+// P4  the edges in the other order, each with its ends swapped: the same
+//     answer
+// P5  a node n + 1 with no edges added: true exactly when the answer was
+//     true or two nodes have an odd degree
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally
+
+fn all_even(n: i64, edges: Vec[Vec[i64]], added: Vec[(i64, i64)]) -> bool {
+    let mut degree: Vec[i64] = Vec.filled(n + 1, 0);
+    for e in edges.iter() {
+        degree[e[0]] += 1;
+        degree[e[1]] += 1;
+    }
+    for (a, b) in added.iter() {
+        degree[a] += 1;
+        degree[b] += 1;
+    }
+    (1..n + 1).all(|v| degree[v] % 2 == 0)
+}
+
+fn literal(n: i64, edges: Vec[Vec[i64]]) -> bool {
+    let mut absent: Vec[(i64, i64)] = Vec.new();
+    for a in 1..n + 1 {
+        for b in a + 1..n + 1 {
+            if not edges.iter().any(|e| (e[0] == a and e[1] == b) or (e[0] == b and e[1] == a)) {
+                absent.push((a, b));
+            }
+        }
+    }
+    if all_even(n, edges, Vec.new()) {
+        return true;
+    }
+    for i in 0..absent.len() {
+        if all_even(n, edges, [absent[i]].to_vec()) {
+            return true;
+        }
+        for j in i + 1..absent.len() {
+            if all_even(n, edges, [absent[i], absent[j]].to_vec()) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+// ---- star (even.kara) ----------------------------------------------------
+
+fn star_is_possible(n: i64, edges: Vec[Vec[i64]]) -> bool {
+    let mut degree: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut present: Set[i64] = Set.new();
+    for edge in edges.iter() {
+        let (a, b) = (edge[0], edge[1]);
+        degree[a] += 1;
+        degree[b] += 1;
+        present.insert(a.min(b) * (n + 1) + a.max(b));
+    }
+    let free = |a: i64, b: i64| not present.contains(a.min(b) * (n + 1) + a.max(b));
+    let odd: Vec[i64] = (1..n + 1).filter(|v| degree[v] % 2 == 1).collect();
+    match odd.len() {
+        0 => true,
+        2 => {
+            let (a, b) = (odd[0], odd[1]);
+            free(a, b) or (1..n + 1).any(|c| c != a and c != b and free(a, c) and free(b, c))
+        }
+        4 => {
+            let (a, b, c, d) = (odd[0], odd[1], odd[2], odd[3]);
+            (free(a, b) and free(c, d)) or (free(a, c) and free(b, d)) or (free(a, d) and free(b, c))
+        }
+        _ => false,
+    }
+}
+
+// ---- adj (even_adj.kara) -------------------------------------------------
+
+fn adj_is_possible(n: i64, edges: Vec[Vec[i64]]) -> bool {
+    let mut adjacent: Vec[Set[i64]] = Vec.filled(n + 1, Set.new());
+    for edge in edges.iter() {
+        adjacent[edge[0]].insert(edge[1]);
+        adjacent[edge[1]].insert(edge[0]);
+    }
+    let odd: Vec[i64] = (1..n + 1).filter(|v| adjacent[v].len() % 2 == 1).collect();
+    if odd.len() == 0 {
+        return true;
+    }
+    if odd.len() == 2 {
+        let (a, b) = (odd[0], odd[1]);
+        if not adjacent[a].contains(b) {
+            return true;
+        }
+        for c in 1..n + 1 {
+            if c != a and c != b and not adjacent[a].contains(c) and not adjacent[b].contains(c) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if odd.len() == 4 {
+        let pairings = [(0, 1, 2, 3), (0, 2, 1, 3), (0, 3, 1, 2)];
+        for (i, j, k, l) in pairings {
+            if not adjacent[odd[i]].contains(odd[j]) and not adjacent[odd[k]].contains(odd[l]) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+// ---- sorted (even_sorted.kara) -------------------------------------------
+
+fn sorted_has_edge(codes: Vec[i64], n: i64, a: i64, b: i64) -> bool {
+    codes.binary_search(a.min(b) * (n + 1) + a.max(b)).is_some()
+}
+
+fn sorted_is_possible(n: i64, edges: Vec[Vec[i64]]) -> bool {
+    let mut degree: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut codes: Vec[i64] = Vec.new();
+    for edge in edges.iter() {
+        degree[edge[0]] += 1;
+        degree[edge[1]] += 1;
+        codes.push(edge[0].min(edge[1]) * (n + 1) + edge[0].max(edge[1]));
+    }
+    codes.sort();
+    let mut odd: Vec[i64] = Vec.new();
+    for v in 1..n + 1 {
+        if degree[v] % 2 == 1 {
+            odd.push(v);
+        }
+    }
+    if odd.len() == 0 {
+        true
+    } else if odd.len() == 2 {
+        let (a, b) = (odd[0], odd[1]);
+        if not sorted_has_edge(codes, n, a, b) {
+            return true;
+        }
+        for c in 1..n + 1 {
+            if c != a and c != b and not sorted_has_edge(codes, n, a, c) and not sorted_has_edge(codes, n, b, c) {
+                return true;
+            }
+        }
+        false
+    } else if odd.len() == 4 {
+        let (a, b, c, d) = (odd[0], odd[1], odd[2], odd[3]);
+        (not sorted_has_edge(codes, n, a, b) and not sorted_has_edge(codes, n, c, d))
+            or (not sorted_has_edge(codes, n, a, c) and not sorted_has_edge(codes, n, b, d))
+            or (not sorted_has_edge(codes, n, a, d) and not sorted_has_edge(codes, n, b, c))
+    } else {
+        false
+    }
+}
+
+// ---- rec (even_rec.kara) -------------------------------------------------
+
+fn rec_mend(odd: Vec[i64], budget: i64, n: i64, present: Set[i64]) -> bool {
+    if odd.len() == 0 {
+        return true;
+    }
+    if odd.len() > 2 * budget {
+        return false;
+    }
+    let a = odd[0];
+    for k in 1..odd.len() {
+        let b = odd[k];
+        if not present.contains(a.min(b) * (n + 1) + a.max(b)) {
+            let rest: Vec[i64] = odd.iter().enumerate().filter(|(i, _)| i != 0 and i != k).map(|(_, v)| v).collect();
+            if rec_mend(rest, budget - 1, n, present) {
+                return true;
+            }
+        }
+    }
+    if odd.len() == 2 and budget >= 2 {
+        let b = odd[1];
+        for c in 1..n + 1 {
+            if c != a and c != b and not present.contains(a.min(c) * (n + 1) + a.max(c)) and not present.contains(b.min(c) * (n + 1) + b.max(c)) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn rec_is_possible(n: i64, edges: Vec[Vec[i64]]) -> bool {
+    let mut degree: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut present: Set[i64] = Set.new();
+    for edge in edges.iter() {
+        let (a, b) = (edge[0], edge[1]);
+        degree[a] += 1;
+        degree[b] += 1;
+        present.insert(a.min(b) * (n + 1) + a.max(b));
+    }
+    let odd: Vec[i64] = (1..n + 1).filter(|v| degree[v] % 2 == 1).collect();
+    rec_mend(odd, 2, n, present)
+}
+
+// ---- iter (even_iter.kara) -----------------------------------------------
+
+fn iter_is_possible(n: i64, edges: Vec[Vec[i64]]) -> bool {
+    let degree: Vec[i64] = edges.iter().fold(Vec.filled(n + 1, 0), |d, e| {
+        let mut d = d;
+        d[e[0]] += 1;
+        d[e[1]] += 1;
+        d
+    });
+    let present: Set[(i64, i64)] = edges.iter().map(|e| (e[0].min(e[1]), e[0].max(e[1]))).collect();
+    let free = |a: i64, b: i64| not present.contains((a.min(b), a.max(b)));
+    let odd: Vec[i64] = (1..n + 1).filter(|v| degree[v] % 2 == 1).collect();
+    match odd.len() {
+        0 => true,
+        2 => free(odd[0], odd[1]) or (1..n + 1).filter(|c| c != odd[0] and c != odd[1]).any(|c| free(odd[0], c) and free(odd[1], c)),
+        4 => [(0, 1, 2, 3), (0, 2, 1, 3), (0, 3, 1, 2)].iter().any(|(i, j, k, l)| free(odd[i], odd[j]) and free(odd[k], odd[l])),
+        _ => false,
+    }
+}
+
+// ---- solution (even_solution.kara) ---------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn is_possible(n: i32, edges: Vec[Vec[i32]]) -> bool {
+        let n = n as i64;
+        let mut deg = Vec.filled(n + 1, 0);
+        let mut set = Set.new();
+        for e in ref edges {
+            let (a, b) = (e[0] as i64, e[1] as i64);
+            deg[a] += 1;
+            deg[b] += 1;
+            set.insert((a.min(b), a.max(b)));
+        }
+        let odd: Vec[i64] = (1..=n).filter(|v| deg[v] % 2 == 1).collect();
+        let has = |a: i64, b: i64| set.contains((a.min(b), a.max(b)));
+        match odd.len() {
+            0 => true,
+            2 => {
+                let (a, b) = (odd[0], odd[1]);
+                not has(a, b) or (1..=n).any(|c| c != a and c != b and not has(a, c) and not has(b, c))
+            }
+            4 => {
+                let (a, b, c, d) = (odd[0], odd[1], odd[2], odd[3]);
+                (not has(a, b) and not has(c, d)) or (not has(a, c) and not has(b, d)) or (not has(a, d) and not has(b, c))
+            }
+            _ => false,
+        }
+    }
+}
+
+fn solution_is_possible(n: i64, edges: Vec[Vec[i64]]) -> bool {
+    let asked: Vec[Vec[i32]] = edges.iter().map(|e| e.iter().map(|v| v as i32).collect()).collect();
+    Solution.is_possible(n as i32, asked)
+}
+
+// ---- the differential --------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn answer(arm: i64, n: i64, edges: Vec[Vec[i64]]) -> bool {
+    match arm {
+        0 => star_is_possible(n, edges),
+        1 => adj_is_possible(n, edges),
+        2 => sorted_is_possible(n, edges),
+        3 => rec_is_possible(n, edges),
+        4 => iter_is_possible(n, edges),
+        _ => solution_is_possible(n, edges),
+    }
+}
+
+fn main() {
+    let names = ["star", "adj", "sorted", "rec", "iter", "solution"];
+    let mut seed = 2508;
+    let mut problems: Vec[(i64, Vec[Vec[i64]])] = Vec.new();
+    for t in 0..360 {
+        let n = if t < 300 { next_random(mut seed) % 5 + 3 } else if t < 320 { 3 } else { 8 };
+        let wanted = next_random(mut seed) % (n * (n - 1) / 2) + 1;
+        let mut seen: Set[(i64, i64)] = Set.new();
+        let mut edges: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..4 * wanted {
+            if edges.len() == wanted {
+                break;
+            }
+            let a = next_random(mut seed) % n + 1;
+            let b = next_random(mut seed) % n + 1;
+            if a != b and not seen.contains((a.min(b), a.max(b))) {
+                seen.insert((a.min(b), a.max(b)));
+                edges.push([a, b].to_vec());
+            }
+        }
+        problems.push((n, edges));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut yes = 0;
+    for (n, edges) in problems.iter() {
+        let truth = literal(n, edges);
+        if truth {
+            yes += 1;
+        }
+        check = (check * 2 + if truth { 1 } else { 0 }) % 1000000007;
+        let mut degree: Vec[i64] = Vec.filled(n + 1, 0);
+        for e in edges.iter() {
+            degree[e[0]] += 1;
+            degree[e[1]] += 1;
+        }
+        let odd = (1..n + 1).filter(|v| degree[v] % 2 == 1).count();
+        let renumbered: Vec[Vec[i64]] = edges.iter().map(|e| [n + 1 - e[0], n + 1 - e[1]].to_vec()).collect();
+        let swapped: Vec[Vec[i64]] = edges.iter().rev().map(|e| [e[1], e[0]].to_vec()).collect();
+        let got: Vec[bool] = (0..6).map(|arm| answer(arm, n, edges)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                not x or odd == 0 or odd == 2 or odd == 4,
+                answer(arm, n, renumbered) == x,
+                answer(arm, n, swapped) == x,
+                answer(arm, n + 1, edges) == (x or odd == 2),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{n} nodes, {edges.len()} edges, arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} cases, {yes} possible: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
