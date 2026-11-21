@@ -1,0 +1,268 @@
+// LeetCode #2437: Number of Valid Clock Times -- the differential. The
+// six arms against the statement read literally: every way to put a
+// digit in each `?`, each filled string read back as an hour and a
+// minute, and counted when the hour is below 24 and the minute below 60.
+// No time of day is listed and no part is counted apart. 360 cases:
+// random valid times, each digit hidden half the time. Every case is
+// drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  one more digit hidden: an answer no smaller
+// P3  between 1, for the time the case was made from, and 1440
+// P4  the hour's count with the minute hidden, over 60, times the
+//     minute's with the hour hidden, over 24: the answer
+// P5  the time the case was made from, nothing hidden: 1
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn fill(pattern: Vec[u8], at: i64) -> i64 {
+    if at == pattern.len() {
+        let hour = (pattern[0] - b'0') as i64 * 10 + (pattern[1] - b'0');
+        let minute = (pattern[3] - b'0') as i64 * 10 + (pattern[4] - b'0');
+        return if hour < 24 and minute < 60 { 1 } else { 0 };
+    }
+    if pattern[at] != b'?' {
+        return fill(pattern, at + 1);
+    }
+    let mut count = 0;
+    for d in 0..10 {
+        let mut tried = pattern.clone();
+        tried[at] = b'0' + d as u8;
+        count += fill(tried, at + 1);
+    }
+    count
+}
+
+fn clock_literally(time: String) -> i64 {
+    fill(time.bytes().to_vec(), 0)
+}
+
+// ---- star (clock.kara) ---------------------------------------------------
+
+fn star_fits(pattern: Slice[u8], value: i64) -> bool {
+    let tens = b'0' + (value / 10) as u8;
+    let units = b'0' + (value % 10) as u8;
+    (pattern[0] == b'?' or pattern[0] == tens) and (pattern[1] == b'?' or pattern[1] == units)
+}
+
+fn star_count_time(time: String) -> i64 {
+    let b = time.bytes();
+    let mut hours = 0;
+    for h in 0..24 {
+        if star_fits(b[0..2], h) {
+            hours += 1;
+        }
+    }
+    let mut minutes = 0;
+    for m in 0..60 {
+        if star_fits(b[3..5], m) {
+            minutes += 1;
+        }
+    }
+    hours * minutes
+}
+
+// ---- naive (clock_naive.kara) --------------------------------------------
+
+fn naive_count_time(time: String) -> i64 {
+    let pattern = time.bytes();
+    let mut count = 0;
+    for h in 0..24 {
+        for m in 0..60 {
+            let written = f"{h:02}:{m:02}";
+            let mut agrees = true;
+            for (i, c) in written.bytes().iter().enumerate() {
+                if pattern[i] != b'?' and pattern[i] != c {
+                    agrees = false;
+                }
+            }
+            if agrees {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+// ---- cases (clock_cases.kara) --------------------------------------------
+
+fn cases_hour_choices(tens: u8, units: u8) -> i64 {
+    match (tens == b'?', units == b'?') {
+        (true, true) => 24,
+        (true, false) => if units < b'4' { 3 } else { 2 },
+        (false, true) => if tens < b'2' { 10 } else { 4 },
+        (false, false) => 1,
+    }
+}
+
+fn cases_minute_choices(tens: u8, units: u8) -> i64 {
+    let a = if tens == b'?' { 6 } else { 1 };
+    let b = if units == b'?' { 10 } else { 1 };
+    a * b
+}
+
+fn cases_count_time(time: String) -> i64 {
+    let b = time.bytes();
+    cases_hour_choices(b[0], b[1]) * cases_minute_choices(b[3], b[4])
+}
+
+// ---- digits (clock_digits.kara) ------------------------------------------
+
+fn digits_choices(c: u8) -> Vec[i64] {
+    if c == b'?' {
+        (0..10).collect()
+    } else {
+        [(c - b'0') as i64].to_vec()
+    }
+}
+
+fn digits_count_time(time: String) -> i64 {
+    let b = time.bytes();
+    let mut count = 0;
+    for h1 in digits_choices(b[0]).iter() {
+        for h2 in digits_choices(b[1]).iter() {
+            for m1 in digits_choices(b[3]).iter() {
+                for m2 in digits_choices(b[4]).iter() {
+                    if h1 * 10 + h2 < 24 and m1 * 10 + m2 < 60 {
+                        count += 1;
+                    }
+                }
+            }
+        }
+    }
+    count
+}
+
+// ---- iter (clock_iter.kara) ----------------------------------------------
+
+fn iter_count_time(time: String) -> i64 {
+    let b = time.bytes();
+    let fits = |part: Slice[u8], value: i64| {
+        let digits = [b'0' + (value / 10) as u8, b'0' + (value % 10) as u8];
+        part.iter().zip(digits.iter()).all(|(p, d)| p == b'?' or p == d)
+    };
+    let hours = (0..24).filter(|h| fits(b[0..2], h)).count();
+    let minutes = (0..60).filter(|m| fits(b[3..5], m)).count();
+    hours * minutes
+}
+
+// ---- solution (clock_solution.kara) --------------------------------------
+
+impl Solution {
+    pub fn count_time(time: String) -> i32 {
+        let t: Vec[char] = time.chars().collect();
+        let mut ans = 0;
+        for h in 0..24 {
+            for m in 0..60 {
+                let s = f"{h:02}:{m:02}";
+                if s.chars().zip(t.iter()).all(|(a, b)| b == '?' or a == b) {
+                    ans += 1;
+                }
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_count_time(time: String) -> i64 {
+    Solution.count_time(time)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, time: String) -> i64 {
+    match arm {
+        0 => star_count_time(time),
+        1 => naive_count_time(time),
+        2 => cases_count_time(time),
+        3 => digits_count_time(time),
+        4 => iter_count_time(time),
+        _ => solution_count_time(time),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn masked(minute_of_day: i64, mask: i64) -> String {
+    let shown = f"{minute_of_day / 60:02}:{minute_of_day % 60:02}";
+    let mut out: Vec[u8] = Vec.new();
+    let mut digit = 0;
+    for c in shown.bytes().iter() {
+        if c == b':' {
+            out.push(c);
+        } else {
+            out.push(if (mask >> digit) & 1 == 1 { b'?' } else { c });
+            digit += 1;
+        }
+    }
+    String.from_utf8(out).unwrap()
+}
+
+fn main() {
+    let arms = ["star", "naive", "cases", "digits", "iter", "solution"];
+    let mut seed = 2437;
+    let mut cases: Vec[(i64, i64, i64)] = Vec.new();
+    for _ in 0..360 {
+        let at = next_random(mut seed) % 1440;
+        let mask = next_random(mut seed) % 16;
+        let more = mask | (1 << (next_random(mut seed) % 4));
+        cases.push((at, mask, more));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (at, mask, more) = cases[c];
+        let time = masked(at, mask);
+        let truth = clock_literally(time);
+        check = (check * 31 + truth) % 1000000007;
+        let hour_only = masked(at, mask | 12);
+        let minute_only = masked(at, mask | 3);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, time)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, masked(at, more)) >= value,
+                value >= 1 and value <= 1440,
+                answer(arm, hour_only) / 60 * (answer(arm, minute_only) / 24) == value,
+                answer(arm, masked(at, 0)) == 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

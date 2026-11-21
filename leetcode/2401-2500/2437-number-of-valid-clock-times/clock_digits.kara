@@ -1,0 +1,73 @@
+// LeetCode #2437: Number of Valid Clock Times -- digit by digit: every
+// one of the four digits that a `?` may stand for, 0 to 9 for a hidden
+// one and its own for a shown one, nested four deep, and the tuple
+// counted when its hour is below 24 and its minute below 60. O(10^4).
+
+fn choices(c: u8) -> Vec[i64] {
+    if c == b'?' {
+        (0..10).collect()
+    } else {
+        [(c - b'0') as i64].to_vec()
+    }
+}
+
+fn count_time(time: String) -> i64 {
+    let b = time.bytes();
+    let mut count = 0;
+    for h1 in choices(b[0]).iter() {
+        for h2 in choices(b[1]).iter() {
+            for m1 in choices(b[3]).iter() {
+                for m2 in choices(b[4]).iter() {
+                    if h1 * 10 + h2 < 24 and m1 * 10 + m2 < 60 {
+                        count += 1;
+                    }
+                }
+            }
+        }
+    }
+    count
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a valid time with each digit hidden by `?` when its bit of `mask` is set
+fn masked(minute_of_day: i64, mask: i64) -> String {
+    let shown = f"{minute_of_day / 60:02}:{minute_of_day % 60:02}";
+    let mut out: Vec[u8] = Vec.new();
+    let mut digit = 0;
+    for c in shown.bytes().iter() {
+        if c == b':' {
+            out.push(c);
+        } else {
+            out.push(if (mask >> digit) & 1 == 1 { b'?' } else { c });
+            digit += 1;
+        }
+    }
+    String.from_utf8(out).unwrap()
+}
+
+fn main() {
+    // LeetCode's three examples; no `?` at all; each hour digit hidden
+    // on its own, the tens over 0 to 2 and the units by whether the
+    // tens is 2; each minute digit hidden on its own
+    for t in ["?5:00", "0?:0?", "??:??", "23:59", "?3:15", "?4:15", "1?:30", "2?:30", "12:?9", "12:5?"].iter() {
+        println(f"{t}: {count_time(t.to_string())}");
+    }
+    // 3000 random valid times, each digit hidden half the time: a
+    // checksum of the answers in order, and their total
+    let mut seed = 2437;
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let at = next_random(mut seed) % 1440;
+        let answer = count_time(masked(at, next_random(mut seed) % 16));
+        check = (check * 31 + answer) % 1000000007;
+        total += answer;
+    }
+    println(f"3000 random: checksum {check}, total {total}");
+}
