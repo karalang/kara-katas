@@ -1,0 +1,375 @@
+// LeetCode #2526: Find Consecutive Integers from a Data Stream -- the
+// differential. The six arms against the statement read literally: after
+// each number, the whole stream so far is looked at again, and the answer
+// is whether it holds at least `k` numbers and its last `k` all equal
+// `value`. Nothing is carried from one call to the next. 300 random streams
+// of 1 to 30 numbers from 1 to 3 with `value` 1 to 3 and `k` 1 to 4, 30 of
+// 1 to 30 numbers from 1 to 10^9 against a `value` drawn half the time,
+// with `k` 1 to 4, and 30 of `value` alone with `k` 1 to 40; every one
+// drawn before any arm answers. An arm's answers are a string of `T` and
+// `F`, one for each number.
+//
+// P1  the answers are the statement read literally
+// P2  no T among the first k - 1, and a T only where the number is value
+// P3  k one less (when k > 1): every T stays a T
+// P4  one more number, not value: the same answers, then an F
+// P5  every number turned into value: k - 1 Fs, then all Ts
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally
+
+fn literal(value: i64, k: i64, nums: Vec[i64]) -> String {
+    let mut out = String.new();
+    for i in 0..nums.len() {
+        let seen = i + 1;
+        let mut all = seen >= k;
+        if all {
+            for j in seen - k..seen {
+                if nums[j] != value {
+                    all = false;
+                }
+            }
+        }
+        out.push(if all { 'T' } else { 'F' });
+    }
+    out
+}
+
+// ---- star (stream.kara) --------------------------------------------------
+
+struct StarDataStream {
+    value: i64,
+    k: i64,
+    run: i64,
+}
+
+impl StarDataStream {
+    fn new(value: i64, k: i64) -> StarDataStream {
+        StarDataStream { value: value, k: k, run: 0 }
+    }
+
+    fn consec(mut ref self, num: i64) -> bool {
+        self.run = if num == self.value { self.run + 1 } else { 0 };
+        self.run >= self.k
+    }
+}
+
+fn star_open_stream(value: i64, k: i64) -> StarDataStream {
+    StarDataStream.new(value, k)
+}
+
+fn star_feed(stream: mut ref StarDataStream, num: i64) -> bool {
+    stream.consec(num)
+}
+
+// ---- queue (stream_queue.kara) -------------------------------------------
+
+struct QueueDataStream {
+    value: i64,
+    k: i64,
+    window: VecDeque[i64],
+    matching: i64,
+}
+
+impl QueueDataStream {
+    fn new(value: i64, k: i64) -> QueueDataStream {
+        QueueDataStream { value: value, k: k, window: VecDeque.new(), matching: 0 }
+    }
+
+    fn consec(mut ref self, num: i64) -> bool {
+        self.window.push_back(num);
+        if num == self.value {
+            self.matching += 1;
+        }
+        if self.window.len() > self.k {
+            if self.window.pop_front().unwrap() == self.value {
+                self.matching -= 1;
+            }
+        }
+        self.window.len() == self.k and self.matching == self.k
+    }
+}
+
+fn queue_open_stream(value: i64, k: i64) -> QueueDataStream {
+    QueueDataStream.new(value, k)
+}
+
+fn queue_feed(stream: mut ref QueueDataStream, num: i64) -> bool {
+    stream.consec(num)
+}
+
+// ---- ring (stream_ring.kara) ---------------------------------------------
+
+struct RingDataStream {
+    value: i64,
+    k: i64,
+    slots: Vec[i64],
+    seen: i64,
+    matching: i64,
+}
+
+impl RingDataStream {
+    fn new(value: i64, k: i64) -> RingDataStream {
+        RingDataStream { value: value, k: k, slots: Vec.filled(k, 0), seen: 0, matching: 0 }
+    }
+
+    fn consec(mut ref self, num: i64) -> bool {
+        let at = self.seen % self.k;
+        if self.seen >= self.k and self.slots[at] == self.value {
+            self.matching -= 1;
+        }
+        self.slots[at] = num;
+        if num == self.value {
+            self.matching += 1;
+        }
+        self.seen += 1;
+        self.seen >= self.k and self.matching == self.k
+    }
+}
+
+fn ring_open_stream(value: i64, k: i64) -> RingDataStream {
+    RingDataStream.new(value, k)
+}
+
+fn ring_feed(stream: mut ref RingDataStream, num: i64) -> bool {
+    stream.consec(num)
+}
+
+// ---- mismatch (stream_mismatch.kara) -------------------------------------
+
+struct MismatchDataStream {
+    value: i64,
+    k: i64,
+    count: i64,
+    last_other: Option[i64],
+}
+
+impl MismatchDataStream {
+    fn new(value: i64, k: i64) -> MismatchDataStream {
+        MismatchDataStream { value: value, k: k, count: 0, last_other: None }
+    }
+
+    fn consec(mut ref self, num: i64) -> bool {
+        if num != self.value {
+            self.last_other = Some(self.count);
+        }
+        self.count += 1;
+        match self.last_other {
+            Some(at) => self.count - 1 - at >= self.k,
+            None => self.count >= self.k,
+        }
+    }
+}
+
+fn mismatch_open_stream(value: i64, k: i64) -> MismatchDataStream {
+    MismatchDataStream.new(value, k)
+}
+
+fn mismatch_feed(stream: mut ref MismatchDataStream, num: i64) -> bool {
+    stream.consec(num)
+}
+
+// ---- iter (stream_iter.kara) ---------------------------------------------
+
+struct IterDataStream {
+    value: i64,
+    k: i64,
+    stream: Vec[i64],
+}
+
+impl IterDataStream {
+    fn new(value: i64, k: i64) -> IterDataStream {
+        IterDataStream { value: value, k: k, stream: Vec.new() }
+    }
+
+    fn consec(mut ref self, num: i64) -> bool {
+        self.stream.push(num);
+        self.stream.len() >= self.k and self.stream.iter().rev().take(self.k).all(|x| x == self.value)
+    }
+}
+
+fn iter_open_stream(value: i64, k: i64) -> IterDataStream {
+    IterDataStream.new(value, k)
+}
+
+fn iter_feed(stream: mut ref IterDataStream, num: i64) -> bool {
+    stream.consec(num)
+}
+
+// ---- solution (stream_solution.kara) -------------------------------------
+
+struct SolutionDataStream {
+    value: i32,
+    k: i32,
+    cnt: i32,
+}
+
+impl SolutionDataStream {
+    fn new(value: i32, k: i32) -> Self {
+        SolutionDataStream { value, k, cnt: 0 }
+    }
+
+    fn consec(mut ref self, num: i32) -> bool {
+        if num == self.value {
+            self.cnt += 1;
+        } else {
+            self.cnt = 0;
+        }
+        self.cnt >= self.k
+    }
+}
+
+fn solution_open_stream(value: i64, k: i64) -> SolutionDataStream {
+    SolutionDataStream.new(value as i32, k as i32)
+}
+
+fn solution_feed(stream: mut ref SolutionDataStream, num: i64) -> bool {
+    stream.consec(num as i32)
+}
+
+// ---- the differential --------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn answer(arm: i64, value: i64, k: i64, nums: Vec[i64]) -> String {
+    let mut out = String.new();
+    match arm {
+        0 => {
+            let mut stream = star_open_stream(value, k);
+            for num in nums.iter() {
+                out.push(if star_feed(mut stream, num) { 'T' } else { 'F' });
+            }
+        }
+        1 => {
+            let mut stream = queue_open_stream(value, k);
+            for num in nums.iter() {
+                out.push(if queue_feed(mut stream, num) { 'T' } else { 'F' });
+            }
+        }
+        2 => {
+            let mut stream = ring_open_stream(value, k);
+            for num in nums.iter() {
+                out.push(if ring_feed(mut stream, num) { 'T' } else { 'F' });
+            }
+        }
+        3 => {
+            let mut stream = mismatch_open_stream(value, k);
+            for num in nums.iter() {
+                out.push(if mismatch_feed(mut stream, num) { 'T' } else { 'F' });
+            }
+        }
+        4 => {
+            let mut stream = iter_open_stream(value, k);
+            for num in nums.iter() {
+                out.push(if iter_feed(mut stream, num) { 'T' } else { 'F' });
+            }
+        }
+        _ => {
+            let mut stream = solution_open_stream(value, k);
+            for num in nums.iter() {
+                out.push(if solution_feed(mut stream, num) { 'T' } else { 'F' });
+            }
+        }
+    }
+    out
+}
+
+fn main() {
+    let names = ["star", "queue", "ring", "mismatch", "iter", "solution"];
+    let mut seed = 2526;
+    let mut problems: Vec[(i64, i64, Vec[i64])] = Vec.new();
+    for t in 0..360 {
+        let n = next_random(mut seed) % 30 + 1;
+        if t < 300 {
+            let value = next_random(mut seed) % 3 + 1;
+            let k = next_random(mut seed) % 4 + 1;
+            problems.push((value, k, (0..n).map(|_| next_random(mut seed) % 3 + 1).collect()));
+        } else if t < 330 {
+            let value = wide_random(mut seed) % 1000000000 + 1;
+            let k = next_random(mut seed) % 4 + 1;
+            let nums: Vec[i64] = (0..n).map(|_| if next_random(mut seed) % 2 == 0 { value } else { wide_random(mut seed) % 1000000000 + 1 }).collect();
+            problems.push((value, k, nums));
+        } else {
+            let value = wide_random(mut seed) % 1000000000 + 1;
+            problems.push((value, next_random(mut seed) % 40 + 1, Vec.filled(n, value)));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut never = 0;
+    for (value, k, nums) in problems.iter() {
+        let truth = literal(value, k, nums);
+        if not truth.contains("T") {
+            never += 1;
+        }
+        for c in truth.chars() {
+            check = (check * 31 + (if c == 'T' { 2 } else { 1 })) % 1000000007;
+        }
+        let other = if value == 1000000000 { 1 } else { value + 1 };
+        let mut longer = nums.clone();
+        longer.push(other);
+        let all_value: Vec[i64] = Vec.filled(nums.len(), value);
+        let mut expect_all = String.new();
+        for i in 0..nums.len() {
+            expect_all.push(if i + 1 >= k { 'T' } else { 'F' });
+        }
+        let got: Vec[String] = (0..6).map(|arm| answer(arm, value, k, nums)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let bytes = x.bytes();
+            let mut early_or_stray = false;
+            for i in 0..bytes.len() {
+                if bytes[i] == b'T' and (i + 1 < k or nums[i] != value) {
+                    early_or_stray = true;
+                }
+            }
+            let looser = if k > 1 { answer(arm, value, k - 1, nums) } else { x.clone() };
+            let looser_bytes = looser.bytes();
+            let kept = (0..bytes.len()).all(|i| bytes[i] != b'T' or looser_bytes[i] == b'T');
+            let verdicts = [
+                x == truth,
+                bytes.len() == nums.len() and not early_or_stray,
+                looser.len() == x.len() and kept,
+                answer(arm, value, k, longer) == f"{x}F",
+                answer(arm, value, k, all_value) == expect_all,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{value} {k} {nums}, arm {names[arm]}: P{q + 1} fails, answers {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} cases, {never} never true: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
