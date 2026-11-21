@@ -1,0 +1,261 @@
+// LeetCode #2490: Circular Sentence -- the differential. The six arms
+// against the statement read literally: the words cut out letter by
+// letter, and every word's last letter compared with the next word's
+// first, the last word's with the first's. 300 random sentences of 1 to
+// 8 words of 1 to 4 letters from `aAb`, then 20 of one word, and 40 of
+// 20 to 60 words from all 52 letters; each word begun by the last letter
+// of the one before three times in four; every one drawn before any arm
+// answers.
+//
+// P1  the answer is the statement read literally
+// P2  the sentence read backwards: the same answer
+// P3  the first word moved to the end: the same answer
+// P4  the sentence twice, joined by a space: the same answer
+// P5  a word of the first word's last letter twice put after it: the
+//     same answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- star (circular.kara) ------------------------------------------------
+
+fn star_is_circular_sentence(sentence: Str) -> bool {
+    let bytes = sentence.bytes();
+    let n = bytes.len();
+    if bytes[0] != bytes[n - 1] {
+        return false;
+    }
+    for i in 1..n - 1 {
+        if bytes[i] == b' ' and bytes[i - 1] != bytes[i + 1] {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- words (circular_words.kara) -----------------------------------------
+
+fn words_is_circular_sentence(sentence: Str) -> bool {
+    let words: Vec[Str] = sentence.split(" ").collect();
+    let m = words.len();
+    for i in 0..m {
+        let here: Vec[char] = words[i].chars().collect();
+        let next: Vec[char] = words[(i + 1) % m].chars().collect();
+        if here[here.len() - 1] != next[0] {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- walk (circular_walk.kara) -------------------------------------------
+
+fn walk_is_circular_sentence(sentence: Str) -> bool {
+    let mut first: Option[char] = None;
+    let mut last = ' ';
+    let mut before = ' ';
+    for c in sentence.chars() {
+        if first.is_none() {
+            first = Some(c);
+        } else if last == ' ' and c != before {
+            return false;
+        }
+        if c == ' ' {
+            before = last;
+        }
+        last = c;
+    }
+    first == Some(last)
+}
+
+// ---- ends (circular_ends.kara) -------------------------------------------
+
+fn ends_is_circular_sentence(sentence: Str) -> bool {
+    let mut firsts = "".to_string();
+    let mut lasts = "".to_string();
+    for word in sentence.split(" ") {
+        let letters: Vec[char] = word.chars().collect();
+        firsts.push(letters[0]);
+        lasts.push(letters[letters.len() - 1]);
+    }
+    let turned = f"{firsts.substring(1, firsts.len())}{firsts.substring(0, 1)}";
+    turned == lasts
+}
+
+// ---- iter (circular_iter.kara) -------------------------------------------
+
+fn iter_is_circular_sentence(sentence: Str) -> bool {
+    let words: Vec[Str] = sentence.split(" ").collect();
+    words.iter().zip(words.iter().cycle().skip(1)).all(|(a, b)| a.chars().last() == b.chars().next())
+}
+
+// ---- solution (circular_solution.kara) -----------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn is_circular_sentence(sentence: String) -> bool {
+        let s = sentence.bytes();
+        s[0] == s[s.len() - 1] and s.windows(3).into_iter().all(|w| w[1] != b' ' or w[0] == w[2])
+    }
+}
+
+fn solution_is_circular_sentence(sentence: Str) -> bool {
+    Solution.is_circular_sentence(sentence.to_string())
+}
+
+// ---- the statement read literally
+
+fn words_of(sentence: Str) -> Vec[String] {
+    let mut words: Vec[String] = Vec.new();
+    let mut word = "".to_string();
+    for c in sentence.chars() {
+        if c == ' ' {
+            words.push(word);
+            word = "".to_string();
+        } else {
+            word.push(c);
+        }
+    }
+    words.push(word);
+    words
+}
+
+fn literal(sentence: Str) -> bool {
+    let words = words_of(sentence);
+    let m = words.len();
+    let mut circular = true;
+    for i in 0..m {
+        let here: Vec[char] = words[i].chars().collect();
+        let next: Vec[char] = words[(i + 1) % m].chars().collect();
+        if here[here.len() - 1] != next[0] {
+            circular = false;
+        }
+    }
+    circular
+}
+
+fn answer(arm: i64, sentence: Str) -> bool {
+    match arm {
+        0 => star_is_circular_sentence(sentence),
+        1 => words_is_circular_sentence(sentence),
+        2 => walk_is_circular_sentence(sentence),
+        3 => ends_is_circular_sentence(sentence),
+        4 => iter_is_circular_sentence(sentence),
+        _ => solution_is_circular_sentence(sentence),
+    }
+}
+
+// ---- sentences
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_sentence(words: i64, longest: i64, letters: Str, seed: mut ref i64) -> String {
+    let pool: Vec[char] = letters.chars().collect();
+    let mut parts: Vec[String] = Vec.new();
+    let mut last = pool[0];
+    for w in 0..words {
+        let len = next_random(mut seed) % longest + 1;
+        let mut word: Vec[char] = Vec.new();
+        for i in 0..len {
+            if i == 0 and w > 0 and next_random(mut seed) % 4 != 0 {
+                word.push(last);
+            } else {
+                word.push(pool[next_random(mut seed) % pool.len()]);
+            }
+        }
+        // the first word's first letter at the end half the time
+        if w == words - 1 and next_random(mut seed) % 2 == 0 {
+            let first: Vec[char] = parts.get(0).map(|p| p.chars().collect()).unwrap_or(word.clone());
+            word.push(first[0]);
+        }
+        last = word[word.len() - 1];
+        let text: String = word.into_iter().collect();
+        parts.push(text);
+    }
+    parts.join(" ")
+}
+
+fn main() {
+    let names = ["star", "words", "walk", "ends", "iter", "solution"];
+    let all = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    let mut seed = 2490;
+    let mut problems: Vec[String] = Vec.new();
+    for t in 0..360 {
+        let s = if t < 300 {
+            random_sentence(next_random(mut seed) % 8 + 1, 4, "aAb", mut seed)
+        } else if t < 320 {
+            random_sentence(1, 6, "aAb", mut seed)
+        } else {
+            random_sentence(next_random(mut seed) % 41 + 20, 5, all, mut seed)
+        };
+        problems.push(s);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut t = 0;
+    for s in problems.iter() {
+        let truth = literal(s);
+        if truth {
+            check = (check * 31 + t + s.len()) % 1000000007;
+        }
+        t += 1;
+        let words = words_of(s);
+        let m = words.len();
+        let backwards: String = s.chars().rev().collect();
+        let mut moved: Vec[String] = words[1..].to_vec();
+        moved.push(words[0].clone());
+        let moved = moved.join(" ");
+        let twice = f"{s} {s}";
+        let mut put = s.to_string();
+        if m > 1 {
+            let a: Vec[char] = words[0].chars().collect();
+            let mut with: Vec[String] = [words[0].clone(), f"{a[a.len() - 1]}{a[a.len() - 1]}"].to_vec();
+            with.extend(words[1..].iter().cloned());
+            put = with.join(" ");
+        }
+        let got: Vec[bool] = (0..6).map(|arm| answer(arm, s)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, backwards) == x,
+                answer(arm, moved) == x,
+                answer(arm, twice) == x,
+                answer(arm, put) == x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"\"{s}\" arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    let circular = problems.iter().filter(|s| literal(s)).count();
+    println(f"{problems.len()} cases, {circular} circular: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

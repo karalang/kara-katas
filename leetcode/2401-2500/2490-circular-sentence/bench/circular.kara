@@ -1,0 +1,79 @@
+// LeetCode #2490: Circular Sentence -- benchmark of the ★ arm
+// (circular.kara): 200 circular sentences of about 500 letters built
+// once, then 2300 passes; each changes one letter of every sentence, the
+// place and the letter chosen by the checksum so far, asks, and changes
+// it back, folding the answer plus the pass into the checksum.
+
+fn is_circular_sentence(sentence: Str) -> bool {
+    let bytes = sentence.bytes();
+    let n = bytes.len();
+    if bytes[0] != bytes[n - 1] {
+        return false;
+    }
+    for i in 1..n - 1 {
+        if bytes[i] == b' ' and bytes[i - 1] != bytes[i + 1] {
+            return false;
+        }
+    }
+    true
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letter(k: i64) -> char {
+    (b'a' + (k % 26) as u8) as char
+}
+
+// words of 1 to 8 letters, each begun by the last letter of the one
+// before, until about 500 letters, the last ended by the first letter
+fn sentence(seed: mut ref i64) -> Vec[char] {
+    let mut text: Vec[char] = Vec.new();
+    let first = letter(next_random(mut seed));
+    let mut last = first;
+    while text.len() < 490 {
+        if text.len() > 0 {
+            text.push(' ');
+        }
+        text.push(last);
+        for _ in 0..next_random(mut seed) % 8 {
+            text.push(letter(next_random(mut seed)));
+        }
+        last = text[text.len() - 1];
+    }
+    text.push(' ');
+    text.push(last);
+    text.push(first);
+    text
+}
+
+fn main() {
+    let passes = 2300;
+    let mut seed = 2490;
+    let mut sentences: Vec[Vec[char]] = Vec.new();
+    for _ in 0..200 {
+        sentences.push(sentence(mut seed));
+    }
+    let mut check = 0;
+    let mut circular = 0;
+    for p in 0..passes {
+        for s in 0..200 {
+            let n = sentences[s].len();
+            let at = check % n;
+            let was = sentences[s][at];
+            if was != ' ' {
+                sentences[s][at] = letter(check / n + p);
+            }
+            let text: String = sentences[s].iter().collect();
+            let answer = is_circular_sentence(text);
+            sentences[s][at] = was;
+            if answer {
+                circular += 1;
+            }
+            check = (check * 31 + (if answer { 1 } else { 2 }) + p) % 1000000007;
+        }
+    }
+    println(f"{passes} passes over 200 sentences: {circular} circular, checksum {check}");
+}
