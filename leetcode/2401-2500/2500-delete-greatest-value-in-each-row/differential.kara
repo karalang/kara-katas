@@ -1,0 +1,263 @@
+// LeetCode #2500: Delete Greatest Value in Each Row -- the differential.
+// The six arms against the statement read literally: round after round,
+// each row's greatest value found and the row rebuilt without its first
+// copy, the greatest of those deleted added to the answer, until the
+// rows are empty. 300 random grids of 1 to 6 rows and columns, values to
+// 3 or to 100; then 20 of one cell, and 40 of 10 by 10; every one drawn
+// before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  at least the greatest value, and at most n times it
+// P3  the rows in the other order: the same answer
+// P4  every row turned end for end: the same answer
+// P5  every row followed by a copy of itself: twice the answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- star (greatest.kara) ------------------------------------------------
+
+fn star_delete_greatest_value(grid: Vec[Vec[i64]]) -> i64 {
+    let mut rows = grid.clone();
+    for row in rows.iter_mut() {
+        row.sort();
+    }
+    let mut total = 0;
+    for j in 0..rows[0].len() {
+        let mut most = 0;
+        for row in rows.iter() {
+            most = most.max(row[j]);
+        }
+        total += most;
+    }
+    total
+}
+
+// ---- remove (greatest_remove.kara) ---------------------------------------
+
+fn remove_delete_greatest_value(grid: Vec[Vec[i64]]) -> i64 {
+    let mut rows = grid.clone();
+    let mut total = 0;
+    while rows[0].len() > 0 {
+        let mut round = 0;
+        for row in rows.iter_mut() {
+            let mut at = 0;
+            for j in 1..row.len() {
+                if row[j] > row[at] {
+                    at = j;
+                }
+            }
+            round = round.max(row.swap_remove(at));
+        }
+        total += round;
+    }
+    total
+}
+
+// ---- heap (greatest_heap.kara) -------------------------------------------
+
+fn heap_delete_greatest_value(grid: Vec[Vec[i64]]) -> i64 {
+    let mut queues: Vec[PriorityQueue[i64]] = grid.iter().map(|row| PriorityQueue.max_first_from(row.clone())).collect();
+    let mut total = 0;
+    for _ in 0..grid[0].len() {
+        let mut round = 0;
+        for queue in queues.iter_mut() {
+            round = round.max(queue.pop().unwrap());
+        }
+        total += round;
+    }
+    total
+}
+
+// ---- count (greatest_count.kara) -----------------------------------------
+
+fn count_delete_greatest_value(grid: Vec[Vec[i64]]) -> i64 {
+    let n = grid[0].len();
+    let mut best: Vec[i64] = Vec.filled(n, 0);
+    for row in grid.iter() {
+        let mut count: Vec[i64] = Vec.filled(101, 0);
+        for value in row.iter() {
+            count[value] += 1;
+        }
+        let mut k = 0;
+        for value in (1..101).rev() {
+            for _ in 0..count[value] {
+                best[k] = best[k].max(value);
+                k += 1;
+            }
+        }
+    }
+    best.iter().sum()
+}
+
+// ---- iter (greatest_iter.kara) -------------------------------------------
+
+fn iter_delete_greatest_value(grid: Vec[Vec[i64]]) -> i64 {
+    let rows: Vec[Vec[i64]] = grid
+        .iter()
+        .map(|row| {
+            let mut sorted = row.clone();
+            sorted.sort();
+            sorted
+        })
+        .collect();
+    (0..rows[0].len()).map(|j| rows.iter().map(|row| row[j]).max().unwrap()).sum()
+}
+
+// ---- solution (greatest_solution.kara) -----------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn delete_greatest_value(grid: own Vec[Vec[i32]]) -> i32 {
+        let mut grid = grid;
+        for row in grid.iter_mut() {
+            row.sort();
+        }
+        let n = grid[0].len();
+        (0..n).map(|j| grid.iter().map(|row| row[j]).max().unwrap()).sum()
+    }
+}
+
+fn solution_delete_greatest_value(grid: Vec[Vec[i64]]) -> i64 {
+    let asked: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|v| v as i32).collect()).collect();
+    Solution.delete_greatest_value(asked)
+}
+
+// ---- the statement read literally
+
+fn literal(grid: Vec[Vec[i64]]) -> i64 {
+    let mut rows = grid.clone();
+    let mut answer = 0;
+    while rows[0].len() > 0 {
+        let mut deleted: Vec[i64] = Vec.new();
+        let mut next: Vec[Vec[i64]] = Vec.new();
+        for row in rows.iter() {
+            let mut greatest = row[0];
+            for value in row.iter() {
+                if value > greatest {
+                    greatest = value;
+                }
+            }
+            deleted.push(greatest);
+            let mut kept: Vec[i64] = Vec.new();
+            let mut gone = false;
+            for value in row.iter() {
+                if value == greatest and not gone {
+                    gone = true;
+                } else {
+                    kept.push(value);
+                }
+            }
+            next.push(kept);
+        }
+        let mut most = deleted[0];
+        for value in deleted.iter() {
+            if value > most {
+                most = value;
+            }
+        }
+        answer += most;
+        rows = next;
+    }
+    answer
+}
+
+// ---- cases
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn answer(arm: i64, grid: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_delete_greatest_value(grid),
+        1 => remove_delete_greatest_value(grid),
+        2 => heap_delete_greatest_value(grid),
+        3 => count_delete_greatest_value(grid),
+        4 => iter_delete_greatest_value(grid),
+        _ => solution_delete_greatest_value(grid),
+    }
+}
+
+fn main() {
+    let names = ["star", "remove", "heap", "count", "iter", "solution"];
+    let mut seed = 2500;
+    let mut problems: Vec[Vec[Vec[i64]]] = Vec.new();
+    for t in 0..360 {
+        let (m, n, top) = if t < 300 {
+            (next_random(mut seed) % 6 + 1, next_random(mut seed) % 6 + 1, if t % 2 == 0 { 3 } else { 100 })
+        } else if t < 320 {
+            (1, 1, 100)
+        } else {
+            (10, 10, 100)
+        };
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..m {
+            let mut row: Vec[i64] = Vec.new();
+            for _ in 0..n {
+                row.push(next_random(mut seed) % top + 1);
+            }
+            grid.push(row);
+        }
+        problems.push(grid);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for grid in problems.iter() {
+        let n = grid[0].len();
+        let truth = literal(grid);
+        check = (check * 31 + truth) % 1000000007;
+        let greatest = grid.iter().map(|row| row.iter().max().unwrap()).max().unwrap();
+        let reversed: Vec[Vec[i64]] = grid.iter().rev().cloned().collect();
+        let turned: Vec[Vec[i64]] = grid.iter().map(|row| row.iter().rev().cloned().collect()).collect();
+        let doubled: Vec[Vec[i64]] = grid
+            .iter()
+            .map(|row| {
+                let mut twice = row.clone();
+                twice.extend(row.iter().cloned());
+                twice
+            })
+            .collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, grid)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                x >= greatest and x <= n * greatest,
+                answer(arm, reversed) == x,
+                answer(arm, turned) == x,
+                answer(arm, doubled) == 2 * x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{grid.len()} by {n}, arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,75 @@
+// LeetCode #2500: Delete Greatest Value in Each Row -- iterators: every
+// row `map`ped to a sorted copy, then each column `map`ped to the `max` of
+// its rows' values, and the columns `sum`med. O(m n log n).
+
+fn delete_greatest_value(grid: Vec[Vec[i64]]) -> i64 {
+    let rows: Vec[Vec[i64]] = grid
+        .iter()
+        .map(|row| {
+            let mut sorted = row.clone();
+            sorted.sort();
+            sorted
+        })
+        .collect();
+    (0..rows[0].len()).map(|j| rows.iter().map(|row| row[j]).max().unwrap()).sum()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// an `m` by `n` grid of values from 1 to `top`
+fn random_grid(m: i64, n: i64, top: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut grid: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..m {
+        let mut row: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            row.push(next_random(mut seed) % top + 1);
+        }
+        grid.push(row);
+    }
+    grid
+}
+
+fn main() {
+    // LeetCode's two examples, then six more
+    let cases: Vec[Vec[Vec[i64]]] = [
+        [[1, 2, 4].to_vec(), [3, 3, 1].to_vec()].to_vec(),
+        [[10].to_vec()].to_vec(),
+        [[1].to_vec(), [100].to_vec(), [7].to_vec()].to_vec(),
+        [[5, 1, 3, 2, 4].to_vec()].to_vec(),
+        [[1, 1].to_vec(), [1, 1].to_vec()].to_vec(),
+        [[100, 1].to_vec(), [1, 100].to_vec()].to_vec(),
+        [[9, 8, 7].to_vec(), [1, 2, 3].to_vec(), [4, 6, 5].to_vec()].to_vec(),
+        [[2, 50, 2, 50].to_vec(), [49, 3, 49, 3].to_vec()].to_vec(),
+    ].to_vec();
+    for grid in cases.iter() {
+        println(f"{grid.len()} by {grid[0].len()} -> {delete_greatest_value(grid)}");
+    }
+    // 2000 random grids of 1 to 12 rows and columns, values to 100 and to
+    // 3: a checksum each
+    let mut seed = 2500;
+    for top in [100, 3] {
+        let mut check = 0;
+        for _ in 0..2000 {
+            let m = next_random(mut seed) % 12 + 1;
+            let n = next_random(mut seed) % 12 + 1;
+            check = (check * 31 + delete_greatest_value(random_grid(m, n, top, mut seed))) % 1000000007;
+        }
+        println(f"2000 random to {top}: checksum {check}");
+    }
+    // the constraints' largest, 50 by 50: all 100s; each row 1 to 50 in a
+    // turned order; and 20 random grids, as a checksum
+    let hundreds: Vec[Vec[i64]] = (0..50).map(|_| Vec.filled(50, 100)).collect();
+    let turned: Vec[Vec[i64]] = (0..50).map(|r| (0..50).map(|c| (c + r) % 50 + 1).collect()).collect();
+    println(f"50 by 50 hundreds -> {delete_greatest_value(hundreds)}");
+    println(f"50 by 50 turned -> {delete_greatest_value(turned)}");
+    let mut check = 0;
+    for _ in 0..20 {
+        check = (check * 31 + delete_greatest_value(random_grid(50, 50, 100, mut seed))) % 1000000007;
+    }
+    println(f"20 random 50 by 50: checksum {check}");
+}

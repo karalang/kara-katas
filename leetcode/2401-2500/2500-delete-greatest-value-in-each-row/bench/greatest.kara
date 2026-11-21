@@ -1,0 +1,55 @@
+// LeetCode #2500: Delete Greatest Value in Each Row -- benchmark of the ★
+// arm (greatest.kara): 1000 grids of 50 by 50, built once, then 32
+// passes; each sets one cell of every grid from the checksum so far,
+// asks, and puts it back, folding the answer plus the pass into the
+// checksum.
+
+fn delete_greatest_value(grid: Vec[Vec[i64]]) -> i64 {
+    let mut rows = grid.clone();
+    for row in rows.iter_mut() {
+        row.sort();
+    }
+    let mut total = 0;
+    for j in 0..rows[0].len() {
+        let mut most = 0;
+        for row in rows.iter() {
+            most = most.max(row[j]);
+        }
+        total += most;
+    }
+    total
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let passes = 32;
+    let mut seed = 2500;
+    let mut grids: Vec[Vec[Vec[i64]]] = Vec.new();
+    for _ in 0..1000 {
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..50 {
+            let mut row: Vec[i64] = Vec.new();
+            for _ in 0..50 {
+                row.push(next_random(mut seed) % 100 + 1);
+            }
+            grid.push(row);
+        }
+        grids.push(grid);
+    }
+    let mut check = 0;
+    for p in 0..passes {
+        for g in 0..1000 {
+            let r = check % 50;
+            let c = check / 50 % 50;
+            let was = grids[g][r][c];
+            grids[g][r][c] = (check + p) % 100 + 1;
+            check = (check * 31 + delete_greatest_value(grids[g]) + p) % 1000000007;
+            grids[g][r][c] = was;
+        }
+    }
+    println(f"{passes} passes over 1000 grids of 50 by 50: checksum {check}");
+}
