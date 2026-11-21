@@ -1,0 +1,124 @@
+// LeetCode #2440: Create Components With Same Value -- iterators: the
+// breadth-first order built by a queue, then the component counts from
+// `n` down by `rev` and `filter` on the divisors of the total, and the
+// first that fits found by `find`; each fit a `fold` over the reverse
+// order that carries the subtree sums and a verdict. O(n d).
+
+fn fits(order: Vec[i64], parent: Vec[i64], nums: Vec[i64], target: i64) -> bool {
+    let (_, ok) = order.iter().rev().fold((nums.clone(), true), |state, u| {
+        let mut (sum, ok) = state;
+        if not ok or sum[u] > target or (u == 0 and sum[u] < target) {
+            return (sum, false);
+        }
+        if sum[u] < target {
+            let p = parent[u];
+            sum[p] += sum[u];
+        }
+        (sum, true)
+    });
+    ok
+}
+
+fn component_value(nums: Vec[i64], edges: Vec[Vec[i64]]) -> i64 {
+    let n = nums.len();
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adjacent[e[0]].push(e[1]);
+        adjacent[e[1]].push(e[0]);
+    }
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    let mut order: Vec[i64] = [0].to_vec();
+    let mut head = 0;
+    while head < order.len() {
+        let u = order[head];
+        head += 1;
+        let next: Vec[i64] = adjacent[u].iter().filter(|v| v != parent[u]).collect();
+        for v in next.into_iter() {
+            parent[v] = u;
+            order.push(v);
+        }
+    }
+    let total: i64 = nums.iter().sum();
+    (2..n + 1)
+        .rev()
+        .filter(|k| total % k == 0)
+        .find(|k| fits(order, parent, nums, total / k))
+        .map(|k| k - 1)
+        .unwrap_or(0)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random tree on `n` nodes: node `i` joined to a random earlier node,
+// the edges shuffled and each written either way round
+fn random_tree(n: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for i in 1..n {
+        let p = next_random(mut seed) % i;
+        if next_random(mut seed) % 2 == 0 {
+            edges.push([p, i].to_vec());
+        } else {
+            edges.push([i, p].to_vec());
+        }
+    }
+    for i in 1..edges.len() {
+        let j = next_random(mut seed) % (i + 1);
+        edges.swap(i, j);
+    }
+    edges
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"example 1: {component_value([6, 2, 2, 2, 6].to_vec(), [[0, 1].to_vec(), [1, 2].to_vec(), [1, 3].to_vec(), [3, 4].to_vec()].to_vec())}");
+    println(f"example 2: {component_value([2].to_vec(), Vec.new())}");
+    // 10^4 nodes: a path of 1s; a path of 50s with a 1 at each end; a
+    // random tree of 5s; a random tree of random values from 1 to 50;
+    // a star of 2s round a centre of 50
+    let n = 10000;
+    let mut path: Vec[Vec[i64]] = Vec.new();
+    for i in 1..n {
+        path.push([i - 1, i].to_vec());
+    }
+    let ones: Vec[i64] = Vec.filled(n, 1);
+    println(f"path of 1s: {component_value(ones, path)}");
+    let mut ends: Vec[i64] = Vec.filled(n, 50);
+    ends[0] = 1;
+    ends[n - 1] = 1;
+    println(f"path of 50s, 1 at each end: {component_value(ends, path)}");
+    let mut seed = 2440;
+    let fives: Vec[i64] = Vec.filled(n, 5);
+    println(f"random tree of 5s: {component_value(fives, random_tree(n, mut seed))}");
+    let mut values: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        values.push(1 + next_random(mut seed) % 50);
+    }
+    println(f"random tree, random values: {component_value(values, random_tree(n, mut seed))}");
+    let mut star: Vec[Vec[i64]] = Vec.new();
+    for i in 1..n {
+        star.push([0, i].to_vec());
+    }
+    let mut twos: Vec[i64] = Vec.filled(n, 2);
+    twos[0] = 50;
+    println(f"star of 2s round 50: {component_value(twos, star)}");
+    // 3000 random trees of 1 to 10 nodes, values from 1 to 4: a checksum
+    // and the total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let size = 1 + next_random(mut seed) % 10;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..size {
+            nums.push(1 + next_random(mut seed) % 4);
+        }
+        let answer = component_value(nums, random_tree(size, mut seed));
+        check = (check * 31 + answer) % 1000000007;
+        total += answer;
+    }
+    println(f"3000 random: checksum {check}, total {total}");
+}
