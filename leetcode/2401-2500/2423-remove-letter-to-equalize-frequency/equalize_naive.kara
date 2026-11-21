@@ -1,0 +1,97 @@
+// LeetCode #2423: Remove Letter To Equalize Frequency -- the statement
+// tried directly: each index removed in turn, the word left counted
+// afresh into a `Map`, and its counts compared. O(n^2).
+
+fn equal_frequency(word: String) -> bool {
+    let bytes = word.bytes();
+    for skip in 0..bytes.len() {
+        let mut count: Map[u8, i64] = Map.new();
+        for i in 0..bytes.len() {
+            if i != skip {
+                count[bytes[i]] = count.get(bytes[i]).unwrap_or(0) + 1;
+            }
+        }
+        let counts: Vec[i64] = count.values().collect();
+        if counts.iter().all(|c| c == counts[0]) {
+            return true;
+        }
+    }
+    false
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` letters from the first `kinds`, each letter of the word a copy of
+// the one before it with probability 1 in `stay`.
+fn random_word(seed: mut ref i64, n: i64, kinds: i64, stay: i64) -> String {
+    let mut bytes: Vec[u8] = Vec.new();
+    for i in 0..n {
+        if i > 0 and next_random(mut seed) % stay == 0 {
+            bytes.push(bytes[i - 1]);
+        } else {
+            bytes.push(b'a' + (next_random(mut seed) % kinds) as u8);
+        }
+    }
+    String.from_utf8(bytes).unwrap()
+}
+
+fn main() {
+    // LeetCode's two examples; two letters; one letter twice; one letter
+    // once more than the rest; one letter once and the rest even; one
+    // letter twice more than the rest; every letter once
+    for w in ["abcc", "aazz", "ab", "aa", "aabbccc", "abbcc", "aabbcccc", "abcdefghijklmnopqrstuvwxyz"].iter() {
+        println(f"{w}: {equal_frequency(w.to_string())}");
+    }
+    // 3000 random words of 2 to 100 letters from the first 1 to 6, and 3000
+    // built to sit one letter from equal: a count of the trues and a
+    // checksum of the answers in order
+    let mut seed = 2423;
+    let mut trues = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 2 + next_random(mut seed) % 99;
+        let kinds = 1 + next_random(mut seed) % 6;
+        let w = random_word(mut seed, n, kinds, 1 + next_random(mut seed) % 3);
+        let a = equal_frequency(w);
+        trues += if a { 1 } else { 0 };
+        check = (check * 2 + if a { 1 } else { 0 }) % 1000000007;
+    }
+    println(f"3000 random: {trues} true, checksum {check}");
+    let mut trues = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        // `kinds` letters each `times` times, then one letter added or
+        // taken away, the letters shuffled
+        let kinds = 1 + next_random(mut seed) % 5;
+        let times = 1 + next_random(mut seed) % 4;
+        let mut bytes: Vec[u8] = Vec.new();
+        for k in 0..kinds {
+            for _ in 0..times {
+                bytes.push(b'a' + k as u8);
+            }
+        }
+        let pick = (b'a' + (next_random(mut seed) % (kinds + 1)) as u8);
+        if next_random(mut seed) % 2 == 0 {
+            bytes.push(pick);
+        } else {
+            let at = next_random(mut seed) % bytes.len();
+            bytes.remove(at);
+        }
+        for i in (1..bytes.len()).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            bytes.swap(i, j);
+        }
+        while bytes.len() < 2 {
+            bytes.push(b'a');
+        }
+        let a = equal_frequency(String.from_utf8(bytes).unwrap());
+        trues += if a { 1 } else { 0 };
+        check = (check * 2 + if a { 1 } else { 0 }) % 1000000007;
+    }
+    println(f"3000 near: {trues} true, checksum {check}");
+}
