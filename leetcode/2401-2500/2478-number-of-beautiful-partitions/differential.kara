@@ -1,0 +1,432 @@
+// LeetCode #2478: Number of Beautiful Partitions -- the differential.
+// The six arms against the statement read literally: every way to cut
+// the string, each a subset of the `n - 1` places between digits, is
+// taken in turn, and counted when it makes `k` parts, each at least
+// `minLength` long, beginning with a prime digit and ending with a
+// non-prime one. No cut list, table or running sum is used. 360 random
+// strings: 300 of 1 to 10 digits, then 60 of up to 14, half of them
+// drawn from 1 to 9 and half from 1, 2, 3 and 4 alone, three in four
+// then given a prime first digit and a non-prime last one; `k` from 1
+// to `1 + n / 3` and `minLength` from 1 to `1 + n / (2 k)`, so that 203
+// of the 360 have a partition. Every case is drawn before any arm
+// answers.
+//
+// P1  the count is the literal reading's
+// P2  one part: 1 when the whole string is beautiful and long enough,
+//     else 0
+// P3  a minLength of 1: the ways to choose `k - 1` of the places
+//     between a non-prime and a prime digit, when the string begins
+//     with a prime and ends with a non-prime, else 0
+// P4  every prime digit renamed to another prime and every other digit
+//     to another non-prime: the same count
+// P5  every digit written twice, with a minLength of `2 m - 1`: the
+//     same count
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn prime_digit(c: i64) -> bool {
+    c == 2 or c == 3 or c == 5 or c == 7
+}
+
+fn digits_of(s: Str) -> Vec[i64] {
+    s.chars().map(|c| c as i64 - '0' as i64).collect()
+}
+
+fn partitions_literally(s: Str, k: i64, min_length: i64) -> i64 {
+    let d = digits_of(s);
+    let n = d.len();
+    let mut count = 0;
+    for mask in 0..(1 << (n - 1)) {
+        let mut bounds: Vec[i64] = [0].to_vec();
+        for i in 1..n {
+            if (mask >> (i - 1)) & 1 == 1 {
+                bounds.push(i);
+            }
+        }
+        bounds.push(n);
+        if bounds.len() != k + 1 {
+            continue;
+        }
+        let mut good = true;
+        for p in 0..k {
+            let (a, b) = (bounds[p], bounds[p + 1]);
+            if b - a < min_length or not prime_digit(d[a]) or prime_digit(d[b - 1]) {
+                good = false;
+            }
+        }
+        if good {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn choose(n: i64, r: i64) -> i64 {
+    if r < 0 or r > n {
+        return 0;
+    }
+    let mut value = 1;
+    for i in 0..r {
+        value = value * (n - i) / (i + 1);
+    }
+    value
+}
+
+// ---- star (beauty.kara) --------------------------------------------------
+
+fn star_is_prime_digit(c: i64) -> bool {
+    c == 2 or c == 3 or c == 5 or c == 7
+}
+
+fn star_beautiful_partitions(s: Str, k: i64, min_length: i64) -> i64 {
+    let modulus = 1000000007;
+    let digits: Vec[i64] = s.chars().map(|c| c as i64 - '0' as i64).collect();
+    let n = digits.len();
+    if not star_is_prime_digit(digits[0]) or star_is_prime_digit(digits[n - 1]) {
+        return 0;
+    }
+    // a part may end before place `i`
+    let cut: Vec[bool] = (0..n + 1).map(|i| i == n or (i > 0 and not star_is_prime_digit(digits[i - 1]) and star_is_prime_digit(digits[i]))).collect();
+    let mut ways: Vec[i64] = Vec.filled(n + 1, 0);
+    ways[0] = 1;
+    for _ in 0..k {
+        let mut next: Vec[i64] = Vec.filled(n + 1, 0);
+        let mut running = 0;
+        for i in min_length..n + 1 {
+            let start = i - min_length;
+            if start == 0 or cut[start] and start < n {
+                running = (running + ways[start]) % modulus;
+            }
+            if cut[i] and i > 0 {
+                next[i] = running;
+            }
+        }
+        ways = next;
+    }
+    ways[n]
+}
+
+// ---- table (beauty_table.kara) -------------------------------------------
+
+fn table_is_prime_digit(c: i64) -> bool {
+    c == 2 or c == 3 or c == 5 or c == 7
+}
+
+fn table_beautiful_partitions(s: Str, k: i64, min_length: i64) -> i64 {
+    let modulus = 1000000007;
+    let digits: Vec[i64] = s.chars().map(|c| c as i64 - '0' as i64).collect();
+    let n = digits.len();
+    if not table_is_prime_digit(digits[0]) or table_is_prime_digit(digits[n - 1]) {
+        return 0;
+    }
+    let mut begins: Vec[bool] = Vec.filled(n + 1, false);
+    let mut ends: Vec[bool] = Vec.filled(n + 1, false);
+    begins[0] = true;
+    ends[n] = true;
+    for i in 1..n {
+        if not table_is_prime_digit(digits[i - 1]) and table_is_prime_digit(digits[i]) {
+            begins[i] = true;
+            ends[i] = true;
+        }
+    }
+    let mut ways: Vec[Vec[i64]] = Vec.new();
+    let mut starts: Vec[Vec[i64]] = Vec.new();
+    for j in 0..k + 1 {
+        let mut row: Vec[i64] = Vec.filled(n + 1, 0);
+        if j == 0 {
+            row[0] = 1;
+        } else {
+            for i in min_length..n + 1 {
+                if ends[i] {
+                    row[i] = starts[j - 1][i - min_length + 1];
+                }
+            }
+        }
+        let mut sums: Vec[i64] = Vec.filled(n + 2, 0);
+        for i in 0..n + 1 {
+            let add = if begins[i] and i < n { row[i] } else { 0 };
+            sums[i + 1] = (sums[i] + add) % modulus;
+        }
+        ways.push(row);
+        starts.push(sums);
+    }
+    ways[k][n]
+}
+
+// ---- memo (beauty_memo.kara) ---------------------------------------------
+
+fn memo_is_prime_digit(c: i64) -> bool {
+    c == 2 or c == 3 or c == 5 or c == 7
+}
+
+struct Memo {
+    n: i64,
+    min_length: i64,
+    begins: Vec[bool],
+    from_table: Vec[i64],
+    after_table: Vec[i64],
+}
+
+fn memo_from(memo: mut ref Memo, e: i64, j: i64) -> i64 {
+    if j == 0 {
+        return if e == memo.n { 1 } else { 0 };
+    }
+    if e == memo.n {
+        return 0;
+    }
+    let at = j * (memo.n + 2) + e;
+    if memo.from_table[at] < 0 {
+        let found = memo_after(mut memo, e + memo.min_length, j - 1);
+        memo.from_table[at] = found;
+    }
+    memo.from_table[at]
+}
+
+fn memo_after(memo: mut ref Memo, i: i64, j: i64) -> i64 {
+    if i > memo.n {
+        return 0;
+    }
+    let at = j * (memo.n + 2) + i;
+    if memo.after_table[at] < 0 {
+        let mut total = memo_after(mut memo, i + 1, j);
+        if memo.begins[i] {
+            total = (total + memo_from(mut memo, i, j)) % 1000000007;
+        }
+        memo.after_table[at] = total;
+    }
+    memo.after_table[at]
+}
+
+fn memo_beautiful_partitions(s: Str, k: i64, min_length: i64) -> i64 {
+    let digits: Vec[i64] = s.chars().map(|c| c as i64 - '0' as i64).collect();
+    let n = digits.len();
+    if not memo_is_prime_digit(digits[0]) or memo_is_prime_digit(digits[n - 1]) {
+        return 0;
+    }
+    let mut begins: Vec[bool] = Vec.filled(n + 1, false);
+    begins[n] = true;
+    for i in 1..n {
+        begins[i] = not memo_is_prime_digit(digits[i - 1]) and memo_is_prime_digit(digits[i]);
+    }
+    let size = (k + 1) * (n + 2);
+    let mut memo = Memo { n: n, min_length: min_length, begins: begins, from_table: Vec.filled(size, -1), after_table: Vec.filled(size, -1) };
+    memo_from(mut memo, 0, k)
+}
+
+// ---- cuts (beauty_cuts.kara) ---------------------------------------------
+
+fn cuts_is_prime_digit(c: i64) -> bool {
+    c == 2 or c == 3 or c == 5 or c == 7
+}
+
+fn cuts_beautiful_partitions(s: Str, k: i64, min_length: i64) -> i64 {
+    let modulus = 1000000007;
+    let digits: Vec[i64] = s.chars().map(|c| c as i64 - '0' as i64).collect();
+    let n = digits.len();
+    if not cuts_is_prime_digit(digits[0]) or cuts_is_prime_digit(digits[n - 1]) {
+        return 0;
+    }
+    let mut cuts: Vec[i64] = [0].to_vec();
+    for i in 1..n {
+        if not cuts_is_prime_digit(digits[i - 1]) and cuts_is_prime_digit(digits[i]) {
+            cuts.push(i);
+        }
+    }
+    cuts.push(n);
+    let c = cuts.len();
+    if k >= c {
+        return 0;
+    }
+    let mut ways: Vec[i64] = Vec.filled(c, 0);
+    ways[0] = 1;
+    for _ in 0..k {
+        let mut next: Vec[i64] = Vec.filled(c, 0);
+        let mut trail = 0;
+        let mut running = 0;
+        for b in 1..c {
+            while trail < b and cuts[b] - cuts[trail] >= min_length {
+                running = (running + ways[trail]) % modulus;
+                trail += 1;
+            }
+            next[b] = running;
+        }
+        ways = next;
+    }
+    ways[c - 1]
+}
+
+// ---- iter (beauty_iter.kara) ---------------------------------------------
+
+fn iter_is_prime_digit(c: i64) -> bool {
+    c == 2 or c == 3 or c == 5 or c == 7
+}
+
+fn iter_beautiful_partitions(s: Str, k: i64, min_length: i64) -> i64 {
+    let digits: Vec[i64] = s.chars().map(|c| c as i64 - '0' as i64).collect();
+    let n = digits.len();
+    if not iter_is_prime_digit(digits[0]) or iter_is_prime_digit(digits[n - 1]) {
+        return 0;
+    }
+    let mut cut: Vec[bool] = [true].to_vec();
+    cut.extend(digits.windows(2).into_iter().map(|w| not iter_is_prime_digit(w[0]) and iter_is_prime_digit(w[1])));
+    cut.push(true);
+    let first: Vec[i64] = (0..n + 1).map(|i| if i == 0 { 1 } else { 0 }).collect();
+    let last = (0..k).fold(first, |ways, _| {
+        (0..n + 1).scan(0, |running, i| {
+            if i < min_length {
+                return Some((running, 0));
+            }
+            let start = i - min_length;
+            let running = if cut[start] and start < n { (running + ways[start]) % 1000000007 } else { running };
+            Some((running, if cut[i] and i > 0 { running } else { 0 }))
+        }).collect()
+    });
+    last[n]
+}
+
+// ---- solution (beauty_solution.kara) -------------------------------------
+
+impl Solution {
+    pub fn beautiful_partitions(s: String, k: i32, min_length: i32) -> i32 {
+        let s = s.bytes();
+        let n = s.len();
+        let (k, m) = (k as i64, min_length as i64);
+        let p = |c: u8| match c { b'2' | b'3' | b'5' | b'7' => true, _ => false };
+        if not p(s[0]) or p(s[n - 1]) {
+            return 0;
+        }
+        const MOD: i64 = 1_000_000_007;
+        let mut dp = Vec.filled(k + 1, Vec.filled(n + 1, 0));
+        dp[0][0] = 1;
+        for j in 1..=k {
+            let mut sum = 0;
+            for i in m..=n {
+                let a = i - m;
+                if a == 0 or (a < n and not p(s[a - 1]) and p(s[a])) {
+                    sum = (sum + dp[j - 1][a]) % MOD;
+                }
+                if i == n or (not p(s[i - 1]) and p(s[i])) {
+                    dp[j][i] = sum;
+                }
+            }
+        }
+        dp[k][n] as i32
+    }
+}
+
+struct Solution {}
+
+fn solution_beautiful_partitions(s: Str, k: i64, min_length: i64) -> i64 {
+    Solution.beautiful_partitions(s.to_string(), k as i32, min_length as i32)
+}
+
+
+// ---- the differential -------------------------------------------------------
+
+fn answer(arm: i64, s: Str, k: i64, min_length: i64) -> i64 {
+    match arm {
+        0 => star_beautiful_partitions(s, k, min_length),
+        1 => table_beautiful_partitions(s, k, min_length),
+        2 => memo_beautiful_partitions(s, k, min_length),
+        3 => cuts_beautiful_partitions(s, k, min_length),
+        4 => iter_beautiful_partitions(s, k, min_length),
+        _ => solution_beautiful_partitions(s, k, min_length),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "table", "memo", "cuts", "iter", "solution"];
+    let renamed = [0, 4, 3, 5, 6, 7, 8, 2, 9, 1];
+    let mut seed = 2478;
+    let mut cases: Vec[(String, i64, i64)] = Vec.new();
+    for t in 0..360 {
+        let n = if t < 300 { 1 + next_random(mut seed) % 10 } else { 1 + next_random(mut seed) % 14 };
+        let few = next_random(mut seed) % 2 == 0;
+        let mut s = "".to_string();
+        for _ in 0..n {
+            let digit = if few { 1 + next_random(mut seed) % 4 } else { 1 + next_random(mut seed) % 9 };
+            s.push_str(f"{digit}");
+        }
+        // three in four begin with a prime and end with a non-prime
+        if next_random(mut seed) % 4 != 0 {
+            let first = [2, 3, 5, 7][next_random(mut seed) % 4];
+            let last = [1, 4, 6, 8, 9][next_random(mut seed) % 5];
+            s = f"{first}{s.substring(1, n)}";
+            s = f"{s.substring(0, n - 1)}{last}";
+        }
+        let k = 1 + next_random(mut seed) % (1 + n / 3);
+        let m = 1 + next_random(mut seed) % (1 + n / (2 * k));
+        cases.push((s, k, m));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (s, k, m) = cases[c].clone();
+        let d = digits_of(s);
+        let n = d.len();
+        let truth = partitions_literally(s, k, m);
+        check = (check * 31 + truth) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, s, k, m)).collect();
+        let ends = prime_digit(d[0]) and not prime_digit(d[n - 1]);
+        let whole = if ends and n >= m { 1 } else { 0 };
+        let mut inner = 0;
+        for i in 1..n {
+            if not prime_digit(d[i - 1]) and prime_digit(d[i]) {
+                inner += 1;
+            }
+        }
+        let loose = if ends { choose(inner, k - 1) } else { 0 };
+        let mut other = "".to_string();
+        let mut doubled = "".to_string();
+        for v in d.iter() {
+            other.push_str(f"{renamed[v]}");
+            doubled.push_str(f"{v}{v}");
+        }
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, s, 1, m) == whole,
+                answer(arm, s, k, 1) == loose,
+                answer(arm, other, k, m) == value,
+                answer(arm, doubled, k, 2 * m - 1) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,110 @@
+// LeetCode #2478: Number of Beautiful Partitions -- over the cuts alone:
+// the places where a part may end, the end itself among them, are
+// listed in order with 0 first, and each round of the count walks that
+// list once, a second index trailing it to the last cut at least
+// `minLength` back and the sum of the earlier round up to it kept as it
+// goes. O(n + c k), `c` the number of cuts.
+
+fn is_prime_digit(c: i64) -> bool {
+    c == 2 or c == 3 or c == 5 or c == 7
+}
+
+fn beautiful_partitions(s: Str, k: i64, min_length: i64) -> i64 {
+    let modulus = 1000000007;
+    let digits: Vec[i64] = s.chars().map(|c| c as i64 - '0' as i64).collect();
+    let n = digits.len();
+    if not is_prime_digit(digits[0]) or is_prime_digit(digits[n - 1]) {
+        return 0;
+    }
+    let mut cuts: Vec[i64] = [0].to_vec();
+    for i in 1..n {
+        if not is_prime_digit(digits[i - 1]) and is_prime_digit(digits[i]) {
+            cuts.push(i);
+        }
+    }
+    cuts.push(n);
+    let c = cuts.len();
+    if k >= c {
+        return 0;
+    }
+    let mut ways: Vec[i64] = Vec.filled(c, 0);
+    ways[0] = 1;
+    for _ in 0..k {
+        let mut next: Vec[i64] = Vec.filled(c, 0);
+        let mut trail = 0;
+        let mut running = 0;
+        for b in 1..c {
+            while trail < b and cuts[b] - cuts[trail] >= min_length {
+                running = (running + ways[trail]) % modulus;
+                trail += 1;
+            }
+            next[b] = running;
+        }
+        ways = next;
+    }
+    ways[c - 1]
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` random digits from 1 to 9
+fn random_digits(n: i64, seed: mut ref i64) -> String {
+    let mut text = "".to_string();
+    for _ in 0..n {
+        text.push_str(f"{1 + next_random(mut seed) % 9}");
+    }
+    text
+}
+
+fn main() {
+    // LeetCode's three examples; then one digit, a prime one and a
+    // non-prime one; a string that cannot start; one that cannot end;
+    // parts too long for the string; every cut taken; and two parts
+    // asked of a string with no cut inside it
+    let cases: Vec[(String, i64, i64)] = [
+        ("23542185131", 3, 2),
+        ("23542185131", 3, 3),
+        ("3312958", 3, 1),
+        ("2", 1, 1),
+        ("1", 1, 1),
+        ("12", 1, 1),
+        ("23", 1, 1),
+        ("2121", 2, 3),
+        ("212121", 3, 2),
+        ("2222111", 2, 1),
+    ].to_vec();
+    for (s, k, m) in cases.into_iter() {
+        let shown = f"{s}";
+        println(f"\"{shown}\", {k}, {m} -> {beautiful_partitions(s, k, m)}");
+    }
+    // the constraints' largest, 1000 digits: "21" 500 times, cut
+    // everywhere into 500 parts and into 250 of at least 4; and a
+    // random string with k of 1, 10, 100 and 300 and minLength 1, 2 and 3
+    let alternating = "21".repeat(500);
+    println(f"\"21\" x 500, 500, 2 -> {beautiful_partitions(alternating, 500, 2)}");
+    println(f"\"21\" x 500, 250, 4 -> {beautiful_partitions(alternating, 250, 4)}");
+    println(f"\"21\" x 500, 100, 3 -> {beautiful_partitions(alternating, 100, 3)}");
+    let mut seed = 2478;
+    let long = f"2{random_digits(998, mut seed)}1";
+    for k in [1, 10, 100, 300].iter() {
+        for m in [1, 2, 3].iter() {
+            println(f"random 1000, {k}, {m} -> {beautiful_partitions(long, k, m)}");
+        }
+    }
+    // 3000 random strings of 1 to 40 digits, k and minLength from 1 to
+    // the length: a checksum of every answer in order
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 40;
+        let s = random_digits(n, mut seed);
+        let k = 1 + next_random(mut seed) % n;
+        let m = 1 + next_random(mut seed) % n;
+        check = (check * 31 + beautiful_partitions(s, k, m)) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}
