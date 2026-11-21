@@ -1,0 +1,69 @@
+// LeetCode #2402: Meeting Rooms III -- the bench, the ★ arm: a
+// `PriorityQueue` of free rooms and one of (end, room) for the rooms in
+// use, over the meetings sorted by start.
+
+fn most_booked(n: i64, meetings: Vec[(i64, i64)]) -> i64 {
+    let mut order = meetings.clone();
+    order.sort();
+    let mut free: PriorityQueue[i64] = PriorityQueue.from((0..n).collect());
+    let mut busy: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    let mut count: Vec[i64] = Vec.filled(n, 0);
+    for (start, end) in order.iter() {
+        while busy.len() > 0 and busy.peek().unwrap().0 <= start {
+            let (_, room) = busy.pop().unwrap();
+            free.push(room);
+        }
+        match free.pop() {
+            Some(room) => {
+                count[room] += 1;
+                busy.push((end, room));
+            },
+            None => {
+                let (at, room) = busy.pop().unwrap();
+                count[room] += 1;
+                busy.push((at + end - start, room));
+            },
+        }
+    }
+    let mut best = 0;
+    for room in 1..n {
+        if count[room] > count[best] {
+            best = room;
+        }
+    }
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 10 cases of 10^5 meetings with distinct starts below 5 * 10^5, case
+    // i lasting up to 1 + 500 i, in 100 rooms; each pass answers them all
+    // and folds every answer, plus the pass
+    let mut seed = 2402;
+    let mut cases: Vec[Vec[(i64, i64)]] = Vec.new();
+    for c in 0..10 {
+        let mut starts: Vec[i64] = (0..500000).collect();
+        for i in 0..100000 {
+            let j = i + (next_random(mut seed) * 32768 + next_random(mut seed)) % (500000 - i);
+            let x = starts[i];
+            starts[i] = starts[j];
+            starts[j] = x;
+        }
+        let mut meetings: Vec[(i64, i64)] = Vec.new();
+        for i in 0..100000 {
+            meetings.push((starts[i], starts[i] + 1 + next_random(mut seed) % (1 + 500 * c)));
+        }
+        cases.push(meetings);
+    }
+    let mut check = 0;
+    for p in 0..10 {
+        for meetings in cases.iter() {
+            check = (check * 31 + most_booked(100, meetings) + p) % 1000000007;
+        }
+    }
+    println(f"10 passes over 10 cases of 10^5 meetings in 100 rooms: checksum {check}");
+}

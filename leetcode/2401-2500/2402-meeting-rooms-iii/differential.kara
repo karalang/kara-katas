@@ -1,0 +1,379 @@
+// LeetCode #2402: Meeting Rooms III -- the differential. The six arms
+// against the statement read literally: time run one unit at a time,
+// each room busy until its meeting's end, and at each unit the rooms that
+// have come free given, lowest first, to the waiting meetings, earliest
+// original start first. No heaps. 360 cases: 300 of 1 to 5 rooms and 1
+// to 12 meetings starting below 40, which the literal reading answers;
+// 30 of up to 100 rooms and up to 3000 meetings; and 30 of up to 10 rooms
+// and up to 3000 long meetings. Every case is drawn before any arm
+// answers.
+//
+// P1  up to 12 meetings: the answer is the literal reading's
+// P2  every time moved 7 later: the same answer
+// P3  the meetings listed in reverse: the same answer
+// P4  every time doubled: the same answer
+// P5  every meeting cut to one unit long: room 0
+// P6  each arm agrees with at least three of the other five
+
+import std.cmp.Reverse;
+
+// ---- the statement read literally ------------------------------------------
+
+fn booked_literally(n: i64, meetings: Vec[(i64, i64)]) -> i64 {
+    let mut pending = meetings.clone();
+    pending.sort();
+    let mut ends_at: Vec[i64] = Vec.filled(n, -1);
+    let mut count: Vec[i64] = Vec.filled(n, 0);
+    let mut waiting: Vec[(i64, i64)] = Vec.new();
+    let mut next = 0;
+    let mut t = 0;
+    while next < pending.len() or waiting.len() > 0 {
+        for room in 0..n {
+            if ends_at[room] >= 0 and ends_at[room] <= t {
+                ends_at[room] = -1;
+            }
+        }
+        while next < pending.len() and pending[next].0 == t {
+            waiting.push(pending[next]);
+            next += 1;
+        }
+        let mut room = 0;
+        while waiting.len() > 0 and room < n {
+            if ends_at[room] < 0 {
+                let (start, end) = waiting.remove(0);
+                ends_at[room] = t + end - start;
+                count[room] += 1;
+            }
+            room += 1;
+        }
+        t += 1;
+    }
+    let mut best = 0;
+    for room in 1..n {
+        if count[room] > count[best] {
+            best = room;
+        }
+    }
+    best
+}
+
+// ---- star (rooms.kara) ---------------------------------------------------
+
+fn star_most_booked(n: i64, meetings: Vec[(i64, i64)]) -> i64 {
+    let mut order = meetings.clone();
+    order.sort();
+    let mut free: PriorityQueue[i64] = PriorityQueue.from((0..n).collect());
+    let mut busy: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    let mut count: Vec[i64] = Vec.filled(n, 0);
+    for (start, end) in order.iter() {
+        while busy.len() > 0 and busy.peek().unwrap().0 <= start {
+            let (_, room) = busy.pop().unwrap();
+            free.push(room);
+        }
+        match free.pop() {
+            Some(room) => {
+                count[room] += 1;
+                busy.push((end, room));
+            },
+            None => {
+                let (at, room) = busy.pop().unwrap();
+                count[room] += 1;
+                busy.push((at + end - start, room));
+            },
+        }
+    }
+    let mut best = 0;
+    for room in 1..n {
+        if count[room] > count[best] {
+            best = room;
+        }
+    }
+    best
+}
+
+// ---- scan (rooms_scan.kara) ----------------------------------------------
+
+fn scan_most_booked(n: i64, meetings: Vec[(i64, i64)]) -> i64 {
+    let mut order = meetings.clone();
+    order.sort();
+    let mut free_at: Vec[i64] = Vec.filled(n, 0);
+    let mut count: Vec[i64] = Vec.filled(n, 0);
+    for (start, end) in order.iter() {
+        let mut chosen = -1;
+        let mut earliest = 0;
+        for room in 0..n {
+            if free_at[room] <= start {
+                chosen = room;
+                break;
+            }
+            if free_at[room] < free_at[earliest] {
+                earliest = room;
+            }
+        }
+        if chosen >= 0 {
+            free_at[chosen] = end;
+            count[chosen] += 1;
+        } else {
+            free_at[earliest] += end - start;
+            count[earliest] += 1;
+        }
+    }
+    let mut best = 0;
+    for room in 1..n {
+        if count[room] > count[best] {
+            best = room;
+        }
+    }
+    best
+}
+
+// ---- sorted (rooms_sorted.kara) ------------------------------------------
+
+fn sorted_most_booked(n: i64, meetings: Vec[(i64, i64)]) -> i64 {
+    let mut order = meetings.clone();
+    order.sort();
+    let mut free: SortedSet[i64] = SortedSet.from((0..n).collect());
+    let mut busy: SortedSet[(i64, i64)] = SortedSet.new();
+    let mut count: Vec[i64] = Vec.filled(n, 0);
+    for (start, end) in order.iter() {
+        while not busy.is_empty() and busy.min().unwrap().0 <= start {
+            let (_, room) = busy.pop_first().unwrap();
+            free.insert(room);
+        }
+        let room = if free.is_empty() {
+            let (at, room) = busy.pop_first().unwrap();
+            busy.insert((at + end - start, room));
+            room
+        } else {
+            let room = free.pop_first().unwrap();
+            busy.insert((end, room));
+            room
+        };
+        count[room] += 1;
+    }
+    let most = count.iter().max().unwrap();
+    count.iter().position(|c| c == most).unwrap()
+}
+
+// ---- mask (rooms_mask.kara) ----------------------------------------------
+
+fn mask_most_booked(n: i64, meetings: Vec[(i64, i64)]) -> i64 {
+    let mut order = meetings.clone();
+    order.sort();
+    let mut words: Vec[i64] = Vec.filled((n + 59) / 60, 0);
+    for room in 0..n {
+        words[room / 60] |= 1 << room % 60;
+    }
+    let mut busy: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    let mut count: Vec[i64] = Vec.filled(n, 0);
+    for (start, end) in order.iter() {
+        while busy.len() > 0 and busy.peek().unwrap().0 <= start {
+            let (_, room) = busy.pop().unwrap();
+            words[room / 60] |= 1 << room % 60;
+        }
+        let mut room = -1;
+        for w in 0..words.len() {
+            if words[w] != 0 {
+                room = w * 60 + words[w].trailing_zeros();
+                break;
+            }
+        }
+        if room >= 0 {
+            words[room / 60] &= ~(1 << room % 60);
+            busy.push((end, room));
+        } else {
+            let (at, taken) = busy.pop().unwrap();
+            room = taken;
+            busy.push((at + end - start, room));
+        }
+        count[room] += 1;
+    }
+    let mut best = 0;
+    for r in 1..n {
+        if count[r] > count[best] {
+            best = r;
+        }
+    }
+    best
+}
+
+// ---- iter (rooms_iter.kara) ----------------------------------------------
+
+fn iter_most_booked(n: i64, meetings: Vec[(i64, i64)]) -> i64 {
+    let mut order = meetings.clone();
+    order.sort();
+    let start_state: (Vec[i64], Vec[i64]) = (Vec.filled(n, 0), Vec.filled(n, 0));
+    let (_, count) = order.iter().fold(start_state, |state, meeting| {
+        let mut (free_at, count) = state;
+        let (start, end) = meeting;
+        match free_at.iter().position(|t| t <= start) {
+            Some(room) => {
+                free_at[room] = end;
+                count[room] += 1;
+            },
+            None => {
+                let room = (0..n).min_by_key(|r| (free_at[r], r)).unwrap();
+                free_at[room] += end - start;
+                count[room] += 1;
+            },
+        }
+        (free_at, count)
+    });
+    (0..n).max_by_key(|r| (count[r], -r)).unwrap()
+}
+
+// ---- solution (rooms_solution.kara) --------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn most_booked(n: i32, meetings: own Vec[Vec[i32]]) -> i32 {
+        let mut meetings = meetings;
+        meetings.sort();
+        let mut idle: PriorityQueue[Reverse[i64]] = PriorityQueue.max_first_from((0..n as i64).map(|x| Reverse {
+            value: x,
+        }).collect());
+        let mut busy: PriorityQueue[Reverse[(i64, i64)]] = PriorityQueue.max_first();
+        let mut cnt = Vec.filled(n, 0);
+        for m in meetings.iter() {
+            let (s, e) = (m[0] as i64, m[1] as i64);
+            while let Some(Reverse { value: (t, r) }) = busy.peek().cloned() {
+                if t > s {
+                    break;
+                }
+                busy.pop();
+                idle.push(Reverse {
+                    value: r,
+                });
+            }
+            if let Some(Reverse { value: r }) = idle.pop() {
+                cnt[r] += 1;
+                busy.push(Reverse {
+                    value: (e, r),
+                });
+            } else {
+                let Reverse { value: (t, r) } = busy.pop().unwrap();
+                cnt[r] += 1;
+                busy.push(Reverse {
+                    value: (t + e - s, r),
+                });
+            }
+        }
+        let mut ans = 0;
+        for i in 1..n as i64 {
+            if cnt[i] > cnt[ans] {
+                ans = i;
+            }
+        }
+        ans as i32
+    }
+}
+
+fn solution_most_booked(n: i64, meetings: Vec[(i64, i64)]) -> i64 {
+    let rows: Vec[Vec[i32]] = meetings.iter().map(|m| [m.0 as i32, m.1 as i32].to_vec()).collect();
+    Solution.most_booked(n as i32, rows)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, n: i64, meetings: Vec[(i64, i64)]) -> i64 {
+    match arm {
+        0 => star_most_booked(n, meetings),
+        1 => scan_most_booked(n, meetings),
+        2 => sorted_most_booked(n, meetings),
+        3 => mask_most_booked(n, meetings),
+        4 => iter_most_booked(n, meetings),
+        _ => solution_most_booked(n, meetings),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` meetings with distinct starts below `span`, each lasting 1 to
+// `longest`, in a shuffled order.
+fn draw(seed: mut ref i64, count: i64, span: i64, longest: i64) -> Vec[(i64, i64)] {
+    let mut starts: Vec[i64] = (0..span).collect();
+    for i in 0..count {
+        let j = i + next_random(mut seed) % (span - i);
+        let x = starts[i];
+        starts[i] = starts[j];
+        starts[j] = x;
+    }
+    (0..count).map(|i| (starts[i], starts[i] + 1 + next_random(mut seed) % longest)).collect()
+}
+
+fn main() {
+    let names = ["star", "scan", "sorted", "mask", "iter", "solution"];
+    let mut seed = 2402;
+    let mut cases: Vec[(i64, Vec[(i64, i64)])] = Vec.new();
+    for t in 0..360 {
+        if t < 300 {
+            let n = 1 + next_random(mut seed) % 5;
+            let count = 1 + next_random(mut seed) % 12;
+            cases.push((n, draw(mut seed, count, 40, 12)));
+        } else if t < 330 {
+            let n = 1 + next_random(mut seed) % 100;
+            let count = 1 + next_random(mut seed) % 3000;
+            cases.push((n, draw(mut seed, count, 20000, 200)));
+        } else {
+            let n = 1 + next_random(mut seed) % 10;
+            let count = 1 + next_random(mut seed) % 3000;
+            cases.push((n, draw(mut seed, count, 20000, 5000)));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (n, meetings) = cases[c].clone();
+        let truth = if meetings.len() <= 12 {
+            booked_literally(n, meetings)
+        } else {
+            -1
+        };
+        if truth >= 0 {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let later: Vec[(i64, i64)] = meetings.iter().map(|m| (m.0 + 7, m.1 + 7)).collect();
+        let mut reversed = meetings.clone();
+        reversed.reverse();
+        let doubled: Vec[(i64, i64)] = meetings.iter().map(|m| (2 * m.0, 2 * m.1)).collect();
+        let short: Vec[(i64, i64)] = meetings.iter().map(|m| (m.0, m.0 + 1)).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, n, meetings)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [truth < 0 or value == truth, answer(arm, n, later) == value, answer(arm, n, reversed) == value, answer(arm, n, doubled) == value, answer(arm, n, short) == 0, same >= 3];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

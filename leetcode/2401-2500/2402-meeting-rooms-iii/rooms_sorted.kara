@@ -1,0 +1,82 @@
+// LeetCode #2402: Meeting Rooms III -- two ordered sets. A `SortedSet` of
+// free rooms and a `SortedSet` of (end, room) for the rooms in use, each
+// read from its smallest end by `min` and `pop_first`. The pair keeps the
+// set's elements distinct, since no two meetings hold one room at once.
+// O(m log m + m log n).
+
+fn most_booked(n: i64, meetings: Vec[(i64, i64)]) -> i64 {
+    let mut order = meetings.clone();
+    order.sort();
+    let mut free: SortedSet[i64] = SortedSet.from((0..n).collect());
+    let mut busy: SortedSet[(i64, i64)] = SortedSet.new();
+    let mut count: Vec[i64] = Vec.filled(n, 0);
+    for (start, end) in order.iter() {
+        while not busy.is_empty() and busy.min().unwrap().0 <= start {
+            let (_, room) = busy.pop_first().unwrap();
+            free.insert(room);
+        }
+        let room = if free.is_empty() {
+            let (at, room) = busy.pop_first().unwrap();
+            busy.insert((at + end - start, room));
+            room
+        } else {
+            let room = free.pop_first().unwrap();
+            busy.insert((end, room));
+            room
+        };
+        count[room] += 1;
+    }
+    let most = count.iter().max().unwrap();
+    count.iter().position(|c| c == most).unwrap()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` meetings with distinct starts below `span`, each lasting 1 to
+// `longest`, in a shuffled order.
+fn meetings(seed: mut ref i64, count: i64, span: i64, longest: i64) -> Vec[(i64, i64)] {
+    let mut starts: Vec[i64] = (0..span).collect();
+    for i in 0..count {
+        let j = i + (next_random(mut seed) * 32768 + next_random(mut seed)) % (span - i);
+        let x = starts[i];
+        starts[i] = starts[j];
+        starts[j] = x;
+    }
+    (0..count).map(|i| {
+        let s = starts[i];
+        (s, s + 1 + next_random(mut seed) % longest)
+    }).collect()
+}
+
+fn main() {
+    // LeetCode's two examples; one room; three rooms and every meeting at
+    // once, overlapping
+    println(f"{most_booked(2, [(0, 10), (1, 5), (2, 7), (3, 4)].to_vec())}");
+    println(f"{most_booked(3, [(1, 20), (2, 10), (3, 5), (4, 9), (6, 8)].to_vec())}");
+    println(f"{most_booked(1, [(5, 6), (0, 3), (1, 2)].to_vec())}");
+    let crowd: Vec[(i64, i64)] = (0..10).map(|i| (i, 100)).collect();
+    println(f"{most_booked(3, crowd)}");
+    // 100 rooms and 10^5 meetings starting below 5 * 10^5, short and then
+    // long, and 7 rooms with every meeting long
+    let mut seed = 2402;
+    println(f"{most_booked(100, meetings(mut seed, 100000, 500000, 50))}");
+    println(f"{most_booked(100, meetings(mut seed, 100000, 500000, 5000))}");
+    println(f"{most_booked(7, meetings(mut seed, 20000, 100000, 100000))}");
+    // 2000 random cases of 1 to 6 rooms and up to 40 meetings; a checksum
+    // of the answers and their total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 6;
+        let count = 1 + next_random(mut seed) % 40;
+        let a = most_booked(n, meetings(mut seed, count, 60, 1 + next_random(mut seed) % 20));
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"2000 random: checksum {check}, total {total}");
+}
