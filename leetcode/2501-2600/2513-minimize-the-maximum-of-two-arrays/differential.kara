@@ -1,0 +1,265 @@
+// LeetCode #2513: Minimize the Maximum of Two Arrays -- the differential.
+// The six arms against the statement read literally: for each bound m
+// from 1 up, a search that hands every number from 1 to m in turn to the
+// first array, the second, or neither, as each array allows, until both
+// are full; the first m that can be filled. No count is divided out.
+// 300 random cases of divisors 2 to 6 and counts of 1 to 7 together;
+// then 20 with both divisors 2, and 40 with counts 4 and 4; every one
+// drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  from c1 + c2 to 2 (c1 + c2) - 1
+// P3  the two arrays swapped, divisor with count: the same answer
+// P4  one more number in the first array: the answer grows by 0 to 2
+// P5  the first divisor for both: the answer that of counts c1 + c2 - 1
+//     and 1
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally
+
+fn fill(x: i64, m: i64, d1: i64, d2: i64, need1: i64, need2: i64) -> bool {
+    if need1 == 0 and need2 == 0 {
+        return true;
+    }
+    if x > m or m - x + 1 < need1 + need2 {
+        return false;
+    }
+    (need1 > 0 and x % d1 != 0 and fill(x + 1, m, d1, d2, need1 - 1, need2))
+        or (need2 > 0 and x % d2 != 0 and fill(x + 1, m, d1, d2, need1, need2 - 1))
+        or fill(x + 1, m, d1, d2, need1, need2)
+}
+
+fn literal(d1: i64, d2: i64, c1: i64, c2: i64) -> i64 {
+    let mut m = 1;
+    while not fill(1, m, d1, d2, c1, c2) {
+        m += 1;
+    }
+    m
+}
+
+// ---- star (minimize.kara) ------------------------------------------------
+
+fn star_gcd(a: i64, b: i64) -> i64 {
+    let mut (a, b) = (a, b);
+    while b != 0 {
+        let r = a % b;
+        a = b;
+        b = r;
+    }
+    a
+}
+
+fn star_minimize_set(divisor1: i64, divisor2: i64, unique_cnt1: i64, unique_cnt2: i64) -> i64 {
+    let lcm = divisor1 / star_gcd(divisor1, divisor2) * divisor2;
+    let enough = |x: i64| x - x / divisor1 >= unique_cnt1 and x - x / divisor2 >= unique_cnt2 and x - x / lcm >= unique_cnt1 + unique_cnt2;
+    let mut lo = 1;
+    let mut hi = 2 * (unique_cnt1 + unique_cnt2);
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if enough(mid) {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    lo
+}
+
+// ---- closed (minimize_closed.kara) ---------------------------------------
+
+fn closed_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { closed_gcd(b, a % b) }
+}
+
+fn closed_least(count: i64, divisor: i64) -> i64 {
+    count + (count - 1) / (divisor - 1)
+}
+
+fn closed_minimize_set(divisor1: i64, divisor2: i64, unique_cnt1: i64, unique_cnt2: i64) -> i64 {
+    let lcm = divisor1 / closed_gcd(divisor1, divisor2) * divisor2;
+    closed_least(unique_cnt1, divisor1).max(closed_least(unique_cnt2, divisor2)).max(closed_least(unique_cnt1 + unique_cnt2, lcm))
+}
+
+// ---- gallop (minimize_gallop.kara) ---------------------------------------
+
+fn gallop_gcd(a: i64, b: i64) -> i64 {
+    let mut (a, b) = (a, b);
+    while b != 0 {
+        let r = a % b;
+        a = b;
+        b = r;
+    }
+    a
+}
+
+fn gallop_minimize_set(divisor1: i64, divisor2: i64, unique_cnt1: i64, unique_cnt2: i64) -> i64 {
+    let lcm = divisor1 / gallop_gcd(divisor1, divisor2) * divisor2;
+    let enough = |x: i64| x - x / divisor1 >= unique_cnt1 and x - x / divisor2 >= unique_cnt2 and x - x / lcm >= unique_cnt1 + unique_cnt2;
+    let mut hi = 1;
+    while not enough(hi) {
+        hi *= 2;
+    }
+    let mut lo = hi / 2 + 1;
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if enough(mid) {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    lo
+}
+
+// ---- rec (minimize_rec.kara) ---------------------------------------------
+
+fn rec_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { rec_gcd(b, a % b) }
+}
+
+fn rec_enough(x: i64, d1: i64, d2: i64, lcm: i64, c1: i64, c2: i64) -> bool {
+    x - x / d1 >= c1 and x - x / d2 >= c2 and x - x / lcm >= c1 + c2
+}
+
+fn rec_search(lo: i64, hi: i64, d1: i64, d2: i64, lcm: i64, c1: i64, c2: i64) -> i64 {
+    if lo == hi {
+        lo
+    } else {
+        let mid = lo + (hi - lo) / 2;
+        if rec_enough(mid, d1, d2, lcm, c1, c2) {
+            rec_search(lo, mid, d1, d2, lcm, c1, c2)
+        } else {
+            rec_search(mid + 1, hi, d1, d2, lcm, c1, c2)
+        }
+    }
+}
+
+fn rec_minimize_set(divisor1: i64, divisor2: i64, unique_cnt1: i64, unique_cnt2: i64) -> i64 {
+    let lcm = divisor1 / rec_gcd(divisor1, divisor2) * divisor2;
+    rec_search(1, 2 * (unique_cnt1 + unique_cnt2), divisor1, divisor2, lcm, unique_cnt1, unique_cnt2)
+}
+
+// ---- iter (minimize_iter.kara) -------------------------------------------
+
+fn iter_minimize_set(divisor1: i64, divisor2: i64, unique_cnt1: i64, unique_cnt2: i64) -> i64 {
+    let (g, _) = (0..64).fold((divisor1, divisor2), |(a, b), _| if b == 0 { (a, b) } else { (b, a % b) });
+    let lcm = divisor1 / g * divisor2;
+    let enough = |x: i64| x - x / divisor1 >= unique_cnt1 and x - x / divisor2 >= unique_cnt2 and x - x / lcm >= unique_cnt1 + unique_cnt2;
+    (0..32).rev().fold(0, |x, bit| if enough(x + (1 << bit)) { x } else { x + (1 << bit) }) + 1
+}
+
+// ---- solution (minimize_solution.kara) -----------------------------------
+
+struct Solution {}
+
+fn solution_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { solution_gcd(b, a % b) }
+}
+
+impl Solution {
+    pub fn minimize_set(divisor1: i32, divisor2: i32, unique_cnt1: i32, unique_cnt2: i32) -> i32 {
+        let (d1, d2) = (divisor1 as i64, divisor2 as i64);
+        let (c1, c2) = (unique_cnt1 as i64, unique_cnt2 as i64);
+        let l = d1 / solution_gcd(d1, d2) * d2;
+        let mut (lo, hi) = (1, i64.MAX / 4);
+        while lo < hi {
+            let m = lo + (hi - lo) / 2;
+            if m - m / d1 >= c1 and m - m / d2 >= c2 and m - m / l >= c1 + c2 {
+                hi = m;
+            } else {
+                lo = m + 1;
+            }
+        }
+        lo as i32
+    }
+}
+
+fn solution_minimize_set(divisor1: i64, divisor2: i64, unique_cnt1: i64, unique_cnt2: i64) -> i64 {
+    Solution.minimize_set(divisor1 as i32, divisor2 as i32, unique_cnt1 as i32, unique_cnt2 as i32)
+}
+
+// ---- the differential --------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn answer(arm: i64, d1: i64, d2: i64, c1: i64, c2: i64) -> i64 {
+    match arm {
+        0 => star_minimize_set(d1, d2, c1, c2),
+        1 => closed_minimize_set(d1, d2, c1, c2),
+        2 => gallop_minimize_set(d1, d2, c1, c2),
+        3 => rec_minimize_set(d1, d2, c1, c2),
+        4 => iter_minimize_set(d1, d2, c1, c2),
+        _ => solution_minimize_set(d1, d2, c1, c2),
+    }
+}
+
+fn main() {
+    let names = ["star", "closed", "gallop", "rec", "iter", "solution"];
+    let mut seed = 2513;
+    let mut problems: Vec[(i64, i64, i64, i64)] = Vec.new();
+    for t in 0..360 {
+        let (d1, d2) = if t >= 300 and t < 320 { (2, 2) } else { (next_random(mut seed) % 5 + 2, next_random(mut seed) % 5 + 2) };
+        let (c1, c2) = if t >= 320 {
+            (4, 4)
+        } else {
+            let c1 = next_random(mut seed) % 6 + 1;
+            (c1, next_random(mut seed) % (7 - c1) + 1)
+        };
+        problems.push((d1, d2, c1, c2));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut tight = 0;
+    for (d1, d2, c1, c2) in problems.iter() {
+        let truth = literal(d1, d2, c1, c2);
+        if truth == c1 + c2 {
+            tight += 1;
+        }
+        check = (check * 31 + truth) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, d1, d2, c1, c2)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let more = answer(arm, d1, d2, c1 + 1, c2);
+            let verdicts = [
+                x == truth,
+                x >= c1 + c2 and x <= 2 * (c1 + c2) - 1,
+                answer(arm, d2, d1, c2, c1) == x,
+                more >= x and more <= x + 2,
+                answer(arm, d1, d1, c1, c2) == answer(arm, d1, d1, c1 + c2 - 1, 1),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{d1} {d2} {c1} {c2}, arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} cases, {tight} with no number to spare: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

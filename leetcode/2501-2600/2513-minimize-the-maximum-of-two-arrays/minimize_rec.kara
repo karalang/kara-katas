@@ -1,0 +1,86 @@
+// LeetCode #2513: Minimize the Maximum of Two Arrays -- recursions: the
+// greatest common divisor by Euclid, and the binary search as a function
+// of its range, the least enough x in [lo, hi] when hi is enough. About
+// 31 deep.
+
+fn gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+fn enough(x: i64, d1: i64, d2: i64, lcm: i64, c1: i64, c2: i64) -> bool {
+    x - x / d1 >= c1 and x - x / d2 >= c2 and x - x / lcm >= c1 + c2
+}
+
+fn search(lo: i64, hi: i64, d1: i64, d2: i64, lcm: i64, c1: i64, c2: i64) -> i64 {
+    if lo == hi {
+        lo
+    } else {
+        let mid = lo + (hi - lo) / 2;
+        if enough(mid, d1, d2, lcm, c1, c2) {
+            search(lo, mid, d1, d2, lcm, c1, c2)
+        } else {
+            search(mid + 1, hi, d1, d2, lcm, c1, c2)
+        }
+    }
+}
+
+fn minimize_set(divisor1: i64, divisor2: i64, unique_cnt1: i64, unique_cnt2: i64) -> i64 {
+    let lcm = divisor1 / gcd(divisor1, divisor2) * divisor2;
+    search(1, 2 * (unique_cnt1 + unique_cnt2), divisor1, divisor2, lcm, unique_cnt1, unique_cnt2)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a value from 0 below `top`, from two draws, since one is below 32768
+fn below(top: i64, seed: mut ref i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % top
+}
+
+fn main() {
+    // LeetCode's three examples, then five more
+    let cases: Vec[(i64, i64, i64, i64)] = [
+        (2, 7, 1, 3),
+        (3, 5, 2, 1),
+        (2, 4, 8, 2),
+        (2, 2, 1, 1),
+        (2, 3, 1, 1),
+        (100000, 100000, 1, 1),
+        (2, 2, 500000000, 500000000),
+        (99991, 99989, 999999999, 1),
+    ].to_vec();
+    for (d1, d2, c1, c2) in cases.iter() {
+        println(f"{d1} {d2} {c1} {c2} -> {minimize_set(d1, d2, c1, c2)}");
+    }
+    // 2000 random with divisors to 10 and counts to 50, and 2000 with
+    // divisors to 10^5 and counts to 10^9 together: the sum of the
+    // answers and a checksum
+    let mut seed = 2513;
+    for (top, most) in [(10, 50), (100000, 1000000000)] {
+        let mut total = 0;
+        let mut check = 0;
+        for _ in 0..2000 {
+            let d1 = below(top - 1, mut seed) + 2;
+            let d2 = below(top - 1, mut seed) + 2;
+            let c1 = below(most - 1, mut seed) + 1;
+            let c2 = below(most - c1, mut seed) + 1;
+            let a = minimize_set(d1, d2, c1, c2);
+            total += a;
+            check = (check * 31 + a) % 1000000007;
+        }
+        println(f"2000 random, divisors to {top}: total {total}, checksum {check}");
+    }
+    // the constraints' largest: 10^9 in all, split every 10^8, over the
+    // divisor pairs (2, 3), (2, 4), (99999, 100000) and (100000, 100000)
+    for (d1, d2) in [(2, 3), (2, 4), (99999, 100000), (100000, 100000)] {
+        let mut check = 0;
+        for s in 1..10 {
+            check = (check * 31 + minimize_set(d1, d2, s * 100000000, 1000000000 - s * 100000000)) % 1000000007;
+        }
+        println(f"10^9 split nine ways, divisors {d1} and {d2}: checksum {check}");
+    }
+}
