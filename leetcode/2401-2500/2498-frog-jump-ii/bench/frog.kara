@@ -1,0 +1,47 @@
+// LeetCode #2498: Frog Jump II -- benchmark of the ★ arm (frog.kara): 20
+// rows of 10^5 stones, built once, then 55 passes; each moves one stone
+// of every row to a place between its neighbours chosen by the checksum
+// so far, asks, and puts it back, folding the answer plus the pass into
+// the checksum.
+
+fn max_jump(stones: Vec[i64]) -> i64 {
+    let mut cost = stones[1] - stones[0];
+    for i in 2..stones.len() {
+        cost = cost.max(stones[i] - stones[i - 2]);
+    }
+    cost
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let n = 100000;
+    let passes = 55;
+    let mut seed = 2498;
+    let mut rows: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..20 {
+        let mut stones: Vec[i64] = [0].to_vec();
+        for _ in 1..n {
+            let last = stones[stones.len() - 1];
+            stones.push(last + next_random(mut seed) % 10000 + 1);
+        }
+        rows.push(stones);
+    }
+    let mut check = 0;
+    for p in 0..passes {
+        for r in 0..20 {
+            let at = check % (n - 2) + 1;
+            let was = rows[r][at];
+            let room = rows[r][at + 1] - rows[r][at - 1] - 1;
+            if room > 0 {
+                rows[r][at] = rows[r][at - 1] + 1 + (check + p) % room;
+            }
+            check = (check * 31 + max_jump(rows[r]) + p) % 1000000007;
+            rows[r][at] = was;
+        }
+    }
+    println(f"{passes} passes over 20 rows of 10^5: checksum {check}");
+}

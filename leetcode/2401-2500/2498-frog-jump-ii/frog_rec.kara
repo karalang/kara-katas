@@ -1,0 +1,73 @@
+// LeetCode #2498: Frog Jump II -- by recursion from the end: the cost of
+// the stones up to `i` is the larger of the jump from `i - 2` to `i` and
+// the cost up to `i - 1`, down to the first gap. O(n), O(n) deep.
+
+fn cost_to(stones: Vec[i64], i: i64) -> i64 {
+    if i == 1 {
+        return stones[1] - stones[0];
+    }
+    (stones[i] - stones[i - 2]).max(cost_to(stones, i - 1))
+}
+
+fn max_jump(stones: Vec[i64]) -> i64 {
+    cost_to(stones, stones.len() - 1)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// `n` stones from 0, each gap from 1 to `top`
+fn random_stones(n: i64, top: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut stones: Vec[i64] = [0].to_vec();
+    for _ in 1..n {
+        let last = stones[stones.len() - 1];
+        stones.push(last + wide(mut seed) % top + 1);
+    }
+    stones
+}
+
+fn main() {
+    // LeetCode's two examples, then seven more
+    let cases: Vec[Vec[i64]] = [
+        [0, 2, 5, 6, 7].to_vec(),
+        [0, 3, 9].to_vec(),
+        [0, 1].to_vec(),
+        [0, 1000000000].to_vec(),
+        [0, 1, 2, 3, 4, 5].to_vec(),
+        [0, 1, 100].to_vec(),
+        [0, 99, 100].to_vec(),
+        [0, 10, 11, 12, 30].to_vec(),
+        [0, 1, 3, 6, 10, 15, 21].to_vec(),
+    ].to_vec();
+    for stones in cases.iter() {
+        println(f"{stones.len()} stones, last {stones[stones.len() - 1]} -> {max_jump(stones)}");
+    }
+    // 2000 random rows of 2 to 50 stones with gaps to 10 and to 10^6: a
+    // checksum each
+    let mut seed = 2498;
+    for top in [10, 1000000] {
+        let mut check = 0;
+        for _ in 0..2000 {
+            let n = next_random(mut seed) % 49 + 2;
+            check = (check * 31 + max_jump(random_stones(n, top, mut seed))) % 1000000007;
+        }
+        println(f"2000 random to {top}: checksum {check}");
+    }
+    // the constraints' largest, 10^5 stones: 0 to 99999; gaps to 10^4,
+    // the last stone under 10^9; and evenly spread to 10^9
+    let n = 100000;
+    let steps: Vec[i64] = (0..n).collect();
+    let random = random_stones(n, 10000, mut seed);
+    let spread: Vec[i64] = (0..n).map(|i| i * 10000 + i % 7).collect();
+    for (name, stones) in [("steps", steps), ("random", random), ("spread", spread)] {
+        println(f"10^5 {name}, last {stones[n - 1]} -> {max_jump(stones)}");
+    }
+}
