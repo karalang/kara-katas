@@ -1,0 +1,311 @@
+// LeetCode #2430: Maximum Deletions on a String -- the differential. The
+// six arms against the statement read literally: the operations tried
+// every way by recursion on the string left, which is always a suffix,
+// each deletion of the first `i` letters allowed when the string's own
+// slices `[0, i)` and `[i, 2 i)` are equal as strings; the most found
+// for each suffix kept in a `Map` by where it starts. 360 cases: 300
+// random words of 1 to 12 letters from the first 1 to 3; then 30 of up
+// to 60 letters from 2; then 30 of a random block of 1 to 4 letters
+// repeated 2 to 6 times, a random tail after it. Every letter of a
+// random word is often a copy of one just before it. Every case is
+// drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  every letter renamed to the next, `z` to `a`: the same answer
+// P3  a letter the word lacks put in front: 1
+// P4  the word written twice: at least one more
+// P5  the first letter doubled: at least one more, and no answer past
+//     the word's length
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn most_from(s: String, start: i64, known: mut ref Map[i64, i64]) -> i64 {
+    if known.contains_key(start) {
+        return known[start];
+    }
+    let rest = s.substring(start, s.len());
+    let mut most = 1;
+    for i in 1..rest.len() / 2 + 1 {
+        if rest.substring(0, i) == rest.substring(i, 2 * i) {
+            most = most.max(1 + most_from(s, start + i, mut known));
+        }
+    }
+    known[start] = most;
+    most
+}
+
+fn deletions_literally(s: String) -> i64 {
+    let mut known: Map[i64, i64] = Map.new();
+    most_from(s, 0, mut known)
+}
+
+// ---- star (deletions.kara) -----------------------------------------------
+
+fn star_delete_string(s: String) -> i64 {
+    let b = s.bytes();
+    let n = b.len();
+    let mut next_row: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut row: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut best: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in (0..n).rev() {
+        // row[k] = the common prefix of the suffixes at `i` and `k`
+        for k in i + 1..n {
+            row[k] = if b[i] == b[k] { next_row[k + 1] + 1 } else { 0 };
+        }
+        best[i] = 1;
+        for j in 1..(n - i) / 2 + 1 {
+            if row[i + j] >= j {
+                best[i] = best[i].max(best[i + j] + 1);
+            }
+        }
+        let done = next_row;
+        next_row = row;
+        row = done;
+    }
+    best[0]
+}
+
+// ---- naive (deletions_naive.kara) ----------------------------------------
+
+fn naive_delete_string(s: String) -> i64 {
+    let b = s.bytes();
+    let n = b.len();
+    let mut best: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in (0..n).rev() {
+        best[i] = 1;
+        for j in 1..(n - i) / 2 + 1 {
+            if b[i..i + j] == b[i + j..i + 2 * j] {
+                best[i] = best[i].max(best[i + j] + 1);
+            }
+        }
+    }
+    best[0]
+}
+
+// ---- hash (deletions_hash.kara) ------------------------------------------
+
+const MOD: i64 = 1000000007;
+const BASE: i64 = 131;
+
+fn hash_delete_string(s: String) -> i64 {
+    let b = s.bytes();
+    let n = b.len();
+    let mut prefix: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut power: Vec[i64] = Vec.filled(n + 1, 1);
+    for i in 0..n {
+        prefix[i + 1] = (prefix[i] * BASE + b[i]) % MOD;
+        power[i + 1] = power[i] * BASE % MOD;
+    }
+    // the hash of the slice from `start`, `len` letters long
+    let slice_hash = |start: i64, len: i64| (prefix[start + len] - prefix[start] * power[len] % MOD + MOD) % MOD;
+    let mut best: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in (0..n).rev() {
+        best[i] = 1;
+        for j in 1..(n - i) / 2 + 1 {
+            if slice_hash(i, j) == slice_hash(i + j, j) and b[i..i + j] == b[i + j..i + 2 * j] {
+                best[i] = best[i].max(best[i + j] + 1);
+            }
+        }
+    }
+    best[0]
+}
+
+// ---- z (deletions_z.kara) ------------------------------------------------
+
+fn z_z_array(b: Slice[u8]) -> Vec[i64] {
+    let n = b.len();
+    let mut z: Vec[i64] = Vec.filled(n, 0);
+    let mut left = 0;
+    let mut right = 0;
+    for k in 1..n {
+        if k < right {
+            z[k] = (right - k).min(z[k - left]);
+        }
+        while k + z[k] < n and b[z[k]] == b[k + z[k]] {
+            z[k] += 1;
+        }
+        if k + z[k] > right {
+            left = k;
+            right = k + z[k];
+        }
+    }
+    z
+}
+
+fn z_delete_string(s: String) -> i64 {
+    let b = s.bytes();
+    let n = b.len();
+    let mut best: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in (0..n).rev() {
+        let z = z_z_array(b[i..]);
+        best[i] = 1;
+        for j in 1..(n - i) / 2 + 1 {
+            if z[j] >= j {
+                best[i] = best[i].max(best[i + j] + 1);
+            }
+        }
+    }
+    best[0]
+}
+
+// ---- iter (deletions_iter.kara) ------------------------------------------
+
+fn iter_delete_string(s: String) -> i64 {
+    let b = s.bytes();
+    let n = b.len();
+    let mut after: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut best: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in (0..n).rev() {
+        let row: Vec[i64] = (0..n + 1).map(|k| if k > i and k < n and b[i] == b[k] { after[k + 1] + 1 } else { 0 }).collect();
+        best[i] = (1..(n - i) / 2 + 1).filter(|j| row[i + j] >= j).map(|j| best[i + j] + 1).max().unwrap_or(1);
+        after = row;
+    }
+    best[0]
+}
+
+// ---- solution (deletions_solution.kara) ----------------------------------
+
+impl Solution {
+    pub fn delete_string(s: String) -> i32 {
+        let s = s.bytes();
+        let n = s.len();
+        let mut lcp = Vec.filled(n + 1, Vec.filled(n + 1, 0));
+        for i in (0..n).rev() {
+            for j in (i + 1..n).rev() {
+                if s[i] == s[j] {
+                    lcp[i][j] = lcp[i + 1][j + 1] + 1;
+                }
+            }
+        }
+        let mut dp = Vec.filled(n, 1i32);
+        for i in (0..n).rev() {
+            for j in 1..=(n - i) / 2 {
+                if lcp[i][i + j] >= j {
+                    dp[i] = dp[i].max(dp[i + j] + 1);
+                }
+            }
+        }
+        dp[0]
+    }
+}
+
+struct Solution {}
+
+fn solution_delete_string(s: String) -> i64 {
+    Solution.delete_string(s)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, word: Slice[u8]) -> i64 {
+    let s = String.from_utf8(word.to_vec()).unwrap();
+    match arm {
+        0 => star_delete_string(s),
+        1 => naive_delete_string(s),
+        2 => hash_delete_string(s),
+        3 => z_delete_string(s),
+        4 => iter_delete_string(s),
+        _ => solution_delete_string(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` letters from the first `kinds`, each often a copy of one just
+// before it
+fn random_bytes(seed: mut ref i64, n: i64, kinds: i64) -> Vec[u8] {
+    let mut bytes: Vec[u8] = Vec.new();
+    for i in 0..n {
+        let back = 1 + next_random(mut seed) % 3;
+        if i >= back and next_random(mut seed) % 2 == 0 {
+            bytes.push(bytes[i - back]);
+        } else {
+            bytes.push(b'a' + (next_random(mut seed) % kinds) as u8);
+        }
+    }
+    bytes
+}
+
+fn main() {
+    let arms = ["star", "naive", "hash", "z", "iter", "solution"];
+    let mut seed = 2430;
+    let mut cases: Vec[Vec[u8]] = Vec.new();
+    for t in 0..360 {
+        if t < 300 {
+            let n = 1 + next_random(mut seed) % 12;
+            let kinds = 1 + next_random(mut seed) % 3;
+            cases.push(random_bytes(mut seed, n, kinds));
+        } else if t < 330 {
+            let n = 1 + next_random(mut seed) % 60;
+            cases.push(random_bytes(mut seed, n, 2));
+        } else {
+            let block = random_bytes(mut seed, 1 + next_random(mut seed) % 4, 3);
+            let mut bytes: Vec[u8] = Vec.new();
+            for _ in 0..2 + next_random(mut seed) % 5 {
+                bytes.extend(block.clone());
+            }
+            bytes.extend(random_bytes(mut seed, next_random(mut seed) % 6, 3));
+            cases.push(bytes);
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let word = cases[c].clone();
+        let n = word.len();
+        let truth = deletions_literally(String.from_utf8(word.clone()).unwrap());
+        check = (check * 31 + truth) % 1000000007;
+        let renamed: Vec[u8] = word.iter().map(|b| if b == b'z' { b'a' } else { b + 1 }).collect();
+        let mut fronted: Vec[u8] = [b'x'].to_vec();
+        fronted.extend(word.clone());
+        let mut twice = word.clone();
+        twice.extend(word.clone());
+        let mut doubled: Vec[u8] = [word[0]].to_vec();
+        doubled.extend(word.clone());
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, word)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, renamed) == value,
+                answer(arm, fronted) == 1,
+                answer(arm, twice) >= value + 1,
+                answer(arm, doubled) >= value + 1 and value <= n,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,79 @@
+// LeetCode #2430: Maximum Deletions on a String -- polynomial hashes: the
+// prefix hashes of the string modulo a prime let any two slices of one
+// length be compared in O(1), and a match of hashes is confirmed letter
+// by letter, so a collision can never count. O(n^2) expected.
+
+const MOD: i64 = 1000000007;
+const BASE: i64 = 131;
+
+fn delete_string(s: String) -> i64 {
+    let b = s.bytes();
+    let n = b.len();
+    let mut prefix: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut power: Vec[i64] = Vec.filled(n + 1, 1);
+    for i in 0..n {
+        prefix[i + 1] = (prefix[i] * BASE + b[i]) % MOD;
+        power[i + 1] = power[i] * BASE % MOD;
+    }
+    // the hash of the slice from `start`, `len` letters long
+    let slice_hash = |start: i64, len: i64| (prefix[start + len] - prefix[start] * power[len] % MOD + MOD) % MOD;
+    let mut best: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in (0..n).rev() {
+        best[i] = 1;
+        for j in 1..(n - i) / 2 + 1 {
+            if slice_hash(i, j) == slice_hash(i + j, j) and b[i..i + j] == b[i + j..i + 2 * j] {
+                best[i] = best[i].max(best[i + j] + 1);
+            }
+        }
+    }
+    best[0]
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` letters from the first `kinds`, each a copy of the letter `back`
+// places before it with probability 1 in `stay`
+fn random_word(seed: mut ref i64, n: i64, kinds: i64, stay: i64) -> String {
+    let mut bytes: Vec[u8] = Vec.new();
+    for i in 0..n {
+        let back = 1 + next_random(mut seed) % 3;
+        if i >= back and next_random(mut seed) % stay == 0 {
+            bytes.push(bytes[i - back]);
+        } else {
+            bytes.push(b'a' + (next_random(mut seed) % kinds) as u8);
+        }
+    }
+    String.from_utf8(bytes).unwrap()
+}
+
+fn main() {
+    // LeetCode's three examples; one letter; two different; a run of 1000
+    // of one letter; `ab` 500 times; `aab` 333 times
+    for s in ["abcabcdabc", "aaabaab", "aaaaa", "a", "ab"].iter() {
+        println(f"{s}: {delete_string(s.to_string())}");
+    }
+    println(f"a * 1000: {delete_string("a".repeat(1000))}");
+    println(f"ab * 500: {delete_string("ab".repeat(500))}");
+    println(f"aab * 333: {delete_string("aab".repeat(333))}");
+    // random words of 1000 letters from 2 and from 26, each letter often
+    // a copy of one just before it
+    let mut seed = 2430;
+    println(f"{delete_string(random_word(mut seed, 1000, 2, 2))} {delete_string(random_word(mut seed, 1000, 26, 2))}");
+    // 3000 random words of 1 to 14 letters from the first 1 to 3: a
+    // checksum of the answers in order, and their total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 14;
+        let kinds = 1 + next_random(mut seed) % 3;
+        let answer = delete_string(random_word(mut seed, n, kinds, 1 + next_random(mut seed) % 3));
+        check = (check * 31 + answer) % 1000000007;
+        total += answer;
+    }
+    println(f"3000 random: checksum {check}, total {total}");
+}
