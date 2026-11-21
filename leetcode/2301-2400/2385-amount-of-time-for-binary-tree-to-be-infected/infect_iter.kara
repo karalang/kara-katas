@@ -1,0 +1,170 @@
+// LeetCode #2385: Amount of Time for Binary Tree to Be Infected --
+// iterators. The tree's edges gathered by `flat_map` over each node's
+// children, both ways round, into a `Map` of neighbours; then each
+// minute's newly infected nodes are the last minute's neighbours by
+// `flat_map`, kept by `filter` when not yet seen. O(n).
+
+fn edges(node: Option[TreeNode]) -> Vec[(i64, i64)] {
+    match node {
+        None => Vec.new(),
+        Some(n) => {
+            let v = n.val as i64;
+            [n.left, n.right].iter().flat_map(|c| {
+                let mut here: Vec[(i64, i64)] = match c {
+                    Some(t) => [(v, t.val as i64), (t.val as i64, v)].to_vec(),
+                    None => Vec.new(),
+                };
+                here.extend(edges(c));
+                here.into_iter()
+            }).collect()
+        },
+    }
+}
+
+fn amount_of_time(root: Option[TreeNode], start: i64) -> i64 {
+    let graph: Map[i64, Vec[i64]] = edges(root).iter().fold(Map.new(), |g: own Map[i64, Vec[i64]], (a, b)| {
+        let mut g = g;
+        let mut list = g.get(a).cloned().unwrap_or(Vec.new());
+        list.push(b);
+        g[a] = list;
+        g
+    });
+    let mut seen: Set[i64] = [start].iter().collect();
+    let mut frontier: Vec[i64] = [start].to_vec();
+    let mut minutes = 0;
+    loop {
+        let next: Vec[i64] = frontier.iter().flat_map(|v| graph.get(v).cloned().unwrap_or(Vec.new()).into_iter()).filter(|w| seen.insert(w)).collect();
+        if next.is_empty() {
+            return minutes;
+        }
+        minutes += 1;
+        frontier = next;
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+// LeetCode's own node: an `i32` value
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn leaf(v: i64) -> TreeNode {
+    TreeNode {
+        val: v as i32,
+        left: None,
+        right: None,
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// LeetCode's level-order form, "[1,2,null,3]": each node's two children
+// come next, in the order the nodes were met, "null" for none.
+fn parse(text: Str) -> Option[TreeNode] {
+    let inner = text.strip_prefix("[").unwrap().strip_suffix("]").unwrap();
+    let items: Vec[Option[i64]] = inner.split(",").map(|s| if s == "null" {
+        None
+    } else {
+        Some(i64.parse(s).unwrap())
+    }).collect();
+    let root = leaf(items[0].unwrap());
+    let mut queue: Vec[TreeNode] = [root].to_vec();
+    let mut head = 0;
+    let mut i = 1;
+    while i < items.len() {
+        let node = queue[head];
+        head += 1;
+        if let Some(v) = items[i] {
+            let child = leaf(v);
+            node.left = Some(child);
+            queue.push(child);
+        }
+        i += 1;
+        if i < items.len() {
+            if let Some(v) = items[i] {
+                let child = leaf(v);
+                node.right = Some(child);
+                queue.push(child);
+            }
+            i += 1;
+        }
+    }
+    Some(root)
+}
+
+// `n` nodes with the values 1 to `n` in a random order, each after the
+// first hung below a random earlier one: from it, a random side is taken
+// down until a free one is found
+fn random_tree(n: i64, seed: mut ref i64) -> Option[TreeNode] {
+    let mut values: Vec[i64] = (1..n + 1).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        values.swap(i, j);
+    }
+    let nodes: Vec[TreeNode] = values.iter().map(|v| leaf(v)).collect();
+    for k in 1..n {
+        let mut at = nodes[(next_random(mut seed) * 32768 + next_random(mut seed)) % k];
+        loop {
+            if next_random(mut seed) % 2 == 0 {
+                match at.left {
+                    Some(c) => {
+                        at = c;
+                    },
+                    None => {
+                        at.left = Some(nodes[k]);
+                        break;
+                    },
+                }
+            } else {
+                match at.right {
+                    Some(c) => {
+                        at = c;
+                    },
+                    None => {
+                        at.right = Some(nodes[k]);
+                        break;
+                    },
+                }
+            }
+        }
+    }
+    Some(nodes[0])
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: a root's two leaves from
+    // the root and from one leaf, a left chain from its bottom, a right
+    // chain from its middle, and a leaf below a long other side
+    let texts = ["[1,5,3,null,4,10,6,9,2]", "[1]", "[1,2,3]", "[1,2,3]", "[1,2,null,3,null,4]", "[1,null,2,null,3,null,4,null,5]", "[1,2,3,null,null,4,null,5,null,6]"];
+    let starts = [3, 1, 1, 2, 4, 3, 2];
+    for i in 0..texts.len() {
+        println(f"{texts[i]} from {starts[i]} -> {amount_of_time(parse(texts[i]), starts[i])}");
+    }
+    // 2000 random trees of 1 to 60 nodes, from a random node
+    let mut seed = 2385;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 60 + 1;
+        let tree = random_tree(n, mut seed);
+        let minutes = amount_of_time(tree, 1 + next_random(mut seed) % n);
+        total += minutes;
+        check = (check * 31 + minutes) % 1000000007;
+    }
+    println(f"2000 trees: {total} minutes, checksum {check}");
+    // the constraints' largest, 10^5 nodes at random, from node 1 and from
+    // the root; and a chain of 2000 left children from its middle
+    let big = random_tree(100000, mut seed);
+    let root = big.unwrap().val as i64;
+    let chain: Vec[TreeNode] = (0..2000).map(|i| leaf(i + 1)).collect();
+    for i in 1..2000 {
+        chain[i - 1].left = Some(chain[i]);
+    }
+    println(f"10^5 nodes: {amount_of_time(big, 1)} {amount_of_time(big, root)}; chain: {amount_of_time(Some(chain[0]), 1000)}");
+}
