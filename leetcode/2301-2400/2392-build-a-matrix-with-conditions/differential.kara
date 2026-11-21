@@ -1,0 +1,491 @@
+// LeetCode #2392: Build a Matrix With Conditions -- the differential. The
+// six arms, against the statement read literally: a matrix exists when
+// some order of 1 to k down the rows keeps every row condition and some
+// order across the columns keeps every column condition, each found by
+// trying all k! orders. No graph. Answers are not unique, so each arm's
+// matrix is checked rather than compared. 300 random cases of k from 2 to
+// 6, which the literal reading answers; then 30 of k up to 60 with
+// conditions that agree with an order; then 30 of k up to 60 with
+// conditions drawn freely. Every case is drawn before any arm answers.
+//
+// P1  k up to 6: a matrix exactly when the literal reading finds one
+// P2  a matrix returned is k by k, holds 1 to k once each and 0
+//     elsewhere, and keeps every condition
+// P3  the conditions listed in reverse: a matrix exactly when before,
+//     and a valid one
+// P4  the row and column conditions swapped: the same
+// P5  every condition given twice: the same
+// P6  each arm agrees with at least three of the other five on whether
+//     there is a matrix
+
+// ---- the statement read literally ------------------------------------------
+
+fn some_order(k: i64, edges: Vec[Vec[i64]], order: mut ref Vec[i64], used: mut ref Vec[bool]) -> bool {
+    if order.len() == k {
+        let mut at: Vec[i64] = Vec.filled(k + 1, 0);
+        for i in 0..k {
+            at[order[i]] = i;
+        }
+        return edges.iter().all(|e| at[e[0]] < at[e[1]]);
+    }
+    for v in 1..k + 1 {
+        if not used[v] {
+            used[v] = true;
+            order.push(v);
+            let found = some_order(k, edges, mut order, mut used);
+            order.pop();
+            used[v] = false;
+            if found {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn exists_literally(k: i64, rows: Vec[Vec[i64]], cols: Vec[Vec[i64]]) -> bool {
+    let mut order: Vec[i64] = Vec.new();
+    let mut used: Vec[bool] = Vec.filled(k + 1, false);
+    if not some_order(k, rows, mut order, mut used) {
+        return false;
+    }
+    some_order(k, cols, mut order, mut used)
+}
+
+// ---- star (matrix.kara) --------------------------------------------------
+
+fn star_order(k: i64, edges: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut next: Vec[Vec[i64]] = Vec.filled(k + 1, Vec.new());
+    let mut into: Vec[i64] = Vec.filled(k + 1, 0);
+    for e in edges.iter() {
+        next[e[0]].push(e[1]);
+        into[e[1]] += 1;
+    }
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    for v in 1..k + 1 {
+        if into[v] == 0 {
+            queue.push_back(v);
+        }
+    }
+    let mut taken: Vec[i64] = Vec.new();
+    while let Some(v) = queue.pop_front() {
+        taken.push(v);
+        for w in next[v].iter() {
+            into[w] -= 1;
+            if into[w] == 0 {
+                queue.push_back(w);
+            }
+        }
+    }
+    taken
+}
+
+fn star_build_matrix(k: i64, rows: Vec[Vec[i64]], cols: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let by_row = star_order(k, rows);
+    let by_col = star_order(k, cols);
+    if by_row.len() < k or by_col.len() < k {
+        return Vec.new();
+    }
+    let mut col_of: Vec[i64] = Vec.filled(k + 1, 0);
+    for c in 0..k {
+        col_of[by_col[c]] = c;
+    }
+    let mut m: Vec[Vec[i64]] = Vec.filled(k, Vec.filled(k, 0));
+    for r in 0..k {
+        let v = by_row[r];
+        m[r][col_of[v]] = v;
+    }
+    m
+}
+
+// ---- dfs (matrix_dfs.kara) -----------------------------------------------
+
+fn dfs_order(k: i64, edges: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut next: Vec[Vec[i64]] = Vec.filled(k + 1, Vec.new());
+    for e in edges.iter() {
+        next[e[0]].push(e[1]);
+    }
+    // 0 unseen, 1 on the path, 2 finished
+    let mut colour: Vec[i64] = Vec.filled(k + 1, 0);
+    let mut finished: Vec[i64] = Vec.new();
+    for start in 1..k + 1 {
+        if colour[start] != 0 {
+            continue;
+        }
+        colour[start] = 1;
+        let mut stack: Vec[(i64, i64)] = [(start, 0)];
+        while stack.len() > 0 {
+            let top = stack.len() - 1;
+            let (v, i) = stack[top];
+            if i < next[v].len() {
+                stack[top] = (v, i + 1);
+                let w = next[v][i];
+                if colour[w] == 1 {
+                    return Vec.new();
+                }
+                if colour[w] == 0 {
+                    colour[w] = 1;
+                    stack.push((w, 0));
+                }
+            } else {
+                colour[v] = 2;
+                finished.push(v);
+                stack.pop();
+            }
+        }
+    }
+    finished.reverse();
+    finished
+}
+
+fn dfs_build_matrix(k: i64, rows: Vec[Vec[i64]], cols: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let by_row = dfs_order(k, rows);
+    let by_col = dfs_order(k, cols);
+    if by_row.len() < k or by_col.len() < k {
+        return Vec.new();
+    }
+    let mut col_of: Vec[i64] = Vec.filled(k + 1, 0);
+    for c in 0..k {
+        col_of[by_col[c]] = c;
+    }
+    let mut m: Vec[Vec[i64]] = Vec.filled(k, Vec.filled(k, 0));
+    for r in 0..k {
+        let v = by_row[r];
+        m[r][col_of[v]] = v;
+    }
+    m
+}
+
+// ---- heap (matrix_heap.kara) ---------------------------------------------
+
+fn heap_order(k: i64, edges: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut next: Vec[Vec[i64]] = Vec.filled(k + 1, Vec.new());
+    let mut into: Vec[i64] = Vec.filled(k + 1, 0);
+    for e in edges.iter() {
+        next[e[0]].push(e[1]);
+        into[e[1]] += 1;
+    }
+    let mut free: PriorityQueue[i64] = PriorityQueue.new();
+    for v in 1..k + 1 {
+        if into[v] == 0 {
+            free.push(v);
+        }
+    }
+    let mut taken: Vec[i64] = Vec.new();
+    while let Some(v) = free.pop() {
+        taken.push(v);
+        for w in next[v].iter() {
+            into[w] -= 1;
+            if into[w] == 0 {
+                free.push(w);
+            }
+        }
+    }
+    taken
+}
+
+fn heap_build_matrix(k: i64, rows: Vec[Vec[i64]], cols: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let by_row = heap_order(k, rows);
+    let by_col = heap_order(k, cols);
+    if by_row.len() < k or by_col.len() < k {
+        return Vec.new();
+    }
+    let mut col_of: Vec[i64] = Vec.filled(k + 1, 0);
+    for c in 0..k {
+        col_of[by_col[c]] = c;
+    }
+    let mut m: Vec[Vec[i64]] = Vec.filled(k, Vec.filled(k, 0));
+    for r in 0..k {
+        let v = by_row[r];
+        m[r][col_of[v]] = v;
+    }
+    m
+}
+
+// ---- scan (matrix_scan.kara) ---------------------------------------------
+
+fn scan_order(k: i64, edges: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut placed: Vec[bool] = Vec.filled(k + 1, false);
+    let mut taken: Vec[i64] = Vec.new();
+    while taken.len() < k {
+        let mut found = 0;
+        for v in 1..k + 1 {
+            if placed[v] {
+                continue;
+            }
+            let mut blocked = false;
+            for e in edges.iter() {
+                if e[1] == v and not placed[e[0]] {
+                    blocked = true;
+                    break;
+                }
+            }
+            if not blocked {
+                found = v;
+                break;
+            }
+        }
+        if found == 0 {
+            return Vec.new();
+        }
+        placed[found] = true;
+        taken.push(found);
+    }
+    taken
+}
+
+fn scan_build_matrix(k: i64, rows: Vec[Vec[i64]], cols: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let by_row = scan_order(k, rows);
+    let by_col = scan_order(k, cols);
+    if by_row.len() < k or by_col.len() < k {
+        return Vec.new();
+    }
+    let mut col_of: Vec[i64] = Vec.filled(k + 1, 0);
+    for c in 0..k {
+        col_of[by_col[c]] = c;
+    }
+    let mut m: Vec[Vec[i64]] = Vec.filled(k, Vec.filled(k, 0));
+    for r in 0..k {
+        let v = by_row[r];
+        m[r][col_of[v]] = v;
+    }
+    m
+}
+
+// ---- iter (matrix_iter.kara) ---------------------------------------------
+
+fn iter_order(k: i64, edges: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut rank: Vec[i64] = Vec.filled(k + 1, 0);
+    for _ in 0..k {
+        let changed = edges.iter().fold(false, |changed, e| {
+            if rank[e[1]] < rank[e[0]] + 1 {
+                rank[e[1]] = rank[e[0]] + 1;
+                true
+            } else {
+                changed
+            }
+        });
+        if not changed {
+            let mut numbers: Vec[i64] = (1..k + 1).collect();
+            numbers.sort_by_key(|v| rank[v]);
+            return numbers;
+        }
+    }
+    Vec.new()
+}
+
+fn iter_build_matrix(k: i64, rows: Vec[Vec[i64]], cols: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let by_row = iter_order(k, rows);
+    let by_col = iter_order(k, cols);
+    if by_row.len() < k or by_col.len() < k {
+        return Vec.new();
+    }
+    let mut col_of: Vec[i64] = Vec.filled(k + 1, 0);
+    for (c, v) in by_col.iter().enumerate() {
+        col_of[v] = c;
+    }
+    by_row.iter().map(|v| (0..k).map(|c| if c == col_of[v] {
+        v
+    } else {
+        0
+    }).collect()).collect()
+}
+
+// ---- solution (matrix_solution.kara) -------------------------------------
+
+struct Solution {}
+
+fn solution_topo(k: i64, conds: ref Vec[Vec[i32]]) -> Option[Vec[i64]] {
+    let mut g = Vec.filled(k + 1, Vec.new());
+    let mut indeg = Vec.filled(k + 1, 0);
+    for c in conds {
+        g[c[0]].push(c[1] as i64);
+        indeg[c[1]] += 1;
+    }
+    let mut q: VecDeque[i64] = (1..=k).filter(|v| indeg[v] == 0).collect();
+    let mut res = Vec.with_capacity(k);
+    while let Some(u) = q.pop_front() {
+        res.push(u);
+        for v in ref g[u] {
+            indeg[v] -= 1;
+            if indeg[v] == 0 {
+                q.push_back(v);
+            }
+        }
+    }
+    if res.len() == k {
+        Some(res)
+    } else {
+        None
+    }
+}
+
+impl Solution {
+    pub fn build_matrix(k: i32, row_conditions: Vec[Vec[i32]], col_conditions: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+        let k = k as i64;
+        let (rows, cols) = match (solution_topo(k, row_conditions), solution_topo(k, col_conditions)) {
+            (Some(r), Some(c)) => (r, c),
+            _ => return Vec.new(),
+        };
+        let mut pos = Vec.filled(k + 1, 0);
+        for (i, v) in cols.iter().enumerate() {
+            pos[v] = i;
+        }
+        let mut ans = Vec.filled(k, Vec.filled(k, 0));
+        for (i, v) in rows.iter().enumerate() {
+            ans[i][pos[v]] = v as i32;
+        }
+        ans
+    }
+}
+
+fn solution_build_matrix(k: i64, rows: Vec[Vec[i64]], cols: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let rows: Vec[Vec[i32]] = rows.iter().map(|p| p.iter().map(|v| v as i32).collect()).collect();
+    let cols: Vec[Vec[i32]] = cols.iter().map(|p| p.iter().map(|v| v as i32).collect()).collect();
+    Solution.build_matrix(k as i32, rows, cols).iter().map(|r| r.iter().map(|v| v as i64).collect()).collect()
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, k: i64, rows: Vec[Vec[i64]], cols: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    match arm {
+        0 => star_build_matrix(k, rows, cols),
+        1 => dfs_build_matrix(k, rows, cols),
+        2 => heap_build_matrix(k, rows, cols),
+        3 => scan_build_matrix(k, rows, cols),
+        4 => iter_build_matrix(k, rows, cols),
+        _ => solution_build_matrix(k, rows, cols),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn valid(k: i64, rows: Vec[Vec[i64]], cols: Vec[Vec[i64]], m: Vec[Vec[i64]]) -> bool {
+    if m.len() != k {
+        return false;
+    }
+    let mut row_of: Vec[i64] = Vec.filled(k + 1, -1);
+    let mut col_of: Vec[i64] = Vec.filled(k + 1, -1);
+    for r in 0..k {
+        if m[r].len() != k {
+            return false;
+        }
+        for c in 0..k {
+            let v = m[r][c];
+            if v < 0 or v > k or v > 0 and row_of[v] >= 0 {
+                return false;
+            }
+            if v > 0 {
+                row_of[v] = r;
+                col_of[v] = c;
+            }
+        }
+    }
+    (1..k + 1).all(|v| row_of[v] >= 0) and rows.iter().all(|p| row_of[p[0]] < row_of[p[1]]) and cols.iter().all(|p| col_of[p[0]] < col_of[p[1]])
+}
+
+fn conditions(seed: mut ref i64, k: i64, count: i64, ordered: bool) -> Vec[Vec[i64]] {
+    let mut order: Vec[i64] = (1..k + 1).collect();
+    for i in 1..k {
+        let j = next_random(mut seed) % (i + 1);
+        let t = order[i];
+        order[i] = order[j];
+        order[j] = t;
+    }
+    (0..count).map(|_| {
+        let a = next_random(mut seed) % k;
+        let mut b = next_random(mut seed) % (k - 1);
+        if b >= a {
+            b += 1;
+        }
+        if ordered {
+            [order[a.min(b)], order[a.max(b)]]
+        } else {
+            [a + 1, b + 1]
+        }
+    }).collect()
+}
+
+fn main() {
+    let names = ["star", "dfs", "heap", "scan", "iter", "solution"];
+    let mut seed = 2392;
+    let mut cases: Vec[(i64, Vec[Vec[i64]], Vec[Vec[i64]])] = Vec.new();
+    for c in 0..360 {
+        let k = if c < 300 {
+            2 + next_random(mut seed) % 5
+        } else {
+            2 + next_random(mut seed) % 59
+        };
+        let free = if c < 300 {
+            next_random(mut seed) % 3 == 0
+        } else {
+            c >= 330
+        };
+        let rows = conditions(mut seed, k, next_random(mut seed) % (2 * k + 1), not free);
+        let cols = conditions(mut seed, k, next_random(mut seed) % (2 * k + 1), not free or next_random(mut seed) % 2 == 0);
+        cases.push((k, rows, cols));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (k, rows, cols) = cases[c].clone();
+        let small = k <= 6;
+        let truth = small and exists_literally(k, rows, cols);
+        if small {
+            check = (check * 31 + if truth {
+                2
+            } else {
+                1
+            }) % 1000000007;
+        }
+        let mut rows_back = rows.clone();
+        rows_back.reverse();
+        let mut cols_back = cols.clone();
+        cols_back.reverse();
+        let mut rows_twice = rows.clone();
+        rows_twice.extend(rows.clone());
+        let mut cols_twice = cols.clone();
+        cols_twice.extend(cols.clone());
+        let got: Vec[Vec[Vec[i64]]] = (0..6).map(|arm| answer(arm, k, rows, cols)).collect();
+        for arm in 0..6 {
+            let m = got[arm].clone();
+            let some = m.len() > 0;
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and (got[o].len() > 0) == some {
+                    same += 1;
+                }
+            }
+            let back = answer(arm, k, rows_back, cols_back);
+            let swapped = answer(arm, k, cols, rows);
+            let twice = answer(arm, k, rows_twice, cols_twice);
+            let verdicts = [not small or some == truth, not some or valid(k, rows, cols, m), (back.len() > 0) == some and (not some or valid(k, rows, cols, back)), (swapped.len() > 0) == some and (not some or valid(k, cols, rows, swapped)), (twice.len() > 0) == some and (not some or valid(k, rows, cols, twice)), same >= 3];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

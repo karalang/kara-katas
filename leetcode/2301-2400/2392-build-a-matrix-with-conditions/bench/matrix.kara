@@ -1,0 +1,100 @@
+// LeetCode #2392: Build a Matrix With Conditions -- the bench, the ★ arm:
+// Kahn's algorithm for the rows and again for the columns.
+
+fn order(k: i64, edges: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut next: Vec[Vec[i64]] = Vec.filled(k + 1, Vec.new());
+    let mut into: Vec[i64] = Vec.filled(k + 1, 0);
+    for e in edges.iter() {
+        next[e[0]].push(e[1]);
+        into[e[1]] += 1;
+    }
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    for v in 1..k + 1 {
+        if into[v] == 0 {
+            queue.push_back(v);
+        }
+    }
+    let mut taken: Vec[i64] = Vec.new();
+    while let Some(v) = queue.pop_front() {
+        taken.push(v);
+        for w in next[v].iter() {
+            into[w] -= 1;
+            if into[w] == 0 {
+                queue.push_back(w);
+            }
+        }
+    }
+    taken
+}
+
+fn build_matrix(k: i64, rows: Vec[Vec[i64]], cols: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let by_row = order(k, rows);
+    let by_col = order(k, cols);
+    if by_row.len() < k or by_col.len() < k {
+        return Vec.new();
+    }
+    let mut col_of: Vec[i64] = Vec.filled(k + 1, 0);
+    for c in 0..k {
+        col_of[by_col[c]] = c;
+    }
+    let mut m: Vec[Vec[i64]] = Vec.filled(k, Vec.filled(k, 0));
+    for r in 0..k {
+        let v = by_row[r];
+        m[r][col_of[v]] = v;
+    }
+    m
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn conditions(seed: mut ref i64, k: i64, count: i64, ordered: bool) -> Vec[Vec[i64]] {
+    let mut order: Vec[i64] = (1..k + 1).collect();
+    for i in 1..k {
+        let j = next_random(mut seed) % (i + 1);
+        let t = order[i];
+        order[i] = order[j];
+        order[j] = t;
+    }
+    (0..count).map(|_| {
+        let a = next_random(mut seed) % k;
+        let mut b = next_random(mut seed) % (k - 1);
+        if b >= a {
+            b += 1;
+        }
+        if ordered {
+            [order[a.min(b)], order[a.max(b)]]
+        } else {
+            [a + 1, b + 1]
+        }
+    }).collect()
+}
+
+fn main() {
+    // 20 cases of k = 200 with 4000 conditions each way that agree with
+    // an order; each pass builds every matrix and folds where each
+    // number sits
+    let mut seed = 2392;
+    let mut cases: Vec[(Vec[Vec[i64]], Vec[Vec[i64]])] = Vec.new();
+    for _ in 0..20 {
+        let rows = conditions(mut seed, 200, 4000, true);
+        let cols = conditions(mut seed, 200, 4000, true);
+        cases.push((rows, cols));
+    }
+    let mut check = 0;
+    for p in 0..500 {
+        for (rows, cols) in cases.iter() {
+            let m = build_matrix(200, rows, cols);
+            for r in 0..200 {
+                for c in 0..200 {
+                    if m[r][c] > 0 {
+                        check = (check * 31 + m[r][c] * (r * 200 + c) + p) % 1000000007;
+                    }
+                }
+            }
+        }
+    }
+    println(f"500 passes over 20 matrices of k = 200: checksum {check}");
+}

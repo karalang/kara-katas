@@ -1,0 +1,162 @@
+// LeetCode #2392: Build a Matrix With Conditions -- by scanning. Each
+// round looks through the numbers not yet placed for one that no
+// unplaced number must come before, checking every condition, and places
+// it next; a round that finds none means a cycle, and no matrix. No graph
+// is built. O(k^2 * conditions) at worst.
+
+fn order(k: i64, edges: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut placed: Vec[bool] = Vec.filled(k + 1, false);
+    let mut taken: Vec[i64] = Vec.new();
+    while taken.len() < k {
+        let mut found = 0;
+        for v in 1..k + 1 {
+            if placed[v] {
+                continue;
+            }
+            let mut blocked = false;
+            for e in edges.iter() {
+                if e[1] == v and not placed[e[0]] {
+                    blocked = true;
+                    break;
+                }
+            }
+            if not blocked {
+                found = v;
+                break;
+            }
+        }
+        if found == 0 {
+            return Vec.new();
+        }
+        placed[found] = true;
+        taken.push(found);
+    }
+    taken
+}
+
+fn build_matrix(k: i64, rows: Vec[Vec[i64]], cols: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let by_row = order(k, rows);
+    let by_col = order(k, cols);
+    if by_row.len() < k or by_col.len() < k {
+        return Vec.new();
+    }
+    let mut col_of: Vec[i64] = Vec.filled(k + 1, 0);
+    for c in 0..k {
+        col_of[by_col[c]] = c;
+    }
+    let mut m: Vec[Vec[i64]] = Vec.filled(k, Vec.filled(k, 0));
+    for r in 0..k {
+        let v = by_row[r];
+        m[r][col_of[v]] = v;
+    }
+    m
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// What a returned matrix is: "empty", "valid" when it is k by k, holds
+// each of 1 to k once and 0 elsewhere and meets every condition, and
+// "INVALID" otherwise. Answers are not unique, so this is what is printed.
+fn verdict(k: i64, rows: Vec[Vec[i64]], cols: Vec[Vec[i64]], m: Vec[Vec[i64]]) -> String {
+    if m.len() == 0 {
+        return "empty";
+    }
+    if m.len() != k {
+        return "INVALID";
+    }
+    let mut row_of: Vec[i64] = Vec.filled(k + 1, -1);
+    let mut col_of: Vec[i64] = Vec.filled(k + 1, -1);
+    for r in 0..k {
+        if m[r].len() != k {
+            return "INVALID";
+        }
+        for c in 0..k {
+            let v = m[r][c];
+            if v < 0 or v > k or v > 0 and row_of[v] >= 0 {
+                return "INVALID";
+            }
+            if v > 0 {
+                row_of[v] = r;
+                col_of[v] = c;
+            }
+        }
+    }
+    for v in 1..k + 1 {
+        if row_of[v] < 0 {
+            return "INVALID";
+        }
+    }
+    for p in rows.iter() {
+        if row_of[p[0]] >= row_of[p[1]] {
+            return "INVALID";
+        }
+    }
+    for p in cols.iter() {
+        if col_of[p[0]] >= col_of[p[1]] {
+            return "INVALID";
+        }
+    }
+    "valid"
+}
+
+// Conditions on 1 to k: `count` pairs, either all agreeing with one
+// random order of the numbers, so a matrix exists, or drawn freely.
+fn conditions(seed: mut ref i64, k: i64, count: i64, ordered: bool) -> Vec[Vec[i64]] {
+    let mut order: Vec[i64] = (1..k + 1).collect();
+    for i in 1..k {
+        let j = next_random(mut seed) % (i + 1);
+        let t = order[i];
+        order[i] = order[j];
+        order[j] = t;
+    }
+    (0..count).map(|_| {
+        let a = next_random(mut seed) % k;
+        let mut b = next_random(mut seed) % (k - 1);
+        if b >= a {
+            b += 1;
+        }
+        if ordered {
+            [order[a.min(b)], order[a.max(b)]]
+        } else {
+            [a + 1, b + 1]
+        }
+    }).collect()
+}
+
+fn main() {
+    // LeetCode's two examples; no conditions; a chain each way; then
+    // k = 400 with 10^4 conditions that agree with an order, and with
+    // ones that make a cycle; then 3000 random cases of k from 2 to 12
+    // with up to 3k conditions each way, a third of them drawn freely,
+    // counting the empty answers and the valid ones
+    let examples: Vec[(i64, Vec[Vec[i64]], Vec[Vec[i64]])] = [(3, [[1, 2], [3, 2]], [[2, 1], [3, 2]]), (3, [[1, 2], [2, 3], [3, 1], [2, 3]], [[2, 1]]), (2, [], []), (4, [[1, 2], [2, 3], [3, 4]], [[4, 3], [3, 2], [2, 1]])];
+    for (k, rows, cols) in examples.iter() {
+        println(verdict(k, rows, cols, build_matrix(k, rows, cols)));
+    }
+    let mut seed = 2392;
+    let rows = conditions(mut seed, 400, 10000, true);
+    let cols = conditions(mut seed, 400, 10000, true);
+    let mut cyclic = cols.clone();
+    cyclic.push([cols[0][1], cols[0][0]]);
+    println(f"k = 400: {verdict(400, rows, cols, build_matrix(400, rows, cols))}, {verdict(400, rows, cyclic, build_matrix(400, rows, cyclic))}");
+    let mut empty = 0;
+    let mut valid = 0;
+    for _ in 0..3000 {
+        let k = 2 + next_random(mut seed) % 11;
+        let free = next_random(mut seed) % 3 == 0;
+        let rows = conditions(mut seed, k, next_random(mut seed) % (3 * k + 1), not free);
+        let cols = conditions(mut seed, k, next_random(mut seed) % (3 * k + 1), true);
+        let v = verdict(k, rows, cols, build_matrix(k, rows, cols));
+        if v == "empty" {
+            empty += 1;
+        } else if v == "valid" {
+            valid += 1;
+        }
+    }
+    println(f"3000 cases: {empty} empty, {valid} valid, {3000 - empty - valid} invalid");
+}
