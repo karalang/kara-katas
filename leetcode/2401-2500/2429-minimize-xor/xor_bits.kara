@@ -1,0 +1,63 @@
+// LeetCode #2429: Minimize XOR -- the bits as a `Vec[bool]` of 31, lowest
+// first: `num1`'s set bits kept from the top while the count allows, the
+// rest of the count laid in the lowest clear places, and the vector read
+// back into a number. O(31).
+
+fn to_bits(n: i64) -> Vec[bool] {
+    (0..31).map(|b| (n >> b) & 1 == 1).collect()
+}
+
+fn from_bits(bits: Vec[bool]) -> i64 {
+    let mut n = 0;
+    for b in (0..bits.len()).rev() {
+        n = n * 2 + if bits[b] { 1 } else { 0 };
+    }
+    n
+}
+
+fn minimize_xor(num1: i64, num2: i64) -> i64 {
+    let have = to_bits(num1);
+    let mut left = to_bits(num2).iter().filter(|b| b).count();
+    let mut x: Vec[bool] = Vec.filled(31, false);
+    for b in (0..31).rev() {
+        if have[b] and left > 0 {
+            x[b] = true;
+            left -= 1;
+        }
+    }
+    for b in 0..31 {
+        if not x[b] and left > 0 {
+            x[b] = true;
+            left -= 1;
+        }
+    }
+    from_bits(x)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; 1 and 1; the constraints' largest, 10^9
+    // twice; 1 against 29 set bits, the most a value to 10^9 holds; 2^29
+    // against 29 set bits; 10^9 against one set bit; 2^29 - 1 against 1
+    for (a, b) in [(3, 5), (1, 12), (1, 1), (1000000000, 1000000000), (1, 536870911), (536870912, 536870911), (1000000000, 1), (536870911, 1)].iter() {
+        println(f"{a} {b}: {minimize_xor(a, b)}");
+    }
+    // 3000 random pairs from 1 to 10^9, and 3000 from 1 to 63: a checksum
+    // of the answers in order
+    let mut seed = 2429;
+    for top in [1000000000, 63].iter() {
+        let mut check = 0;
+        for _ in 0..3000 {
+            let a = 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % top;
+            let b = 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % top;
+            check = (check * 31 + minimize_xor(a, b)) % 1000000007;
+        }
+        println(f"3000 random up to {top}: checksum {check}");
+    }
+}

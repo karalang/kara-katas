@@ -1,0 +1,245 @@
+// LeetCode #2429: Minimize XOR -- the differential. The six arms against
+// the statement read literally: the value of `x XOR num1` tried from 0
+// upward, `x` being `num1` XOR it, until `x` has as many set bits as
+// `num2`; the first such `x` is the answer. No bit placed by hand. 360
+// cases: 300 random pairs from 1 to 1023; then 30 from 1 to 10^9, `num2`
+// a run of low set bits within three of `num1`'s count; then 30 random
+// pairs from 1 to 2^16. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  `num2` replaced by the run of its count of low set bits: the same
+//     answer
+// P3  the answer has as many set bits as `num2`
+// P4  `num1` against itself: `num1`
+// P5  the answer XOR `num1` is no larger than `num2` XOR `num1`
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn ones(n: i64) -> i64 {
+    let mut n = n;
+    let mut count = 0;
+    while n > 0 {
+        count += n % 2;
+        n /= 2;
+    }
+    count
+}
+
+fn xor_literally(num1: i64, num2: i64) -> i64 {
+    let want = ones(num2);
+    let mut d = 0;
+    while ones(num1 ^ d) != want {
+        d += 1;
+    }
+    num1 ^ d
+}
+
+// ---- star (xor.kara) -----------------------------------------------------
+
+fn star_minimize_xor(num1: i64, num2: i64) -> i64 {
+    let mut left = num2.count_ones();
+    let mut x = 0;
+    for bit in (0..31).rev() {
+        if left > 0 and (num1 >> bit) & 1 == 1 {
+            x |= 1 << bit;
+            left -= 1;
+        }
+    }
+    for bit in 0..31 {
+        if left > 0 and (x >> bit) & 1 == 0 {
+            x |= 1 << bit;
+            left -= 1;
+        }
+    }
+    x
+}
+
+// ---- adjust (xor_adjust.kara) --------------------------------------------
+
+fn adjust_minimize_xor(num1: i64, num2: i64) -> i64 {
+    let want = num2.count_ones();
+    let mut x = num1;
+    while x.count_ones() > want {
+        x &= x - 1;
+    }
+    while x.count_ones() < want {
+        x |= x + 1;
+    }
+    x
+}
+
+// ---- feasible (xor_feasible.kara) ----------------------------------------
+
+fn feasible_minimize_xor(num1: i64, num2: i64) -> i64 {
+    let mut left = num2.count_ones();
+    let mut x = 0;
+    for bit in (0..31).rev() {
+        let wanted = (num1 >> bit) & 1;
+        // after this bit, `bit` bits remain below it
+        let set = if wanted == 1 { left > 0 } else { left > bit };
+        if set {
+            x |= 1 << bit;
+            left -= 1;
+        }
+    }
+    x
+}
+
+// ---- bits (xor_bits.kara) ------------------------------------------------
+
+fn bits_to_bits(n: i64) -> Vec[bool] {
+    (0..31).map(|b| (n >> b) & 1 == 1).collect()
+}
+
+fn bits_from_bits(bits: Vec[bool]) -> i64 {
+    let mut n = 0;
+    for b in (0..bits.len()).rev() {
+        n = n * 2 + if bits[b] { 1 } else { 0 };
+    }
+    n
+}
+
+fn bits_minimize_xor(num1: i64, num2: i64) -> i64 {
+    let have = bits_to_bits(num1);
+    let mut left = bits_to_bits(num2).iter().filter(|b| b).count();
+    let mut x: Vec[bool] = Vec.filled(31, false);
+    for b in (0..31).rev() {
+        if have[b] and left > 0 {
+            x[b] = true;
+            left -= 1;
+        }
+    }
+    for b in 0..31 {
+        if not x[b] and left > 0 {
+            x[b] = true;
+            left -= 1;
+        }
+    }
+    bits_from_bits(x)
+}
+
+// ---- iter (xor_iter.kara) ------------------------------------------------
+
+fn iter_minimize_xor(num1: i64, num2: i64) -> i64 {
+    let want = num2.count_ones();
+    let high = (0..31).rev().filter(|b| (num1 >> b) & 1 == 1).take(want).fold(0, |x, b| x | (1 << b));
+    let more = want - high.count_ones();
+    (0..31).filter(|b| (high >> b) & 1 == 0).take(more).fold(high, |x, b| x | (1 << b))
+}
+
+// ---- solution (xor_solution.kara) ----------------------------------------
+
+impl Solution {
+    pub fn minimize_xor(num1: i32, num2: i32) -> i32 {
+        let mut k = num2.count_ones();
+        let mut x = 0;
+        for i in (0..31).rev() {
+            if k > 0 and (num1 >> i) & 1 == 1 {
+                x |= 1 << i;
+                k -= 1;
+            }
+        }
+        for i in 0..31 {
+            if k > 0 and (x >> i) & 1 == 0 {
+                x |= 1 << i;
+                k -= 1;
+            }
+        }
+        x
+    }
+}
+
+struct Solution {}
+
+fn solution_minimize_xor(num1: i64, num2: i64) -> i64 {
+    Solution.minimize_xor(num1 as i32, num2 as i32)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, num1: i64, num2: i64) -> i64 {
+    match arm {
+        0 => star_minimize_xor(num1, num2),
+        1 => adjust_minimize_xor(num1, num2),
+        2 => feasible_minimize_xor(num1, num2),
+        3 => bits_minimize_xor(num1, num2),
+        4 => iter_minimize_xor(num1, num2),
+        _ => solution_minimize_xor(num1, num2),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "adjust", "feasible", "bits", "iter", "solution"];
+    let mut seed = 2429;
+    let mut cases: Vec[(i64, i64)] = Vec.new();
+    for t in 0..360 {
+        if t < 300 {
+            let a = 1 + next_random(mut seed) % 1023;
+            let b = 1 + next_random(mut seed) % 1023;
+            cases.push((a, b));
+        } else if t < 330 {
+            let a = 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000;
+            let k = (ones(a) + next_random(mut seed) % 7 - 3).max(1).min(29);
+            cases.push((a, (1 << k) - 1));
+        } else {
+            let a = 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 65536;
+            let b = 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 65536;
+            cases.push((a, b));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (num1, num2) = cases[c];
+        let truth = xor_literally(num1, num2);
+        check = (check * 31 + truth) % 1000000007;
+        let run = (1 << ones(num2)) - 1;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, num1, num2)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, num1, run) == value,
+                ones(value) == ones(num2),
+                answer(arm, num1, num1) == num1,
+                (value ^ num1) <= (num2 ^ num1),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
