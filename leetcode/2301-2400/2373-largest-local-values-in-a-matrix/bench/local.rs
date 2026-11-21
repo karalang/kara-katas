@@ -1,0 +1,50 @@
+// LeetCode #2373: Largest Local Values in a Matrix -- the bench, the ★ arm
+// in Rust: each cell of the answer is the largest of the nine values in
+// the 3 x 3 block whose top left corner it names.
+
+fn largest_local(grid: &[Vec<i64>]) -> Vec<Vec<i64>> {
+    let n = grid.len();
+    let mut out: Vec<Vec<i64>> = Vec::new();
+    for i in 0..n - 2 {
+        let mut row: Vec<i64> = Vec::new();
+        for j in 0..n - 2 {
+            let mut most = 0;
+            for di in 0..3 {
+                for dj in 0..3 {
+                    most = most.max(grid[i + di][j + dj]);
+                }
+            }
+            row.push(most);
+        }
+        out.push(row);
+    }
+    out
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // grid a: 100 x 100 random values from 1 to 10 (a + 1)
+    let mut seed = 2373i64;
+    let mut grids: Vec<Vec<Vec<i64>>> = Vec::new();
+    for a in 0..10i64 {
+        let grid: Vec<Vec<i64>> =
+            (0..100).map(|_| (0..100).map(|_| 1 + next_random(&mut seed) % (10 * (a + 1))).collect()).collect();
+        grids.push(grid);
+    }
+    let mut check = 0i64;
+    for p in 0..200i64 {
+        for grid in &grids {
+            let out = largest_local(grid);
+            for row in &out {
+                for &v in row {
+                    check = (check * 31 + v + p) % 1000000007;
+                }
+            }
+        }
+    }
+    println!("200 passes over 10 grids of 100 x 100: checksum {}", check);
+}

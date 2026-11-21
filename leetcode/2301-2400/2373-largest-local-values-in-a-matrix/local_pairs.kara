@@ -1,0 +1,69 @@
+// LeetCode #2373: Largest Local Values in a Matrix -- 2 x 2 twice. The
+// largest of each 2 x 2 block, and then the largest of each 2 x 2 block of
+// those: two overlapping steps of two cover three cells each way.
+// O(8 n^2).
+
+fn pairs(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let n = grid.len();
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    for i in 0..n - 1 {
+        let mut row: Vec[i64] = Vec.new();
+        for j in 0..n - 1 {
+            row.push(grid[i][j].max(grid[i][j + 1]).max(grid[i + 1][j]).max(grid[i + 1][j + 1]));
+        }
+        out.push(row);
+    }
+    out
+}
+
+fn largest_local(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    pairs(pairs(grid))
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(grid: Vec[Vec[i64]]) -> String {
+    let rows: Vec[String] = grid.iter().map(|row| Vec[String].from_iter(row.iter().map(|v| f"{v}")).join(",")).collect();
+    f"[{rows.join(" / ")}]"
+}
+
+fn fold(check: i64, grid: Vec[Vec[i64]]) -> i64 {
+    let mut check = check;
+    for row in grid.iter() {
+        for v in row.iter() {
+            check = (check * 31 + v) % 1000000007;
+        }
+    }
+    check
+}
+
+fn main() {
+    // LeetCode's two examples; a 3 x 3 grid; a 100 x 100 grid of
+    // (i j) % 100 + 1 and one of 100 - (i + j) % 100; then 1000 random
+    // grids of 3 x 3 to 12 x 12 with values from 1 to 1 to 100
+    println(show(largest_local([[9, 9, 8, 1], [5, 6, 2, 6], [8, 2, 6, 4], [6, 2, 2, 2]])));
+    println(show(largest_local([[1, 1, 1, 1, 1], [1, 1, 1, 1, 1], [1, 1, 2, 1, 1], [1, 1, 1, 1, 1], [1, 1, 1, 1, 1]])));
+    println(show(largest_local([[1, 2, 3], [4, 5, 6], [7, 8, 9]])));
+    let product: Vec[Vec[i64]] = (0..100).map(|i| (0..100).map(|j| (i * j) % 100 + 1).collect()).collect();
+    let falling: Vec[Vec[i64]] = (0..100).map(|i| (0..100).map(|j| 100 - (i + j) % 100).collect()).collect();
+    println(f"{fold(0, largest_local(product))} {fold(0, largest_local(falling))}");
+    let mut seed = 2373;
+    let mut check = 0;
+    let mut flat = 0;
+    for _ in 0..1000 {
+        let n = 3 + next_random(mut seed) % 10;
+        let top = 1 + next_random(mut seed) % 100;
+        let grid: Vec[Vec[i64]] = (0..n).map(|_| (0..n).map(|_| 1 + next_random(mut seed) % top).collect()).collect();
+        let out = largest_local(grid);
+        check = fold(check, out);
+        if out.iter().all(|row| row.iter().all(|v| v == out[0][0])) {
+            flat += 1;
+        }
+    }
+    println(f"1000 grids: checksum {check}, {flat} with one value throughout");
+}

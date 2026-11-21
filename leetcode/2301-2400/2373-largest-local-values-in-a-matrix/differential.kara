@@ -1,0 +1,282 @@
+// LeetCode #2373: Largest Local Values in a Matrix -- the differential.
+// The six arms, against the statement read literally: each cell (i, j) of
+// the answer the largest value of the whole grid among the cells whose
+// row is from i to i + 2 and whose column is from j to j + 2, the whole
+// grid scanned for each. No blocks, no windows. 300 random grids of 3 x 3
+// to 12 x 12 with values from 1 to 1 to 100; then 30 of up to 30 x 30;
+// then 30 of up to 20 x 20 with values from 1 to 3. Every case is drawn
+// before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  n - 2 rows of n - 2, each cell at least the middle of its block and
+//     at most the grid's largest
+// P3  the grid transposed: the answer transposed
+// P4  every row of the grid reversed: every row of the answer reversed
+// P5  every value v written 2 v + 1: every answer a written 2 a + 1
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn local_literally(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let n = grid.len();
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    for i in 0..n - 2 {
+        let mut row: Vec[i64] = Vec.new();
+        for j in 0..n - 2 {
+            let mut most = -1;
+            for a in 0..n {
+                for b in 0..n {
+                    if a >= i and a <= i + 2 and b >= j and b <= j + 2 and grid[a][b] > most {
+                        most = grid[a][b];
+                    }
+                }
+            }
+            row.push(most);
+        }
+        out.push(row);
+    }
+    out
+}
+
+// ---- star (local.kara) ---------------------------------------------------
+
+fn star_largest_local(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let n = grid.len();
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    for i in 0..n - 2 {
+        let mut row: Vec[i64] = Vec.new();
+        for j in 0..n - 2 {
+            let mut most = 0;
+            for di in 0..3 {
+                for dj in 0..3 {
+                    most = most.max(grid[i + di][j + dj]);
+                }
+            }
+            row.push(most);
+        }
+        out.push(row);
+    }
+    out
+}
+
+// ---- separable (local_separable.kara) ------------------------------------
+
+fn separable_largest_local(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let n = grid.len();
+    let across: Vec[Vec[i64]] = grid
+        .iter()
+        .map(|row| (0..n - 2).map(|j| row[j].max(row[j + 1]).max(row[j + 2])).collect())
+        .collect();
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    for i in 0..n - 2 {
+        let row: Vec[i64] = (0..n - 2).map(|j| across[i][j].max(across[i + 1][j]).max(across[i + 2][j])).collect();
+        out.push(row);
+    }
+    out
+}
+
+// ---- pairs (local_pairs.kara) --------------------------------------------
+
+fn pairs_pairs(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let n = grid.len();
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    for i in 0..n - 1 {
+        let mut row: Vec[i64] = Vec.new();
+        for j in 0..n - 1 {
+            row.push(grid[i][j].max(grid[i][j + 1]).max(grid[i + 1][j]).max(grid[i + 1][j + 1]));
+        }
+        out.push(row);
+    }
+    out
+}
+
+fn pairs_largest_local(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    pairs_pairs(pairs_pairs(grid))
+}
+
+// ---- deque (local_deque.kara) --------------------------------------------
+
+fn deque_window_max(line: Vec[i64], width: i64) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    let mut keep: VecDeque[i64] = VecDeque.new();
+    for i in 0..line.len() {
+        while not keep.is_empty() and line[*keep.back().unwrap()] <= line[i] {
+            keep.pop_back();
+        }
+        keep.push_back(i);
+        if *keep.front().unwrap() + width <= i {
+            keep.pop_front();
+        }
+        if i + 1 >= width {
+            out.push(line[*keep.front().unwrap()]);
+        }
+    }
+    out
+}
+
+fn deque_largest_local(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let n = grid.len();
+    let across: Vec[Vec[i64]] = grid.iter().map(|row| deque_window_max(row, 3)).collect();
+    let columns: Vec[Vec[i64]] = (0..n - 2).map(|j| deque_window_max((0..n).map(|i| across[i][j]).collect(), 3)).collect();
+    (0..n - 2).map(|i| (0..n - 2).map(|j| columns[j][i]).collect()).collect()
+}
+
+// ---- iter (local_iter.kara) ----------------------------------------------
+
+fn iter_largest_local(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let n = grid.len();
+    (0..n - 2)
+        .map(|i| (0..n - 2).map(|j| (i..i + 3).flat_map(|a| (j..j + 3).map(|b| grid[a][b])).max().unwrap()).collect())
+        .collect()
+}
+
+// ---- solution (local_solution.kara) --------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn largest_local(grid: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+        let n = grid.len();
+        let mut res = Vec.filled(n - 2, Vec.filled(n - 2, 0i32));
+        for i in 0..n - 2 {
+            for j in 0..n - 2 {
+                for x in i..i + 3 {
+                    for y in j..j + 3 {
+                        res[i][j] = res[i][j].max(grid[x][y]);
+                    }
+                }
+            }
+        }
+        res
+    }
+}
+
+fn solution_largest_local(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let grid: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|v| v as i32).collect()).collect();
+    let out = Solution.largest_local(grid);
+    out.iter().map(|row| row.iter().map(|v| v as i64).collect()).collect()
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn answer(arm: i64, grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    match arm {
+        0 => star_largest_local(grid),
+        1 => separable_largest_local(grid),
+        2 => pairs_largest_local(grid),
+        3 => deque_largest_local(grid),
+        4 => iter_largest_local(grid),
+        _ => solution_largest_local(grid),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn transpose(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let n = grid.len();
+    (0..n).map(|j| (0..n).map(|i| grid[i][j]).collect()).collect()
+}
+
+fn mirror(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    grid.iter()
+        .map(|row| {
+            let mut back = row.clone();
+            back.reverse();
+            back
+        })
+        .collect()
+}
+
+fn fold(check: i64, grid: Vec[Vec[i64]]) -> i64 {
+    let mut check = check;
+    for row in grid.iter() {
+        for v in row.iter() {
+            check = (check * 31 + v) % 1000000007;
+        }
+    }
+    check
+}
+
+fn main() {
+    let names = ["star", "separable", "pairs", "deque", "iter", "solution"];
+    let mut seed = 2373;
+    let mut cases: Vec[Vec[Vec[i64]]] = Vec.new();
+    for c in 0..360 {
+        let (n, top) = if c < 300 {
+            (3 + next_random(mut seed) % 10, 1 + next_random(mut seed) % 100)
+        } else if c < 330 {
+            (3 + next_random(mut seed) % 28, 100)
+        } else {
+            (3 + next_random(mut seed) % 18, 3)
+        };
+        let grid: Vec[Vec[i64]] = (0..n).map(|_| (0..n).map(|_| 1 + next_random(mut seed) % top).collect()).collect();
+        cases.push(grid);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let grid = cases[c].clone();
+        let n = grid.len();
+        let truth = local_literally(grid);
+        check = fold(check, truth);
+        let largest = grid.iter().map(|row| row.iter().max().unwrap()).max().unwrap();
+        let spread: Vec[Vec[i64]] = grid.iter().map(|row| row.iter().map(|v| 2 * v + 1).collect()).collect();
+        let got: Vec[Vec[Vec[i64]]] = (0..6).map(|arm| answer(arm, grid)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut shaped = value.len() == n - 2;
+            for i in 0..value.len() {
+                if value[i].len() != n - 2 {
+                    shaped = false;
+                } else {
+                    for j in 0..n - 2 {
+                        if value[i][j] < grid[i + 1][j + 1] or value[i][j] > largest {
+                            shaped = false;
+                        }
+                    }
+                }
+            }
+            let raised: Vec[Vec[i64]] = value.iter().map(|row| row.iter().map(|a| 2 * a + 1).collect()).collect();
+            let verdicts = [
+                value == truth,
+                shaped,
+                answer(arm, transpose(grid)) == transpose(value),
+                answer(arm, mirror(grid)) == mirror(value),
+                answer(arm, spread) == raised,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
