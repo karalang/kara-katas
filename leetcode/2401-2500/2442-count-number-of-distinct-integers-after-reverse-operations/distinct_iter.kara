@@ -1,0 +1,64 @@
+// LeetCode #2442: Count Number of Distinct Integers After Reverse
+// Operations -- iterators: the values chained with their reversals, the
+// reversal itself a `fold` over the digits taken off the bottom by
+// `successors`, the whole collected into a `Set[i64]` whose size is the
+// answer. O(n log V) expected.
+
+fn reversed(x: i64) -> i64 {
+    successors(Some(x), |y| if y >= 10 { Some(y / 10) } else { None })
+        .fold(0, |r, y| r * 10 + y % 10)
+}
+
+fn count_distinct_integers(nums: Vec[i64]) -> i64 {
+    let values: Set[i64] = nums.iter().cloned().chain(nums.iter().map(|x| reversed(x))).collect();
+    values.len()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; the constraints' largest value; values
+    // whose reversals all meet; palindromes only
+    let cases: Vec[Vec[i64]] = [
+        [1, 13, 10, 12, 31].to_vec(),
+        [2, 2, 2].to_vec(),
+        [1000000].to_vec(),
+        [100, 1, 10].to_vec(),
+        [121, 7, 1221, 98789].to_vec(),
+    ].to_vec();
+    for nums in cases.into_iter() {
+        println(f"{nums}: {count_distinct_integers(nums)}");
+    }
+    // 10^5 values, the constraints' most: every value from 1 to 10^5;
+    // every multiple of 10 up to 10^6; 10^5 random from 1 to 10^6
+    let mut seed = 2442;
+    let every: Vec[i64] = (1..100001).collect();
+    println(f"1 to 10^5: {count_distinct_integers(every)}");
+    let tens: Vec[i64] = (1..100001).map(|i| i * 10).collect();
+    println(f"multiples of 10: {count_distinct_integers(tens)}");
+    let mut random: Vec[i64] = Vec.new();
+    for _ in 0..100000 {
+        random.push(1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000);
+    }
+    println(f"random: {count_distinct_integers(random)}");
+    // 3000 random arrays of 1 to 10 values from 1 to 200: a checksum and
+    // the total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let len = 1 + next_random(mut seed) % 10;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..len {
+            nums.push(1 + next_random(mut seed) % 200);
+        }
+        let answer = count_distinct_integers(nums);
+        check = (check * 31 + answer) % 1000000007;
+        total += answer;
+    }
+    println(f"3000 random: checksum {check}, total {total}");
+}

@@ -1,0 +1,62 @@
+// LeetCode #2442: Count Number of Distinct Integers After Reverse
+// Operations -- the bench, the ★ arm: the digits reversed by `% 10` and
+// `/ 10`, and a table of flags up to the largest value.
+
+fn reversed(x: i64) -> i64 {
+    let mut r = 0;
+    let mut y = x;
+    while y > 0 {
+        r = r * 10 + y % 10;
+        y /= 10;
+    }
+    r
+}
+
+fn count_distinct_integers(nums: Vec[i64]) -> i64 {
+    let mut values = nums.clone();
+    for x in nums.iter() {
+        values.push(reversed(x));
+    }
+    let mut largest = 0;
+    for v in values.iter() {
+        largest = largest.max(v);
+    }
+    let mut seen: Vec[bool] = Vec.filled(largest + 1, false);
+    let mut count = 0;
+    for v in values.iter() {
+        if not seen[v] {
+            seen[v] = true;
+            count += 1;
+        }
+    }
+    count
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2442;
+    // 4 arrays of 10^5 values from 1 to 10^6, the constraints' largest
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..4 {
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..100000 {
+            nums.push(1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000);
+        }
+        arrays.push(nums);
+    }
+    // pass `p` sets one value of every array, then answers every array
+    // and folds the answer plus the pass
+    let mut check = 0;
+    for p in 0..40 {
+        for c in 0..arrays.len() {
+            let at = (p * 7919 + c * 104729) % 100000;
+            arrays[c][at] = 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000;
+            check = (check * 31 + count_distinct_integers(arrays[c]) + p) % 1000000007;
+        }
+    }
+    println(f"40 passes over 4 arrays of 10^5 values: checksum {check}");
+}

@@ -1,0 +1,298 @@
+// LeetCode #2442: Count Number of Distinct Integers After Reverse
+// Operations -- the differential. The six arms against the statement read
+// literally: the array extended by each value's reversal, the digits read
+// from the top by dividing by powers of ten and written back from the
+// bottom, and then every element counted that equals none before it. No
+// table, sort or set. 360 cases: 300 random arrays of 1 to 10 values from
+// 1 to 200; then 30 of 50 to 300 values from 1 to 10^6; then 30 of 1 to
+// 40 values `d * 10^e`, `d` from 1 to 20 and `e` from 0 to 4, full of
+// trailing zeros. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the array reversed: the same answer
+// P3  the array written twice: the same answer
+// P4  the answer is at least the number of distinct values, and at most
+//     twice it
+// P5  a value's reversal appended, the value ending in a nonzero digit:
+//     the same answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn reverse_literally(x: i64) -> i64 {
+    let mut place = 1;
+    while place * 10 <= x {
+        place *= 10;
+    }
+    let mut r = 0;
+    let mut low = 1;
+    while place >= 1 {
+        let digit = x / place % 10;
+        r += digit * low;
+        low *= 10;
+        place /= 10;
+    }
+    r
+}
+
+fn distinct_literally(nums: Vec[i64]) -> i64 {
+    let mut all = nums.clone();
+    for x in nums.iter() {
+        all.push(reverse_literally(x));
+    }
+    let mut count = 0;
+    for i in 0..all.len() {
+        let mut fresh = true;
+        for j in 0..i {
+            if all[j] == all[i] {
+                fresh = false;
+            }
+        }
+        if fresh {
+            count += 1;
+        }
+    }
+    count
+}
+// ---- star (distinct.kara) ------------------------------------------------
+
+fn star_reversed(x: i64) -> i64 {
+    let mut r = 0;
+    let mut y = x;
+    while y > 0 {
+        r = r * 10 + y % 10;
+        y /= 10;
+    }
+    r
+}
+
+fn star_count_distinct_integers(nums: Vec[i64]) -> i64 {
+    let mut values = nums.clone();
+    for x in nums.iter() {
+        values.push(star_reversed(x));
+    }
+    let mut largest = 0;
+    for v in values.iter() {
+        largest = largest.max(v);
+    }
+    let mut seen: Vec[bool] = Vec.filled(largest + 1, false);
+    let mut count = 0;
+    for v in values.iter() {
+        if not seen[v] {
+            seen[v] = true;
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- sorted (distinct_sorted.kara) ---------------------------------------
+
+fn sorted_reversed(x: i64) -> i64 {
+    let mut r = 0;
+    let mut y = x;
+    while y > 0 {
+        r = r * 10 + y % 10;
+        y /= 10;
+    }
+    r
+}
+
+fn sorted_count_distinct_integers(nums: Vec[i64]) -> i64 {
+    let mut values: Vec[i64] = Vec.new();
+    for x in nums.iter() {
+        values.push(x);
+        values.push(sorted_reversed(x));
+    }
+    values.sort();
+    let mut count = 1;
+    for i in 1..values.len() {
+        if values[i] != values[i - 1] {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- set (distinct_set.kara) ---------------------------------------------
+
+fn set_reverse_onto(y: i64, r: i64) -> i64 {
+    if y == 0 {
+        r
+    } else {
+        set_reverse_onto(y / 10, r * 10 + y % 10)
+    }
+}
+
+fn set_count_distinct_integers(nums: Vec[i64]) -> i64 {
+    let mut values: Set[i64] = Set.new();
+    for x in nums.iter() {
+        values.insert(x);
+        values.insert(set_reverse_onto(x, 0));
+    }
+    values.len()
+}
+
+// ---- text (distinct_text.kara) -------------------------------------------
+
+fn text_count_distinct_integers(nums: Vec[i64]) -> i64 {
+    let mut values: SortedSet[i64] = SortedSet.new();
+    for x in nums.iter() {
+        let mut digits = f"{x}".bytes().to_vec();
+        digits.reverse();
+        let text = String.from_utf8(digits).unwrap();
+        values.insert(x);
+        values.insert(i64.parse(text).unwrap());
+    }
+    values.len()
+}
+
+// ---- iter (distinct_iter.kara) -------------------------------------------
+
+fn iter_reversed(x: i64) -> i64 {
+    successors(Some(x), |y| if y >= 10 { Some(y / 10) } else { None })
+        .fold(0, |r, y| r * 10 + y % 10)
+}
+
+fn iter_count_distinct_integers(nums: Vec[i64]) -> i64 {
+    let values: Set[i64] = nums.iter().cloned().chain(nums.iter().map(|x| iter_reversed(x))).collect();
+    values.len()
+}
+
+// ---- solution (distinct_solution.kara) -----------------------------------
+
+impl Solution {
+    pub fn count_distinct_integers(nums: Vec[i32]) -> i32 {
+        let mut s: Set[i32] = Set.new();
+        for x in ref nums {
+            s.insert(x);
+            let mut r: i32 = 0;
+            let mut y = x;
+            while y > 0 {
+                r = r * 10 + y % 10;
+                y /= 10;
+            }
+            s.insert(r);
+        }
+        s.len() as i32
+    }
+}
+
+struct Solution {}
+
+fn solution_count_distinct_integers(nums: Vec[i64]) -> i64 {
+    let values: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.count_distinct_integers(values)
+}
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_count_distinct_integers(nums),
+        1 => sorted_count_distinct_integers(nums),
+        2 => set_count_distinct_integers(nums),
+        3 => text_count_distinct_integers(nums),
+        4 => iter_count_distinct_integers(nums),
+        _ => solution_count_distinct_integers(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "sorted", "set", "text", "iter", "solution"];
+    let mut seed = 2442;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let mut nums: Vec[i64] = Vec.new();
+        if t < 300 {
+            for _ in 0..1 + next_random(mut seed) % 10 {
+                nums.push(1 + next_random(mut seed) % 200);
+            }
+        } else if t < 330 {
+            for _ in 0..50 + next_random(mut seed) % 251 {
+                nums.push(1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000);
+            }
+        } else {
+            for _ in 0..1 + next_random(mut seed) % 40 {
+                let d = 1 + next_random(mut seed) % 20;
+                let mut v = d;
+                for _ in 0..next_random(mut seed) % 5 {
+                    v *= 10;
+                }
+                nums.push(v);
+            }
+        }
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let nums = cases[c].clone();
+        let truth = distinct_literally(nums);
+        check = (check * 31 + truth) % 1000000007;
+        let mut reversed = nums.clone();
+        reversed.reverse();
+        let mut twice = nums.clone();
+        for x in nums.iter() {
+            twice.push(x);
+        }
+        let mut sorted = nums.clone();
+        sorted.sort();
+        let mut kinds = 1;
+        for i in 1..sorted.len() {
+            if sorted[i] != sorted[i - 1] {
+                kinds += 1;
+            }
+        }
+        let mut grown = nums.clone();
+        let pick = nums[next_random(mut seed) % nums.len()];
+        if pick % 10 != 0 {
+            grown.push(reverse_literally(pick));
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, reversed) == value,
+                answer(arm, twice) == value,
+                value >= kinds and value <= 2 * kinds,
+                answer(arm, grown) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
