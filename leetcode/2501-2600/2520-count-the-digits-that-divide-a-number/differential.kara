@@ -1,0 +1,206 @@
+// LeetCode #2520: Count the Digits That Divide a Number -- the
+// differential. The six arms against the statement read literally: the
+// number's decimal text, each of its bytes turned into a digit, and the
+// positions whose digit divides the number counted. Every number keeps
+// the constraints: 1 to 10^9 with no digit 0. 180 random cases of 1 to 4
+// digits, 150 of 5 to 9, then 30 numbers of one digit repeated; every one
+// drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  from 0 to the number of digits, and 1 for a one-digit number
+// P3  a number of up to 4 digits written twice: the answer at least
+//     twice its own
+// P4  at least the number of digits that are 1, together with those that
+//     equal a last digit of 2 or 5
+// P5  the last digit written as many times as the number has digits:
+//     the answer that many
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally
+
+fn literal(num: i64) -> i64 {
+    let text = num.to_string();
+    let mut count = 0;
+    for b in text.bytes() {
+        let digit = (b - b'0') as i64;
+        if num % digit == 0 {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- star (digits.kara) --------------------------------------------------
+
+fn star_count_digits(num: i64) -> i64 {
+    let mut rest = num;
+    let mut count = 0;
+    while rest > 0 {
+        if num % (rest % 10) == 0 {
+            count += 1;
+        }
+        rest /= 10;
+    }
+    count
+}
+
+// ---- text (digits_text.kara) ---------------------------------------------
+
+fn text_count_digits(num: i64) -> i64 {
+    let mut count = 0;
+    for c in num.to_string().chars() {
+        let d = c.to_digit(10).unwrap() as i64;
+        if num % d == 0 {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- tally (digits_tally.kara) -------------------------------------------
+
+fn tally_count_digits(num: i64) -> i64 {
+    let mut tally = [0; 10];
+    let mut rest = num;
+    while rest > 0 {
+        tally[rest % 10] += 1;
+        rest /= 10;
+    }
+    let mut count = 0;
+    for d in 1..10 {
+        if tally[d] > 0 and num % d == 0 {
+            count += tally[d];
+        }
+    }
+    count
+}
+
+// ---- rec (digits_rec.kara) -----------------------------------------------
+
+fn rec_dividing(num: i64, rest: i64) -> i64 {
+    if rest == 0 {
+        0
+    } else {
+        (if num % (rest % 10) == 0 { 1 } else { 0 }) + rec_dividing(num, rest / 10)
+    }
+}
+
+fn rec_count_digits(num: i64) -> i64 {
+    rec_dividing(num, num)
+}
+
+// ---- iter (digits_iter.kara) ---------------------------------------------
+
+fn iter_count_digits(num: i64) -> i64 {
+    successors(Some(num), |r| if r >= 10 { Some(r / 10) } else { None })
+        .map(|r| r % 10)
+        .filter(|d| num % d == 0)
+        .count()
+}
+
+// ---- solution (digits_solution.kara) -------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn count_digits(num: i32) -> i32 {
+        num.to_string()
+            .bytes().iter()
+            .filter(|b| num % (b - b'0') == 0)
+            .count() as i32
+    }
+}
+
+fn solution_count_digits(num: i64) -> i64 {
+    Solution.count_digits(num as i32)
+}
+
+// ---- the differential --------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn answer(arm: i64, num: i64) -> i64 {
+    match arm {
+        0 => star_count_digits(num),
+        1 => text_count_digits(num),
+        2 => tally_count_digits(num),
+        3 => rec_count_digits(num),
+        4 => iter_count_digits(num),
+        _ => solution_count_digits(num),
+    }
+}
+
+fn repeated(digit: i64, times: i64) -> i64 {
+    (0..times).fold(0, |n, _| n * 10 + digit)
+}
+
+fn main() {
+    let names = ["star", "text", "tally", "rec", "iter", "solution"];
+    let mut seed = 2520;
+    let mut problems: Vec[i64] = Vec.new();
+    for t in 0..360 {
+        if t >= 330 {
+            problems.push(repeated(next_random(mut seed) % 9 + 1, next_random(mut seed) % 9 + 1));
+        } else {
+            let length = if t < 180 { next_random(mut seed) % 4 + 1 } else { next_random(mut seed) % 5 + 5 };
+            problems.push((0..length).fold(0, |n, _| n * 10 + next_random(mut seed) % 9 + 1));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut every = 0;
+    for num in problems.iter() {
+        let truth = literal(num);
+        let length = num.to_string().len();
+        if truth == length {
+            every += 1;
+        }
+        check = (check * 31 + truth) % 1000000007;
+        let last = num % 10;
+        let sure = num.to_string().bytes().iter().filter(|b| b == b'1' or ((last == 2 or last == 5) and (b - b'0') as i64 == last)).count();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, num)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                x >= 0 and x <= length and (length > 1 or x == 1),
+                length > 4 or answer(arm, num * 10.pow(length as u32) + num) >= 2 * x,
+                x >= sure,
+                answer(arm, repeated(last, length)) == length,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{num}, arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} cases, {every} divided by every digit: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

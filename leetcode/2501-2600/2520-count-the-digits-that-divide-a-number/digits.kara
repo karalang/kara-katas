@@ -1,0 +1,65 @@
+// LeetCode #2520: Count the Digits That Divide a Number -- the ★ arm. The
+// digits peeled off the low end by `% 10` and `/ 10`, each counted when it
+// divides the number; a digit that repeats counts each time. O(log num).
+
+fn count_digits(num: i64) -> i64 {
+    let mut rest = num;
+    let mut count = 0;
+    while rest > 0 {
+        if num % (rest % 10) == 0 {
+            count += 1;
+        }
+        rest /= 10;
+    }
+    count
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a number of `length` digits from 1 to 9
+fn no_zeros(length: i64, seed: mut ref i64) -> i64 {
+    let mut num = 0;
+    for _ in 0..length {
+        num = num * 10 + next_random(mut seed) % 9 + 1;
+    }
+    num
+}
+
+fn main() {
+    // LeetCode's three examples, then six more
+    for num in [7, 121, 1248, 1, 13, 111111111, 999999999, 987654321, 864] {
+        println(f"{num} -> {count_digits(num)}");
+    }
+    // 2000 random numbers of 1 to 4 digits and 2000 of 1 to 9, none of
+    // them 0: the sum and a checksum
+    let mut seed = 2520;
+    for most in [4, 9] {
+        let mut total = 0;
+        let mut check = 0;
+        for _ in 0..2000 {
+            let a = count_digits(no_zeros(next_random(mut seed) % most + 1, mut seed));
+            total += a;
+            check = (check * 31 + a) % 1000000007;
+        }
+        println(f"2000 random of up to {most} digits: total {total}, checksum {check}");
+    }
+    // every number from 1 to 2 10^5 with no digit 0: how many there are,
+    // how many every digit divides, and the sum
+    let mut (count, all, total) = (0, 0, 0);
+    for num in 1..200001 {
+        if not num.to_string().contains("0") {
+            let a = count_digits(num);
+            count += 1;
+            total += a;
+            if a == num.to_string().len() {
+                all += 1;
+            }
+        }
+    }
+    println(f"1 to 2 10^5: {count} with no 0, {all} divided by every digit, total {total}");
+}
