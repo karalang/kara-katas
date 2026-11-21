@@ -1,0 +1,209 @@
+// LeetCode #2481: Minimum Cuts to Divide a Circle -- the differential.
+// The six arms against the statement read literally, in whole steps of
+// half a slice: the `n` slices are equal exactly when the cuts draw the
+// `n` radii at the even steps of a circle of `2 n`, and nothing else; a
+// cut is one radius, or a line through the centre drawing two radii
+// `n` steps apart, both of which must then be among them. So every
+// radius takes a cut, less one for each pair the radii make, found by
+// searching the radii for each one's opposite. One slice, the whole
+// circle, needs none: a single radius leaves it whole. No parity is
+// read. Every count from 1 to 100, then 260 random ones, all drawn before
+// any arm answers; P2, P4 and P5 ask the arms for counts up to 400,
+// past the constraints' 100.
+//
+// P1  the cuts are the literal reading's
+// P2  twice as many slices: `n` cuts
+// P3  two slices or more: between `n / 2` and `n` cuts
+// P4  two slices or more: four times as many need twice the cuts of
+//     twice as many
+// P5  two slices or more: twice as many need as many cuts again for an
+//     odd count, twice as many for an even one
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn cuts_literally(n: i64) -> i64 {
+    if n == 1 {
+        return 0;
+    }
+    let steps = 2 * n;
+    let radii: Vec[i64] = (0..n).map(|k| 2 * k).collect();
+    let mut pairs = 0;
+    for p in radii.iter() {
+        for q in radii.iter() {
+            if (q - p + steps) % steps == n {
+                pairs += 1;
+            }
+        }
+    }
+    // each pair was met from both ends
+    n - pairs / 2
+}
+
+// ---- star (cuts.kara) ----------------------------------------------------
+
+fn star_number_of_cuts(n: i64) -> i64 {
+    if n == 1 {
+        0
+    } else if n % 2 == 0 {
+        n / 2
+    } else {
+        n
+    }
+}
+
+// ---- pair (cuts_pair.kara) -----------------------------------------------
+
+fn pair_number_of_cuts(n: i64) -> i64 {
+    if n == 1 {
+        return 0;
+    }
+    let mut drawn: Vec[bool] = Vec.filled(n, false);
+    let mut cuts = 0;
+    for k in 0..n {
+        if drawn[k] {
+            continue;
+        }
+        drawn[k] = true;
+        if n % 2 == 0 {
+            drawn[(k + n / 2) % n] = true;
+        }
+        cuts += 1;
+    }
+    cuts
+}
+
+// ---- angles (cuts_angles.kara) -------------------------------------------
+
+fn angles_number_of_cuts(n: i64) -> i64 {
+    if n == 1 {
+        return 0;
+    }
+    let angles: Vec[f64] = (0..n).map(|k| 360.0 * k as f64 / n as f64).collect();
+    let mut cuts = 0;
+    for a in angles.iter() {
+        let back = a - 180.0;
+        let opposite = angles.iter().any(|b| (b - back).abs() < 0.000000001);
+        if not opposite {
+            cuts += 1;
+        }
+    }
+    cuts
+}
+
+// ---- gcd (cuts_gcd.kara) -------------------------------------------------
+
+fn gcd_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { gcd_gcd(b, a % b) }
+}
+
+fn gcd_number_of_cuts(n: i64) -> i64 {
+    if n == 1 {
+        return 0;
+    }
+    n / gcd_gcd(n, 2)
+}
+
+// ---- iter (cuts_iter.kara) -----------------------------------------------
+
+fn iter_number_of_cuts(n: i64) -> i64 {
+    if n == 1 {
+        return 0;
+    }
+    (0..n).filter(|k| n % 2 == 1 or k < n / 2).count()
+}
+
+// ---- solution (cuts_solution.kara) ---------------------------------------
+
+impl Solution {
+    pub fn number_of_cuts(n: i32) -> i32 {
+        match n {
+            1 => 0,
+            n if n % 2 == 0 => n / 2,
+            n => n,
+        }
+    }
+}
+
+struct Solution {}
+
+fn solution_number_of_cuts(n: i64) -> i64 {
+    Solution.number_of_cuts(n as i32)
+}
+
+
+// ---- the differential -------------------------------------------------------
+
+fn answer(arm: i64, n: i64) -> i64 {
+    match arm {
+        0 => star_number_of_cuts(n),
+        1 => pair_number_of_cuts(n),
+        2 => angles_number_of_cuts(n),
+        3 => gcd_number_of_cuts(n),
+        4 => iter_number_of_cuts(n),
+        _ => solution_number_of_cuts(n),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "pair", "angles", "gcd", "iter", "solution"];
+    let mut seed = 2481;
+    let mut cases: Vec[i64] = (1..101).collect();
+    for _ in 0..260 {
+        cases.push(1 + next_random(mut seed) % 100);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let n = cases[c];
+        let truth = cuts_literally(n);
+        check = (check * 31 + truth) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, n)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let doubled = answer(arm, 2 * n);
+            let verdicts = [
+                value == truth,
+                doubled == n,
+                n == 1 or (2 * value >= n and value <= n),
+                n == 1 or answer(arm, 4 * n) == 2 * doubled,
+                n == 1 or doubled == if n % 2 == 1 { value } else { 2 * value },
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
