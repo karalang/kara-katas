@@ -1,0 +1,58 @@
+// LeetCode #2506: Count Pairs Of Similar Strings -- the benchmark: the ★
+// arm over 1000 lists of 100 words built once, then the passes; each
+// copies one word of every list over another, chosen by the checksum so
+// far, asks, and puts the word back.
+
+fn similar_pairs(words: Vec[String]) -> i64 {
+    let mut seen: Map[i64, i64] = Map.new();
+    let mut pairs = 0;
+    for word in words.iter() {
+        let mut mask = 0;
+        for ch in word.chars() {
+            mask |= 1 << (ch as i64 - 'a' as i64);
+        }
+        pairs += seen.get(mask) ?? 0;
+        *seen.entry(mask).or_insert(0) += 1;
+    }
+    pairs
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// 1 to 100 letters from the first 3 to 6 of the alphabet
+fn random_word(seed: mut ref i64) -> String {
+    let length = next_random(mut seed) % 100 + 1;
+    let letters = next_random(mut seed) % 4 + 3;
+    let mut word = String.new();
+    for _ in 0..length {
+        word.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+    }
+    word
+}
+
+fn main() {
+    let passes = 24;
+    let mut seed = 2506;
+    let mut lists: Vec[Vec[String]] = Vec.new();
+    for _ in 0..1000 {
+        let mut words: Vec[String] = Vec.new();
+        for _ in 0..100 {
+            words.push(random_word(mut seed));
+        }
+        lists.push(words);
+    }
+    let mut check = 0;
+    for p in 0..passes {
+        for l in 0..1000 {
+            let at = check % 100;
+            let was = lists[l][at].clone();
+            lists[l][at] = lists[l][(check / 100 + p) % 100].clone();
+            check = (check * 31 + similar_pairs(lists[l]) + p) % 1000000007;
+            lists[l][at] = was;
+        }
+    }
+    println(f"{passes} passes over 1000 lists of 100 words: checksum {check}");
+}

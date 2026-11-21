@@ -1,0 +1,88 @@
+// LeetCode #2506: Count Pairs Of Similar Strings -- every word's letters
+// gathered into a `Set[char]`, and every pair of words compared by their
+// sets. O(n^2 26 + total length).
+
+fn similar_pairs(words: Vec[String]) -> i64 {
+    let letters: Vec[Set[char]] = words.iter().map(|w| w.chars().collect()).collect();
+    let mut pairs = 0;
+    for i in 0..letters.len() {
+        for j in i + 1..letters.len() {
+            if letters[i] == letters[j] {
+                pairs += 1;
+            }
+        }
+    }
+    pairs
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a word of `length` letters drawn from the first `letters` of the
+// alphabet
+fn random_word(length: i64, letters: i64, seed: mut ref i64) -> String {
+    let mut word = String.new();
+    for _ in 0..length {
+        word.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+    }
+    word
+}
+
+fn words_of(list: Vec[Str]) -> Vec[String] {
+    list.iter().map(|w| w.to_string()).collect()
+}
+
+fn main() {
+    // LeetCode's three examples, then five more
+    let cases: Vec[Vec[String]] = [
+        words_of(["aba", "aabb", "abcd", "bac", "aabc"].to_vec()),
+        words_of(["aabb", "ab", "ba"].to_vec()),
+        words_of(["nba", "cba", "dba"].to_vec()),
+        words_of(["z"].to_vec()),
+        words_of(["abc", "cab", "bca", "cba"].to_vec()),
+        words_of(["a", "aa", "aaa", "b", "bb"].to_vec()),
+        words_of(["abcdefghijklmnopqrstuvwxyz", "zyxwvutsrqponmlkjihgfedcba", "a"].to_vec()),
+        words_of(["ab", "abc", "abcd", "dcba", "cba"].to_vec()),
+    ].to_vec();
+    for words in cases.iter() {
+        println(f"{words.len()} words -> {similar_pairs(words)}");
+    }
+    // 2000 random lists of 1 to 30 words of 1 to 8 letters, from 3 letters
+    // and from 26: how many have no pair, and a checksum
+    let mut seed = 2506;
+    for letters in [3, 26] {
+        let mut check = 0;
+        let mut none = 0;
+        for _ in 0..2000 {
+            let count = next_random(mut seed) % 30 + 1;
+            let mut words: Vec[String] = Vec.new();
+            for _ in 0..count {
+                let length = next_random(mut seed) % 8 + 1;
+                words.push(random_word(length, letters, mut seed));
+            }
+            let a = similar_pairs(words);
+            if a == 0 {
+                none += 1;
+            }
+            check = (check * 31 + a) % 1000000007;
+        }
+        println(f"2000 random of {letters} letters: {none} with no pair, checksum {check}");
+    }
+    // the constraints' largest, 100 words: each of 100 letters running
+    // through the alphabet from a different start; 100 random words of 100
+    // letters; and 100 random words of 1 to 4 letters from 3
+    let same: Vec[String] = (0..100).map(|i| (0..100).map(|j| (b'a' + ((i + j) % 26) as u8) as char).collect()).collect();
+    println(f"100 words of every letter -> {similar_pairs(same)}");
+    let long_words: Vec[String] = (0..100).map(|_| random_word(100, 26, mut seed)).collect();
+    println(f"100 random words of 100 letters -> {similar_pairs(long_words)}");
+    let mut short_words: Vec[String] = Vec.new();
+    for _ in 0..100 {
+        let length = next_random(mut seed) % 4 + 1;
+        short_words.push(random_word(length, 3, mut seed));
+    }
+    println(f"100 random words to 4 letters from 3 -> {similar_pairs(short_words)}");
+}

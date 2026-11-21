@@ -1,0 +1,252 @@
+// LeetCode #2506: Count Pairs Of Similar Strings -- the differential. The
+// six arms against the statement read literally: every pair of places
+// `i < j`, similar when every letter of each word is found in the other.
+// 300 random lists of 1 to 10 words of 1 to 5 letters, from 2 or 4
+// letters; then 20 of one word, and 40 of 20 words from 3 letters; every
+// one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  from 0 to n (n - 1) / 2
+// P3  the words in the other order: the same answer
+// P4  every letter c written as the letter 25 - c places from a: the
+//     same answer
+// P5  the list followed by a copy of itself: 4 x + n
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally
+
+fn literal(words: Vec[String]) -> i64 {
+    let mut pairs = 0;
+    for i in 0..words.len() {
+        for j in i + 1..words.len() {
+            let mut similar = true;
+            for ch in words[i].chars() {
+                if not words[j].chars().any(|other| other == ch) {
+                    similar = false;
+                }
+            }
+            for ch in words[j].chars() {
+                if not words[i].chars().any(|other| other == ch) {
+                    similar = false;
+                }
+            }
+            if similar {
+                pairs += 1;
+            }
+        }
+    }
+    pairs
+}
+
+// ---- star (similar.kara) -------------------------------------------------
+
+fn star_similar_pairs(words: Vec[String]) -> i64 {
+    let mut seen: Map[i64, i64] = Map.new();
+    let mut pairs = 0;
+    for word in words.iter() {
+        let mut mask = 0;
+        for ch in word.chars() {
+            mask |= 1 << (ch as i64 - 'a' as i64);
+        }
+        pairs += seen.get(mask) ?? 0;
+        *seen.entry(mask).or_insert(0) += 1;
+    }
+    pairs
+}
+
+// ---- sets (similar_sets.kara) --------------------------------------------
+
+fn sets_similar_pairs(words: Vec[String]) -> i64 {
+    let letters: Vec[Set[char]] = words.iter().map(|w| w.chars().collect()).collect();
+    let mut pairs = 0;
+    for i in 0..letters.len() {
+        for j in i + 1..letters.len() {
+            if letters[i] == letters[j] {
+                pairs += 1;
+            }
+        }
+    }
+    pairs
+}
+
+// ---- keys (similar_keys.kara) --------------------------------------------
+
+fn keys_key_of(word: String) -> String {
+    let mut letters: Vec[char] = word.chars().collect();
+    letters.sort();
+    letters.dedup();
+    letters.iter().collect()
+}
+
+fn keys_similar_pairs(words: Vec[String]) -> i64 {
+    let mut keys: Vec[String] = words.iter().map(|w| keys_key_of(w)).collect();
+    keys.sort();
+    let mut pairs = 0;
+    let mut start = 0;
+    for i in 1..keys.len() + 1 {
+        if i == keys.len() or keys[i] != keys[start] {
+            let run = i - start;
+            pairs += run * (run - 1) / 2;
+            start = i;
+        }
+    }
+    pairs
+}
+
+// ---- rec (similar_rec.kara) ----------------------------------------------
+
+fn rec_mask_from(letters: Vec[char], at: i64) -> i64 {
+    if at == letters.len() {
+        return 0;
+    }
+    (1 << (letters[at] as i64 - 'a' as i64)) | rec_mask_from(letters, at + 1)
+}
+
+fn rec_pairs_from(masks: Vec[i64], i: i64) -> i64 {
+    if i >= masks.len() {
+        return 0;
+    }
+    let mut later = 0;
+    for j in i + 1..masks.len() {
+        if masks[j] == masks[i] {
+            later += 1;
+        }
+    }
+    later + rec_pairs_from(masks, i + 1)
+}
+
+fn rec_similar_pairs(words: Vec[String]) -> i64 {
+    let masks: Vec[i64] = words.iter().map(|w| rec_mask_from(w.chars().collect(), 0)).collect();
+    rec_pairs_from(masks, 0)
+}
+
+// ---- iter (similar_iter.kara) --------------------------------------------
+
+fn iter_similar_pairs(words: Vec[String]) -> i64 {
+    let masks: Vec[i64] = words.iter().map(|w| w.chars().fold(0, |mask, ch| mask | (1 << (ch as i64 - 'a' as i64)))).collect();
+    masks.iter().enumerate().map(|(i, a)| masks.iter().skip(i + 1).filter(|b| b == a).count()).sum()
+}
+
+// ---- solution (similar_solution.kara) ------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn similar_pairs(words: Vec[String]) -> i32 {
+        let mut cnt: Map[i32, i32] = Map.new();
+        let mut ans: i32 = 0;
+        for w in words.iter() {
+            let mut mask = 0;
+            for b in w.bytes() {
+                mask |= 1 << (b - b'a');
+            }
+            let e = cnt.entry(mask).or_insert(0);
+            ans += *e;
+            *e += 1;
+        }
+        ans
+    }
+}
+
+fn solution_similar_pairs(words: Vec[String]) -> i64 {
+    Solution.similar_pairs(words)
+}
+
+// ---- the differential --------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn answer(arm: i64, words: Vec[String]) -> i64 {
+    match arm {
+        0 => star_similar_pairs(words),
+        1 => sets_similar_pairs(words),
+        2 => keys_similar_pairs(words),
+        3 => rec_similar_pairs(words),
+        4 => iter_similar_pairs(words),
+        _ => solution_similar_pairs(words),
+    }
+}
+
+fn main() {
+    let names = ["star", "sets", "keys", "rec", "iter", "solution"];
+    let mut seed = 2506;
+    let mut problems: Vec[Vec[String]] = Vec.new();
+    for t in 0..360 {
+        let (count, letters, longest) = if t < 300 {
+            (next_random(mut seed) % 10 + 1, if t % 2 == 0 { 2 } else { 4 }, 5)
+        } else if t < 320 {
+            (1, 26, 8)
+        } else {
+            (20, 3, 5)
+        };
+        let mut words: Vec[String] = Vec.new();
+        for _ in 0..count {
+            let length = next_random(mut seed) % longest + 1;
+            let mut word = String.new();
+            for _ in 0..length {
+                word.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+            }
+            words.push(word);
+        }
+        problems.push(words);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut none = 0;
+    for words in problems.iter() {
+        let n = words.len();
+        let truth = literal(words);
+        if truth == 0 {
+            none += 1;
+        }
+        check = (check * 31 + truth) % 1000000007;
+        let reversed: Vec[String] = words.iter().rev().cloned().collect();
+        let mirrored: Vec[String] = words.iter().map(|w| w.bytes().iter().map(|b| (b'z' - (b - b'a')) as char).collect()).collect();
+        let mut twice = words.clone();
+        twice.extend(words.iter().cloned());
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, words)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                x >= 0 and x <= n * (n - 1) / 2,
+                answer(arm, reversed) == x,
+                answer(arm, mirrored) == x,
+                answer(arm, twice) == 4 * x + n,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{words}, arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} cases, {none} with no pair: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
