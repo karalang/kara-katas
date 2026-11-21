@@ -1,0 +1,325 @@
+// LeetCode #2482: Difference Between Ones and Zeros in Row and Column --
+// the differential. The six arms against the statement read literally:
+// for every cell, its row and its column walked afresh and their ones
+// and zeros counted, four counts a cell, and the answer
+// `onesRow + onesCol - zerosRow - zerosCol`. No count is shared between
+// cells. 360 random grids: 300 of 1 to 5 rows and columns, then 60 of up
+// to 12, every bit drawn at random, all drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  every bit flipped: every value negated
+// P3  the grid transposed: the answer transposed
+// P4  the rows in reverse order: the answer's rows in reverse order
+// P5  a row of ones added below: every old value one more, and the new
+//     row's values those of the grid with it read literally
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn literally(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut diff: Vec[Vec[i64]] = Vec.new();
+    for i in 0..m {
+        let mut row: Vec[i64] = Vec.new();
+        for j in 0..n {
+            let mut (ones_row, zeros_row, ones_col, zeros_col) = (0, 0, 0, 0);
+            for c in 0..n {
+                if grid[i][c] == 1 {
+                    ones_row += 1;
+                } else {
+                    zeros_row += 1;
+                }
+            }
+            for r in 0..m {
+                if grid[r][j] == 1 {
+                    ones_col += 1;
+                } else {
+                    zeros_col += 1;
+                }
+            }
+            row.push(ones_row + ones_col - zeros_row - zeros_col);
+        }
+        diff.push(row);
+    }
+    diff
+}
+
+fn flipped(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    grid.iter().map(|row| row.iter().map(|v| 1 - v).collect()).collect()
+}
+
+fn transposed(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    (0..grid[0].len()).map(|j| grid.iter().map(|row| row[j]).collect()).collect()
+}
+
+fn reversed(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut rows = grid.clone();
+    rows.reverse();
+    rows
+}
+
+// ---- star (diff.kara) ----------------------------------------------------
+
+fn star_ones_minus_zeros(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut row_ones: Vec[i64] = Vec.filled(m, 0);
+    let mut col_ones: Vec[i64] = Vec.filled(n, 0);
+    for i in 0..m {
+        for j in 0..n {
+            row_ones[i] += grid[i][j];
+            col_ones[j] += grid[i][j];
+        }
+    }
+    let mut diff: Vec[Vec[i64]] = Vec.new();
+    for i in 0..m {
+        let mut row: Vec[i64] = Vec.new();
+        for j in 0..n {
+            row.push(2 * row_ones[i] + 2 * col_ones[j] - m - n);
+        }
+        diff.push(row);
+    }
+    diff
+}
+
+// ---- four (diff_four.kara) -----------------------------------------------
+
+fn four_ones_minus_zeros(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut ones_row: Vec[i64] = Vec.filled(m, 0);
+    let mut zeros_row: Vec[i64] = Vec.filled(m, 0);
+    let mut ones_col: Vec[i64] = Vec.filled(n, 0);
+    let mut zeros_col: Vec[i64] = Vec.filled(n, 0);
+    for i in 0..m {
+        for j in 0..n {
+            if grid[i][j] == 1 {
+                ones_row[i] += 1;
+                ones_col[j] += 1;
+            } else {
+                zeros_row[i] += 1;
+                zeros_col[j] += 1;
+            }
+        }
+    }
+    let mut diff: Vec[Vec[i64]] = Vec.new();
+    for i in 0..m {
+        let mut row: Vec[i64] = Vec.filled(n, 0);
+        for j in 0..n {
+            row[j] = ones_row[i] + ones_col[j] - zeros_row[i] - zeros_col[j];
+        }
+        diff.push(row);
+    }
+    diff
+}
+
+// ---- signed (diff_signed.kara) -------------------------------------------
+
+fn signed_ones_minus_zeros(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut row_sum: Vec[i64] = Vec.filled(m, 0);
+    let mut col_sum: Vec[i64] = Vec.filled(n, 0);
+    for i in 0..m {
+        for j in 0..n {
+            let sign = 2 * grid[i][j] - 1;
+            row_sum[i] += sign;
+            col_sum[j] += sign;
+        }
+    }
+    let mut diff = grid.clone();
+    for i in 0..m {
+        for j in 0..n {
+            diff[i][j] = row_sum[i] + col_sum[j];
+        }
+    }
+    diff
+}
+
+// ---- transpose (diff_transpose.kara) -------------------------------------
+
+fn transpose_balance(row: Vec[i64]) -> i64 {
+    let mut total = 0;
+    for v in row.iter() {
+        if v == 1 {
+            total += 1;
+        } else {
+            total -= 1;
+        }
+    }
+    total
+}
+
+fn transpose_transpose(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut columns: Vec[Vec[i64]] = Vec.new();
+    for j in 0..n {
+        let mut column: Vec[i64] = Vec.with_capacity(m);
+        for i in 0..m {
+            column.push(grid[i][j]);
+        }
+        columns.push(column);
+    }
+    columns
+}
+
+fn transpose_ones_minus_zeros(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let rows: Vec[i64] = grid.iter().map(|row| transpose_balance(row)).collect();
+    let columns: Vec[i64] = transpose_transpose(grid).iter().map(|column| transpose_balance(column)).collect();
+    let mut diff: Vec[Vec[i64]] = Vec.new();
+    for r in rows.iter() {
+        let mut line: Vec[i64] = Vec.new();
+        for c in columns.iter() {
+            line.push(r + c);
+        }
+        diff.push(line);
+    }
+    diff
+}
+
+// ---- iter (diff_iter.kara) -----------------------------------------------
+
+fn iter_ones_minus_zeros(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let rows: Vec[i64] = grid.iter().map(|row| row.iter().sum()).collect();
+    let columns: Vec[i64] = grid.iter().fold(Vec.filled(n, 0), |acc, row| acc.iter().zip(row.iter()).map(|(a, v)| a + v).collect());
+    rows.iter().map(|r| columns.iter().map(|c| 2 * r + 2 * c - m - n).collect()).collect()
+}
+
+// ---- solution (diff_solution.kara) ---------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn ones_minus_zeros(grid: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+        let (m, n) = (grid.len(), grid[0].len());
+        let mut rows = Vec.filled(m, 0i32);
+        let mut cols = Vec.filled(n, 0i32);
+        for i in 0..m {
+            for j in 0..n {
+                rows[i] += grid[i][j];
+                cols[j] += grid[i][j];
+            }
+        }
+        (0..m)
+            .map(|i| {
+                (0..n)
+                    .map(|j| 2 * rows[i] + 2 * cols[j] - m as i32 - n as i32)
+                    .collect()
+            })
+            .collect()
+    }
+}
+
+fn solution_ones_minus_zeros(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let asked: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|v| v as i32).collect()).collect();
+    Solution.ones_minus_zeros(asked).iter().map(|row| row.iter().map(|v| v as i64).collect()).collect()
+}
+
+
+// ---- the differential -------------------------------------------------------
+
+fn answer(arm: i64, grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    match arm {
+        0 => star_ones_minus_zeros(grid),
+        1 => four_ones_minus_zeros(grid),
+        2 => signed_ones_minus_zeros(grid),
+        3 => transpose_ones_minus_zeros(grid),
+        4 => iter_ones_minus_zeros(grid),
+        _ => solution_ones_minus_zeros(grid),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn fold(diff: Vec[Vec[i64]]) -> i64 {
+    let mut check = diff.len();
+    for row in diff.iter() {
+        for v in row.iter() {
+            check = (check * 31 + v + 1000000) % 1000000007;
+        }
+    }
+    check
+}
+
+fn main() {
+    let arms = ["star", "four", "signed", "transpose", "iter", "solution"];
+    let mut seed = 2482;
+    let mut cases: Vec[Vec[Vec[i64]]] = Vec.new();
+    for t in 0..360 {
+        let most = if t < 300 { 5 } else { 12 };
+        let m = 1 + next_random(mut seed) % most;
+        let n = 1 + next_random(mut seed) % most;
+        let grid: Vec[Vec[i64]] = (0..m).map(|_| (0..n).map(|_| next_random(mut seed) % 2).collect()).collect();
+        cases.push(grid);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let grid = cases[c].clone();
+        let m = grid.len();
+        let n = grid[0].len();
+        let truth = literally(grid);
+        check = (check * 31 + fold(truth)) % 1000000007;
+        let got: Vec[Vec[Vec[i64]]] = (0..6).map(|arm| answer(arm, grid)).collect();
+        let mut taller = grid.clone();
+        taller.push(Vec.filled(n, 1));
+        let taller_truth = literally(taller);
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let negated: Vec[Vec[i64]] = value.iter().map(|row| row.iter().map(|v| -v).collect()).collect();
+            let grown = answer(arm, taller);
+            let mut raised = true;
+            for i in 0..m {
+                for j in 0..n {
+                    if grown[i][j] != value[i][j] + 1 {
+                        raised = false;
+                    }
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, flipped(grid)) == negated,
+                answer(arm, transposed(grid)) == transposed(value),
+                answer(arm, reversed(grid)) == reversed(value),
+                raised and grown.len() == m + 1 and grown[m] == taller_truth[m],
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
