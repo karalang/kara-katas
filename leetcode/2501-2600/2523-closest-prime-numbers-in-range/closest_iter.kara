@@ -1,0 +1,63 @@
+// LeetCode #2523: Closest Prime Numbers in Range -- iterators: the sieve's
+// marks a `fold` over the numbers to the square root of `right`, the primes
+// of the range a `filter`, and the closest neighbouring pair a `fold` over
+// their `windows(2)` that moves only on a strictly smaller gap.
+
+fn closest_primes(left: i64, right: i64) -> (i64, i64) {
+    let composite = (2..right + 1).take_while(|p| p * p <= right).fold(Vec.filled(right + 1, false), |marks, p| {
+        let mut marks = marks;
+        if not marks[p] {
+            for m in (p * p..right + 1).step_by(p) {
+                marks[m] = true;
+            }
+        }
+        marks
+    });
+    let primes: Vec[i64] = (left.max(2)..right + 1).filter(|x| not composite[x]).collect();
+    primes.windows(2).into_iter().fold((-1, -1), |best, w| if best.0 == -1 or w[1] - w[0] < best.1 - best.0 { (w[0], w[1]) } else { best })
+}
+
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a value from 0 to 2^30 - 1, next_random giving only 15 bits
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples, then eight more
+    for (left, right) in [(10, 19), (4, 6), (1, 1), (1, 2), (2, 3), (1, 10), (14, 16), (89, 97), (1000000, 1000000), (999900, 1000000)] {
+        let (a, b) = closest_primes(left, right);
+        println(f"{left} {right} -> [{a}, {b}]");
+    }
+    // 2000 random ranges of width 0 to 99 within 1 to 10^4, and 30 of width
+    // 0 to 9999 within 1 to 10^6: how many have no pair, the sum of the
+    // gaps, and a checksum
+    let mut seed = 2523;
+    for (count, top, width) in [(2000, 10000, 100), (30, 1000000, 10000)] {
+        let mut none = 0;
+        let mut gaps = 0;
+        let mut check = 0;
+        for _ in 0..count {
+            let left = wide_random(mut seed) % top + 1;
+            let right = (left + wide_random(mut seed) % width).min(top);
+            let (a, b) = closest_primes(left, right);
+            if a == -1 {
+                none += 1;
+            } else {
+                gaps += b - a;
+            }
+            check = (check * 31 + a + 1) % 1000000007;
+        }
+        println(f"{count} random ranges to {top}: {none} with no pair, gaps {gaps}, checksum {check}");
+    }
+    // the constraints' largest: 1 to 10^6
+    let (a, b) = closest_primes(1, 1000000);
+    println(f"1 1000000 -> [{a}, {b}]");
+}

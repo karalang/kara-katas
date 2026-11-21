@@ -1,0 +1,90 @@
+// LeetCode #2523: Closest Prime Numbers in Range -- LeetCode's Rust
+// template: `i32` in, `Vec<i32>` out; a `vec![true; n + 1]` sieve over
+// `usize` indices, then the range walked with the best gap held as an
+// `i32::MAX` sentinel; carried by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn closest_primes(left: i32, right: i32) -> Vec[i32] {
+        let n = right as i64;
+        let mut is_prime = Vec.filled(n + 1, true);
+        is_prime[0] = false;
+        if n >= 1 {
+            is_prime[1] = false;
+        }
+        let mut i = 2;
+        while i * i <= n {
+            if is_prime[i] {
+                let mut j = i * i;
+                while j <= n {
+                    is_prime[j] = false;
+                    j += i;
+                }
+            }
+            i += 1;
+        }
+        let mut ans = [-1, -1];
+        let mut prev: i32 = -1;
+        let mut best = i32.MAX;
+        for x in left..=right {
+            if is_prime[x] {
+                if prev != -1 and x - prev < best {
+                    best = x - prev;
+                    ans = [prev, x];
+                }
+                prev = x;
+            }
+        }
+        ans
+    }
+}
+
+fn closest_primes(left: i64, right: i64) -> (i64, i64) {
+    let v = Solution.closest_primes(left as i32, right as i32);
+    (v[0] as i64, v[1] as i64)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a value from 0 to 2^30 - 1, next_random giving only 15 bits
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples, then eight more
+    for (left, right) in [(10, 19), (4, 6), (1, 1), (1, 2), (2, 3), (1, 10), (14, 16), (89, 97), (1000000, 1000000), (999900, 1000000)] {
+        let (a, b) = closest_primes(left, right);
+        println(f"{left} {right} -> [{a}, {b}]");
+    }
+    // 2000 random ranges of width 0 to 99 within 1 to 10^4, and 30 of width
+    // 0 to 9999 within 1 to 10^6: how many have no pair, the sum of the
+    // gaps, and a checksum
+    let mut seed = 2523;
+    for (count, top, width) in [(2000, 10000, 100), (30, 1000000, 10000)] {
+        let mut none = 0;
+        let mut gaps = 0;
+        let mut check = 0;
+        for _ in 0..count {
+            let left = wide_random(mut seed) % top + 1;
+            let right = (left + wide_random(mut seed) % width).min(top);
+            let (a, b) = closest_primes(left, right);
+            if a == -1 {
+                none += 1;
+            } else {
+                gaps += b - a;
+            }
+            check = (check * 31 + a + 1) % 1000000007;
+        }
+        println(f"{count} random ranges to {top}: {none} with no pair, gaps {gaps}, checksum {check}");
+    }
+    // the constraints' largest: 1 to 10^6
+    let (a, b) = closest_primes(1, 1000000);
+    println(f"1 1000000 -> [{a}, {b}]");
+}
