@@ -38,7 +38,7 @@ need not be kept. The approaches differ in what they keep of it.
 
 Each arm is a `DataStream` with `new` and `consec`, and two small
 functions, `open_stream` and `feed`, through which the harness drives
-it; the template's cast its `i64` arguments to the `i32` it takes.
+it; the template's two cast their `i64` arguments to the `i32` it takes.
 Every arm prints the same 10 lines: LeetCode's example and five more,
 as the answers written `T` and `F`; then 2000 random streams of 1 to 60
 numbers from 1 to 3 with `value` 1 to 3 and `k` 1 to 6, as how many
