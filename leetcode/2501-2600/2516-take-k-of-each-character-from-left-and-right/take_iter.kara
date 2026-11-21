@@ -1,0 +1,82 @@
+// LeetCode #2516: Take K of Each Character From Left and Right --
+// iterators: the letters' totals a `fold` over the bytes, and the longest
+// window that leaves k of each outside a `fold` over the right ends,
+// carrying the left end, the counts inside and the longest so far; the
+// left end moved on while the newest letter is overdrawn.
+
+fn take_characters(s: String, k: i64) -> i64 {
+    let bytes = s.bytes();
+    let total = bytes.iter().fold([0, 0, 0], |t, b| {
+        let mut t = t;
+        t[b - b'a'] += 1;
+        t
+    });
+    if total.iter().any(|t| t < k) {
+        return -1;
+    }
+    let (_, _, longest) = (0..bytes.len()).fold((0, [0, 0, 0], 0), |(left, inside, longest), right| {
+        let mut (left, inside) = (left, inside);
+        let c = bytes[right] - b'a';
+        inside[c] += 1;
+        while total[c] - inside[c] < k {
+            inside[bytes[left] - b'a'] -= 1;
+            left += 1;
+        }
+        (left, inside, longest.max(right - left + 1))
+    });
+    bytes.len() - longest
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letters(n: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push((b'a' + (next_random(mut seed) % 3) as u8) as char);
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's two examples, then six more
+    let cases: Vec[(Str, i64)] = [("aabaaaacaabc", 2), ("a", 1), ("a", 0), ("abc", 1), ("aabbcc", 2), ("ccbbaa", 1), ("abacabac", 2), ("bcbbbbca", 1)].to_vec();
+    for (s, k) in cases.iter() {
+        println(f"\"{s}\" k {k} -> {take_characters(s.to_string(), k)}");
+    }
+    // 2000 random strings of 1 to 20 letters with k from 0 to 4, and 2000
+    // of 1 to 2000 letters with k up to a third of the length: the
+    // misses, the sum and a checksum
+    let mut seed = 2516;
+    for most in [20, 2000] {
+        let mut misses = 0;
+        let mut total = 0;
+        let mut check = 0;
+        for _ in 0..2000 {
+            let n = next_random(mut seed) % most + 1;
+            let s = letters(n, mut seed);
+            let k = if most == 20 { next_random(mut seed) % 5 } else { next_random(mut seed) % (n / 3 + 1) };
+            let a = take_characters(s, k);
+            if a == -1 {
+                misses += 1;
+            } else {
+                total += a;
+            }
+            check = (check * 31 + a + 1) % 1000000007;
+        }
+        println(f"2000 random of up to {most} letters: {misses} misses, total {total}, checksum {check}");
+    }
+    // the constraints' largest, 10^5 letters: random, k 33000 and k 0;
+    // all a's, k 1; and abc over and over, k a third of it
+    let s = letters(100000, mut seed);
+    println(f"10^5 random, k 33000: {take_characters(s, 33000)}");
+    println(f"10^5 random, k 0: {take_characters(s, 0)}");
+    println(f"10^5 a's, k 1: {take_characters("a".repeat(100000), 1)}");
+    let abc = "abc".repeat(33333);
+    println(f"abc 33333 times, k 33333: {take_characters(abc, 33333)}");
+    println(f"abc 33333 times, k 33332: {take_characters(abc, 33332)}");
+}
