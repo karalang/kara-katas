@@ -1,0 +1,333 @@
+// LeetCode #2452: Words Within Two Edits of Dictionary -- the
+// differential. The six arms against the statement read literally: from
+// each query, every word that one edit and then a second reach, an edit
+// setting one place to any letter the case's words are drawn from, the
+// only letters a dictionary word can hold; the query is kept when the
+// words reached include a dictionary word. No places are compared and
+// no differences counted. 360 cases: 300 random of 1 to 5 queries and 1
+// to 5 words of 1 to 5 letters from 2 to 4; then 30 of up to 8 letters
+// from 3, each query a dictionary word with 0 to 4 places redrawn; then
+// 30 of up to 10 queries and words of 1 to 3 letters from 2. Every case
+// is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the queries in reverse order: the answer reversed
+// P3  the dictionary in reverse order: the same answer
+// P4  the letters of every query and word reversed: each answer reversed
+// P5  the queries added to the dictionary: every query
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn one_edit(words: Set[String], letters: i64) -> Set[String] {
+    let mut reached: Set[String] = Set.new();
+    for w in words.iter() {
+        reached.insert(w.clone());
+        let b = w.bytes().to_vec();
+        for place in 0..b.len() {
+            for c in 0..letters {
+                let mut e = b.clone();
+                e[place] = (97 + c) as u8;
+                reached.insert(String.from_utf8(e).unwrap());
+            }
+        }
+    }
+    reached
+}
+
+fn edits_literally(queries: Vec[String], dictionary: Vec[String], letters: i64) -> Vec[String] {
+    let mut answers: Vec[String] = Vec.new();
+    for q in queries.iter() {
+        let mut start: Set[String] = Set.new();
+        start.insert(q.clone());
+        let reached = one_edit(one_edit(start, letters), letters);
+        if dictionary.iter().any(|d| reached.contains(d)) {
+            answers.push(q.clone());
+        }
+    }
+    answers
+}
+
+// ---- star (edits.kara) ---------------------------------------------------
+
+fn star_within_two(query: String, word: String) -> bool {
+    let a = query.bytes();
+    let b = word.bytes();
+    let mut differ = 0;
+    for j in 0..a.len() {
+        if a[j] != b[j] {
+            differ += 1;
+            if differ > 2 {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn star_two_edit_words(queries: Vec[String], dictionary: Vec[String]) -> Vec[String] {
+    let mut answers: Vec[String] = Vec.new();
+    for q in queries.iter() {
+        for w in dictionary.iter() {
+            if star_within_two(q, w) {
+                answers.push(q.clone());
+                break;
+            }
+        }
+    }
+    answers
+}
+
+// ---- naive (edits_naive.kara) --------------------------------------------
+
+fn naive_two_edit_words(queries: Vec[String], dictionary: Vec[String]) -> Vec[String] {
+    let mut answers: Vec[String] = Vec.new();
+    for q in queries.iter() {
+        let letters: Vec[char] = q.chars().collect();
+        let mut fewest = letters.len() + 1;
+        for w in dictionary.iter() {
+            let other: Vec[char] = w.chars().collect();
+            let mut differ = 0;
+            for j in 0..letters.len() {
+                if letters[j] != other[j] {
+                    differ += 1;
+                }
+            }
+            fewest = fewest.min(differ);
+        }
+        if fewest <= 2 {
+            answers.push(q.clone());
+        }
+    }
+    answers
+}
+
+// ---- mask (edits_mask.kara) ----------------------------------------------
+
+fn mask_masks(word: String) -> Vec[String] {
+    let b = word.bytes().to_vec();
+    let n = b.len();
+    let mut all: Vec[String] = Vec.new();
+    if n == 1 {
+        all.push("*".to_string());
+        return all;
+    }
+    for i in 0..n {
+        for j in i + 1..n {
+            let mut m = b.clone();
+            m[i] = b'*';
+            m[j] = b'*';
+            all.push(String.from_utf8(m).unwrap());
+        }
+    }
+    all
+}
+
+fn mask_two_edit_words(queries: Vec[String], dictionary: Vec[String]) -> Vec[String] {
+    let mut seen: Set[String] = Set.new();
+    for w in dictionary.iter() {
+        for m in mask_masks(w).into_iter() {
+            seen.insert(m);
+        }
+    }
+    let mut answers: Vec[String] = Vec.new();
+    for q in queries.iter() {
+        if mask_masks(q).iter().any(|m| seen.contains(m)) {
+            answers.push(q.clone());
+        }
+    }
+    answers
+}
+
+// ---- split (edits_split.kara) --------------------------------------------
+
+fn split_differ_at_most_two(a: Vec[u8], b: Vec[u8]) -> bool {
+    let mut differ = 0;
+    for j in 0..a.len() {
+        if a[j] != b[j] {
+            differ += 1;
+        }
+    }
+    differ <= 2
+}
+
+fn split_two_edit_words(queries: Vec[String], dictionary: Vec[String]) -> Vec[String] {
+    let n = queries[0].len();
+    let cuts = [0, n / 3, 2 * n / 3, n];
+    let mut index: Map[(i64, String), Vec[i64]] = Map.new();
+    for d in 0..dictionary.len() {
+        let b = dictionary[d].bytes().to_vec();
+        for p in 0..3 {
+            let part = String.from_utf8(b[cuts[p]..cuts[p + 1]].to_vec()).unwrap();
+            index.entry((p, part)).or_insert(Vec.new()).push(d);
+        }
+    }
+    let mut answers: Vec[String] = Vec.new();
+    for q in queries.iter() {
+        let b = q.bytes().to_vec();
+        let mut found = false;
+        for p in 0..3 {
+            let part = String.from_utf8(b[cuts[p]..cuts[p + 1]].to_vec()).unwrap();
+            if let Some(words) = index.get((p, part)) {
+                for d in words.iter() {
+                    if split_differ_at_most_two(b, dictionary[d].bytes().to_vec()) {
+                        found = true;
+                    }
+                }
+            }
+        }
+        if found {
+            answers.push(q.clone());
+        }
+    }
+    answers
+}
+
+// ---- iter (edits_iter.kara) ----------------------------------------------
+
+fn iter_two_edit_words(queries: Vec[String], dictionary: Vec[String]) -> Vec[String] {
+    queries
+        .iter()
+        .filter(|q| dictionary.iter().any(|w| q.bytes().iter().zip(w.bytes().iter()).filter(|p| p.0 != p.1).count() <= 2))
+        .cloned()
+        .collect()
+}
+
+// ---- solution (edits_solution.kara) --------------------------------------
+
+impl Solution {
+    pub fn two_edit_words(queries: Vec[String], dictionary: Vec[String]) -> Vec[String] {
+        queries.clone()
+            .into_iter()
+            .filter(|q| dictionary.iter().any(|d| q.bytes().iter().zip(d.bytes().iter()).filter(|(a, b)| a != b).count() <= 2))
+            .collect()
+    }
+}
+
+struct Solution {}
+
+fn solution_two_edit_words(queries: Vec[String], dictionary: Vec[String]) -> Vec[String] {
+    Solution.two_edit_words(queries, dictionary)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, queries: Vec[String], dictionary: Vec[String]) -> Vec[String] {
+    match arm {
+        0 => star_two_edit_words(queries, dictionary),
+        1 => naive_two_edit_words(queries, dictionary),
+        2 => mask_two_edit_words(queries, dictionary),
+        3 => split_two_edit_words(queries, dictionary),
+        4 => iter_two_edit_words(queries, dictionary),
+        _ => solution_two_edit_words(queries, dictionary),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(len: i64, letters: i64, seed: mut ref i64) -> String {
+    let bytes: Vec[u8] = (0..len).map(|_| (97 + next_random(mut seed) % letters) as u8).collect();
+    String.from_utf8(bytes).unwrap()
+}
+
+fn reversed(word: String) -> String {
+    String.from_utf8(word.bytes().iter().rev().cloned().collect()).unwrap()
+}
+
+fn main() {
+    let arms = ["star", "naive", "mask", "split", "iter", "solution"];
+    let mut seed = 2452;
+    let mut cases: Vec[(Vec[String], Vec[String], i64)] = Vec.new();
+    for t in 0..360 {
+        let (len, letters, q, d) = if t < 300 {
+            (1 + next_random(mut seed) % 5, 2 + next_random(mut seed) % 3, 1 + next_random(mut seed) % 5, 1 + next_random(mut seed) % 5)
+        } else if t < 330 {
+            (1 + next_random(mut seed) % 8, 3, 1 + next_random(mut seed) % 5, 1 + next_random(mut seed) % 5)
+        } else {
+            (1 + next_random(mut seed) % 3, 2, 1 + next_random(mut seed) % 10, 1 + next_random(mut seed) % 10)
+        };
+        let dictionary: Vec[String] = (0..d).map(|_| random_word(len, letters, mut seed)).collect();
+        let mut queries: Vec[String] = Vec.new();
+        for _ in 0..q {
+            if t >= 300 and t < 330 {
+                let mut b = dictionary[next_random(mut seed) % d].bytes().to_vec();
+                for _ in 0..next_random(mut seed) % 5 {
+                    let place = next_random(mut seed) % len;
+                    b[place] = (97 + next_random(mut seed) % letters) as u8;
+                }
+                queries.push(String.from_utf8(b).unwrap());
+            } else {
+                queries.push(random_word(len, letters, mut seed));
+            }
+        }
+        cases.push((queries, dictionary, letters));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (queries, dictionary, letters) = cases[c].clone();
+        let truth = edits_literally(queries, dictionary, letters);
+        for w in truth.iter() {
+            for b in w.bytes().iter() {
+                check = (check * 31 + b as i64) % 1000000007;
+            }
+            check = (check * 31 + 1) % 1000000007;
+        }
+        check = (check * 31 + 2) % 1000000007;
+        let mut back_queries = queries.clone();
+        back_queries.reverse();
+        let mut back_dictionary = dictionary.clone();
+        back_dictionary.reverse();
+        let flipped_queries: Vec[String] = queries.iter().map(|w| reversed(w)).collect();
+        let flipped_dictionary: Vec[String] = dictionary.iter().map(|w| reversed(w)).collect();
+        let mut joined = dictionary.clone();
+        joined.extend(queries.iter().cloned());
+        let got: Vec[Vec[String]] = (0..6).map(|arm| answer(arm, queries, dictionary)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut back = answer(arm, back_queries, dictionary);
+            back.reverse();
+            let flipped: Vec[String] = answer(arm, flipped_queries, flipped_dictionary).iter().map(|w| reversed(w)).collect();
+            let verdicts = [
+                value == truth,
+                back == value,
+                answer(arm, queries, back_dictionary) == value,
+                flipped == value,
+                answer(arm, queries, joined) == queries,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

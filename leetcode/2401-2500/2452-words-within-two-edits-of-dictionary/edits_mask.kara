@@ -1,0 +1,123 @@
+// LeetCode #2452: Words Within Two Edits of Dictionary -- wildcards: every
+// dictionary word with each two of its places, or its one place when it
+// has one letter, replaced by `*`, put in a `Set[String]`; a query is
+// within two edits exactly when one of its own masks is in the set.
+// O((q + d) n^3).
+
+fn masks(word: String) -> Vec[String] {
+    let b = word.bytes().to_vec();
+    let n = b.len();
+    let mut all: Vec[String] = Vec.new();
+    if n == 1 {
+        all.push("*".to_string());
+        return all;
+    }
+    for i in 0..n {
+        for j in i + 1..n {
+            let mut m = b.clone();
+            m[i] = b'*';
+            m[j] = b'*';
+            all.push(String.from_utf8(m).unwrap());
+        }
+    }
+    all
+}
+
+fn two_edit_words(queries: Vec[String], dictionary: Vec[String]) -> Vec[String] {
+    let mut seen: Set[String] = Set.new();
+    for w in dictionary.iter() {
+        for m in masks(w).into_iter() {
+            seen.insert(m);
+        }
+    }
+    let mut answers: Vec[String] = Vec.new();
+    for q in queries.iter() {
+        if masks(q).iter().any(|m| seen.contains(m)) {
+            answers.push(q.clone());
+        }
+    }
+    answers
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn strings(list: Vec[Str]) -> Vec[String] {
+    list.iter().map(|w| w.to_string()).collect()
+}
+
+// a random word of `len` letters from the first `letters` of the alphabet
+fn random_word(len: i64, letters: i64, seed: mut ref i64) -> String {
+    let bytes: Vec[u8] = (0..len).map(|_| (97 + next_random(mut seed) % letters) as u8).collect();
+    String.from_utf8(bytes).unwrap()
+}
+
+// `word` with `changes` random places set to random letters
+fn changed(word: String, changes: i64, letters: i64, seed: mut ref i64) -> String {
+    let mut bytes = word.bytes().to_vec();
+    for _ in 0..changes {
+        let place = next_random(mut seed) % bytes.len();
+        bytes[place] = (97 + next_random(mut seed) % letters) as u8;
+    }
+    String.from_utf8(bytes).unwrap()
+}
+
+// how many answers, and a checksum of their letters in order
+fn summary(answers: Vec[String]) -> String {
+    let mut check = 0;
+    for w in answers.iter() {
+        for b in w.bytes().iter() {
+            check = (check * 31 + b as i64) % 1000000007;
+        }
+        check = (check * 31 + 1) % 1000000007;
+    }
+    f"{answers.len()} words, checksum {check}"
+}
+
+fn main() {
+    // LeetCode's two examples; one letter, always within two; two letters
+    // both changed; three letters, one each way of two and three
+    println(f"example 1: {two_edit_words(strings(["word", "note", "ants", "wood"].to_vec()), strings(["wood", "joke", "moat"].to_vec()))}");
+    println(f"example 2: {two_edit_words(strings(["yes"].to_vec()), strings(["not"].to_vec()))}");
+    println(f"one letter: {two_edit_words(strings(["a", "z"].to_vec()), strings(["q"].to_vec()))}");
+    println(f"two letters: {two_edit_words(strings(["ab", "zz"].to_vec()), strings(["yx"].to_vec()))}");
+    println(f"three letters: {two_edit_words(strings(["abc", "xyc", "xyz"].to_vec()), strings(["abd", "abc"].to_vec()))}");
+    // 100 queries against 100 words of 100 letters, the constraints'
+    // most: each query a dictionary word with 0 to 4 places changed, from
+    // 26 letters and from 2
+    let mut seed = 2452;
+    for letters in [26, 2].iter() {
+        let dictionary: Vec[String] = (0..100).map(|_| random_word(100, letters, mut seed)).collect();
+        let mut queries: Vec[String] = Vec.new();
+        for _ in 0..100 {
+            let base = dictionary[next_random(mut seed) % 100].clone();
+            queries.push(changed(base, next_random(mut seed) % 5, letters, mut seed));
+        }
+        println(f"100 of 100 letters from {letters}: {summary(two_edit_words(queries, dictionary))}");
+    }
+    // 3000 random cases of 1 to 5 queries against 1 to 5 words of 1 to 6
+    // letters from a to c: a checksum of every answer
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let len = 1 + next_random(mut seed) % 6;
+        let q = 1 + next_random(mut seed) % 5;
+        let d = 1 + next_random(mut seed) % 5;
+        let queries: Vec[String] = (0..q).map(|_| random_word(len, 3, mut seed)).collect();
+        let dictionary: Vec[String] = (0..d).map(|_| random_word(len, 3, mut seed)).collect();
+        let answers = two_edit_words(queries, dictionary);
+        total += answers.len();
+        for w in answers.iter() {
+            for b in w.bytes().iter() {
+                check = (check * 31 + b as i64) % 1000000007;
+            }
+            check = (check * 31 + 1) % 1000000007;
+        }
+        check = (check * 31 + 2) % 1000000007;
+    }
+    println(f"3000 random: {total} words, checksum {check}");
+}
