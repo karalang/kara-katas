@@ -1,0 +1,328 @@
+// LeetCode #2438: Range Product Queries of Powers -- the differential.
+// The six arms against the statement read literally: `n`'s binary digits
+// found by halving it, each digit 1 giving a power, the powers multiplied
+// one by one for each query modulo `10^9 + 7`. No exponent is summed and
+// no bit is tested by a shift. 360 cases: 300 random values from 1 to
+// 1023, each with 1 to 6 random queries; then 30 from 1 to 10^9 with
+// every query; then 30 runs of 1 to 29 set bits with every query. Every
+// case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the queries in reverse order: the answers reversed
+// P3  each power alone, `[i, i]`: that power
+// P4  each query split at its middle: the two halves' answers multiplied
+// P5  a power above all of `n`'s, `2^30`, added: the same answers
+// P6  each arm agrees with at least three of the other five
+
+const MOD: i64 = 1000000007;
+
+// ---- the statement read literally ------------------------------------------
+
+fn powers_literally(n: i64, queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut powers: Vec[i64] = Vec.new();
+    let mut left = n;
+    let mut place = 1;
+    while left > 0 {
+        if left % 2 == 1 {
+            powers.push(place);
+        }
+        left /= 2;
+        place *= 2;
+    }
+    let mut answers: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let mut product = 1;
+        let mut i = q[0];
+        while i <= q[1] {
+            product = product * powers[i] % MOD;
+            i += 1;
+        }
+        answers.push(product);
+    }
+    answers
+}
+
+// ---- star (powers.kara) --------------------------------------------------
+
+fn star_power_of_two(exponent: i64) -> i64 {
+    let mut result = 1;
+    let mut base = 2;
+    let mut e = exponent;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * base % MOD;
+        }
+        base = base * base % MOD;
+        e /= 2;
+    }
+    result
+}
+
+fn star_product_queries(n: i64, queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut prefix: Vec[i64] = [0].to_vec();
+    for bit in 0..31 {
+        if (n >> bit) & 1 == 1 {
+            prefix.push(prefix[prefix.len() - 1] + bit);
+        }
+    }
+    let mut answers: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        answers.push(star_power_of_two(prefix[q[1] + 1] - prefix[q[0]]));
+    }
+    answers
+}
+
+// ---- naive (powers_naive.kara) -------------------------------------------
+
+fn naive_product_queries(n: i64, queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut powers: Vec[i64] = Vec.new();
+    let mut left = n;
+    while left > 0 {
+        let mut p = 1;
+        while p * 2 <= left {
+            p *= 2;
+        }
+        powers.push(p);
+        left -= p;
+    }
+    powers.reverse();
+    let mut answers: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let mut product = 1;
+        for i in q[0]..q[1] + 1 {
+            product = product * powers[i] % MOD;
+        }
+        answers.push(product);
+    }
+    answers
+}
+
+// ---- table (powers_table.kara) -------------------------------------------
+
+fn table_product_queries(n: i64, queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut powers: Vec[i64] = Vec.new();
+    for bit in 0..31 {
+        if (n >> bit) & 1 == 1 {
+            powers.push(1 << bit);
+        }
+    }
+    let k = powers.len();
+    let mut table: Vec[Vec[i64]] = Vec.filled(k, Vec.filled(k, 0));
+    for l in 0..k {
+        let mut product = 1;
+        for r in l..k {
+            product = product * powers[r] % MOD;
+            table[l][r] = product;
+        }
+    }
+    queries.iter().map(|q| table[q[0]][q[1]]).collect()
+}
+
+// ---- inverse (powers_inverse.kara) ---------------------------------------
+
+fn inverse_power(base: i64, exponent: i64) -> i64 {
+    let mut result = 1;
+    let mut b = base % MOD;
+    let mut e = exponent;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % MOD;
+        }
+        b = b * b % MOD;
+        e /= 2;
+    }
+    result
+}
+
+fn inverse_product_queries(n: i64, queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut prefix: Vec[i64] = [1].to_vec();
+    for bit in 0..31 {
+        if (n >> bit) & 1 == 1 {
+            let last = prefix[prefix.len() - 1];
+            prefix.push(last * (1 << bit) % MOD);
+        }
+    }
+    let mut answers: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        answers.push(prefix[q[1] + 1] * inverse_power(prefix[q[0]], MOD - 2) % MOD);
+    }
+    answers
+}
+
+// ---- iter (powers_iter.kara) ---------------------------------------------
+
+fn iter_product_queries(n: i64, queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let powers: Vec[i64] = (0..31).filter(|bit| (n >> bit) & 1 == 1).map(|bit| 1 << bit).collect();
+    queries.iter().map(|q| powers.iter().skip(q[0]).take(q[1] - q[0] + 1).fold(1, |product, p| product * p % MOD)).collect()
+}
+
+// ---- solution (powers_solution.kara) -------------------------------------
+
+impl Solution {
+    pub fn product_queries(n: i32, queries: Vec[Vec[i32]]) -> Vec[i32] {
+        const MOD: i64 = 1_000_000_007;
+        let mut powers = Vec.new();
+        for i in 0..31 {
+            if n >> i & 1 == 1 {
+                powers.push(1 << i);
+            }
+        }
+        queries
+            .iter()
+            .map(|q| {
+                let mut p = 1;
+                for j in q[0] as usize..=q[1] as usize {
+                    p = p * powers[j] % MOD;
+                }
+                p as i32
+            })
+            .collect()
+    }
+}
+
+struct Solution {}
+
+fn solution_product_queries(n: i64, queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let rows: Vec[Vec[i32]] = queries.iter().map(|q| q.iter().map(|x| x as i32).collect()).collect();
+    Solution.product_queries(n as i32, rows).iter().map(|x| x as i64).collect()
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, n: i64, queries: Vec[Vec[i64]]) -> Vec[i64] {
+    match arm {
+        0 => star_product_queries(n, queries),
+        1 => naive_product_queries(n, queries),
+        2 => table_product_queries(n, queries),
+        3 => inverse_product_queries(n, queries),
+        4 => iter_product_queries(n, queries),
+        _ => solution_product_queries(n, queries),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn set_bits(n: i64) -> i64 {
+    let mut count = 0;
+    for bit in 0..31 {
+        count += (n >> bit) & 1;
+    }
+    count
+}
+
+fn every_query(k: i64) -> Vec[Vec[i64]] {
+    let mut queries: Vec[Vec[i64]] = Vec.new();
+    for l in 0..k {
+        for r in l..k {
+            queries.push([l, r].to_vec());
+        }
+    }
+    queries
+}
+
+fn main() {
+    let arms = ["star", "naive", "table", "inverse", "iter", "solution"];
+    let mut seed = 2438;
+    let mut cases: Vec[(i64, Vec[Vec[i64]])] = Vec.new();
+    for t in 0..360 {
+        if t < 300 {
+            let n = 1 + next_random(mut seed) % 1023;
+            let k = set_bits(n);
+            let mut queries: Vec[Vec[i64]] = Vec.new();
+            for _ in 0..1 + next_random(mut seed) % 6 {
+                let a = next_random(mut seed) % k;
+                let b = next_random(mut seed) % k;
+                queries.push([a.min(b), a.max(b)].to_vec());
+            }
+            cases.push((n, queries));
+        } else if t < 330 {
+            let n = 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000;
+            cases.push((n, every_query(set_bits(n))));
+        } else {
+            let run = 1 + next_random(mut seed) % 29;
+            let n = ((1 << run) - 1) << next_random(mut seed) % (30 - run);
+            cases.push((n, every_query(run)));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (n, queries) = cases[c].clone();
+        let truth = powers_literally(n, queries);
+        for v in truth.iter() {
+            check = (check * 31 + v) % 1000000007;
+        }
+        let k = set_bits(n);
+        let mut reversed = queries.clone();
+        reversed.reverse();
+        let singles: Vec[Vec[i64]] = (0..k).map(|i| [i, i].to_vec()).collect();
+        let mut alone: Vec[i64] = Vec.new();
+        for bit in 0..31 {
+            if (n >> bit) & 1 == 1 {
+                alone.push(1 << bit);
+            }
+        }
+        let mut lows: Vec[Vec[i64]] = Vec.new();
+        let mut highs: Vec[Vec[i64]] = Vec.new();
+        for q in queries.iter() {
+            let mid = (q[0] + q[1]) / 2;
+            lows.push([q[0], mid].to_vec());
+            highs.push([(mid + 1).min(q[1]), q[1]].to_vec());
+        }
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, n, queries)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut back = answer(arm, n, reversed);
+            back.reverse();
+            let low = answer(arm, n, lows);
+            let high = answer(arm, n, highs);
+            let mut halves = true;
+            for i in 0..queries.len() {
+                let joined = if queries[i][0] == queries[i][1] { low[i] } else { low[i] * high[i] % MOD };
+                if joined != value[i] {
+                    halves = false;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                back == value,
+                answer(arm, n, singles) == alone,
+                halves,
+                answer(arm, n + (1 << 30), queries) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

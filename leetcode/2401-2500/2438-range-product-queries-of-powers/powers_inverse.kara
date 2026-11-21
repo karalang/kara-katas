@@ -1,0 +1,115 @@
+// LeetCode #2438: Range Product Queries of Powers -- prefix products and
+// inverses: `prefix[i]` the product of the first `i` powers modulo the
+// prime `10^9 + 7`, and a range's product the prefix to its end times the
+// inverse of the prefix before it, by Fermat's little theorem, `x^(p -
+// 2)`. O(31 + q log p).
+
+const MOD: i64 = 1000000007;
+
+fn power(base: i64, exponent: i64) -> i64 {
+    let mut result = 1;
+    let mut b = base % MOD;
+    let mut e = exponent;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % MOD;
+        }
+        b = b * b % MOD;
+        e /= 2;
+    }
+    result
+}
+
+fn product_queries(n: i64, queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut prefix: Vec[i64] = [1].to_vec();
+    for bit in 0..31 {
+        if (n >> bit) & 1 == 1 {
+            let last = prefix[prefix.len() - 1];
+            prefix.push(last * (1 << bit) % MOD);
+        }
+    }
+    let mut answers: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        answers.push(prefix[q[1] + 1] * power(prefix[q[0]], MOD - 2) % MOD);
+    }
+    answers
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn set_bits(n: i64) -> i64 {
+    let mut count = 0;
+    for bit in 0..31 {
+        count += (n >> bit) & 1;
+    }
+    count
+}
+
+// every query `[l, r]` over `n`'s powers
+fn every_query(n: i64) -> Vec[Vec[i64]] {
+    let k = set_bits(n);
+    let mut queries: Vec[Vec[i64]] = Vec.new();
+    for l in 0..k {
+        for r in l..k {
+            queries.push([l, r].to_vec());
+        }
+    }
+    queries
+}
+
+fn fold(values: Vec[i64]) -> i64 {
+    let mut check = 0;
+    for v in values.iter() {
+        check = (check * 31 + v) % 1000000007;
+    }
+    check
+}
+
+fn main() {
+    // LeetCode's two examples; one power; three queries over the 29
+    // powers of 2^29 - 1
+    let cases: Vec[(i64, Vec[Vec[i64]])] = [
+        (15, [[0, 1].to_vec(), [2, 2].to_vec(), [0, 3].to_vec()].to_vec()),
+        (2, [[0, 0].to_vec()].to_vec()),
+        (1, [[0, 0].to_vec()].to_vec()),
+        (536870911, [[0, 28].to_vec(), [28, 28].to_vec(), [10, 20].to_vec()].to_vec()),
+    ].to_vec();
+    for (n, queries) in cases.into_iter() {
+        println(f"{n}: {product_queries(n, queries)}");
+    }
+    // every query over 2^29 - 1, the most powers a value up to 10^9
+    // holds, and over 10^9 itself, each as a checksum
+    for n in [536870911, 1000000000].iter() {
+        println(f"{n}, every query: checksum {fold(product_queries(n, every_query(n)))}");
+    }
+    // 10^5 random queries over 999999999, the constraints' most
+    let mut seed = 2438;
+    let k = set_bits(999999999);
+    let mut many: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..100000 {
+        let a = next_random(mut seed) % k;
+        let b = next_random(mut seed) % k;
+        many.push([a.min(b), a.max(b)].to_vec());
+    }
+    println(f"999999999, 10^5 random queries: checksum {fold(product_queries(999999999, many))}");
+    // 3000 random values from 1 to 10^9, each with 5 random queries: a
+    // checksum of every answer's checksum in order
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000;
+        let k = set_bits(n);
+        let mut queries: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..5 {
+            let a = next_random(mut seed) % k;
+            let b = next_random(mut seed) % k;
+            queries.push([a.min(b), a.max(b)].to_vec());
+        }
+        check = (check * 31 + fold(product_queries(n, queries))) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}
