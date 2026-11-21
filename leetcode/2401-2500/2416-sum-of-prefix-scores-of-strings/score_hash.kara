@@ -1,0 +1,100 @@
+// LeetCode #2416: Sum of Prefix Scores of Strings -- prefix hashes. Each
+// prefix is named by a pair of polynomial hashes under two primes, and a
+// `Map` counts every word's prefixes under those names; a word's score is
+// the counts of its own prefixes read back. O(total length).
+
+fn sum_prefix_scores(words: Vec[String]) -> Vec[i64] {
+    let mut count: Map[(i64, i64), i64] = Map.new();
+    for w in words.iter() {
+        let mut h1 = 0;
+        let mut h2 = 0;
+        for b in w.bytes().iter() {
+            h1 = (h1 * 131 + b) % 1000000007;
+            h2 = (h2 * 137 + b) % 998244353;
+            count[(h1, h2)] = count.get((h1, h2)).unwrap_or(0) + 1;
+        }
+    }
+    let mut scores: Vec[i64] = Vec.new();
+    for w in words.iter() {
+        let mut h1 = 0;
+        let mut h2 = 0;
+        let mut score = 0;
+        for b in w.bytes().iter() {
+            h1 = (h1 * 131 + b) % 1000000007;
+            h2 = (h2 * 137 + b) % 998244353;
+            score += count[(h1, h2)];
+        }
+        scores.push(score);
+    }
+    scores
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` words of 1 to `longest` letters from the first `kinds`.
+fn random_words(seed: mut ref i64, n: i64, longest: i64, kinds: i64) -> Vec[String] {
+    let mut words: Vec[String] = Vec.new();
+    for _ in 0..n {
+        let len = 1 + next_random(mut seed) % longest;
+        let mut bytes: Vec[u8] = Vec.new();
+        for _ in 0..len {
+            bytes.push(b'a' + (next_random(mut seed) % kinds) as u8);
+        }
+        words.push(String.from_utf8(bytes).unwrap());
+    }
+    words
+}
+
+fn words_of(list: Slice[Str]) -> Vec[String] {
+    list.iter().map(|w| w.to_string()).collect()
+}
+
+fn show(scores: Vec[i64]) -> String {
+    let parts: Vec[String] = scores.iter().map(|s| f"{s}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn digest(scores: Vec[i64]) -> String {
+    let mut h = 0;
+    let mut total = 0;
+    for s in scores.iter() {
+        h = (h * 31 + s) % 1000000007;
+        total += s;
+    }
+    f"{h} {total}"
+}
+
+fn main() {
+    // LeetCode's two examples; one letter; one word three times; a chain of
+    // prefixes; no shared first letter
+    println(show(sum_prefix_scores(words_of(["abc", "ab", "bc", "b"]))));
+    println(show(sum_prefix_scores(words_of(["abcd"]))));
+    println(show(sum_prefix_scores(words_of(["a"]))));
+    println(show(sum_prefix_scores(words_of(["aa", "aa", "aa"]))));
+    println(show(sum_prefix_scores(words_of(["abcd", "abc", "ab", "a"]))));
+    println(show(sum_prefix_scores(words_of(["x", "yz", "zyx"]))));
+    // the constraints' largest, 1000 words of up to 1000 letters, from 2
+    // letters and from 26, each by a digest and the total of the scores
+    let mut seed = 2416;
+    println(digest(sum_prefix_scores(random_words(mut seed, 1000, 1000, 2))));
+    println(digest(sum_prefix_scores(random_words(mut seed, 1000, 1000, 26))));
+    // 2000 random cases of up to 10 words of up to 8 letters from the first
+    // 1 to 4; a checksum of every score and their total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 10;
+        let longest = 1 + next_random(mut seed) % 8;
+        let kinds = 1 + next_random(mut seed) % 4;
+        for s in sum_prefix_scores(random_words(mut seed, n, longest, kinds)).iter() {
+            total += s;
+            check = (check * 31 + s) % 1000000007;
+        }
+    }
+    println(f"2000 random: checksum {check}, total {total}");
+}
