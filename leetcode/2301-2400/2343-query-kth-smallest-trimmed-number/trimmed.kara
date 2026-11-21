@@ -1,0 +1,89 @@
+// LeetCode #2343: Query Kth Smallest Trimmed Number -- the ★ arm. Every
+// number has the same width, so two trimmed numbers compare as their text
+// does; for each query the indices are sorted by their trimmed text and
+// then by index, and the k-th taken. O(m n log n) comparisons of up to
+// `trim` digits.
+
+fn smallest_trimmed_numbers(nums: Vec[String], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let width = nums[0].len();
+    let mut answer: Vec[i64] = Vec.new();
+    for query in queries {
+        let (k, trim) = (query[0], query[1]);
+        let mut order: Vec[i64] = (0..nums.len()).collect();
+        order.sort_by_key(|i| (nums[i][width - trim..].to_string(), i));
+        answer.push(order[k - 1]);
+    }
+    answer
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(xs: Vec[i64]) -> String {
+    let parts: Vec[String] = xs.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(", ")}]"
+}
+
+fn random_digits(seed: mut ref i64, width: i64, alphabet: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..width {
+        s.push_str(f"{next_random(mut seed) % alphabet}");
+    }
+    s
+}
+
+fn strings(xs: Vec[Str]) -> Vec[String] {
+    xs.iter().map(|x| x.to_string()).collect()
+}
+
+fn main() {
+    // LeetCode's two examples; then one number, three equal numbers, and
+    // 100 numbers of 100 digits under 100 queries
+    println(show(smallest_trimmed_numbers(strings(["102", "473", "251", "814"].to_vec()), [[1, 1].to_vec(), [2, 3].to_vec(), [4, 2].to_vec(), [1, 2].to_vec()].to_vec())));
+    println(show(smallest_trimmed_numbers(strings(["24", "37", "96", "04"].to_vec()), [[2, 1].to_vec(), [2, 2].to_vec()].to_vec())));
+    println(show(smallest_trimmed_numbers(strings(["7"].to_vec()), [[1, 1].to_vec()].to_vec())));
+    println(show(smallest_trimmed_numbers(strings(["00", "00", "00"].to_vec()), [[1, 2].to_vec(), [2, 1].to_vec(), [3, 2].to_vec()].to_vec())));
+    let mut seed = 2343;
+    let mut nums: Vec[String] = Vec.new();
+    for _ in 0..100 {
+        nums.push(random_digits(mut seed, 100, 10));
+    }
+    let mut queries: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..100 {
+        let k = 1 + next_random(mut seed) % 100;
+        let trim = 1 + next_random(mut seed) % 100;
+        queries.push([k, trim].to_vec());
+    }
+    let big = smallest_trimmed_numbers(nums, queries);
+    let total: i64 = big.iter().sum();
+    println(f"100 by 100: {total}, first {big[0]}, last {big[99]}");
+    // 2000 random cases of 1 to 10 numbers of 1 to 6 digits from an
+    // alphabet of 2 to 10, under 1 to 5 queries
+    let mut check = 0;
+    let mut sum = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 10;
+        let width = 1 + next_random(mut seed) % 6;
+        let alphabet = 2 + next_random(mut seed) % 9;
+        let mut nums: Vec[String] = Vec.new();
+        for _ in 0..n {
+            nums.push(random_digits(mut seed, width, alphabet));
+        }
+        let m = 1 + next_random(mut seed) % 5;
+        let mut queries: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..m {
+            let k = 1 + next_random(mut seed) % n;
+            let trim = 1 + next_random(mut seed) % width;
+            queries.push([k, trim].to_vec());
+        }
+        for i in smallest_trimmed_numbers(nums, queries) {
+            check = (check * 31 + i + 1) % 1000000007;
+            sum += i;
+        }
+    }
+    println(f"2000 cases: checksum {check}, indices {sum}");
+}

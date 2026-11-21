@@ -1,0 +1,312 @@
+// LeetCode #2343: Query Kth Smallest Trimmed Number -- the differential.
+// The six arms, against the statement read literally: each number trimmed
+// to its rightmost `trim` digits and read as the integer it is, and the
+// smallest (number, index) taken out k times, the k-th taken out the
+// answer. No sorting and no text comparison. 300 random cases of 1 to 8
+// numbers of 1 to 6 digits from an alphabet of 2 to 10 under 1 to 4
+// queries; then 30 of up to 30 numbers of up to 18 digits; then 30 of up
+// to 100 numbers of up to 100 digits, past what an integer holds. Every
+// case is drawn before any arm answers.
+//
+// P1  up to 18 digits, the answers are the literal reading's
+// P2  for the first query's trim, the answers for k = 1 to n are every
+//     index once, their trimmed numbers never falling
+// P3  a digit put before every number: the same answers
+// P4  a number of zeros put first: each k one later gives one index later
+// P5  a number of nines put last: the same answers
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn trimmed_value(s: Str, trim: i64) -> i64 {
+    let digits: Vec[char] = s.chars().collect();
+    let mut value = 0;
+    for p in digits.len() - trim..digits.len() {
+        value = value * 10 + (digits[p] as i64 - '0' as i64);
+    }
+    value
+}
+
+fn answers_literally(nums: Vec[String], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut answer: Vec[i64] = Vec.new();
+    for query in queries {
+        let (k, trim) = (query[0], query[1]);
+        let mut taken: Vec[bool] = Vec.filled(nums.len(), false);
+        let mut last = -1;
+        for _ in 0..k {
+            let mut best = -1;
+            for i in 0..nums.len() {
+                if not taken[i] and (best < 0 or trimmed_value(nums[i], trim) < trimmed_value(nums[best], trim)) {
+                    best = i;
+                }
+            }
+            taken[best] = true;
+            last = best;
+        }
+        answer.push(last);
+    }
+    answer
+}
+
+// ---- star (trimmed.kara) -------------------------------------------------
+
+fn star_smallest_trimmed_numbers(nums: Vec[String], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let width = nums[0].len();
+    let mut answer: Vec[i64] = Vec.new();
+    for query in queries {
+        let (k, trim) = (query[0], query[1]);
+        let mut order: Vec[i64] = (0..nums.len()).collect();
+        order.sort_by_key(|i| (nums[i][width - trim..].to_string(), i));
+        answer.push(order[k - 1]);
+    }
+    answer
+}
+
+// ---- radix (trimmed_radix.kara) ------------------------------------------
+
+fn radix_smallest_trimmed_numbers(nums: Vec[String], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let width = nums[0].len();
+    let n = nums.len();
+    let digits: Vec[Vec[u8]] = nums.iter().map(|s| s.bytes().iter().collect()).collect();
+    let mut orders: Vec[Vec[i64]] = Vec.new();
+    orders.push((0..n).collect());
+    for t in 1..=width {
+        let place = width - t;
+        let previous = orders[t - 1].clone();
+        let mut counts: Vec[i64] = Vec.filled(11, 0);
+        for i in previous.iter() {
+            counts[(digits[i][place] - b'0') as i64 + 1] += 1;
+        }
+        for d in 1..11 {
+            counts[d] += counts[d - 1];
+        }
+        let mut next: Vec[i64] = Vec.filled(n, 0);
+        for i in previous.iter() {
+            let d = (digits[i][place] - b'0') as i64;
+            next[counts[d]] = i;
+            counts[d] += 1;
+        }
+        orders.push(next);
+    }
+    queries.iter().map(|q| orders[q[1]][q[0] - 1]).collect()
+}
+
+// ---- naive (trimmed_naive.kara) ------------------------------------------
+
+fn naive_smallest_trimmed_numbers(nums: Vec[String], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let width = nums[0].len();
+    let mut answer: Vec[i64] = Vec.new();
+    for query in queries {
+        let (k, trim) = (query[0], query[1]);
+        for i in 0..nums.len() {
+            let mut rank = 0;
+            for j in 0..nums.len() {
+                let (mine, theirs) = (nums[i][width - trim..], nums[j][width - trim..]);
+                if theirs < mine or (theirs == mine and j < i) {
+                    rank += 1;
+                }
+            }
+            if rank == k - 1 {
+                answer.push(i);
+            }
+        }
+    }
+    answer
+}
+
+// ---- heap (trimmed_heap.kara) --------------------------------------------
+
+fn heap_smallest_trimmed_numbers(nums: Vec[String], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let width = nums[0].len();
+    let mut answer: Vec[i64] = Vec.new();
+    for query in queries {
+        let (k, trim) = (query[0], query[1]);
+        let mut kept: PriorityQueue[(String, i64)] = PriorityQueue.max_first();
+        for i in 0..nums.len() {
+            kept.push((nums[i][width - trim..].to_string(), i));
+            if kept.len() > k {
+                kept.pop();
+            }
+        }
+        let (_, i) = kept.pop().unwrap();
+        answer.push(i);
+    }
+    answer
+}
+
+// ---- iter (trimmed_iter.kara) --------------------------------------------
+
+fn iter_smallest_trimmed_numbers(nums: Vec[String], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let width = nums[0].len();
+    queries
+        .iter()
+        .map(|q| {
+            let mut keyed: Vec[(String, i64)] = nums
+                .iter()
+                .enumerate()
+                .map(|(i, s)| (s[width - q[1]..].to_string(), i))
+                .collect();
+            keyed.sort();
+            keyed.iter().map(|(_, i)| i).nth(q[0] - 1).unwrap()
+        })
+        .collect()
+}
+
+// ---- solution (trimmed_solution.kara) ------------------------------------
+
+impl Solution {
+    pub fn smallest_trimmed_numbers(nums: Vec[String], queries: Vec[Vec[i32]]) -> Vec[i32] {
+        let n = nums[0].len();
+        queries
+            .iter()
+            .map(|q| {
+                let (k, t) = (q[0] as i64, q[1] as i64);
+                let mut idx: Vec[i64] = (0..nums.len()).collect();
+                idx.sort_by(|a, b| nums[a][n - t..].cmp(nums[b][n - t..]).then(a.cmp(b)));
+                idx[k - 1] as i32
+            })
+            .collect()
+    }
+}
+
+struct Solution {}
+
+fn solution_smallest_trimmed_numbers(nums: Vec[String], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let queries: Vec[Vec[i32]] = queries.iter().map(|q| q.iter().map(|x| x as i32).collect()).collect();
+    Solution.smallest_trimmed_numbers(nums, queries).iter().map(|x| x as i64).collect()
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[String], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    match arm {
+        0 => star_smallest_trimmed_numbers(nums, queries),
+        1 => radix_smallest_trimmed_numbers(nums, queries),
+        2 => naive_smallest_trimmed_numbers(nums, queries),
+        3 => heap_smallest_trimmed_numbers(nums, queries),
+        4 => iter_smallest_trimmed_numbers(nums, queries),
+        _ => solution_smallest_trimmed_numbers(nums, queries),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_digits(seed: mut ref i64, width: i64, alphabet: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..width {
+        s.push_str(f"{next_random(mut seed) % alphabet}");
+    }
+    s
+}
+
+fn main() {
+    let names = ["star", "radix", "naive", "heap", "iter", "solution"];
+    let mut seed = 2343;
+    let mut cases: Vec[(Vec[String], Vec[Vec[i64]])] = Vec.new();
+    for c in 0..360 {
+        let (most_n, most_width, most_m) = if c < 300 { (8, 6, 4) } else if c < 330 { (30, 18, 10) } else { (100, 100, 10) };
+        let n = 1 + next_random(mut seed) % most_n;
+        let width = 1 + next_random(mut seed) % most_width;
+        let alphabet = 2 + next_random(mut seed) % 9;
+        let mut nums: Vec[String] = Vec.new();
+        for _ in 0..n {
+            nums.push(random_digits(mut seed, width, alphabet));
+        }
+        let m = 1 + next_random(mut seed) % most_m;
+        let mut queries: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..m {
+            let k = 1 + next_random(mut seed) % n;
+            let trim = 1 + next_random(mut seed) % width;
+            queries.push([k, trim].to_vec());
+        }
+        cases.push((nums, queries));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (nums, queries) = cases[c].clone();
+        let n = nums.len();
+        let width = nums[0].len();
+        let literal = c < 330;
+        let truth = if literal { answers_literally(nums, queries) } else { Vec.new() };
+        if c < 300 {
+            for i in truth.iter() {
+                check = (check * 31 + i + 1) % 1000000007;
+            }
+        }
+        let first_trim = queries[0][1];
+        let every_k: Vec[Vec[i64]] = (1..=n).map(|k| [k, first_trim].to_vec()).collect();
+        let prefixed: Vec[String] = nums.iter().map(|s| f"7{s}").collect();
+        let zeros = "0".repeat(width);
+        let nines = "9".repeat(width);
+        let mut with_zeros: Vec[String] = [zeros].to_vec();
+        for s in nums.iter() {
+            with_zeros.push(s.clone());
+        }
+        let one_later: Vec[Vec[i64]] = queries.iter().map(|q| [q[0] + 1, q[1]].to_vec()).collect();
+        let mut with_nines = nums.clone();
+        with_nines.push(nines);
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, nums, queries)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let order = answer(arm, nums, every_k);
+            let mut seen: Vec[bool] = Vec.filled(n, false);
+            let mut ordered = order.len() == n;
+            for p in 0..order.len() {
+                let i = order[p];
+                if i < 0 or i >= n or seen[i] {
+                    ordered = false;
+                } else {
+                    seen[i] = true;
+                    if p > 0 and order[p - 1] >= 0 and order[p - 1] < n {
+                        let before = nums[order[p - 1]][width - first_trim..];
+                        if nums[i][width - first_trim..] < before {
+                            ordered = false;
+                        }
+                    }
+                }
+            }
+            let shifted: Vec[i64] = value.iter().map(|i| i + 1).collect();
+            let verdicts = [
+                not literal or value == truth,
+                ordered,
+                answer(arm, prefixed, queries) == value,
+                answer(arm, with_zeros, one_later) == shifted,
+                answer(arm, with_nines, queries) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
