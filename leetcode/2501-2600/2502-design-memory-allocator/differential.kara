@@ -1,0 +1,530 @@
+// LeetCode #2502: Design Memory Allocator -- the differential. The six
+// arms against the statement read literally: every unit's owner, and an
+// allocation tried at every start from 0 up, taken at the first whose
+// `size` units are all free; a free counts and clears the id's units.
+// 300 random sequences of 1 to 30 calls on 1 to 20 units, ids to 3 or to
+// 10; then 20 on one unit, and 40 of 60 calls on 50 units; every one
+// drawn before any arm answers.
+//
+// P1  every answer is the statement read literally
+// P2  an allocation answers -1 or a start from 0 to n - size, a free
+//     from 0 to n, and no more is freed than was allocated
+// P3  every id `d` written `1001 - d`: the same answers
+// P4  a free of an id never used first: 0, then the same answers
+// P5  twice the units and every size doubled: every start and every
+//     count doubled, -1 kept
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally
+
+fn literal(n: i64, ops: Vec[(i64, i64, i64)]) -> Vec[i64] {
+    let mut owner: Vec[i64] = Vec.filled(n, 0);
+    let mut out: Vec[i64] = Vec.new();
+    for (kind, x, y) in ops.iter() {
+        if kind == 0 {
+            let mut answer = -1;
+            let mut start = 0;
+            while start + x <= n and answer == -1 {
+                let mut fits = true;
+                for u in start..start + x {
+                    if owner[u] != 0 {
+                        fits = false;
+                    }
+                }
+                if fits {
+                    for u in start..start + x {
+                        owner[u] = y;
+                    }
+                    answer = start;
+                }
+                start += 1;
+            }
+            out.push(answer);
+        } else {
+            let mut count = 0;
+            for u in 0..n {
+                if owner[u] == x {
+                    owner[u] = 0;
+                    count += 1;
+                }
+            }
+            out.push(count);
+        }
+    }
+    out
+}
+
+// ---- star (alloc.kara) ---------------------------------------------------
+
+struct StarAllocator {
+    memory: Vec[i64],
+}
+
+impl StarAllocator {
+    fn new(n: i64) -> StarAllocator {
+        StarAllocator { memory: Vec.filled(n, 0) }
+    }
+
+    fn allocate(mut ref self, size: i64, m_id: i64) -> i64 {
+        let mut run = 0;
+        for i in 0..self.memory.len() {
+            if self.memory[i] == 0 {
+                run += 1;
+                if run == size {
+                    let start = i + 1 - size;
+                    for j in start..i + 1 {
+                        self.memory[j] = m_id;
+                    }
+                    return start;
+                }
+            } else {
+                run = 0;
+            }
+        }
+        -1
+    }
+
+    fn free_memory(mut ref self, m_id: i64) -> i64 {
+        let mut freed = 0;
+        for i in 0..self.memory.len() {
+            if self.memory[i] == m_id {
+                self.memory[i] = 0;
+                freed += 1;
+            }
+        }
+        freed
+    }
+}
+
+// the calls in order: (0, size, id) allocates, (1, id, _) frees
+fn star_drive(n: i64, ops: Vec[(i64, i64, i64)]) -> Vec[i64] {
+    let mut allocator = StarAllocator.new(n);
+    let mut out: Vec[i64] = Vec.new();
+    for (kind, x, y) in ops.iter() {
+        out.push(if kind == 0 { allocator.allocate(x, y) } else { allocator.free_memory(x) });
+    }
+    out
+}
+
+// ---- blocks (alloc_blocks.kara) ------------------------------------------
+
+struct BlocksAllocator {
+    n: i64,
+    blocks: Vec[(i64, i64, i64)],
+}
+
+impl BlocksAllocator {
+    fn new(n: i64) -> BlocksAllocator {
+        BlocksAllocator { n: n, blocks: Vec.new() }
+    }
+
+    fn allocate(mut ref self, size: i64, m_id: i64) -> i64 {
+        let mut free_from = 0;
+        for k in 0..self.blocks.len() {
+            let (start, length, _) = self.blocks[k];
+            if start - free_from >= size {
+                self.blocks.insert(k, (free_from, size, m_id));
+                return free_from;
+            }
+            free_from = start + length;
+        }
+        if self.n - free_from >= size {
+            self.blocks.push((free_from, size, m_id));
+            return free_from;
+        }
+        -1
+    }
+
+    fn free_memory(mut ref self, m_id: i64) -> i64 {
+        let freed = self.blocks.iter().filter(|(_, _, id)| id == m_id).map(|(_, length, _)| length).sum();
+        self.blocks.retain(|(_, _, id)| id != m_id);
+        freed
+    }
+}
+
+// the calls in order: (0, size, id) allocates, (1, id, _) frees
+fn blocks_drive(n: i64, ops: Vec[(i64, i64, i64)]) -> Vec[i64] {
+    let mut allocator = BlocksAllocator.new(n);
+    let mut out: Vec[i64] = Vec.new();
+    for (kind, x, y) in ops.iter() {
+        out.push(if kind == 0 { allocator.allocate(x, y) } else { allocator.free_memory(x) });
+    }
+    out
+}
+
+// ---- freelist (alloc_freelist.kara) --------------------------------------
+
+struct FreelistAllocator {
+    free: Vec[(i64, i64)],
+    held: Map[i64, Vec[(i64, i64)]],
+}
+
+impl FreelistAllocator {
+    fn new(n: i64) -> FreelistAllocator {
+        FreelistAllocator { free: [(0, n)].to_vec(), held: Map.new() }
+    }
+
+    fn allocate(mut ref self, size: i64, m_id: i64) -> i64 {
+        for k in 0..self.free.len() {
+            let (start, length) = self.free[k];
+            if length >= size {
+                if length == size {
+                    self.free.remove(k);
+                } else {
+                    self.free[k] = (start + size, length - size);
+                }
+                self.held.entry(m_id).or_insert(Vec.new()).push((start, size));
+                return start;
+            }
+        }
+        -1
+    }
+
+    fn free_memory(mut ref self, m_id: i64) -> i64 {
+        let blocks = self.held.remove(m_id).unwrap_or(Vec.new());
+        let mut freed = 0;
+        for (start, length) in blocks.iter() {
+            freed += length;
+            let k = self.free.partition_point(|(s, _)| s < start);
+            self.free.insert(k, (start, length));
+            if k + 1 < self.free.len() and self.free[k].0 + self.free[k].1 == self.free[k + 1].0 {
+                self.free[k].1 += self.free[k + 1].1;
+                self.free.remove(k + 1);
+            }
+            if k > 0 and self.free[k - 1].0 + self.free[k - 1].1 == self.free[k].0 {
+                self.free[k - 1].1 += self.free[k].1;
+                self.free.remove(k);
+            }
+        }
+        freed
+    }
+}
+
+// the calls in order: (0, size, id) allocates, (1, id, _) frees
+fn freelist_drive(n: i64, ops: Vec[(i64, i64, i64)]) -> Vec[i64] {
+    let mut allocator = FreelistAllocator.new(n);
+    let mut out: Vec[i64] = Vec.new();
+    for (kind, x, y) in ops.iter() {
+        out.push(if kind == 0 { allocator.allocate(x, y) } else { allocator.free_memory(x) });
+    }
+    out
+}
+
+// ---- tree (alloc_tree.kara) ----------------------------------------------
+
+struct TreeAllocator {
+    n: i64,
+    owner: Vec[i64],
+    prefix: Vec[i64],
+    suffix: Vec[i64],
+    best: Vec[i64],
+}
+
+impl TreeAllocator {
+    fn new(n: i64) -> TreeAllocator {
+        let mut a = TreeAllocator { n: n, owner: Vec.filled(n, 0), prefix: Vec.filled(4 * n, 0), suffix: Vec.filled(4 * n, 0), best: Vec.filled(4 * n, 0) };
+        a.build(1, 0, n - 1);
+        a
+    }
+
+    fn build(mut ref self, node: i64, lo: i64, hi: i64) {
+        let length = hi - lo + 1;
+        self.prefix[node] = length;
+        self.suffix[node] = length;
+        self.best[node] = length;
+        if lo < hi {
+            let mid = (lo + hi) / 2;
+            self.build(2 * node, lo, mid);
+            self.build(2 * node + 1, mid + 1, hi);
+        }
+    }
+
+    fn set(mut ref self, node: i64, lo: i64, hi: i64, at: i64, free: bool) {
+        if lo == hi {
+            let v = if free { 1 } else { 0 };
+            self.prefix[node] = v;
+            self.suffix[node] = v;
+            self.best[node] = v;
+            return;
+        }
+        let mid = (lo + hi) / 2;
+        if at <= mid {
+            self.set(2 * node, lo, mid, at, free);
+        } else {
+            self.set(2 * node + 1, mid + 1, hi, at, free);
+        }
+        let (l, r) = (2 * node, 2 * node + 1);
+        self.prefix[node] = if self.prefix[l] == mid - lo + 1 { self.prefix[l] + self.prefix[r] } else { self.prefix[l] };
+        self.suffix[node] = if self.suffix[r] == hi - mid { self.suffix[r] + self.suffix[l] } else { self.suffix[r] };
+        self.best[node] = self.best[l].max(self.best[r]).max(self.suffix[l] + self.prefix[r]);
+    }
+
+    fn find(self, node: i64, lo: i64, hi: i64, size: i64) -> i64 {
+        if self.best[node] < size {
+            return -1;
+        }
+        if lo == hi {
+            return lo;
+        }
+        let mid = (lo + hi) / 2;
+        let (l, r) = (2 * node, 2 * node + 1);
+        if self.best[l] >= size {
+            self.find(l, lo, mid, size)
+        } else if self.suffix[l] + self.prefix[r] >= size {
+            mid - self.suffix[l] + 1
+        } else {
+            self.find(r, mid + 1, hi, size)
+        }
+    }
+
+    fn allocate(mut ref self, size: i64, m_id: i64) -> i64 {
+        let start = self.find(1, 0, self.n - 1, size);
+        if start >= 0 {
+            for i in start..start + size {
+                self.owner[i] = m_id;
+                self.set(1, 0, self.n - 1, i, false);
+            }
+        }
+        start
+    }
+
+    fn free_memory(mut ref self, m_id: i64) -> i64 {
+        let mut freed = 0;
+        for i in 0..self.n {
+            if self.owner[i] == m_id {
+                self.owner[i] = 0;
+                self.set(1, 0, self.n - 1, i, true);
+                freed += 1;
+            }
+        }
+        freed
+    }
+}
+
+// the calls in order: (0, size, id) allocates, (1, id, _) frees
+fn tree_drive(n: i64, ops: Vec[(i64, i64, i64)]) -> Vec[i64] {
+    let mut allocator = TreeAllocator.new(n);
+    let mut out: Vec[i64] = Vec.new();
+    for (kind, x, y) in ops.iter() {
+        out.push(if kind == 0 { allocator.allocate(x, y) } else { allocator.free_memory(x) });
+    }
+    out
+}
+
+// ---- iter (alloc_iter.kara) ----------------------------------------------
+
+struct IterAllocator {
+    memory: Vec[i64],
+}
+
+impl IterAllocator {
+    fn new(n: i64) -> IterAllocator {
+        IterAllocator { memory: Vec.filled(n, 0) }
+    }
+
+    fn allocate(mut ref self, size: i64, m_id: i64) -> i64 {
+        let n = self.memory.len();
+        if size > n {
+            return -1;
+        }
+        match (0..n - size + 1).find(|s| self.memory[s..s + size].iter().all(|u| u == 0)) {
+            Some(start) => {
+                self.memory[start..start + size].fill(m_id);
+                start
+            }
+            None => -1,
+        }
+    }
+
+    fn free_memory(mut ref self, m_id: i64) -> i64 {
+        let mut freed = 0;
+        self.memory.iter_mut().filter(|u| *u == m_id).for_each(|u| {
+            *u = 0;
+            freed += 1;
+        });
+        freed
+    }
+}
+
+// the calls in order: (0, size, id) allocates, (1, id, _) frees
+fn iter_drive(n: i64, ops: Vec[(i64, i64, i64)]) -> Vec[i64] {
+    let mut allocator = IterAllocator.new(n);
+    let mut out: Vec[i64] = Vec.new();
+    for (kind, x, y) in ops.iter() {
+        out.push(if kind == 0 { allocator.allocate(x, y) } else { allocator.free_memory(x) });
+    }
+    out
+}
+
+// ---- solution (alloc_solution.kara) --------------------------------------
+
+struct SolutionAllocator {
+    memory: Vec[i32],
+}
+
+impl SolutionAllocator {
+    fn new(n: i32) -> Self {
+        SolutionAllocator { memory: Vec.filled(n, 0) }
+    }
+
+    fn allocate(mut ref self, size: i32, m_id: i32) -> i32 {
+        let size = size as i64;
+        let mut count = 0;
+        for i in 0..self.memory.len() {
+            if self.memory[i] == 0 {
+                count += 1;
+                if count == size {
+                    let start = i + 1 - size;
+                    for j in start..=i {
+                        self.memory[j] = m_id;
+                    }
+                    return start as i32;
+                }
+            } else {
+                count = 0;
+            }
+        }
+        -1
+    }
+
+    fn free_memory(mut ref self, m_id: i32) -> i32 {
+        let mut freed = 0;
+        for x in self.memory.iter_mut() {
+            if *x == m_id {
+                *x = 0;
+                freed += 1;
+            }
+        }
+        freed
+    }
+}
+
+// the calls in order: (0, size, id) allocates, (1, id, _) frees
+fn solution_drive(n: i64, ops: Vec[(i64, i64, i64)]) -> Vec[i64] {
+    let mut allocator = SolutionAllocator.new(n as i32);
+    let mut out: Vec[i64] = Vec.new();
+    for (kind, x, y) in ops.iter() {
+        out.push(if kind == 0 { allocator.allocate(x as i32, y as i32) as i64 } else { allocator.free_memory(x as i32) as i64 });
+    }
+    out
+}
+
+// ---- the differential --------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn answer(arm: i64, n: i64, ops: Vec[(i64, i64, i64)]) -> Vec[i64] {
+    match arm {
+        0 => star_drive(n, ops),
+        1 => blocks_drive(n, ops),
+        2 => freelist_drive(n, ops),
+        3 => tree_drive(n, ops),
+        4 => iter_drive(n, ops),
+        _ => solution_drive(n, ops),
+    }
+}
+
+fn main() {
+    let names = ["star", "blocks", "freelist", "tree", "iter", "solution"];
+    let mut seed = 2502;
+    let mut problems: Vec[(i64, Vec[(i64, i64, i64)])] = Vec.new();
+    for t in 0..360 {
+        let (n, count, ids) = if t < 300 {
+            (next_random(mut seed) % 20 + 1, next_random(mut seed) % 30 + 1, if t % 2 == 0 { 3 } else { 10 })
+        } else if t < 320 {
+            (1, 8, 2)
+        } else {
+            (50, 60, 6)
+        };
+        let mut ops: Vec[(i64, i64, i64)] = Vec.new();
+        for _ in 0..count {
+            if next_random(mut seed) % 3 < 2 {
+                let size = next_random(mut seed) % (n / 3 + 1) + 1;
+                ops.push((0, size, next_random(mut seed) % ids + 1));
+            } else {
+                ops.push((1, next_random(mut seed) % ids + 1, 0));
+            }
+        }
+        problems.push((n, ops));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut refused = 0;
+    for (n, ops) in problems.iter() {
+        let truth = literal(n, ops);
+        for r in truth.iter() {
+            if r == -1 {
+                refused += 1;
+            }
+            check = (check * 31 + r + 1) % 1000000007;
+        }
+        let renamed: Vec[(i64, i64, i64)] = ops.iter().map(|(k, x, y)| if k == 0 { (k, x, 1001 - y) } else { (k, 1001 - x, y) }).collect();
+        let mut first_free: Vec[(i64, i64, i64)] = [(1, 999, 0)].to_vec();
+        first_free.extend(ops.iter().cloned());
+        let doubled: Vec[(i64, i64, i64)] = ops.iter().map(|(k, x, y)| if k == 0 { (k, 2 * x, y) } else { (k, x, y) }).collect();
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, n, ops)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let mut bounded = x.len() == ops.len();
+            let mut allocated = 0;
+            let mut freed = 0;
+            if bounded {
+                for i in 0..ops.len() {
+                    let (k, size, _) = ops[i];
+                    if k == 0 {
+                        if x[i] != -1 {
+                            allocated += size;
+                            bounded = bounded and x[i] >= 0 and x[i] <= n - size;
+                        }
+                    } else {
+                        freed += x[i];
+                        bounded = bounded and x[i] >= 0 and x[i] <= n and freed <= allocated;
+                    }
+                }
+            }
+            let mut after_free = [0].to_vec();
+            after_free.extend(x.iter().cloned());
+            let twice: Vec[i64] = x.iter().map(|r| if r == -1 { -1 } else { 2 * r }).collect();
+            let verdicts = [
+                x == truth,
+                bounded,
+                answer(arm, n, renamed) == x,
+                answer(arm, n, first_free) == after_free,
+                answer(arm, 2 * n, doubled) == twice,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{n} units, {ops.len()} calls, arm {names[arm]}: P{q + 1} fails, answers {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} cases, {refused} refusals: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

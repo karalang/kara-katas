@@ -1,0 +1,67 @@
+// LeetCode #2502: Design Memory Allocator -- the benchmark: the ★ arm
+// over sessions of 1000 calls on 1000 units, each call drawn from the
+// generator and from the checksum so far.
+
+struct Allocator {
+    memory: Vec[i64],
+}
+
+impl Allocator {
+    fn new(n: i64) -> Allocator {
+        Allocator { memory: Vec.filled(n, 0) }
+    }
+
+    fn allocate(mut ref self, size: i64, m_id: i64) -> i64 {
+        let mut run = 0;
+        for i in 0..self.memory.len() {
+            if self.memory[i] == 0 {
+                run += 1;
+                if run == size {
+                    let start = i + 1 - size;
+                    for j in start..i + 1 {
+                        self.memory[j] = m_id;
+                    }
+                    return start;
+                }
+            } else {
+                run = 0;
+            }
+        }
+        -1
+    }
+
+    fn free_memory(mut ref self, m_id: i64) -> i64 {
+        let mut freed = 0;
+        for i in 0..self.memory.len() {
+            if self.memory[i] == m_id {
+                self.memory[i] = 0;
+                freed += 1;
+            }
+        }
+        freed
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let sessions = 400;
+    let mut seed = 2502;
+    let mut check = 0;
+    for s in 0..sessions {
+        let mut allocator = Allocator.new(1000);
+        for _ in 0..1000 {
+            let r = if (next_random(mut seed) + check) % 3 < 2 {
+                let size = next_random(mut seed) % 20 + 1;
+                allocator.allocate(size, next_random(mut seed) % 50 + 1)
+            } else {
+                allocator.free_memory(next_random(mut seed) % 50 + 1)
+            };
+            check = (check * 31 + r + 1 + s) % 1000000007;
+        }
+    }
+    println(f"{sessions} sessions of 1000 calls on 1000 units: checksum {check}");
+}

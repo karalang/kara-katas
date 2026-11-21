@@ -1,0 +1,109 @@
+// LeetCode #2502: Design Memory Allocator -- the blocks held, in order of
+// their starts, as (start, size, id); `allocate` walks the gaps between
+// them, from 0 to the end, and inserts the new block at the first gap
+// that fits, `free_memory` keeps every block but the id's. O(blocks) a
+// call.
+
+struct Allocator {
+    n: i64,
+    blocks: Vec[(i64, i64, i64)],
+}
+
+impl Allocator {
+    fn new(n: i64) -> Allocator {
+        Allocator { n: n, blocks: Vec.new() }
+    }
+
+    fn allocate(mut ref self, size: i64, m_id: i64) -> i64 {
+        let mut free_from = 0;
+        for k in 0..self.blocks.len() {
+            let (start, length, _) = self.blocks[k];
+            if start - free_from >= size {
+                self.blocks.insert(k, (free_from, size, m_id));
+                return free_from;
+            }
+            free_from = start + length;
+        }
+        if self.n - free_from >= size {
+            self.blocks.push((free_from, size, m_id));
+            return free_from;
+        }
+        -1
+    }
+
+    fn free_memory(mut ref self, m_id: i64) -> i64 {
+        let freed = self.blocks.iter().filter(|(_, _, id)| id == m_id).map(|(_, length, _)| length).sum();
+        self.blocks.retain(|(_, _, id)| id != m_id);
+        freed
+    }
+}
+
+// the calls in order: (0, size, id) allocates, (1, id, _) frees
+fn drive(n: i64, ops: Vec[(i64, i64, i64)]) -> Vec[i64] {
+    let mut allocator = Allocator.new(n);
+    let mut out: Vec[i64] = Vec.new();
+    for (kind, x, y) in ops.iter() {
+        out.push(if kind == 0 { allocator.allocate(x, y) } else { allocator.free_memory(x) });
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// an allocate two times in three, of 1 to `most` units; else a free
+fn random_ops(count: i64, most: i64, ids: i64, seed: mut ref i64) -> Vec[(i64, i64, i64)] {
+    let mut ops: Vec[(i64, i64, i64)] = Vec.new();
+    for _ in 0..count {
+        if next_random(mut seed) % 3 < 2 {
+            let size = next_random(mut seed) % most + 1;
+            ops.push((0, size, next_random(mut seed) % ids + 1));
+        } else {
+            ops.push((1, next_random(mut seed) % ids + 1, 0));
+        }
+    }
+    ops
+}
+
+fn main() {
+    // LeetCode's example, then three more
+    let example = [(0, 1, 1), (0, 1, 2), (0, 1, 3), (1, 2, 0), (0, 3, 4), (0, 1, 1), (0, 1, 1), (1, 1, 0), (0, 10, 2), (1, 7, 0)].to_vec();
+    println(f"example: {drive(10, example)}");
+    println(f"one unit: {drive(1, [(0, 1, 5), (0, 1, 5), (1, 5, 0), (1, 5, 0), (0, 1, 6)].to_vec())}");
+    println(f"whole: {drive(4, [(0, 4, 1), (1, 1, 0), (0, 2, 2), (0, 3, 3), (0, 2, 3), (1, 2, 0), (0, 3, 1)].to_vec())}");
+    println(f"gaps: {drive(6, [(0, 2, 1), (0, 2, 2), (0, 2, 1), (1, 1, 0), (0, 3, 3), (0, 1, 4), (0, 2, 5), (1, 2, 0), (0, 3, 6)].to_vec())}");
+    // 2000 random sequences of 1 to 60 calls on 1 to 50 units, ids to 3
+    // and to 20: how many allocations are refused, and a checksum
+    let mut seed = 2502;
+    for ids in [3, 20] {
+        let mut check = 0;
+        let mut refused = 0;
+        for _ in 0..2000 {
+            let n = next_random(mut seed) % 50 + 1;
+            let count = next_random(mut seed) % 60 + 1;
+            for r in drive(n, random_ops(count, n / 3 + 1, ids, mut seed)).iter() {
+                if r == -1 {
+                    refused += 1;
+                }
+                check = (check * 31 + r + 1) % 1000000007;
+            }
+        }
+        println(f"2000 random, ids to {ids}: {refused} refused, checksum {check}");
+    }
+    // the constraints' largest: 1000 units and 1000 random calls; and 999
+    // allocations of one unit, then a free
+    let big = drive(1000, random_ops(1000, 20, 50, mut seed));
+    let mut check = 0;
+    for r in big.iter() {
+        check = (check * 31 + r + 1) % 1000000007;
+    }
+    println(f"1000 units, 1000 random calls: {big.iter().filter(|r| r == -1).count()} refused, checksum {check}");
+    let mut ones: Vec[(i64, i64, i64)] = (0..999).map(|i| (0, 1, i % 1000 + 1)).collect();
+    ones.push((1, 500, 0));
+    let got = drive(1000, ones);
+    println(f"1000 units, 999 of one, then a free: last {got[got.len() - 2]}, freed {got[got.len() - 1]}");
+}
