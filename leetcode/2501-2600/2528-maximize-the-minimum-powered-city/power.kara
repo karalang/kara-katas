@@ -1,0 +1,97 @@
+// LeetCode #2528: Maximize the Minimum Powered City -- the ★ arm. Each
+// city's power from prefix sums, then a binary search on the answer: a
+// target is reachable when a sweep from the left, placing each shortfall
+// as far right as still reaches the city (`r` on), needs at most `k`
+// stations. A placed station's reach ends `2r + 1` on, kept in a
+// difference array. O(n log(k + max power)).
+
+fn reachable(power: Vec[i64], r: i64, k: i64, target: i64) -> bool {
+    let n = power.len();
+    let mut ends = Vec.filled(n + 1, 0);
+    let mut running = 0;
+    let mut used = 0;
+    for i in 0..n {
+        running += ends[i];
+        let have = power[i] + running;
+        if have < target {
+            let need = target - have;
+            used += need;
+            if used > k {
+                return false;
+            }
+            running += need;
+            ends[(i + 2 * r + 1).min(n)] -= need;
+        }
+    }
+    true
+}
+
+fn max_power(stations: Vec[i64], r: i64, k: i64) -> i64 {
+    let n = stations.len();
+    let mut prefix = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        prefix[i + 1] = prefix[i] + stations[i];
+    }
+    let power: Vec[i64] = (0..n).map(|i| prefix[(i + r + 1).min(n)] - prefix[(i - r).max(0)]).collect();
+    let mut lo = power.iter().min().unwrap();
+    let mut hi = lo + k;
+    while lo < hi {
+        let mid = lo + (hi - lo + 1) / 2;
+        if reachable(power, r, k, mid) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a value from 0 to 2^30 - 1, next_random giving only 15 bits
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples, then six more
+    let fixed: Vec[(Vec[i64], i64, i64)] = [
+        ([1, 2, 4, 5, 0], 1, 2),
+        ([4, 4, 4, 4], 0, 3),
+        ([0], 0, 0),
+        ([0], 0, 1000000000),
+        ([5, 0, 0, 0, 0, 0, 5], 1, 3),
+        ([1, 0, 0, 0, 1], 4, 0),
+        ([0, 0, 0, 0, 0, 0], 1, 4),
+        ([100000, 0, 100000], 0, 1),
+    ];
+    for (stations, r, k) in fixed.iter() {
+        println(f"{stations} r {r} k {k} -> {max_power(stations, r, k)}");
+    }
+    // 2000 random cities of 1 to 20, 0 to 5 stations each, r up to n - 1
+    // and k up to 20: the sum of the answers and a checksum
+    let mut seed = 2528;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 20 + 1;
+        let stations: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 6).collect();
+        let r = next_random(mut seed) % n;
+        let k = next_random(mut seed) % 21;
+        let a = max_power(stations, r, k);
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"2000 random lists of up to 20 cities: total {total}, checksum {check}");
+    // the constraints' largest: 10^5 cities of up to 10^5 stations, with
+    // k = 10^9 and r of 0, 10 and 10^4
+    let stations: Vec[i64] = (0..100000).map(|_| next_random(mut seed) % 100001).collect();
+    for r in [0, 10, 10000] {
+        println(f"10^5 cities, r {r}, k 10^9: {max_power(stations, r, 1000000000)}");
+    }
+}

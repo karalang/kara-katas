@@ -1,0 +1,414 @@
+// LeetCode #2528: Maximize the Minimum Powered City -- the differential.
+// The six arms against the statement read literally: every way to build
+// the `k` new stations, one city at a time with repeats allowed, is tried,
+// and the answer is the best least power any of them gives, each city's
+// power summed over the cities within `r` of it. 360 random lists of 1 to
+// 6 cities with 0 to 4 stations each, `r` from 0 to `n - 1` and `k` from 0
+// to 4; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer lies between the least power with no new station and that plus k
+// P3  k one more: the answer the same or one more
+// P4  the cities reversed: the same answer
+// P5  every city's stations and k doubled: at least twice the answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally
+
+fn least_power(stations: Vec[i64], r: i64) -> i64 {
+    let n = stations.len();
+    let mut least = -1;
+    for i in 0..n {
+        let mut power = 0;
+        for j in 0..n {
+            if (i - j).abs() <= r {
+                power += stations[j];
+            }
+        }
+        if least == -1 or power < least {
+            least = power;
+        }
+    }
+    least
+}
+
+fn best_after(stations: mut ref Vec[i64], r: i64, left: i64, from: i64) -> i64 {
+    if left == 0 {
+        return least_power(stations, r);
+    }
+    let mut best = -1;
+    for at in from..stations.len() {
+        stations[at] += 1;
+        best = best.max(best_after(mut stations, r, left - 1, at));
+        stations[at] -= 1;
+    }
+    best
+}
+
+fn literal(stations: Vec[i64], r: i64, k: i64) -> i64 {
+    let mut built = stations.clone();
+    best_after(mut built, r, k, 0)
+}
+
+// ---- star (power.kara) ---------------------------------------------------
+
+fn star_reachable(power: Vec[i64], r: i64, k: i64, target: i64) -> bool {
+    let n = power.len();
+    let mut ends = Vec.filled(n + 1, 0);
+    let mut running = 0;
+    let mut used = 0;
+    for i in 0..n {
+        running += ends[i];
+        let have = power[i] + running;
+        if have < target {
+            let need = target - have;
+            used += need;
+            if used > k {
+                return false;
+            }
+            running += need;
+            ends[(i + 2 * r + 1).min(n)] -= need;
+        }
+    }
+    true
+}
+
+fn star_max_power(stations: Vec[i64], r: i64, k: i64) -> i64 {
+    let n = stations.len();
+    let mut prefix = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        prefix[i + 1] = prefix[i] + stations[i];
+    }
+    let power: Vec[i64] = (0..n).map(|i| prefix[(i + r + 1).min(n)] - prefix[(i - r).max(0)]).collect();
+    let mut lo = power.iter().min().unwrap();
+    let mut hi = lo + k;
+    while lo < hi {
+        let mid = lo + (hi - lo + 1) / 2;
+        if star_reachable(power, r, k, mid) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+// ---- window (power_window.kara) ------------------------------------------
+
+fn window_reachable(stations: Vec[i64], r: i64, k: i64, target: i64) -> bool {
+    let n = stations.len();
+    let mut placed = Vec.filled(n, 0);
+    let mut window = 0;
+    for j in 0..r.min(n - 1) + 1 {
+        window += stations[j];
+    }
+    let mut used = 0;
+    for i in 0..n {
+        if i + r < n and i > 0 {
+            window += stations[i + r];
+        }
+        if i - r - 1 >= 0 {
+            window -= stations[i - r - 1] + placed[i - r - 1];
+        }
+        if window < target {
+            let need = target - window;
+            used += need;
+            if used > k {
+                return false;
+            }
+            placed[(i + r).min(n - 1)] += need;
+            window += need;
+        }
+    }
+    true
+}
+
+fn window_max_power(stations: Vec[i64], r: i64, k: i64) -> i64 {
+    let n = stations.len();
+    let mut least = -1;
+    let mut window = 0;
+    for j in 0..r.min(n - 1) + 1 {
+        window += stations[j];
+    }
+    for i in 0..n {
+        if i + r < n and i > 0 {
+            window += stations[i + r];
+        }
+        if i - r - 1 >= 0 {
+            window -= stations[i - r - 1];
+        }
+        if least == -1 or window < least {
+            least = window;
+        }
+    }
+    let mut lo = least;
+    let mut hi = least + k;
+    while lo < hi {
+        let mid = lo + (hi - lo + 1) / 2;
+        if window_reachable(stations, r, k, mid) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+// ---- queue (power_queue.kara) --------------------------------------------
+
+fn queue_reachable(power: Vec[i64], r: i64, k: i64, target: i64) -> bool {
+    let mut live: VecDeque[(i64, i64)] = VecDeque.new();
+    let mut running = 0;
+    let mut used = 0;
+    for i in 0..power.len() {
+        while live.len() > 0 and live.front().unwrap().0 < i {
+            running -= live.pop_front().unwrap().1;
+        }
+        let have = power[i] + running;
+        if have < target {
+            let need = target - have;
+            used += need;
+            if used > k {
+                return false;
+            }
+            running += need;
+            live.push_back((i + 2 * r, need));
+        }
+    }
+    true
+}
+
+fn queue_max_power(stations: Vec[i64], r: i64, k: i64) -> i64 {
+    let n = stations.len();
+    let mut prefix = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        prefix[i + 1] = prefix[i] + stations[i];
+    }
+    let power: Vec[i64] = (0..n).map(|i| prefix[(i + r + 1).min(n)] - prefix[(i - r).max(0)]).collect();
+    let mut lo = power.iter().min().unwrap();
+    let mut hi = lo + k;
+    while lo < hi {
+        let mid = lo + (hi - lo + 1) / 2;
+        if queue_reachable(power, r, k, mid) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+// ---- rec (power_rec.kara) ------------------------------------------------
+
+fn rec_sweep(power: Vec[i64], ends: mut ref Vec[i64], r: i64, i: i64, stop: i64, running: i64, left: i64, target: i64) -> (i64, i64) {
+    if i == stop or left < 0 {
+        (running, left)
+    } else {
+        let now = running + ends[i];
+        let short = (target - power[i] - now).max(0);
+        if short > 0 {
+            let at = (i + 2 * r + 1).min(power.len());
+            ends[at] -= short;
+        }
+        rec_sweep(power, mut ends, r, i + 1, stop, now + short, left - short, target)
+    }
+}
+
+fn rec_reachable(power: Vec[i64], r: i64, k: i64, target: i64) -> bool {
+    let mut ends = Vec.filled(power.len() + 1, 0);
+    rec_sweep(power, mut ends, r, 0, power.len(), 0, k, target).1 >= 0
+}
+
+fn rec_search(power: Vec[i64], r: i64, k: i64, lo: i64, hi: i64) -> i64 {
+    if lo == hi {
+        lo
+    } else {
+        let mid = lo + (hi - lo + 1) / 2;
+        if rec_reachable(power, r, k, mid) {
+            rec_search(power, r, k, mid, hi)
+        } else {
+            rec_search(power, r, k, lo, mid - 1)
+        }
+    }
+}
+
+fn rec_max_power(stations: Vec[i64], r: i64, k: i64) -> i64 {
+    let n = stations.len();
+    let mut prefix = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        prefix[i + 1] = prefix[i] + stations[i];
+    }
+    let power: Vec[i64] = (0..n).map(|i| prefix[(i + r + 1).min(n)] - prefix[(i - r).max(0)]).collect();
+    let least = power.iter().min().unwrap();
+    rec_search(power, r, k, least, least + k)
+}
+
+// ---- iter (power_iter.kara) ----------------------------------------------
+
+fn iter_max_power(stations: Vec[i64], r: i64, k: i64) -> i64 {
+    let n = stations.len();
+    let prefix: Vec[i64] = [0].into_iter().chain(stations.iter().scan(0, |sum, x| {
+        let next = sum + x;
+        Some((next, next))
+    })).collect();
+    let power: Vec[i64] = (0..n).map(|i| prefix[(i + r + 1).min(n)] - prefix[(i - r).max(0)]).collect();
+    let reachable = |target: i64| {
+        let mut ends = Vec.filled(n + 1, 0);
+        let mut running = 0;
+        let mut used = 0;
+        (0..n).all(|i| {
+            running += ends[i];
+            let need = (target - power[i] - running).max(0);
+            used += need;
+            running += need;
+            ends[(i + 2 * r + 1).min(n)] -= need;
+            used <= k
+        })
+    };
+    let mut lo = power.iter().min().unwrap();
+    let mut hi = lo + k;
+    while lo < hi {
+        let mid = lo + (hi - lo + 1) / 2;
+        if reachable(mid) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+// ---- solution (power_solution.kara) --------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_power(stations: Vec[i32], r: i32, k: i32) -> i64 {
+        let n = stations.len();
+        let r = r as i64;
+        let mut prefix = Vec.filled(n + 1, 0);
+        for i in 0..n {
+            prefix[i + 1] = prefix[i] + stations[i];
+        }
+        let power: Vec[i64] = (0..n).map(|i| prefix[(i + r + 1).min(n)] - prefix[i.saturating_sub(r).max(0)]).collect();
+        let reachable = |target: i64| {
+            let mut ends = Vec.filled(n + 1, 0);
+            let mut running = 0;
+            let mut used = 0;
+            for i in 0..n {
+                running += ends[i];
+                let have = power[i] + running;
+                if have < target {
+                    let need = target - have;
+                    used += need;
+                    if used > k {
+                        return false;
+                    }
+                    running += need;
+                    ends[(i + 2 * r + 1).min(n)] -= need;
+                }
+            }
+            true
+        };
+        let mut lo = *power.iter().min().unwrap();
+        let mut hi = lo + k;
+        while lo < hi {
+            let mid = lo + (hi - lo + 1) / 2;
+            if reachable(mid) {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        lo
+    }
+}
+
+fn solution_max_power(stations: Vec[i64], r: i64, k: i64) -> i64 {
+    Solution.max_power(stations.iter().map(|x| x as i32).collect(), r as i32, k as i32)
+}
+
+// ---- the differential --------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn answer(arm: i64, stations: Vec[i64], r: i64, k: i64) -> i64 {
+    match arm {
+        0 => star_max_power(stations, r, k),
+        1 => window_max_power(stations, r, k),
+        2 => queue_max_power(stations, r, k),
+        3 => rec_max_power(stations, r, k),
+        4 => iter_max_power(stations, r, k),
+        _ => solution_max_power(stations, r, k),
+    }
+}
+
+fn main() {
+    let names = ["star", "window", "queue", "rec", "iter", "solution"];
+    let mut seed = 2528;
+    let mut problems: Vec[(Vec[i64], i64, i64)] = Vec.new();
+    for _ in 0..360 {
+        let n = next_random(mut seed) % 6 + 1;
+        let stations: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 5).collect();
+        let r = next_random(mut seed) % n;
+        problems.push((stations, r, next_random(mut seed) % 5));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut raised = 0;
+    for (stations, r, k) in problems.iter() {
+        let truth = literal(stations, r, k);
+        let least = least_power(stations, r);
+        if truth > least {
+            raised += 1;
+        }
+        check = (check * 31 + truth) % 1000000007;
+        let reversed: Vec[i64] = stations.iter().rev().collect();
+        let doubled: Vec[i64] = stations.iter().map(|s| s * 2).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, stations, r, k)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let more = answer(arm, stations, r, k + 1);
+            let verdicts = [
+                x == truth,
+                x >= least and x <= least + k,
+                more == x or more == x + 1,
+                answer(arm, reversed, r, k) == x,
+                answer(arm, doubled, r, 2 * k) >= 2 * x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{stations} r {r} k {k}, arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} cases, {raised} raised above the least: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
