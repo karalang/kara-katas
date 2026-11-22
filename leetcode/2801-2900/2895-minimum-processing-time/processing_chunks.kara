@@ -1,0 +1,52 @@
+// LeetCode #2895: Minimum Processing Time -- the ★ arm's pairing as an
+// iterator chain: the processors from free last, zipped with the tasks
+// in fours from the shortest, by `chunks(4)`, each processor's finish
+// its time plus the last of its four.
+
+fn min_processing_time(processor_time: Vec[i64], tasks: Vec[i64]) -> i64 {
+    let mut free = processor_time.clone();
+    free.sort();
+    let mut shortest = tasks.clone();
+    shortest.sort();
+    free.iter().rev().zip(shortest.chunks(4).iter()).map(|(p, four)| p + four[3]).max().unwrap()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; 25000 processors, LeetCode's most, all
+    // free at 0 with tasks 1 to 10^5, and all at 10^9 with tasks of 10^9
+    println(f"{min_processing_time([8, 10].to_vec(), [2, 2, 3, 1, 8, 7, 4, 5].to_vec())} {min_processing_time([10, 20].to_vec(), [2, 3, 1, 2, 5, 8, 4, 3].to_vec())}");
+    let n = 25000;
+    println(f"{min_processing_time(Vec.filled(n, 0), (1..4 * n + 1).collect())} {min_processing_time(Vec.filled(n, 1000000000), Vec.filled(4 * n, 1000000000))}");
+    // 3000 random cases of 1 to 3 processors, times and tasks 1 to 20;
+    // then 100 of 250 to 25000 processors, times and tasks up to 10^9
+    let mut seed = 2895;
+    let mut total = 0;
+    let mut check = 0;
+    for c in 0..3100 {
+        let small = c < 3000;
+        let n = if small { next_random(mut seed) % 3 + 1 } else { wide(mut seed) % 24751 + 250 };
+        let top = if small { 20 } else { 1000000000 };
+        let processors: Vec[i64] = (0..n).map(|_| wide(mut seed) % top + 1).collect();
+        let tasks: Vec[i64] = (0..4 * n).map(|_| wide(mut seed) % top + 1).collect();
+        let time = min_processing_time(processors, tasks);
+        total += time;
+        check = (check * 31 + time) % 1000000007;
+        if c == 2999 {
+            println(f"3000 small cases: times total {total}, checksum {check}");
+            total = 0;
+            check = 0;
+        }
+    }
+    println(f"100 large cases: times total {total}, checksum {check}");
+}

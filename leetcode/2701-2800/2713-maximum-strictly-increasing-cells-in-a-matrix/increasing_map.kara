@@ -1,0 +1,77 @@
+// LeetCode #2713: Maximum Strictly Increasing Cells in a Matrix -- the
+// map arm. The cells grouped by value in a `SortedMap[i64, Vec[(i64,
+// i64)]]`, whose walk visits the values in order; each group's lengths
+// are worked out in full before the rows' and columns' bests take them.
+// O(m n log(m n)).
+
+fn max_increasing_cells(mat: Vec[Vec[i64]]) -> i64 {
+    let m = mat.len();
+    let n = mat[0].len();
+    let mut groups: SortedMap[i64, Vec[(i64, i64)]] = SortedMap.new();
+    for r in 0..m {
+        for c in 0..n {
+            groups.entry(mat[r][c]).or_insert(Vec.new()).push((r, c));
+        }
+    }
+    let mut row_best: Vec[i64] = (0..m).map(|_| 0).collect();
+    let mut col_best: Vec[i64] = (0..n).map(|_| 0).collect();
+    for (_, cells) in groups.iter() {
+        let lengths: Vec[i64] = cells.iter().map(|(r, c)| row_best[r].max(col_best[c]) + 1).collect();
+        for (k, (r, c)) in cells.iter().enumerate() {
+            row_best[r] = row_best[r].max(lengths[k]);
+            col_best[c] = col_best[c].max(lengths[k]);
+        }
+    }
+    row_best.iter().max().unwrap()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's three examples; one cell; 300 by 300 rising along rows
+    // and down columns; a row of 10^5 equal values, LeetCode's most
+    // cells; a column of 10^5 falling values
+    println(f"{max_increasing_cells([[3, 1].to_vec(), [3, 4].to_vec()].to_vec())}");
+    println(f"{max_increasing_cells([[1, 1].to_vec(), [1, 1].to_vec()].to_vec())}");
+    println(f"{max_increasing_cells([[3, 1, 6].to_vec(), [-9, 5, 7].to_vec()].to_vec())}");
+    println(f"{max_increasing_cells([[5].to_vec()].to_vec())}");
+    println(f"{max_increasing_cells((0..300).map(|r| (0..300).map(|c| r * 300 + c).collect()).collect())}");
+    println(f"{max_increasing_cells([(0..100000).map(|_| 7).collect()].to_vec())}");
+    println(f"{max_increasing_cells((0..100000).map(|i| [49999 - i].to_vec()).collect())}");
+    // 1000 random matrices up to 8 by 8 with values from -10 over a random
+    // spread up to 20; then 20 up to 200 by 200 with values from -10^5 to
+    // 10^5
+    let mut seed = 2713;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let m = next_random(mut seed) % 8 + 1;
+        let n = next_random(mut seed) % 8 + 1;
+        let spread = next_random(mut seed) % 20 + 1;
+        let mat: Vec[Vec[i64]] = (0..m).map(|_| (0..n).map(|_| next_random(mut seed) % spread - 10).collect()).collect();
+        let cells = max_increasing_cells(mat);
+        sum += cells;
+        check = (check * 31 + cells) % 1000000007;
+    }
+    println(f"1000 small matrices: cells sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for _ in 0..20 {
+        let m = next_random(mut seed) % 200 + 1;
+        let n = next_random(mut seed) % 200 + 1;
+        let mat: Vec[Vec[i64]] = (0..m).map(|_| (0..n).map(|_| wide(mut seed) % 200001 - 100000).collect()).collect();
+        let cells = max_increasing_cells(mat);
+        sum += cells;
+        check = (check * 31 + cells) % 1000000007;
+    }
+    println(f"20 matrices up to 200 by 200: cells sum to {sum}, checksum {check}");
+}

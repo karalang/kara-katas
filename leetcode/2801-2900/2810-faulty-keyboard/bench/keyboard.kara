@@ -1,0 +1,50 @@
+// LeetCode #2810: Faulty Keyboard -- the bench: the ★ arm over 20000
+// strings of 100 letters, LeetCode's longest, about a fifth of them i,
+// all drawn first, then each typed 10 times.
+
+fn final_string(s: String) -> String {
+    let mut screen = String.new();
+    for c in s.chars() {
+        if c == 'i' {
+            screen = screen.chars().rev().collect();
+        } else {
+            screen.push(c);
+        }
+    }
+    screen
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn digest(s: String) -> i64 {
+    s.bytes().iter().fold(0, |h, b| (h * 131 + b as i64) % 1000000007)
+}
+
+fn main() {
+    let count = 20000;
+    let rounds = 10;
+    let letters: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    let mut seed = 2810;
+    let mut cases: Vec[String] = Vec.new();
+    for _ in 0..count {
+        let mut s = String.new();
+        for _ in 0..100 {
+            let r = next_random(mut seed) % 125;
+            s.push(if r < 25 { 'i' } else { letters[r % 26] });
+        }
+        cases.push(s);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for s in cases.iter() {
+            let out = final_string(s);
+            total += out.len();
+            check = (check * 31 + digest(out) + r) % 1000000007;
+        }
+    }
+    println(f"{count} strings of 100, {rounds} rounds: lengths sum to {total}, checksum {check}");
+}

@@ -1,0 +1,292 @@
+// LeetCode #2713: Maximum Strictly Increasing Cells in a Matrix -- the
+// differential. The four arms, against the statement read literally:
+// from every cell, every move the statement allows tried, to any cell of
+// the same row or column with a strictly greater value, the most cells a
+// path visits remembered per cell. No sorting. 800 random matrices of up
+// to 6 by 6 with values over a spread of 1 to 12 about zero; then 10 of
+// up to 100 by 100 with values from -10^5 to 10^5. Every case is drawn
+// before any arm answers.
+//
+// P1  up to 6 by 6, the answer is the literal reading's
+// P2  the matrix transposed: the same answer
+// P3  every value v made 2 v + 7: the same answer
+// P4  every value negated: the same answer, each path walked backwards
+// P5  the answer is at least the distinct values of any one row and at
+//     most the distinct values of the matrix
+// P6  each arm agrees with at least two of the other three
+
+
+// ---- star (increasing.kara) -----------------------------------------
+
+fn star_max_increasing_cells(mat: Vec[Vec[i64]]) -> i64 {
+    let m = mat.len();
+    let n = mat[0].len();
+    let mut cells: Vec[(i64, i64, i64)] = Vec.new();
+    for r in 0..m {
+        for c in 0..n {
+            cells.push((mat[r][c], r, c));
+        }
+    }
+    cells.sort();
+    let mut row_best: Vec[i64] = (0..m).map(|_| 0).collect();
+    let mut col_best: Vec[i64] = (0..n).map(|_| 0).collect();
+    let mut found: Vec[i64] = Vec.new();
+    let mut best = 0;
+    let mut i = 0;
+    while i < cells.len() {
+        let mut j = i;
+        while j < cells.len() and cells[j].0 == cells[i].0 {
+            j += 1;
+        }
+        found.clear();
+        for k in i..j {
+            let (_, r, c) = cells[k];
+            found.push(row_best[r].max(col_best[c]) + 1);
+        }
+        for k in i..j {
+            let (_, r, c) = cells[k];
+            row_best[r] = row_best[r].max(found[k - i]);
+            col_best[c] = col_best[c].max(found[k - i]);
+            best = best.max(found[k - i]);
+        }
+        i = j;
+    }
+    best
+}
+
+
+// ---- descending (increasing_descending.kara) ------------------------
+
+fn descending_max_increasing_cells(mat: Vec[Vec[i64]]) -> i64 {
+    let m = mat.len();
+    let n = mat[0].len();
+    let mut order: Vec[(i64, i64)] = Vec.new();
+    for r in 0..m {
+        for c in 0..n {
+            order.push((r, c));
+        }
+    }
+    order.sort_by(|a, b| mat[b.0][b.1].cmp(mat[a.0][a.1]));
+    let mut row_best: Vec[i64] = (0..m).map(|_| 0).collect();
+    let mut col_best: Vec[i64] = (0..n).map(|_| 0).collect();
+    let mut best = 0;
+    let mut start = 0;
+    while start < order.len() {
+        let value = mat[order[start].0][order[start].1];
+        let mut end = start;
+        let mut group: Vec[(i64, i64, i64)] = Vec.new();
+        while end < order.len() and mat[order[end].0][order[end].1] == value {
+            let (r, c) = order[end];
+            group.push((r, c, row_best[r].max(col_best[c]) + 1));
+            end += 1;
+        }
+        for (r, c, length) in group.iter() {
+            if length > row_best[r] {
+                row_best[r] = length;
+            }
+            if length > col_best[c] {
+                col_best[c] = length;
+            }
+            if length > best {
+                best = length;
+            }
+        }
+        start = end;
+    }
+    best
+}
+
+
+// ---- map (increasing_map.kara) --------------------------------------
+
+fn map_max_increasing_cells(mat: Vec[Vec[i64]]) -> i64 {
+    let m = mat.len();
+    let n = mat[0].len();
+    let mut groups: SortedMap[i64, Vec[(i64, i64)]] = SortedMap.new();
+    for r in 0..m {
+        for c in 0..n {
+            groups.entry(mat[r][c]).or_insert(Vec.new()).push((r, c));
+        }
+    }
+    let mut row_best: Vec[i64] = (0..m).map(|_| 0).collect();
+    let mut col_best: Vec[i64] = (0..n).map(|_| 0).collect();
+    for (_, cells) in groups.iter() {
+        let lengths: Vec[i64] = cells.iter().map(|(r, c)| row_best[r].max(col_best[c]) + 1).collect();
+        for (k, (r, c)) in cells.iter().enumerate() {
+            row_best[r] = row_best[r].max(lengths[k]);
+            col_best[c] = col_best[c].max(lengths[k]);
+        }
+    }
+    row_best.iter().max().unwrap()
+}
+
+
+// ---- solution (increasing_solution.kara) ----------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_increasing_cells(mat: Vec[Vec[i32]]) -> i32 {
+        let (m, n) = (mat.len(), mat[0].len());
+        let mut g: SortedMap[i32, Vec[(i64, i64)]] = SortedMap.new();
+        for i in 0..m {
+            for j in 0..n {
+                g.entry(mat[i][j]).or_insert(Vec.new()).push((i, j));
+            }
+        }
+        let mut row = Vec.filled(m, 0i32);
+        let mut col = Vec.filled(n, 0i32);
+        for (_, cells) in g.iter() {
+            let mut t = Vec.with_capacity(cells.len());
+            for (i, j) in cells.iter() {
+                t.push(row[i].max(col[j]) + 1);
+            }
+            for (k, (i, j)) in cells.iter().enumerate() {
+                row[i] = row[i].max(t[k]);
+                col[j] = col[j].max(t[k]);
+            }
+        }
+        *row.iter().max().unwrap()
+    }
+}
+
+fn solution_max_increasing_cells(mat: Vec[Vec[i64]]) -> i64 {
+    let narrow: Vec[Vec[i32]] = mat.iter().map(|row| row.iter().map(|v| v as i32).collect()).collect();
+    Solution.max_increasing_cells(narrow)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+// the most cells a path can visit from (r, c): itself, and then the best
+// of every move the statement allows, to any cell of the same row or
+// column whose value is strictly greater; each cell's answer remembered
+fn longest_from(mat: Vec[Vec[i64]], r: i64, c: i64, memo: mut ref Vec[Vec[i64]]) -> i64 {
+    if memo[r][c] > 0 {
+        return memo[r][c];
+    }
+    let m = mat.len();
+    let n = mat[0].len();
+    let mut best = 1;
+    for i in 0..m {
+        for j in 0..n {
+            if (i == r or j == c) and mat[i][j] > mat[r][c] {
+                best = best.max(1 + longest_from(mat, i, j, mut memo));
+            }
+        }
+    }
+    memo[r][c] = best;
+    best
+}
+
+fn literal(mat: Vec[Vec[i64]]) -> i64 {
+    let m = mat.len();
+    let n = mat[0].len();
+    let mut memo: Vec[Vec[i64]] = (0..m).map(|_| (0..n).map(|_| 0).collect()).collect();
+    let mut best = 0;
+    for r in 0..m {
+        for c in 0..n {
+            best = best.max(longest_from(mat, r, c, mut memo));
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, mat: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_max_increasing_cells(mat),
+        1 => descending_max_increasing_cells(mat),
+        2 => map_max_increasing_cells(mat),
+        _ => solution_max_increasing_cells(mat),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "descending", "map", "solution"];
+    let mut seed = 2713;
+    let mut cases: Vec[Vec[Vec[i64]]] = Vec.new();
+    for c in 0..810 {
+        let (side, spread) = if c < 800 { (6, next_random(mut seed) % 12 + 1) } else { (100, 200001) };
+        let m = next_random(mut seed) % side + 1;
+        let n = next_random(mut seed) % side + 1;
+        cases.push((0..m).map(|_| (0..n).map(|_| wide(mut seed) % spread - spread / 2).collect()).collect());
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, mat) in cases.iter().enumerate() {
+        let small = c < 800;
+        let truth = if small { literal(mat) } else { -1 };
+        if small {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let m = mat.len();
+        let n = mat[0].len();
+        let transposed: Vec[Vec[i64]] = (0..n).map(|j| (0..m).map(|i| mat[i][j]).collect()).collect();
+        let stretched: Vec[Vec[i64]] = mat.iter().map(|row| row.iter().map(|v| 2 * v + 7).collect()).collect();
+        let negated: Vec[Vec[i64]] = mat.iter().map(|row| row.iter().map(|v| -v).collect()).collect();
+        let mut values: Vec[i64] = Vec.new();
+        for row in mat.iter() {
+            for v in row.iter() {
+                values.push(v);
+            }
+        }
+        values.sort();
+        values.dedup();
+        let mut widest_row = 0;
+        for row in mat.iter() {
+            let mut own = row.clone();
+            own.sort();
+            own.dedup();
+            widest_row = widest_row.max(own.len());
+        }
+        let got: Vec[i64] = (0..4).map(|arm| answer(arm, mat)).collect();
+        for arm in 0..4 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..4 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                answer(arm, transposed) == value,
+                answer(arm, stretched) == value,
+                answer(arm, negated) == value,
+                widest_row <= value and value <= values.len(),
+                same >= 2,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 4 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

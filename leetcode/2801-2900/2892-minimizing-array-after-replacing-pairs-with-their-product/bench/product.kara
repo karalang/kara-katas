@@ -1,0 +1,57 @@
+// LeetCode #2892: Minimizing Array After Replacing Pairs With Their
+// Product -- the bench: the ★ arm over 50 arrays of 10^5 values,
+// LeetCode's most, half of them 1 and the rest up to 1000, k up to
+// 10^9, one in ten with a 0 near its end, all drawn first, then each
+// answered 20 times.
+
+fn min_array_length(nums: Vec[i64], k: i64) -> i64 {
+    if nums.contains(0) {
+        return 1;
+    }
+    let mut runs = 1;
+    let mut product = nums[0];
+    for x in nums.iter().skip(1) {
+        if product * x <= k {
+            product *= x;
+        } else {
+            runs += 1;
+            product = x;
+        }
+    }
+    runs
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let count = 50;
+    let rounds = 20;
+    let n = 100000;
+    let mut seed = 2892;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..count {
+        let mut nums: Vec[i64] = (0..n).map(|_| if next_random(mut seed) % 2 == 0 { 1 } else { next_random(mut seed) % 1000 + 1 }).collect();
+        if c % 10 == 0 {
+            nums[n - 1 - c] = 0;
+        }
+        let k = wide(mut seed) % 1000000000 + 1;
+        cases.push((nums, k));
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (nums, k) in cases.iter() {
+            let length = min_array_length(nums, k);
+            total += length;
+            check = (check * 31 + length + r) % 1000000007;
+        }
+    }
+    println(f"{count} arrays of {n}, {rounds} rounds: lengths total {total}, checksum {check}");
+}

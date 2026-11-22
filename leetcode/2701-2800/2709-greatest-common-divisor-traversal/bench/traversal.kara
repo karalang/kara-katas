@@ -1,0 +1,103 @@
+// LeetCode #2709: Greatest Common Divisor Traversal -- the bench
+// (traversal.kara): a smallest-prime-factor sieve, and each index joined
+// in a union-find to the first index seen with each of its primes.
+
+fn find(parent: mut ref Vec[i64], a: i64) -> i64 {
+    let mut a = a;
+    while parent[a] != a {
+        parent[a] = parent[parent[a]];
+        a = parent[a];
+    }
+    a
+}
+
+fn can_traverse_all_pairs(nums: Vec[i64]) -> bool {
+    let n = nums.len();
+    if n == 1 {
+        return true;
+    }
+    let top = nums.iter().max().unwrap();
+    let mut spf: Vec[i64] = (0..top + 1).collect();
+    let mut p = 2;
+    while p * p <= top {
+        if spf[p] == p {
+            let mut m = p * p;
+            while m <= top {
+                if spf[m] == m {
+                    spf[m] = p;
+                }
+                m += p;
+            }
+        }
+        p += 1;
+    }
+    let mut parent: Vec[i64] = (0..n).collect();
+    let mut first: Vec[i64] = (0..top + 1).map(|_| -1).collect();
+    let mut sets = n;
+    for (i, v) in nums.iter().enumerate() {
+        if v == 1 {
+            return false;
+        }
+        let mut rest = v;
+        while rest > 1 {
+            let q = spf[rest];
+            while rest % q == 0 {
+                rest /= q;
+            }
+            if first[q] < 0 {
+                first[q] = i;
+            } else {
+                let a = find(mut parent, i);
+                let b = find(mut parent, first[q]);
+                if a != b {
+                    parent[a] = b;
+                    sets -= 1;
+                }
+            }
+        }
+    }
+    sets == 1
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let arrays = 20;
+    let n = 100000;
+    let rounds = 5;
+    let mut seed = 2709;
+    let mut all: Vec[Vec[i64]] = Vec.new();
+    for a in 0..arrays {
+        // even arrays: every number a multiple of a random prime up to 7,
+        // so the sets join; odd arrays: numbers from 2 to 10^5 at random
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            if a % 2 == 0 {
+                let p = [2, 3, 5, 7][next_random(mut seed) % 4];
+                nums.push(p * (wide(mut seed) % 14285 + 1));
+            } else {
+                nums.push(wide(mut seed) % 99999 + 2);
+            }
+        }
+        all.push(nums);
+    }
+    let mut yes = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for nums in all.iter() {
+            let can = can_traverse_all_pairs(nums);
+            if can {
+                yes += 1;
+            }
+            check = (check * 31 + if can { 2 } else { 1 } + r) % 1000000007;
+        }
+    }
+    println(f"{arrays} arrays of {n} numbers up to 100000, {rounds} rounds: {yes} traversable, checksum {check}");
+}

@@ -1,0 +1,58 @@
+// LeetCode #2841: Maximum Sum of Almost Unique Subarray -- the bench,
+// mirrored from almost.kara: a window of k slid along the array, its
+// sum kept and a map from each value in it to its count.
+use std::collections::HashMap;
+
+fn max_sum(nums: &[i64], m: i64, k: i64) -> i64 {
+    let k = k as usize;
+    let mut count: HashMap<i64, i64> = HashMap::new();
+    let mut sum = 0;
+    let mut best = 0;
+    for i in 0..nums.len() {
+        *count.entry(nums[i]).or_insert(0) += 1;
+        sum += nums[i];
+        if i >= k {
+            let out = nums[i - k];
+            sum -= out;
+            let left = count[&out] - 1;
+            if left == 0 {
+                count.remove(&out);
+            } else {
+                count.insert(out, left);
+            }
+        }
+        if i + 1 >= k && count.len() as i64 >= m {
+            best = best.max(sum);
+        }
+    }
+    best
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 100;
+    let n = 20000;
+    let rounds = 20;
+    let mut seed = 2841;
+    let mut cases: Vec<(Vec<i64>, i64, i64)> = Vec::new();
+    for _ in 0..count {
+        let nums: Vec<i64> = (0..n).map(|_| next_random(&mut seed) % 10000 + 1).collect();
+        let k = next_random(&mut seed) % 5000 + 1;
+        let m = next_random(&mut seed) % k + 1;
+        cases.push((nums, m, k));
+    }
+    let mut total: i64 = 0;
+    let mut check: i64 = 0;
+    for r in 0..rounds {
+        for (nums, m, k) in cases.iter() {
+            let best = max_sum(nums, *m, *k);
+            total += best;
+            check = (check * 31 + best + r) % 1000000007;
+        }
+    }
+    println!("{count} arrays of {n}, {rounds} rounds: sums total {total}, checksum {check}");
+}

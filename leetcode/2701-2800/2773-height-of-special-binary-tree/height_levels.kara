@@ -1,0 +1,157 @@
+// LeetCode #2773: Height of Special Binary Tree -- the levels arm. A
+// breadth-first walk from the root over a `VecDeque`, a level at a time,
+// each node passing on only its real children, the ones that do not
+// point straight back at it; the height is the levels less one. O(n).
+
+fn height_of_tree(left: Vec[i64], right: Vec[i64], root: i64) -> i64 {
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    queue.push_back(root);
+    let mut levels = 0;
+    while not queue.is_empty() {
+        levels += 1;
+        for _ in 0..queue.len() {
+            let u = queue.pop_front().unwrap();
+            let l = left[u];
+            if l >= 0 and right[l] != u {
+                queue.push_back(l);
+            }
+            let r = right[u];
+            if r >= 0 and left[r] != u {
+                queue.push_back(r);
+            }
+        }
+    }
+    levels - 1
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the leaves, left to right, joined into a ring: each leaf's right is the
+// next leaf and its left the one before, the last and first joined
+fn joined(left: Vec[i64], right: Vec[i64], root: i64) -> (Vec[i64], Vec[i64]) {
+    let mut leaves: Vec[i64] = Vec.new();
+    let mut stack: Vec[i64] = [root].to_vec();
+    while let Some(u) = stack.pop() {
+        if left[u] < 0 and right[u] < 0 {
+            leaves.push(u);
+        }
+        if right[u] >= 0 {
+            stack.push(right[u]);
+        }
+        if left[u] >= 0 {
+            stack.push(left[u]);
+        }
+    }
+    let mut l = left.clone();
+    let mut r = right.clone();
+    let k = leaves.len();
+    for i in 0..k {
+        r[leaves[i]] = leaves[(i + 1) % k];
+        l[leaves[i]] = leaves[(i + k - 1) % k];
+    }
+    (l, r)
+}
+
+// a tree from LeetCode's level order, -1 for null, node i holding i
+fn level(list: Slice[i64]) -> (Vec[i64], Vec[i64]) {
+    let n = list.iter().filter(|v| v >= 0).count();
+    let mut left: Vec[i64] = Vec.filled(n, -1);
+    let mut right: Vec[i64] = Vec.filled(n, -1);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    queue.push_back(0);
+    let mut next = 1;
+    let mut at = 1;
+    while let Some(u) = queue.pop_front() {
+        for side in 0..2 {
+            if at < list.len() {
+                if list[at] >= 0 {
+                    if side == 0 {
+                        left[u] = next;
+                    } else {
+                        right[u] = next;
+                    }
+                    queue.push_back(next);
+                    next += 1;
+                }
+                at += 1;
+            }
+        }
+    }
+    joined(left, right, 0)
+}
+
+// a random tree of n nodes, each new node hung on a node among the last
+// `reach` with a free side, so a small reach grows a deep tree
+fn grown(n: i64, reach: i64, seed: mut ref i64) -> (Vec[i64], Vec[i64]) {
+    let mut left: Vec[i64] = Vec.filled(n, -1);
+    let mut right: Vec[i64] = Vec.filled(n, -1);
+    for k in 1..n {
+        let mut p = k - 1 - next_random(mut seed) % reach.min(k);
+        while left[p] >= 0 and right[p] >= 0 {
+            p = next_random(mut seed) % k;
+        }
+        let go_left = if left[p] >= 0 { false } else if right[p] >= 0 { true } else { next_random(mut seed) % 2 == 0 };
+        if go_left {
+            left[p] = k;
+        } else {
+            right[p] = k;
+        }
+    }
+    joined(left, right, 0)
+}
+
+fn main() {
+    // LeetCode's three examples
+    for list in [[1, 2, 3, -1, -1, 4, 5].to_vec(), [1, 2].to_vec(), [1, 2, 3, -1, -1, 4, -1, 5, 6].to_vec()] {
+        let (left, right) = level(list);
+        println(f"{height_of_tree(left, right, 0)}");
+    }
+    // 10^4 nodes, LeetCode's most: a chain of left children, one leaf
+    // joined to itself; and a complete tree of 8191 under a chain
+    let n = 10000;
+    let chain_left: Vec[i64] = (0..n).map(|i| if i + 1 < n { i + 1 } else { -1 }).collect();
+    let (left, right) = joined(chain_left, Vec.filled(n, -1), 0);
+    println(f"{height_of_tree(left, right, 0)}");
+    let mut left: Vec[i64] = Vec.filled(n, -1);
+    let mut right: Vec[i64] = Vec.filled(n, -1);
+    let top = n - 8191;
+    for i in 0..top {
+        left[i] = i + 1;
+    }
+    for k in 0..8191 {
+        if 2 * k + 1 < 8191 {
+            left[top + k] = top + 2 * k + 1;
+            right[top + k] = top + 2 * k + 2;
+        }
+    }
+    let (left, right) = joined(left, right, 0);
+    println(f"{height_of_tree(left, right, 0)}");
+    // 3000 random trees of 2 to 20 nodes; 20 of 10^4
+    let mut seed = 2773;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 19 + 2;
+        let reach = next_random(mut seed) % n + 1;
+        let (left, right) = grown(n, reach, mut seed);
+        let h = height_of_tree(left, right, 0);
+        total += h;
+        check = (check * 31 + h) % 1000000007;
+    }
+    println(f"3000 small trees: heights sum to {total}, checksum {check}");
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..20 {
+        let reach = next_random(mut seed) % 50 + 1;
+        let (left, right) = grown(n, reach, mut seed);
+        let h = height_of_tree(left, right, 0);
+        total += h;
+        check = (check * 31 + h) % 1000000007;
+    }
+    println(f"20 trees of 10^4: heights sum to {total}, checksum {check}");
+}

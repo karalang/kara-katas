@@ -1,0 +1,64 @@
+// LeetCode #2900: Longest Unequal Adjacent Groups Subsequence I -- the
+// bench: the ★ arm over 10000 cases of 100 words, LeetCode's most, in
+// runs of a group up to 5 long, all drawn first, then each answered 20
+// times, every chosen word cloned into the answer.
+
+fn get_longest_subsequence(words: Vec[String], groups: Vec[i64]) -> Vec[String] {
+    let mut chosen: Vec[String] = Vec.new();
+    for i in 0..words.len() {
+        if i == 0 or groups[i] != groups[i - 1] {
+            chosen.push(words[i].clone());
+        }
+    }
+    chosen
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 10000;
+    let rounds = 20;
+    let n = 100;
+    let letters: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    let mut seed = 2900;
+    let mut cases: Vec[(Vec[String], Vec[i64])] = Vec.new();
+    for _ in 0..count {
+        let mut words: Vec[String] = Vec.new();
+        for i in 0..n {
+            let mut word = String.new();
+            word.push(letters[next_random(mut seed) % 26]);
+            word.push(letters[i % 26]);
+            word.push(letters[i / 26]);
+            words.push(word);
+        }
+        let mut groups: Vec[i64] = Vec.new();
+        let mut group = next_random(mut seed) % 2;
+        while groups.len() < n {
+            let run = next_random(mut seed) % 5 + 1;
+            for _ in 0..run {
+                if groups.len() < n {
+                    groups.push(group);
+                }
+            }
+            group = 1 - group;
+        }
+        cases.push((words, groups));
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (words, groups) in cases.iter() {
+            let chosen = get_longest_subsequence(words, groups);
+            total += chosen.len();
+            check = (check * 31 + chosen.len() + r) % 1000000007;
+            for word in chosen.iter() {
+                check = (check * 31 + word.len()) % 1000000007;
+            }
+            check = (check * 31 + chosen[chosen.len() - 1].bytes()[0]) % 1000000007;
+        }
+    }
+    println(f"{count} cases of {n}, {rounds} rounds: {total} words chosen, checksum {check}");
+}

@@ -1,0 +1,75 @@
+// LeetCode #2762: Continuous Subarrays -- the last arm. The subarrays that
+// pairs before `right` already rule out are ruled out by the window ending
+// at right - 1, so the new left end only has to pass the last index of
+// any value more than 2 from nums[right]. The window's values span at most
+// 2, so a `Map` of the last index of each holds at most three keys, and
+// `retain` drops those left behind. O(n).
+
+fn continuous_subarrays(nums: Vec[i64]) -> i64 {
+    let mut last: Map[i64, i64] = Map.new();
+    let mut left = 0;
+    let mut total = 0;
+    for right in 0..nums.len() {
+        let v = nums[right];
+        for (value, index) in last.iter() {
+            if (value - v).abs() > 2 and index + 1 > left {
+                left = index + 1;
+            }
+        }
+        last.retain(|_, index| *index >= left);
+        last[v] = right;
+        total += right - left + 1;
+    }
+    total
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn walk(n: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut value = 500000000;
+    let mut nums: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        value += next_random(mut seed) % 3 - 1;
+        nums.push(value);
+    }
+    nums
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{continuous_subarrays([5, 4, 2, 4].to_vec())}");
+    println(f"{continuous_subarrays([1, 2, 3].to_vec())}");
+    // one number; neighbours 3 apart, so only the single numbers
+    println(f"{continuous_subarrays([7].to_vec())}");
+    println(f"{continuous_subarrays([1, 4, 1, 4].to_vec())}");
+    // 10^5 equal numbers, LeetCode's most: every subarray; and 10^5 rising
+    // by 1: windows of at most 3
+    println(f"{continuous_subarrays(Vec.filled(100000, 1000000000))}");
+    println(f"{continuous_subarrays((1..=100000).collect())}");
+    // 3000 random arrays of 1 to 30 numbers from 1 to 6; then 20 random
+    // walks of 10^5 steps of -1, 0 or 1
+    let mut seed = 2762;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 30 + 1;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 6 + 1).collect();
+        let a = continuous_subarrays(nums);
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"3000 small arrays: subarrays sum to {total}, checksum {check}");
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..20 {
+        let a = continuous_subarrays(walk(100000, mut seed));
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"20 walks of 100000: subarrays sum to {total}, checksum {check}");
+}

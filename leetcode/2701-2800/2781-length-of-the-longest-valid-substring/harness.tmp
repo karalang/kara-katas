@@ -1,0 +1,63 @@
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(seed: mut ref i64, n: i64, letters: i64) -> String {
+    let mut word = String.new();
+    for _ in 0..n {
+        word.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+    }
+    word
+}
+
+// `count` random words of `shortest` to `longest` letters
+fn random_words(seed: mut ref i64, count: i64, shortest: i64, longest: i64, letters: i64) -> Vec[String] {
+    let mut words: Vec[String] = Vec.new();
+    for _ in 0..count {
+        let n = shortest + next_random(mut seed) % (longest - shortest + 1);
+        words.push(random_word(mut seed, n, letters));
+    }
+    words
+}
+
+fn main() {
+    // LeetCode's two examples; one letter forbidden and one not; 10^5
+    // a's, LeetCode's longest word, against "aa" and against "b"
+    println(f"{longest_valid_substring("cbaaaabc", ["aaa".to_string(), "cb".to_string()].to_vec())}");
+    println(f"{longest_valid_substring("leetcode", ["de".to_string(), "le".to_string(), "e".to_string()].to_vec())}");
+    println(f"{longest_valid_substring("a", ["a".to_string()].to_vec())}");
+    println(f"{longest_valid_substring("a", ["b".to_string()].to_vec())}");
+    let many = "a".repeat(100000);
+    println(f"{longest_valid_substring(many, ["aa".to_string()].to_vec())}");
+    println(f"{longest_valid_substring(many, ["b".to_string()].to_vec())}");
+    // 3000 random words of 1 to 30 letters from a, b and c against 1 to 10
+    // forbidden of 1 to 4; then 3 of 10^5 letters from a to e against 10^5
+    // forbidden of 8 to 10, LeetCode's most
+    let mut seed = 2781;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 30 + 1;
+        let word = random_word(mut seed, n, 3);
+        let count = next_random(mut seed) % 10 + 1;
+        let forbidden = random_words(mut seed, count, 1, 4, 3);
+        let a = longest_valid_substring(word, forbidden);
+        sum += a;
+        check = (check * 31 + a + 1) % 1000000007;
+    }
+    println(f"3000 small cases: lengths sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for _ in 0..3 {
+        let word = random_word(mut seed, 100000, 5);
+        let forbidden = random_words(mut seed, 100000, 8, 10, 5);
+        let a = longest_valid_substring(word, forbidden);
+        sum += a;
+        check = (check * 31 + a + 1) % 1000000007;
+    }
+    println(f"3 cases of 10^5: lengths sum to {sum}, checksum {check}");
+}

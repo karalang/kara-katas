@@ -1,0 +1,215 @@
+// LeetCode #2740: Find the Value of the Partition -- the differential.
+// The five arms, against the statement read literally: every way of
+// putting each number in nums1 or nums2, both non-empty, as the bits of
+// a number, with |max(nums1) - min(nums2)| taken over each; no sorting
+// and no pairs. 1500 random arrays of 2 to 10 numbers up to 30; then 300
+// of up to 300 numbers up to 10^9. Every case is drawn before any arm
+// answers; the literal reading is asked only of the first 1500.
+//
+// P1  up to 10 numbers, the answer is the literal reading's
+// P2  the numbers reversed: the same answer
+// P3  a number added to every number: the same answer
+// P4  the answer at most 10^9, and every number doubled: the answer
+//     doubled
+// P5  one of the numbers listed twice: 0
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut best = i64.MAX;
+    for mask in 1..(1 << n) - 1 {
+        let mut high = i64.MIN;
+        let mut low = i64.MAX;
+        for i in 0..n {
+            if (mask >> i) & 1 == 1 {
+                high = high.max(nums[i]);
+            } else {
+                low = low.min(nums[i]);
+            }
+        }
+        best = best.min((high - low).abs());
+    }
+    best
+}
+
+
+// ---- star (partition.kara) ------------------------------------------
+
+fn star_find_value_of_partition(nums: own Vec[i64]) -> i64 {
+    let mut nums = nums;
+    nums.sort();
+    let mut best = i64.MAX;
+    for i in 1..nums.len() {
+        best = best.min(nums[i] - nums[i - 1]);
+    }
+    best
+}
+
+
+// ---- radix (partition_radix.kara) -----------------------------------
+
+fn radix_find_value_of_partition(nums: Vec[i64]) -> i64 {
+    let mut order: Vec[i64] = nums.clone();
+    let mut spare: Vec[i64] = Vec.filled(nums.len(), 0);
+    for pass in 0..4 {
+        let shift = pass * 8;
+        let mut start: Vec[i64] = Vec.filled(257, 0);
+        for x in order.iter() {
+            start[((x >> shift) & 255) + 1] += 1;
+        }
+        for b in 0..256 {
+            start[b + 1] += start[b];
+        }
+        for x in order.iter() {
+            let b = (x >> shift) & 255;
+            spare[start[b]] = x;
+            start[b] += 1;
+        }
+        mem.swap(mut order, mut spare);
+    }
+    let mut best = i64.MAX;
+    for i in 1..order.len() {
+        best = best.min(order[i] - order[i - 1]);
+    }
+    best
+}
+
+
+// ---- set (partition_set.kara) ---------------------------------------
+
+fn set_find_value_of_partition(nums: Vec[i64]) -> i64 {
+    let mut seen: SortedSet[i64] = SortedSet.new();
+    let mut best = i64.MAX;
+    for x in nums.iter() {
+        if not seen.insert(x) {
+            return 0;
+        }
+        if let Some(below) = seen.range(i64.MIN, x).rev().next() {
+            best = best.min(x - below);
+        }
+        if let Some(above) = seen.range_inclusive(x + 1, i64.MAX).next() {
+            best = best.min(above - x);
+        }
+    }
+    best
+}
+
+
+// ---- pairs (partition_pairs.kara) -----------------------------------
+
+fn pairs_find_value_of_partition(nums: Vec[i64]) -> i64 {
+    let mut best = i64.MAX;
+    for i in 0..nums.len() {
+        for j in i + 1..nums.len() {
+            best = best.min((nums[i] - nums[j]).abs());
+        }
+    }
+    best
+}
+
+
+// ---- solution (partition_solution.kara) -----------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn find_value_of_partition(nums: own Vec[i32]) -> i32 {
+        let mut nums = nums;
+        nums.sort();
+        nums.windows(2).into_iter().map(|w| w[1] - w[0]).min().unwrap()
+    }
+}
+
+fn solution_find_value_of_partition(nums: Vec[i64]) -> i64 {
+    Solution.find_value_of_partition(nums.iter().map(|x| x as i32).collect())
+}
+
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_find_value_of_partition(nums.clone()),
+        1 => radix_find_value_of_partition(nums),
+        2 => set_find_value_of_partition(nums),
+        3 => pairs_find_value_of_partition(nums),
+        _ => solution_find_value_of_partition(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_numbers(seed: mut ref i64, n: i64, most: i64) -> Vec[i64] {
+    (0..n).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1).collect()
+}
+
+fn main() {
+    let names = ["star", "radix", "set", "pairs", "solution"];
+    let mut seed = 2740;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..1800 {
+        if c < 1500 {
+            let n = next_random(mut seed) % 9 + 2;
+            cases.push(random_numbers(mut seed, n, 30));
+        } else {
+            let n = next_random(mut seed) % 299 + 2;
+            cases.push(random_numbers(mut seed, n, 1000000000));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, nums) in cases.iter().enumerate() {
+        let small = c < 1500;
+        let want = if small { literal(nums) } else { -1 };
+        check = (check * 31 + want + 1) % 1000000007;
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let shifted: Vec[i64] = nums.iter().map(|x| x + 12345).collect();
+        let doubled: Vec[i64] = nums.iter().map(|x| 2 * x).collect();
+        let mut twice: Vec[i64] = nums.clone();
+        twice.insert(c % nums.len(), nums[(c * 7) % nums.len()]);
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == want,
+                answer(arm, reversed) == value,
+                answer(arm, shifted) == value,
+                value <= 1000000000 and answer(arm, doubled) == 2 * value,
+                answer(arm, twice) == 0,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,85 @@
+// LeetCode #2772: Apply Operations to Make All Array Elements Equal to
+// Zero -- the bench. The ★ arm (zero.kara) over 20 arrays of 10^5
+// numbers, LeetCode's most, built by up to 9 operations at each start of
+// a window up to 1000, half with one number moved. All the arrays drawn
+// first, then each answered 40 times.
+
+fn check_array(nums: Vec[i64], k: i64) -> bool {
+    let n = nums.len();
+    let mut ends: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut covering = 0;
+    for i in 0..n {
+        covering -= ends[i];
+        let left = nums[i] - covering;
+        if left < 0 {
+            return false;
+        }
+        if left > 0 {
+            if i + k > n {
+                return false;
+            }
+            covering += left;
+            ends[i + k] += left;
+        }
+    }
+    true
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// n numbers built by up to `most` operations at each start of a window
+// of k; then, half the time, one number moved 1 up or down
+fn built(n: i64, k: i64, most: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut nums: Vec[i64] = Vec.filled(n, 0);
+    let mut running = 0;
+    let mut ops: Vec[i64] = Vec.filled(n, 0);
+    for i in 0..n {
+        if i + k <= n {
+            ops[i] = next_random(mut seed) % (most + 1);
+        }
+        running += ops[i];
+        if i >= k {
+            running -= ops[i - k];
+        }
+        nums[i] = running;
+    }
+    if next_random(mut seed) % 2 == 1 {
+        let at = wide(mut seed) % n;
+        if nums[at] > 0 and next_random(mut seed) % 2 == 1 {
+            nums[at] -= 1;
+        } else {
+            nums[at] += 1;
+        }
+    }
+    nums
+}
+
+fn main() {
+    let count = 20;
+    let rounds = 40;
+    let mut seed = 2772;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for _ in 0..count {
+        let k = wide(mut seed) % 1000 + 1;
+        cases.push((built(100000, k, 9, mut seed), k));
+    }
+    let mut yes = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (nums, k) in cases.iter() {
+            let a = check_array(nums, k);
+            if a {
+                yes += 1;
+            }
+            check = (check * 31 + if a { 2 } else { 1 } + r) % 1000000007;
+        }
+    }
+    println(f"{count} arrays of 10^5, {rounds} rounds: {yes} true, checksum {check}");
+}

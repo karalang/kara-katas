@@ -1,0 +1,111 @@
+// LeetCode #2751: Robot Collisions -- the linked arm. The robots in order
+// of position joined in a doubly linked list of `prev` and `next` slots;
+// a cursor walks right, and wherever a robot moving right stands just
+// before one moving left the two fight, the loser is unlinked, and the
+// cursor steps back to the robot now before the survivor. O(n log n).
+
+fn survived_robots_healths(positions: Vec[i64], healths: Vec[i64], directions: String) -> Vec[i64] {
+    let n = positions.len();
+    let right: Vec[bool] = directions.chars().map(|c| c == 'R').collect();
+    let mut health = healths.clone();
+    let mut order: Vec[i64] = (0..n).collect();
+    order.sort_by_key(|i| positions[i]);
+    // links between places in `order`; -1 for none, n past the end
+    let mut prev: Vec[i64] = (0..n).map(|k| k - 1).collect();
+    let mut next: Vec[i64] = (0..n).map(|k| k + 1).collect();
+    let unlink = |k: i64, prev: mut ref Vec[i64], next: mut ref Vec[i64]| {
+        let (p, q) = (prev[k], next[k]);
+        if p >= 0 {
+            next[p] = q;
+        }
+        if q < n {
+            prev[q] = p;
+        }
+    };
+    let mut k = 0;
+    while k < n {
+        let q = next[k];
+        if q < n and right[order[k]] and not right[order[q]] {
+            let (a, b) = (order[k], order[q]);
+            if health[a] > health[b] {
+                health[a] -= 1;
+                health[b] = 0;
+                unlink(q, mut prev, mut next);
+            } else if health[a] < health[b] {
+                health[b] -= 1;
+                health[a] = 0;
+                unlink(k, mut prev, mut next);
+                k = if prev[k] >= 0 { prev[k] } else { q };
+            } else {
+                health[a] = 0;
+                health[b] = 0;
+                unlink(k, mut prev, mut next);
+                unlink(q, mut prev, mut next);
+                k = if prev[k] >= 0 { prev[k] } else { next[q] };
+            }
+        } else {
+            k = q;
+        }
+    }
+    health.into_iter().filter(|h| h > 0).collect()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n robots at distinct positions from 1 to `far`, healths from 1 to
+// `strongest`, each facing either way
+fn random_robots(seed: mut ref i64, n: i64, far: i64, strongest: i64) -> (Vec[i64], Vec[i64], String) {
+    let mut taken: Set[i64] = Set.new();
+    let mut positions: Vec[i64] = Vec.new();
+    while positions.len() < n {
+        let p = (next_random(mut seed) * 32768 + next_random(mut seed)) % far + 1;
+        if taken.insert(p) {
+            positions.push(p);
+        }
+    }
+    let healths: Vec[i64] = (0..n).map(|_| next_random(mut seed) % strongest + 1).collect();
+    let directions: String = (0..n).map(|_| if next_random(mut seed) % 2 == 0 { 'L' } else { 'R' }).collect();
+    (positions, healths, directions)
+}
+
+fn fold(survivors: Vec[i64], sum: mut ref i64, check: mut ref i64) {
+    *check = (*check * 31 + survivors.len()) % 1000000007;
+    for h in survivors.iter() {
+        *sum += h;
+        *check = (*check * 31 + h) % 1000000007;
+    }
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{survived_robots_healths([5, 4, 3, 2, 1].to_vec(), [2, 17, 9, 15, 10].to_vec(), "RRRRR".to_string())}");
+    println(f"{survived_robots_healths([3, 5, 2, 6].to_vec(), [10, 10, 15, 12].to_vec(), "RLRL".to_string())}");
+    println(f"{survived_robots_healths([1, 2, 5, 6].to_vec(), [10, 10, 11, 11].to_vec(), "RLRL".to_string())}");
+    // one robot; facing apart; and one strong robot through a line of weak
+    println(f"{survived_robots_healths([7].to_vec(), [3].to_vec(), "L".to_string())}");
+    println(f"{survived_robots_healths([1, 2].to_vec(), [5, 6].to_vec(), "LR".to_string())}");
+    println(f"{survived_robots_healths([1, 2, 3, 4, 5].to_vec(), [10, 1, 1, 1, 1].to_vec(), "RLLLL".to_string())}");
+    // 3000 random cases of 1 to 12 robots at positions up to 30 with
+    // healths up to 5; then 10 of 10^5 robots, LeetCode's most
+    let mut seed = 2751;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let (positions, healths, directions) = random_robots(mut seed, n, 30, 5);
+        fold(survived_robots_healths(positions, healths, directions), mut sum, mut check);
+    }
+    println(f"3000 small cases: healths sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for _ in 0..10 {
+        let (positions, healths, directions) = random_robots(mut seed, 100000, 1000000000, 1000000000);
+        fold(survived_robots_healths(positions, healths, directions), mut sum, mut check);
+    }
+    println(f"10 cases of 100000 robots: healths sum to {sum}, checksum {check}");
+}

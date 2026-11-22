@@ -1,0 +1,136 @@
+// LeetCode #2814: Minimum Time Takes to Reach Destination Without
+// Drowning -- by relaxation: the flood's seconds lowered over every cell
+// and its neighbours, pass after pass until a pass changes nothing; then
+// the walker's seconds the same way, a step taken only onto a cell that
+// is not stone and floods later than the step lands. Arriving sooner is
+// never worse, since the water only grows, so the least seconds are the
+// answer.
+
+fn minimum_seconds(land: Vec[Vec[String]]) -> i64 {
+    let (n, m) = (land.len(), land[0].len());
+    let never = n * m + 1;
+    let open = |r: i64, c: i64| land[r][c] == "." or land[r][c] == "S";
+    let mut flood: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(m, never));
+    let mut walk: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(m, never));
+    let mut goal = (0, 0);
+    for r in 0..n {
+        for c in 0..m {
+            if land[r][c] == "*" {
+                flood[r][c] = 0;
+            } else if land[r][c] == "S" {
+                walk[r][c] = 0;
+            } else if land[r][c] == "D" {
+                goal = (r, c);
+            }
+        }
+    }
+    let steps = [(0, 1), (1, 0), (0, -1), (-1, 0)];
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for r in 0..n {
+            for c in 0..m {
+                if not open(r, c) {
+                    continue;
+                }
+                for (dr, dc) in steps.iter() {
+                    let (pr, pc) = (r + dr, c + dc);
+                    if pr >= 0 and pr < n and pc >= 0 and pc < m and flood[pr][pc] + 1 < flood[r][c] {
+                        flood[r][c] = flood[pr][pc] + 1;
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+    changed = true;
+    while changed {
+        changed = false;
+        for r in 0..n {
+            for c in 0..m {
+                if land[r][c] == "X" {
+                    continue;
+                }
+                for (dr, dc) in steps.iter() {
+                    let (pr, pc) = (r + dr, c + dc);
+                    if pr >= 0 and pr < n and pc >= 0 and pc < m and walk[pr][pc] < never {
+                        let landed = walk[pr][pc] + 1;
+                        let dry = land[r][c] == "D" or landed < flood[r][c];
+                        if dry and landed < walk[r][c] {
+                            walk[r][c] = landed;
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let (gr, gc) = goal;
+    if walk[gr][gc] < never { walk[gr][gc] } else { -1 }
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// an n by m land, about one cell in five stone and `flooded` in a
+// thousand flooded, with "S" and "D" on two different cells
+fn random_land(n: i64, m: i64, flooded: i64, seed: mut ref i64) -> Vec[Vec[String]] {
+    let mut land: Vec[Vec[String]] = Vec.new();
+    for _ in 0..n {
+        let mut row: Vec[String] = Vec.new();
+        for _ in 0..m {
+            let roll = next_random(mut seed) % 1000;
+            row.push(if roll < 200 { "X" } else if roll < 200 + flooded { "*" } else { "." });
+        }
+        land.push(row);
+    }
+    let start = next_random(mut seed) % (n * m);
+    let mut end = next_random(mut seed) % (n * m - 1);
+    if end >= start {
+        end += 1;
+    }
+    land[start / m][start % m] = "S";
+    land[end / m][end % m] = "D";
+    land
+}
+
+fn main() {
+    // LeetCode's three examples; 100 by 100 of open land, corner to
+    // corner; the same with a flood beside the start
+    println(f"{minimum_seconds([["D", ".", "*"], [".", ".", "."], [".", "S", "."]])}");
+    println(f"{minimum_seconds([["D", "X", "*"], [".", ".", "."], [".", ".", "S"]])}");
+    println(f"{minimum_seconds([["D", ".", ".", ".", "*", "."], [".", "X", ".", "X", ".", "."], [".", ".", ".", ".", "S", "."]])}");
+    let mut open: Vec[Vec[String]] = Vec.filled(100, Vec.filled(100, "."));
+    open[0][0] = "S";
+    open[99][99] = "D";
+    println(f"{minimum_seconds(open)}");
+    open[0][2] = "*";
+    println(f"{minimum_seconds(open)}");
+    // 3000 random lands of 2 to 5 by 2 to 5, one cell in eight flooded;
+    // then 50 of up to 60 by 60, one in 500
+    let mut seed = 2814;
+    let mut reached = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 4 + 2;
+        let m = next_random(mut seed) % 4 + 2;
+        let a = minimum_seconds(random_land(n, m, 125, mut seed));
+        reached += if a >= 0 { 1 } else { 0 };
+        check = (check * 31 + a + 2) % 1000000007;
+    }
+    println(f"3000 small lands: {reached} reached, checksum {check}");
+    reached = 0;
+    check = 0;
+    for _ in 0..50 {
+        let n = next_random(mut seed) % 59 + 2;
+        let m = next_random(mut seed) % 59 + 2;
+        let a = minimum_seconds(random_land(n, m, 2, mut seed));
+        reached += if a >= 0 { 1 } else { 0 };
+        check = (check * 31 + a + 2) % 1000000007;
+    }
+    println(f"50 large lands: {reached} reached, checksum {check}");
+}

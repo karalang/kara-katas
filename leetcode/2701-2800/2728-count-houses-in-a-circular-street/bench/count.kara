@@ -1,0 +1,72 @@
+// LeetCode #2728: Count Houses in a Circular Street -- the bench: the ★
+// arm over 300 streets of up to 1000 houses, LeetCode's most, with k =
+// 1000, all drawn first, then each walked 500 times through the judge's
+// street, whose moves are counted.
+
+struct Street {
+    doors: Vec[bool],
+    at: i64,
+    moves: i64,
+}
+
+impl Street {
+    fn open_door(mut ref self) {
+        self.doors[self.at] = true;
+    }
+
+    fn close_door(mut ref self) {
+        self.doors[self.at] = false;
+    }
+
+    fn is_door_open(ref self) -> bool {
+        self.doors[self.at]
+    }
+
+    fn move_right(mut ref self) {
+        self.at = (self.at + 1) % self.doors.len();
+        self.moves += 1;
+    }
+}
+
+fn house_count(street: mut ref Street, k: i64) -> i64 {
+    for _ in 0..k {
+        street.close_door();
+        street.move_right();
+    }
+    street.open_door();
+    let mut houses = 1;
+    street.move_right();
+    while not street.is_door_open() {
+        houses += 1;
+        street.move_right();
+    }
+    houses
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 300;
+    let rounds = 500;
+    let mut seed = 2728;
+    let mut streets: Vec[Street] = Vec.new();
+    for _ in 0..count {
+        let n = next_random(mut seed) % 1000 + 1;
+        let doors: Vec[bool] = (0..n).map(|_| next_random(mut seed) % 2 == 0).collect();
+        streets.push(Street { doors: doors, at: next_random(mut seed) % n, moves: 0 });
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for street in streets.iter_mut() {
+            let a = house_count(mut street, 1000);
+            total += a;
+            check = (check * 31 + a + r) % 1000000007;
+        }
+    }
+    let moves: i64 = streets.iter().map(|s| s.moves).sum();
+    println(f"{count} streets, {rounds} rounds: houses sum to {total} in {moves} moves, checksum {check}");
+}

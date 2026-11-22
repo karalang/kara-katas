@@ -1,0 +1,49 @@
+// LeetCode #2808: Minimum Seconds to Equalize a Circular Array -- the
+// bench: the ★ arm over 20 arrays of 10^5 numbers, LeetCode's most, from
+// 1000 values, all drawn first, then each answered 20 times.
+
+fn minimum_seconds(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut places: Map[i64, Vec[i64]] = Map.new();
+    for (i, v) in nums.iter().enumerate() {
+        places.entry(v).or_insert(Vec.new()).push(i);
+    }
+    let mut best = n;
+    for (_, at) in places.iter() {
+        let mut widest = at[0] + n - at[at.len() - 1];
+        for k in 1..at.len() {
+            widest = widest.max(at[k] - at[k - 1]);
+        }
+        best = best.min(widest / 2);
+    }
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let count = 20;
+    let rounds = 20;
+    let mut seed = 2808;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..count {
+        cases.push((0..100000).map(|_| wide(mut seed) % 1000 * 1000003 + 1).collect());
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for nums in cases.iter() {
+            let a = minimum_seconds(nums);
+            total += a;
+            check = (check * 31 + a + r) % 1000000007;
+        }
+    }
+    println(f"{count} arrays of 10^5, {rounds} rounds: seconds sum to {total}, checksum {check}");
+}

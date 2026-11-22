@@ -1,0 +1,79 @@
+// LeetCode #2819: Minimum Relative Loss After Buying Chocolates -- from
+// both ends: the prices sorted once, and for each query the m chocolates
+// taken one at a time, the cheaper loss of the cheapest and the dearest
+// left, p below k and 2k - p above it; O(m) a query.
+
+fn loss_of(p: i64, k: i64) -> i64 {
+    if p <= k { p } else { 2 * k - p }
+}
+
+fn minimum_relative_losses(prices: Vec[i64], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut sorted = prices.clone();
+    sorted.sort();
+    queries
+        .iter()
+        .map(|q| {
+            let (k, m) = (q[0], q[1]);
+            let mut i = 0;
+            let mut j = sorted.len() - 1;
+            let mut total = 0;
+            for _ in 0..m {
+                let (a, b) = (loss_of(sorted[i], k), loss_of(sorted[j], k));
+                if a <= b {
+                    total += a;
+                    i += 1;
+                } else {
+                    total += b;
+                    j -= 1;
+                }
+            }
+            total
+        })
+        .collect()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn fold(check: i64, answers: Vec[i64]) -> i64 {
+    answers.iter().fold(check, |h, a| ((h * 31 + a) % 1000000007 + 1000000007) % 1000000007)
+}
+
+fn main() {
+    // LeetCode's three examples; one chocolate, at k and past it; 2000
+    // prices rising by 1000, asked at every tenth price for half of them
+    println(f"{minimum_relative_losses([1, 9, 22, 10, 19], [[18, 4], [5, 2]])}");
+    println(f"{minimum_relative_losses([1, 5, 4, 3, 7, 11, 9], [[5, 4], [5, 7], [7, 3], [4, 5]])}");
+    println(f"{minimum_relative_losses([5, 6, 7], [[10, 1], [5, 3], [3, 3]])}");
+    println(f"{minimum_relative_losses([7], [[7, 1], [3, 1]])}");
+    let rising: Vec[i64] = (0..2000).map(|i| i * 1000 + 1).collect();
+    let asked: Vec[Vec[i64]] = (0..200).map(|q| [q * 10000 + 1, 1000]).collect();
+    println(f"{fold(0, minimum_relative_losses(rising, asked))}");
+    // 3000 random shops of 1 to 10 prices up to 30, 3 queries each; then
+    // 50 of up to 1000 prices up to 10^9, 50 queries each
+    let mut seed = 2819;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 10 + 1;
+        let prices: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 30 + 1).collect();
+        let queries: Vec[Vec[i64]] = (0..3).map(|_| [next_random(mut seed) % 30 + 1, next_random(mut seed) % n + 1]).collect();
+        check = fold(check, minimum_relative_losses(prices, queries));
+    }
+    println(f"3000 small shops: checksum {check}");
+    check = 0;
+    for _ in 0..50 {
+        let n = next_random(mut seed) % 1000 + 1;
+        let prices: Vec[i64] = (0..n).map(|_| wide(mut seed) % 1000000000 + 1).collect();
+        let queries: Vec[Vec[i64]] = (0..50).map(|_| [wide(mut seed) % 1000000000 + 1, next_random(mut seed) % n + 1]).collect();
+        check = fold(check, minimum_relative_losses(prices, queries));
+    }
+    println(f"50 large shops: checksum {check}");
+}

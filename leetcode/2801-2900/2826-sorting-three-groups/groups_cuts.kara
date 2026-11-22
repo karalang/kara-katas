@@ -1,0 +1,54 @@
+// LeetCode #2826: Sorting Three Groups -- two cuts: the kept array is
+// all 1s up to a first cut, 2s up to a second, then 3s; with counts of
+// each value in every prefix, every pair of cuts i <= j is tried and the
+// numbers out of place on each side counted; O(n^2).
+
+fn minimum_operations(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut counts: Vec[Array[i64, 3]] = Vec.filled(n + 1, [0, 0, 0]);
+    for i in 0..n {
+        counts[i + 1] = counts[i];
+        counts[i + 1][nums[i] - 1] += 1;
+    }
+    let total = counts[n];
+    let mut fewest = n;
+    for i in 0..=n {
+        for j in i..=n {
+            let ones = counts[i][0];
+            let twos = counts[j][1] - counts[i][1];
+            let threes = total[2] - counts[j][2];
+            fewest = fewest.min(n - ones - twos - threes);
+        }
+    }
+    fewest
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples; one number; 100 numbers falling 3, 2, 1
+    // in runs of 34, 33 and 33; and 100 rising
+    println(f"{minimum_operations([2, 1, 3, 2, 1])}");
+    println(f"{minimum_operations([1, 3, 2, 1, 3, 3])}");
+    println(f"{minimum_operations([2, 2, 2, 2, 3, 3])}");
+    println(f"{minimum_operations([3])}");
+    println(f"{minimum_operations((0..100).map(|i| 3 - i * 3 / 100).collect())}");
+    println(f"{minimum_operations((0..100).map(|i| 1 + i * 3 / 100).collect())}");
+    // 5000 random arrays of 1 to 100 numbers from 1 to 3
+    let mut seed = 2826;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..5000 {
+        let n = next_random(mut seed) % 100 + 1;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 3 + 1).collect();
+        let a = minimum_operations(nums);
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"5000 arrays: {total} removals, checksum {check}");
+}

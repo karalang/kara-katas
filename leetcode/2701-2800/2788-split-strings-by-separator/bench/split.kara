@@ -1,0 +1,51 @@
+// LeetCode #2788: Split Strings by Separator -- the bench: the ★ arm over
+// 20000 lists of 100 words of 20 characters, LeetCode's most, from a, b,
+// c and the six separators, each split by one of them, all drawn first,
+// then each answered 10 times.
+
+fn split_words_by_separator(words: Vec[String], separator: char) -> Vec[String] {
+    let sep = separator.to_string();
+    words
+        .iter()
+        .flat_map(|w| w.split(sep))
+        .filter(|piece| not piece.is_empty())
+        .map(|piece| piece.to_string())
+        .collect()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 20000;
+    let rounds = 10;
+    let letters: Vec[char] = "abc.,|$#@".chars().collect();
+    let separators: Vec[char] = ".,|$#@".chars().collect();
+    let mut seed = 2788;
+    let mut cases: Vec[(Vec[String], char)] = Vec.new();
+    for _ in 0..count {
+        let mut words: Vec[String] = Vec.new();
+        for _ in 0..100 {
+            let mut w = String.new();
+            for _ in 0..20 {
+                w.push(letters[next_random(mut seed) % 9]);
+            }
+            words.push(w);
+        }
+        cases.push((words, separators[next_random(mut seed) % 6]));
+    }
+    let mut pieces = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (words, separator) in cases.iter() {
+            let got = split_words_by_separator(words, separator);
+            pieces += got.len();
+            for p in got.iter() {
+                check = (check * 31 + p.len() + r) % 1000000007;
+            }
+        }
+    }
+    println(f"{count} lists of 100 words, {rounds} rounds: {pieces} pieces, checksum {check}");
+}

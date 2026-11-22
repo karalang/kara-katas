@@ -1,0 +1,53 @@
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn points(n: i64, top: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..n {
+        let x = wide(mut seed) % top;
+        let y = wide(mut seed) % top;
+        out.push([x, y].to_vec());
+    }
+    out
+}
+
+fn main() {
+    // LeetCode's two examples; 50000 copies of one point, LeetCode's
+    // most, at distance 0; and 50000 points along a line at distance 1
+    let first = [[1, 2].to_vec(), [4, 2].to_vec(), [1, 3].to_vec(), [5, 2].to_vec()].to_vec();
+    let second: Vec[Vec[i64]] = (0..5).map(|_| [1, 3].to_vec()).collect();
+    println(f"{count_pairs(first, 5)} {count_pairs(second, 0)}");
+    let same: Vec[Vec[i64]] = (0..50000).map(|_| [1000000, 1000000].to_vec()).collect();
+    let line: Vec[Vec[i64]] = (0..50000).map(|i| [i, 0].to_vec()).collect();
+    println(f"{count_pairs(same, 0)} {count_pairs(line, 1)}");
+    // 3000 random cases of 2 to 9 points in an 8 x 8 square with k up to
+    // 10; then 10 of 10^4 to 5 x 10^4 points with k up to 100, every
+    // other one in a 64 x 64 square, the rest up to 10^6
+    let mut seed = 2857;
+    let mut total = 0;
+    let mut check = 0;
+    for c in 0..3010 {
+        let small = c < 3000;
+        let n = if small { next_random(mut seed) % 8 + 2 } else { wide(mut seed) % 40001 + 10000 };
+        let top = if small { 8 } else if c % 2 == 0 { 64 } else { 1000001 };
+        let k = if small { next_random(mut seed) % 11 } else { next_random(mut seed) % 101 };
+        let pairs = count_pairs(points(n, top, mut seed), k);
+        total += pairs;
+        check = (check * 31 + pairs) % 1000000007;
+        if c == 2999 {
+            println(f"3000 short cases: {total} pairs, checksum {check}");
+            total = 0;
+            check = 0;
+        }
+    }
+    println(f"10 long cases: {total} pairs, checksum {check}");
+}

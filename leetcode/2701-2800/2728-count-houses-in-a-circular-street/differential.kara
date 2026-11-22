@@ -1,0 +1,241 @@
+// LeetCode #2728: Count Houses in a Circular Street -- the differential.
+// The five arms, against the statement read literally: the houses of
+// the judge's street counted where the judge holds them; no walking.
+// 2000 random streets of 1 to 12 houses with k up to 15; then 50 of up
+// to 1000, LeetCode's most, with k up to 1000. Every case is drawn
+// before any arm answers; the literal reading is asked only of the first
+// 2000.
+//
+// P1  up to 12 houses, the count is the literal reading's
+// P2  every door turned the other way: the same count
+// P3  the walk begun one house to the right: the same count
+// P4  k seven more: the same count
+// P5  from 1 to k, in no more than 3k moves
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(doors: Vec[bool]) -> i64 {
+    doors.len()
+}
+
+
+// ---- star (count.kara) ----------------------------------------------
+
+fn star_house_count(street: mut ref Street, k: i64) -> i64 {
+    for _ in 0..k {
+        street.close_door();
+        street.move_right();
+    }
+    street.open_door();
+    let mut houses = 1;
+    street.move_right();
+    while not street.is_door_open() {
+        houses += 1;
+        street.move_right();
+    }
+    houses
+}
+
+
+// ---- left (count_left.kara) -----------------------------------------
+
+fn left_house_count(street: mut ref Street, k: i64) -> i64 {
+    for _ in 0..k {
+        street.close_door();
+        street.move_left();
+    }
+    street.open_door();
+    let mut houses = 0;
+    loop {
+        street.move_left();
+        houses += 1;
+        if street.is_door_open() {
+            return houses;
+        }
+    }
+}
+
+
+// ---- closed (count_closed.kara) -------------------------------------
+
+fn closed_house_count(street: mut ref Street, k: i64) -> i64 {
+    for _ in 0..k {
+        street.open_door();
+        street.move_right();
+    }
+    street.close_door();
+    let mut houses = 1;
+    street.move_right();
+    while street.is_door_open() {
+        houses += 1;
+        street.move_right();
+    }
+    houses
+}
+
+
+// ---- marks (count_marks.kara) ---------------------------------------
+
+fn marks_house_count(street: mut ref Street, k: i64) -> i64 {
+    for _ in 0..k {
+        street.close_door();
+        street.move_right();
+    }
+    street.open_door();
+    let mut met: Vec[i64] = Vec.new();
+    for step in 1..=k {
+        street.move_right();
+        if street.is_door_open() {
+            met.push(step);
+        }
+    }
+    met[0]
+}
+
+
+// ---- solution (count_solution.kara) ---------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn house_count(street: mut ref Street, k: i32) -> i32 {
+        for _ in 0..k {
+            street.close_door();
+            street.move_right();
+        }
+        street.open_door();
+        street.move_right();
+        let mut ans = 1;
+        while not street.is_door_open() {
+            ans += 1;
+            street.move_right();
+        }
+        ans
+    }
+}
+
+fn solution_house_count(street: mut ref Street, k: i64) -> i64 {
+    Solution.house_count(mut street, k as i32)
+}
+
+
+// LeetCode's interactive judge, its moves counted
+struct Street {
+    doors: Vec[bool],
+    at: i64,
+    moves: i64,
+}
+
+impl Street {
+    fn new(doors: own Vec[bool], at: i64) -> Street {
+        Street { doors: doors, at: at, moves: 0 }
+    }
+
+    fn open_door(mut ref self) {
+        self.doors[self.at] = true;
+    }
+
+    fn close_door(mut ref self) {
+        self.doors[self.at] = false;
+    }
+
+    fn is_door_open(ref self) -> bool {
+        self.doors[self.at]
+    }
+
+    fn move_right(mut ref self) {
+        self.at = (self.at + 1) % self.doors.len();
+        self.moves += 1;
+    }
+
+    fn move_left(mut ref self) {
+        self.at = (self.at + self.doors.len() - 1) % self.doors.len();
+        self.moves += 1;
+    }
+}
+
+// the count and the moves taken
+fn answer(arm: i64, doors: Vec[bool], at: i64, k: i64) -> (i64, i64) {
+    let mut street = Street.new(doors.clone(), at);
+    let got = match arm {
+        0 => star_house_count(mut street, k),
+        1 => left_house_count(mut street, k),
+        2 => closed_house_count(mut street, k),
+        3 => marks_house_count(mut street, k),
+        _ => solution_house_count(mut street, k),
+    };
+    (got, street.moves)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "left", "closed", "marks", "solution"];
+    let mut seed = 2728;
+    let mut cases: Vec[(Vec[bool], i64, i64)] = Vec.new();
+    for c in 0..2050 {
+        let (most, top) = if c < 2000 { (12, 15) } else { (1000, 1000) };
+        let n = next_random(mut seed) % most + 1;
+        let k = n + next_random(mut seed) % (top + 1 - n);
+        let doors: Vec[bool] = (0..n).map(|_| next_random(mut seed) % 2 == 0).collect();
+        cases.push((doors, next_random(mut seed) % n, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (doors, at, k)) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(doors) } else { 0 };
+        check = (check * 31 + want + 1) % 1000000007;
+        let n = doors.len();
+        let flipped: Vec[bool] = doors.iter().map(|d| not d).collect();
+        let got: Vec[(i64, i64)] = (0..5).map(|arm| answer(arm, doors, at, k)).collect();
+        for arm in 0..5 {
+            let (value, moves) = got[arm];
+            let mut agree = 0;
+            for o in 0..5 {
+                let (other, _) = got[o];
+                if o != arm and other == value {
+                    agree += 1;
+                }
+            }
+            let (flipped_value, _) = answer(arm, flipped, at, k);
+            let (moved_value, _) = answer(arm, doors, (at + 1) % n, k);
+            let (longer_value, _) = answer(arm, doors, at, k + 7);
+            let verdicts = [
+                not small or value == want,
+                flipped_value == value,
+                moved_value == value,
+                longer_value == value,
+                value >= 1 and value <= k and moves <= 3 * k,
+                agree >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {doors} at {at} k {k}, arm {names[arm]}: P{q + 1} fails, gave {value} in {moves} moves");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

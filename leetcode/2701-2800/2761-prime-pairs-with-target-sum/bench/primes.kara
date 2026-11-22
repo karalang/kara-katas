@@ -1,0 +1,55 @@
+// LeetCode #2761: Prime Pairs With Target Sum -- the bench (primes.kara):
+// the ★ arm, a sieve of Eratosthenes up to n, then each x up to n / 2 with
+// x and n - x both prime.
+
+fn find_prime_pairs(n: i64) -> Vec[Vec[i64]] {
+    let mut prime: Vec[bool] = Vec.filled(n + 1, true);
+    prime[0] = false;
+    if n >= 1 {
+        prime[1] = false;
+    }
+    let mut p = 2;
+    while p * p <= n {
+        if prime[p] {
+            let mut m = p * p;
+            while m <= n {
+                prime[m] = false;
+                m += p;
+            }
+        }
+        p += 1;
+    }
+    let mut pairs: Vec[Vec[i64]] = Vec.new();
+    for x in 2..=n / 2 {
+        if prime[x] and prime[n - x] {
+            pairs.push([x, n - x].to_vec());
+        }
+    }
+    pairs
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 20;
+    let rounds = 3;
+    let mut seed = 2761;
+    // n from 900001 to 10^6, near LeetCode's most
+    let targets: Vec[i64] = (0..count).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000 + 900001).collect();
+    let mut pairs_seen = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for n in targets.iter() {
+            let pairs = find_prime_pairs(n);
+            pairs_seen += pairs.len();
+            check = (check * 31 + pairs.len() + r) % 1000000007;
+            for pair in pairs.iter() {
+                check = (check * 31 + pair[0]) % 1000000007;
+            }
+        }
+    }
+    println(f"{count} n near 10^6, {rounds} rounds: {pairs_seen} pairs, checksum {check}");
+}

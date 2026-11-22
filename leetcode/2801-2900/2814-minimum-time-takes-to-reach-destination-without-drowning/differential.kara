@@ -1,0 +1,485 @@
+// LeetCode #2814: Minimum Time Takes to Reach Destination Without
+// Drowning -- the differential. The five arms, against the statement
+// read literally: a second at a time, every empty cell beside a flooded
+// one floods, and the walker, wherever it could be, steps to each
+// neighbour that is not stone and not flooded after that second's
+// spread, with no memory of where it has been, until it stands on the
+// destination or n * m seconds have gone. 2000 random lands of 2 to 5 by
+// 2 to 5 with a cell in eight flooded; then 50 of up to 40 by 40 with one
+// in 500. Every case is drawn before any arm answers; the literal reading
+// is asked only of the first 2000.
+//
+// P1  up to 5 by 5, the answer is the literal reading's
+// P2  -1, or from the start's Manhattan distance to the destination up to
+//     n * m - 1
+// P3  the land transposed: the same answer
+// P4  the land mirrored left to right: the same answer
+// P5  every flood dried: reached when it was, and no later
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- star (drowning.kara) -------------------------------------------
+
+fn star_minimum_seconds(land: Vec[Vec[String]]) -> i64 {
+    let (n, m) = (land.len(), land[0].len());
+    let mut flood: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(m, i64.MAX));
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    for r in 0..n {
+        for c in 0..m {
+            if land[r][c] == "*" {
+                flood[r][c] = 0;
+                queue.push_back((r, c));
+            }
+        }
+    }
+    while let Some((r, c)) = queue.pop_front() {
+        for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr >= 0 and nr < n and nc >= 0 and nc < m and flood[nr][nc] == i64.MAX
+                and (land[nr][nc] == "." or land[nr][nc] == "S")
+            {
+                flood[nr][nc] = flood[r][c] + 1;
+                queue.push_back((nr, nc));
+            }
+        }
+    }
+    let mut time: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(m, -1));
+    for r in 0..n {
+        for c in 0..m {
+            if land[r][c] == "S" {
+                time[r][c] = 0;
+                queue.push_back((r, c));
+            }
+        }
+    }
+    while let Some((r, c)) = queue.pop_front() {
+        if land[r][c] == "D" {
+            return time[r][c];
+        }
+        for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr >= 0 and nr < n and nc >= 0 and nc < m and time[nr][nc] == -1 and land[nr][nc] != "X"
+                and flood[nr][nc] > time[r][c] + 1
+            {
+                time[nr][nc] = time[r][c] + 1;
+                queue.push_back((nr, nc));
+            }
+        }
+    }
+    -1
+}
+
+
+// ---- together (drowning_together.kara) ------------------------------
+
+fn together_minimum_seconds(land: Vec[Vec[String]]) -> i64 {
+    let (n, m) = (land.len(), land[0].len());
+    let mut wet: Vec[Vec[bool]] = Vec.filled(n, Vec.filled(m, false));
+    let mut seen: Vec[Vec[bool]] = Vec.filled(n, Vec.filled(m, false));
+    let mut water: Vec[(i64, i64)] = Vec.new();
+    let mut walker: Vec[(i64, i64)] = Vec.new();
+    for r in 0..n {
+        for c in 0..m {
+            if land[r][c] == "*" {
+                wet[r][c] = true;
+                water.push((r, c));
+            } else if land[r][c] == "S" {
+                seen[r][c] = true;
+                walker.push((r, c));
+            }
+        }
+    }
+    let steps = [(0, 1), (1, 0), (0, -1), (-1, 0)];
+    let mut second = 0;
+    while not walker.is_empty() {
+        second += 1;
+        let mut next_water: Vec[(i64, i64)] = Vec.new();
+        for (r, c) in water.iter() {
+            for (dr, dc) in steps.iter() {
+                let (nr, nc) = (r + dr, c + dc);
+                if nr >= 0 and nr < n and nc >= 0 and nc < m and not wet[nr][nc]
+                    and (land[nr][nc] == "." or land[nr][nc] == "S")
+                {
+                    wet[nr][nc] = true;
+                    next_water.push((nr, nc));
+                }
+            }
+        }
+        water = next_water;
+        let mut next_walker: Vec[(i64, i64)] = Vec.new();
+        for (r, c) in walker.iter() {
+            for (dr, dc) in steps.iter() {
+                let (nr, nc) = (r + dr, c + dc);
+                if nr >= 0 and nr < n and nc >= 0 and nc < m and not seen[nr][nc] and not wet[nr][nc]
+                    and land[nr][nc] != "X"
+                {
+                    if land[nr][nc] == "D" {
+                        return second;
+                    }
+                    seen[nr][nc] = true;
+                    next_walker.push((nr, nc));
+                }
+            }
+        }
+        walker = next_walker;
+    }
+    -1
+}
+
+
+// ---- relax (drowning_relax.kara) ------------------------------------
+
+fn relax_minimum_seconds(land: Vec[Vec[String]]) -> i64 {
+    let (n, m) = (land.len(), land[0].len());
+    let never = n * m + 1;
+    let open = |r: i64, c: i64| land[r][c] == "." or land[r][c] == "S";
+    let mut flood: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(m, never));
+    let mut walk: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(m, never));
+    let mut goal = (0, 0);
+    for r in 0..n {
+        for c in 0..m {
+            if land[r][c] == "*" {
+                flood[r][c] = 0;
+            } else if land[r][c] == "S" {
+                walk[r][c] = 0;
+            } else if land[r][c] == "D" {
+                goal = (r, c);
+            }
+        }
+    }
+    let steps = [(0, 1), (1, 0), (0, -1), (-1, 0)];
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for r in 0..n {
+            for c in 0..m {
+                if not open(r, c) {
+                    continue;
+                }
+                for (dr, dc) in steps.iter() {
+                    let (pr, pc) = (r + dr, c + dc);
+                    if pr >= 0 and pr < n and pc >= 0 and pc < m and flood[pr][pc] + 1 < flood[r][c] {
+                        flood[r][c] = flood[pr][pc] + 1;
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+    changed = true;
+    while changed {
+        changed = false;
+        for r in 0..n {
+            for c in 0..m {
+                if land[r][c] == "X" {
+                    continue;
+                }
+                for (dr, dc) in steps.iter() {
+                    let (pr, pc) = (r + dr, c + dc);
+                    if pr >= 0 and pr < n and pc >= 0 and pc < m and walk[pr][pc] < never {
+                        let landed = walk[pr][pc] + 1;
+                        let dry = land[r][c] == "D" or landed < flood[r][c];
+                        if dry and landed < walk[r][c] {
+                            walk[r][c] = landed;
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let (gr, gc) = goal;
+    if walk[gr][gc] < never { walk[gr][gc] } else { -1 }
+}
+
+
+// ---- heap (drowning_heap.kara) --------------------------------------
+
+fn heap_minimum_seconds(land: Vec[Vec[String]]) -> i64 {
+    let (n, m) = (land.len(), land[0].len());
+    let kinds: Vec[char] = land.iter().flat_map(|row| row.iter().map(|s| s.chars().next().unwrap())).collect();
+    let neighbours = |cell: i64| {
+        let (r, c) = (cell / m, cell % m);
+        let mut out: Vec[i64] = Vec.new();
+        if r > 0 {
+            out.push(cell - m);
+        }
+        if r + 1 < n {
+            out.push(cell + m);
+        }
+        if c > 0 {
+            out.push(cell - 1);
+        }
+        if c + 1 < m {
+            out.push(cell + 1);
+        }
+        out
+    };
+    let mut flood: Vec[i64] = Vec.filled(n * m, i64.MAX);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    for cell in 0..n * m {
+        if kinds[cell] == '*' {
+            flood[cell] = 0;
+            queue.push_back(cell);
+        }
+    }
+    while let Some(cell) = queue.pop_front() {
+        for next in neighbours(cell) {
+            if flood[next] == i64.MAX and (kinds[next] == '.' or kinds[next] == 'S') {
+                flood[next] = flood[cell] + 1;
+                queue.push_back(next);
+            }
+        }
+    }
+    let start = kinds.iter().position(|k| k == 'S').unwrap();
+    let mut best: Vec[i64] = Vec.filled(n * m, i64.MAX);
+    let mut heap: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    best[start] = 0;
+    heap.push((0, start));
+    while let Some((seconds, cell)) = heap.pop() {
+        if seconds > best[cell] {
+            continue;
+        }
+        if kinds[cell] == 'D' {
+            return seconds;
+        }
+        for next in neighbours(cell) {
+            if kinds[next] != 'X' and flood[next] > seconds + 1 and seconds + 1 < best[next] {
+                best[next] = seconds + 1;
+                heap.push((seconds + 1, next));
+            }
+        }
+    }
+    -1
+}
+
+
+// ---- solution (drowning_solution.kara) ------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_seconds(land: Vec[Vec[String]]) -> i32 {
+        let (n, m) = (land.len(), land[0].len());
+        let mut flood = Vec.filled(n, Vec.filled(m, i32.MAX));
+        let mut q = VecDeque.new();
+        let mut start = (0, 0);
+        for i in 0..n {
+            for j in 0..m {
+                match land[i][j].as_str() {
+                    "*" => {
+                        flood[i][j] = 0;
+                        q.push_back((i, j));
+                    }
+                    "S" => start = (i, j),
+                    _ => {}
+                }
+            }
+        }
+        let dirs = [(0, 1), (1, 0), (0, -1), (-1, 0)];
+        while let Some((i, j)) = q.pop_front() {
+            for (di, dj) in dirs {
+                let (ni, nj) = (i as i32 + di, j as i32 + dj);
+                if ni < 0 or nj < 0 or ni >= n as i32 or nj >= m as i32 {
+                    continue;
+                }
+                if flood[ni][nj] != i32.MAX {
+                    continue;
+                }
+                let cell = land[ni][nj].as_str();
+                if cell == "X" or cell == "D" {
+                    continue;
+                }
+                flood[ni][nj] = flood[i][j] + 1;
+                q.push_back((ni, nj));
+            }
+        }
+        let mut dist = Vec.filled(n, Vec.filled(m, -1));
+        dist[start.0][start.1] = 0;
+        q.push_back(start);
+        while let Some((i, j)) = q.pop_front() {
+            if land[i][j] == "D" {
+                return dist[i][j];
+            }
+            for (di, dj) in dirs {
+                let (ni, nj) = (i as i32 + di, j as i32 + dj);
+                if ni < 0 or nj < 0 or ni >= n as i32 or nj >= m as i32 {
+                    continue;
+                }
+                if dist[ni][nj] != -1 or land[ni][nj] == "X" {
+                    continue;
+                }
+                if flood[ni][nj] <= dist[i][j] + 1 {
+                    continue;
+                }
+                dist[ni][nj] = dist[i][j] + 1;
+                q.push_back((ni, nj));
+            }
+        }
+        -1
+    }
+}
+
+fn solution_minimum_seconds(land: Vec[Vec[String]]) -> i64 {
+    Solution.minimum_seconds(land)
+}
+
+
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(land: Vec[Vec[String]]) -> i64 {
+    let (n, m) = (land.len(), land[0].len());
+    let mut now = land.clone();
+    let mut here: Set[(i64, i64)] = Set.new();
+    for r in 0..n {
+        for c in 0..m {
+            if land[r][c] == "S" {
+                here.insert((r, c));
+            }
+        }
+    }
+    for second in 1..=n * m {
+        let mut after = now.clone();
+        for r in 0..n {
+            for c in 0..m {
+                let empty = now[r][c] == "." or now[r][c] == "S";
+                let beside = [(0, 1), (1, 0), (0, -1), (-1, 0)].iter().any(|(dr, dc)| {
+                    let (pr, pc) = (r + dr, c + dc);
+                    pr >= 0 and pr < n and pc >= 0 and pc < m and now[pr][pc] == "*"
+                });
+                if empty and beside {
+                    after[r][c] = "*";
+                }
+            }
+        }
+        now = after;
+        let mut next: Set[(i64, i64)] = Set.new();
+        for (r, c) in here.iter() {
+            for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+                let (nr, nc) = (r + dr, c + dc);
+                if nr >= 0 and nr < n and nc >= 0 and nc < m and now[nr][nc] != "X" and now[nr][nc] != "*" {
+                    if now[nr][nc] == "D" {
+                        return second;
+                    }
+                    next.insert((nr, nc));
+                }
+            }
+        }
+        here = next;
+    }
+    -1
+}
+
+fn answer(arm: i64, land: Vec[Vec[String]]) -> i64 {
+    match arm {
+        0 => star_minimum_seconds(land),
+        1 => together_minimum_seconds(land),
+        2 => relax_minimum_seconds(land),
+        3 => heap_minimum_seconds(land),
+        _ => solution_minimum_seconds(land),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_land(n: i64, m: i64, flooded: i64, seed: mut ref i64) -> Vec[Vec[String]] {
+    let mut land: Vec[Vec[String]] = Vec.new();
+    for _ in 0..n {
+        let mut row: Vec[String] = Vec.new();
+        for _ in 0..m {
+            let roll = next_random(mut seed) % 1000;
+            row.push(if roll < 200 { "X" } else if roll < 200 + flooded { "*" } else { "." });
+        }
+        land.push(row);
+    }
+    let start = next_random(mut seed) % (n * m);
+    let mut end = next_random(mut seed) % (n * m - 1);
+    if end >= start {
+        end += 1;
+    }
+    land[start / m][start % m] = "S";
+    land[end / m][end % m] = "D";
+    land
+}
+
+fn main() {
+    let names = ["star", "together", "relax", "heap", "solution"];
+    let mut seed = 2814;
+    let mut cases: Vec[Vec[Vec[String]]] = Vec.new();
+    for c in 0..2050 {
+        let top = if c < 2000 { 4 } else { 39 };
+        let flooded = if c < 2000 { 125 } else { 2 };
+        let n = next_random(mut seed) % top + 2;
+        let m = next_random(mut seed) % top + 2;
+        cases.push(random_land(n, m, flooded, mut seed));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, land) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(land) } else { 0 };
+        check = (check * 31 + want + 2) % 1000000007;
+        let (n, m) = (land.len(), land[0].len());
+        let mut start = (0, 0);
+        let mut end = (0, 0);
+        for r in 0..n {
+            for k in 0..m {
+                if land[r][k] == "S" {
+                    start = (r, k);
+                } else if land[r][k] == "D" {
+                    end = (r, k);
+                }
+            }
+        }
+        let apart = (start.0 - end.0).abs() + (start.1 - end.1).abs();
+        let transposed: Vec[Vec[String]] = (0..m).map(|k| (0..n).map(|r| land[r][k].clone()).collect()).collect();
+        let mirrored: Vec[Vec[String]] = land.iter().map(|row| row.iter().rev().cloned().collect()).collect();
+        let dried: Vec[Vec[String]] = land.iter().map(|row| row.iter().map(|s| if s == "*" { ".".to_string() } else { s.clone() }).collect()).collect();
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, land)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let dry = answer(arm, dried);
+            let verdicts = [
+                not small or value == want,
+                value == -1 or (value >= apart and value <= n * m - 1),
+                answer(arm, transposed) == value,
+                answer(arm, mirrored) == value,
+                value == -1 or (dry >= 0 and dry <= value),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {land}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,52 @@
+// LeetCode #2744: Find Maximum Number of String Pairs -- the bench: the
+// ★ arm, a `Set[String]` of the words seen, over lists of 50 words drawn
+// first.
+
+fn maximum_number_of_string_pairs(words: Vec[String]) -> i64 {
+    let mut seen: Set[String] = Set.new();
+    let mut pairs = 0;
+    for w in words.iter() {
+        let reversed: String = w.chars().rev().collect();
+        if seen.contains(reversed) {
+            pairs += 1;
+        }
+        seen.insert(w.clone());
+    }
+    pairs
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 20000;
+    let rounds = 10;
+    let mut seed = 2744;
+    let mut lists: Vec[Vec[String]] = Vec.new();
+    for _ in 0..count {
+        // 50 distinct words, LeetCode's most, from the first 8 letters, so
+        // that many of them pair
+        let mut words: Vec[String] = Vec.new();
+        while words.len() < 50 {
+            let a = (b'a' + (next_random(mut seed) % 8) as u8) as char;
+            let b = (b'a' + (next_random(mut seed) % 8) as u8) as char;
+            let w = f"{a}{b}";
+            if not words.contains(w) {
+                words.push(w);
+            }
+        }
+        lists.push(words);
+    }
+    let mut sum = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for words in lists.iter() {
+            let pairs = maximum_number_of_string_pairs(words);
+            sum += pairs;
+            check = (check * 31 + pairs + r) % 1000000007;
+        }
+    }
+    println(f"{count} lists of 50 words, {rounds} rounds: pairs sum to {sum}, checksum {check}");
+}

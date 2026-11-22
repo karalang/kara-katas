@@ -1,0 +1,79 @@
+// LeetCode #2771: Longest Non-decreasing Subarray From Two Arrays -- the
+// windows arm. Each array's neighbours by `windows(2)`, the two walked
+// together by `zip`; at each step the numbers before and now are pairs
+// in fixed arrays, and each of the two runs now takes the best run before
+// whose number is no higher. O(n).
+
+fn max_non_decreasing_length(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let mut lengths = [1, 1];
+    let mut best = 1;
+    for (a, b) in nums1.windows(2).iter().zip(nums2.windows(2).iter()) {
+        let before = [a[0], b[0]];
+        let now = [a[1], b[1]];
+        let mut next = [1, 1];
+        for side in 0..2 {
+            for p in 0..2 {
+                if before[p] <= now[side] {
+                    next[side] = next[side].max(lengths[p] + 1);
+                }
+            }
+        }
+        lengths = next;
+        best = best.max(lengths[0]).max(lengths[1]);
+    }
+    best
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{max_non_decreasing_length([2, 3, 1].to_vec(), [1, 2, 1].to_vec())}");
+    println(f"{max_non_decreasing_length([1, 3, 2, 1].to_vec(), [2, 2, 3, 4].to_vec())}");
+    println(f"{max_non_decreasing_length([1, 1].to_vec(), [2, 2].to_vec())}");
+    // 10^5 numbers, LeetCode's most: one rising and one falling; both
+    // falling; and a run that must change arrays at every step
+    let n = 100000;
+    let rising: Vec[i64] = (1..=n).collect();
+    let falling: Vec[i64] = (1..=n).rev().collect();
+    println(f"{max_non_decreasing_length(falling, rising)}");
+    println(f"{max_non_decreasing_length(falling, falling)}");
+    let evens: Vec[i64] = (1..=n).map(|i| if i % 2 == 0 { i } else { 0 }).collect();
+    let odds: Vec[i64] = (1..=n).map(|i| if i % 2 == 1 { i } else { 0 }).collect();
+    println(f"{max_non_decreasing_length(evens, odds)}");
+    // 3000 random pairs of 1 to 12 numbers from 1 to 5
+    let mut seed = 2771;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let nums1: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 5 + 1).collect();
+        let nums2: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 5 + 1).collect();
+        let a = max_non_decreasing_length(nums1, nums2);
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"3000 small pairs: lengths sum to {total}, checksum {check}");
+    // 10 pairs of 10^5: one array rising with noise, the other random up
+    // to 10^9
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..10 {
+        let noise = next_random(mut seed) % 200 + 1;
+        let nums1: Vec[i64] = (0..n).map(|i| i * 10 + next_random(mut seed) % noise + 1).collect();
+        let nums2: Vec[i64] = (0..n).map(|_| wide(mut seed) % 1000000000 + 1).collect();
+        let a = max_non_decreasing_length(nums1, nums2);
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"10 pairs of 10^5: lengths sum to {total}, checksum {check}");
+}

@@ -1,0 +1,85 @@
+// LeetCode #2714: Find Shortest Path with K Hops -- the bench (hops.kara):
+// Dijkstra's search over states of a node and the hops spent, a
+// `PriorityQueue` of (distance, node, hops), smallest first.
+
+fn shortest_path_with_hops(n: i64, edges: Vec[Vec[i64]], s: i64, d: i64, k: i64) -> i64 {
+    let mut adjacent: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adjacent[e[0]].push((e[1], e[2]));
+        adjacent[e[1]].push((e[0], e[2]));
+    }
+    let far = i64.MAX;
+    let mut dist: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(k + 1, far));
+    let mut queue: PriorityQueue[(i64, i64, i64)] = PriorityQueue.new();
+    dist[s][0] = 0;
+    queue.push((0, s, 0));
+    while let Some((here, u, hops)) = queue.pop() {
+        if here > dist[u][hops] {
+            continue;
+        }
+        if u == d {
+            return here;
+        }
+        for (v, w) in adjacent[u].iter() {
+            if here + w < dist[v][hops] {
+                dist[v][hops] = here + w;
+                queue.push((here + w, v, hops));
+            }
+            if hops < k and here < dist[v][hops + 1] {
+                dist[v][hops + 1] = here;
+                queue.push((here, v, hops + 1));
+            }
+        }
+    }
+    -1
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let graphs = 50;
+    let rounds = 10;
+    let mut seed = 2714;
+    let mut problems: Vec[(Vec[Vec[i64]], i64, i64, i64)] = Vec.new();
+    for _ in 0..graphs {
+        // 500 nodes, LeetCode's most: a random tree and then up to 9501
+        // more edges, weights up to 10^6, and 0 to 49 hops
+        let n = 500;
+        let mut joined: Set[(i64, i64)] = Set.new();
+        let mut edges: Vec[Vec[i64]] = Vec.new();
+        for v in 1..n {
+            let u = next_random(mut seed) % v;
+            joined.insert((u, v));
+            edges.push([u, v, wide(mut seed) % 1000000 + 1].to_vec());
+        }
+        for _ in 0..9501 {
+            let a = next_random(mut seed) % n;
+            let b = next_random(mut seed) % n;
+            let (u, v) = (a.min(b), a.max(b));
+            if u != v and joined.insert((u, v)) {
+                edges.push([v, u, wide(mut seed) % 1000000 + 1].to_vec());
+            }
+        }
+        let s = next_random(mut seed) % n;
+        let d = (s + 1 + next_random(mut seed) % (n - 1)) % n;
+        let k = next_random(mut seed) % 50;
+        problems.push((edges, s, d, k));
+    }
+    let mut sum = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (edges, s, d, k) in problems.iter() {
+            let length = shortest_path_with_hops(500, edges, s, d, k);
+            sum += length;
+            check = (check * 31 + length + r) % 1000000007;
+        }
+    }
+    println(f"{graphs} graphs of 500 nodes, {rounds} rounds: lengths sum to {sum}, checksum {check}");
+}

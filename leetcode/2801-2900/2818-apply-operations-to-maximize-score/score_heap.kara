@@ -1,0 +1,117 @@
+// LeetCode #2818: Apply Operations to Maximize Score -- two passes and a
+// heap: a sieve of prime scores; one stack walked forward for the first
+// score above each number's own, another walked back for the last score
+// at least its own; every (value, count) pair into a max-first
+// `PriorityQueue`, popped while k lasts, each power by squaring.
+
+const MOD: i64 = 1000000007;
+
+fn prime_scores(limit: i64) -> Vec[i64] {
+    let mut score: Vec[i64] = Vec.filled(limit + 1, 0);
+    for p in 2..=limit {
+        if score[p] == 0 {
+            for q in (p..=limit).step_by(p) {
+                score[q] += 1;
+            }
+        }
+    }
+    score
+}
+
+fn power(base: i64, exp: i64) -> i64 {
+    let mut result = 1;
+    let mut b = base % MOD;
+    let mut e = exp;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % MOD;
+        }
+        b = b * b % MOD;
+        e /= 2;
+    }
+    result
+}
+
+fn maximum_score(nums: Vec[i64], k: i64) -> i64 {
+    let n = nums.len();
+    let score = prime_scores(nums.iter().max().unwrap());
+    let s: Vec[i64] = nums.iter().map(|v| score[v]).collect();
+    let mut next_above: Vec[i64] = Vec.filled(n, n);
+    let mut stack: Vec[i64] = Vec.new();
+    for i in (0..n).rev() {
+        while not stack.is_empty() and s[stack[stack.len() - 1]] <= s[i] {
+            stack.pop();
+        }
+        if let Some(t) = stack.last() {
+            next_above[i] = t;
+        }
+        stack.push(i);
+    }
+    let mut last_at_least: Vec[i64] = Vec.filled(n, -1);
+    stack.clear();
+    for i in 0..n {
+        while not stack.is_empty() and s[stack[stack.len() - 1]] < s[i] {
+            stack.pop();
+        }
+        if let Some(t) = stack.last() {
+            last_at_least[i] = t;
+        }
+        stack.push(i);
+    }
+    let mut heap: PriorityQueue[(i64, i64)] = PriorityQueue.max_first();
+    for i in 0..n {
+        heap.push((nums[i], (i - last_at_least[i]) * (next_above[i] - i)));
+    }
+    let mut rest = k;
+    let mut total = 1;
+    while rest > 0 {
+        let (v, count) = heap.pop().unwrap();
+        let take = count.min(rest);
+        total = total * power(v, take) % MOD;
+        rest -= take;
+    }
+    total
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; one number; k every subarray; 2000 primes
+    // in a cycle of six, every score 1, k every subarray; and 2000 numbers
+    // of falling score
+    println(f"{maximum_score([8, 3, 9, 3, 8], 2)}");
+    println(f"{maximum_score([19, 12, 14, 6, 10, 18], 3)}");
+    println(f"{maximum_score([1], 1)}");
+    println(f"{maximum_score([2, 30, 6, 7], 10)}");
+    println(f"{maximum_score((0..2000).map(|i| [2, 3, 5, 7, 11, 13][i % 6]).collect(), 2001000)}");
+    println(f"{maximum_score((0..2000).map(|i| [30030, 2310, 210, 30, 6, 2][i * 6 / 2000]).collect(), 1999000)}");
+    // 3000 random arrays of 1 to 10 numbers up to 100 with k up to the
+    // count of subarrays; then 50 of up to 2000 numbers up to 10^5 with
+    // k up to 10^9
+    let mut seed = 2818;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 10 + 1;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 100 + 1).collect();
+        let k = next_random(mut seed) % (n * (n + 1) / 2) + 1;
+        check = (check * 31 + maximum_score(nums, k)) % 1000000007;
+    }
+    println(f"3000 small arrays: checksum {check}");
+    check = 0;
+    for _ in 0..50 {
+        let n = next_random(mut seed) % 2000 + 1;
+        let nums: Vec[i64] = (0..n).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000 + 1).collect();
+        let k = wide(mut seed) % (n * (n + 1) / 2).min(1000000000) + 1;
+        check = (check * 31 + maximum_score(nums, k)) % 1000000007;
+    }
+    println(f"50 large arrays: checksum {check}");
+}

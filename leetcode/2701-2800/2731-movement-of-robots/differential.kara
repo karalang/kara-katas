@@ -1,0 +1,272 @@
+// LeetCode #2731: Movement of Robots -- the differential. The five arms,
+// against the statement read literally: every robot moved half a unit at
+// a time for d seconds, places doubled so that every meeting falls on a
+// whole number, and two robots on one spot both turned round; no passing
+// through. 1000 random cases of 1 to 10 robots up to 5 apart for 0 to 20
+// seconds; then 500 of up to 200 robots up to 10^7 apart for up to 10^9.
+// Every case is drawn before any arm answers.
+//
+// P1  up to 10 robots, the answer is the literal reading's
+// P2  the line mirrored, every place negated and every L made R and R L:
+//     the same answer
+// P3  every robot shifted by the same amount: the same answer
+// P4  the robots listed in reverse order: the same answer
+// P5  the answer is between 0 and 10^9 + 6; and with every robot facing
+//     right, it is the same after d seconds as after none
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- star (robots.kara) ---------------------------------------------
+
+const MOD: i64 = 1000000007;
+
+fn star_sum_distance(nums: Vec[i64], s: String, d: i64) -> i64 {
+    let ways = s.bytes();
+    let mut places: Vec[i64] = Vec.new();
+    for i in 0..nums.len() {
+        places.push(if ways[i] == b'L' { nums[i] - d } else { nums[i] + d });
+    }
+    places.sort();
+    let mut total = 0;
+    let mut before = 0;
+    for k in 0..places.len() {
+        total = (total + k * places[k] - before) % MOD;
+        before += places[k];
+    }
+    total
+}
+
+
+// ---- gaps (robots_gaps.kara) ----------------------------------------
+
+fn gaps_sum_distance(nums: Vec[i64], s: String, d: i64) -> i64 {
+    let ways = s.bytes();
+    let mut places: Vec[i64] = Vec.new();
+    for (i, x) in nums.iter().enumerate() {
+        let step = if ways[i] == b'L' { -d } else { d };
+        places.push(x + step);
+    }
+    places.sort();
+    let n = places.len();
+    let mut total = 0;
+    for k in 0..n - 1 {
+        let gap = (places[k + 1] - places[k]) % MOD;
+        let pairs = (k + 1) * (n - k - 1) % MOD;
+        total = (total + gap * pairs) % MOD;
+    }
+    total
+}
+
+
+// ---- merge (robots_merge.kara) --------------------------------------
+
+fn merge_sum_distance(nums: Vec[i64], s: String, d: i64) -> i64 {
+    let mut left: Vec[i64] = Vec.new();
+    let mut right: Vec[i64] = Vec.new();
+    for (x, way) in nums.iter().zip(s.chars()) {
+        if way == 'L' {
+            left.push(x - d);
+        } else {
+            right.push(x + d);
+        }
+    }
+    left.sort();
+    right.sort();
+    let mut i = 0;
+    let mut j = 0;
+    let mut seen = 0;
+    let mut before = 0;
+    let mut total = 0;
+    while i < left.len() or j < right.len() {
+        let place = if j == right.len() or (i < left.len() and left[i] <= right[j]) {
+            i += 1;
+            left[i - 1]
+        } else {
+            j += 1;
+            right[j - 1]
+        };
+        total = (total + seen * place - before) % MOD;
+        before += place;
+        seen += 1;
+    }
+    total
+}
+
+
+// ---- iter (robots_iter.kara) ----------------------------------------
+
+fn iter_sum_distance(nums: Vec[i64], s: String, d: i64) -> i64 {
+    let mut places: Vec[i64] = nums.iter().zip(s.chars()).map(|(x, way)| if way == 'L' { x - d } else { x + d }).collect();
+    places.sort();
+    let (total, _) = places.iter().enumerate().fold((0, 0), |(total, before), (k, p)| ((total + k * p - before) % MOD, before + p));
+    total
+}
+
+
+// ---- solution (robots_solution.kara) --------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn sum_distance(nums: Vec[i32], s: String, d: i32) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let s = s.bytes();
+        let mut pos: Vec[i64] = nums
+            .iter()
+            .enumerate()
+            .map(|(i, x)| if s[i] == b'L' { x as i64 - d as i64 } else { x as i64 + d as i64 })
+            .collect();
+        pos.sort();
+        let mut ans: i64 = 0;
+        let mut pre: i64 = 0;
+        for (i, x) in pos.iter().enumerate() {
+            ans = (ans + i * x - pre) % MOD;
+            pre += x;
+        }
+        ans as i32
+    }
+}
+
+fn solution_sum_distance(nums: Vec[i64], s: String, d: i64) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.sum_distance(nums, s, d as i32)
+}
+
+
+// ---- the statement read literally ------------------------------------------
+
+// places doubled, so every meeting is on a whole number; each tick moves
+// every robot half a unit, then turns round both robots of any pair on
+// one spot
+fn literal(nums: Vec[i64], s: String, d: i64) -> i64 {
+    let n = nums.len();
+    let mut at: Vec[i64] = nums.iter().map(|x| 2 * x).collect();
+    let mut way: Vec[i64] = s.chars().map(|c| if c == 'L' { -1 } else { 1 }).collect();
+    for _ in 0..2 * d {
+        for i in 0..n {
+            at[i] += way[i];
+        }
+        for i in 0..n {
+            for j in i + 1..n {
+                if at[i] == at[j] {
+                    way[i] = -way[i];
+                    way[j] = -way[j];
+                }
+            }
+        }
+    }
+    let mut total = 0;
+    for i in 0..n {
+        for j in i + 1..n {
+            total += (at[i] - at[j]).abs() / 2;
+        }
+    }
+    total % 1000000007
+}
+
+fn answer(arm: i64, nums: Vec[i64], s: String, d: i64) -> i64 {
+    match arm {
+        0 => star_sum_distance(nums, s, d),
+        1 => gaps_sum_distance(nums, s, d),
+        2 => merge_sum_distance(nums, s, d),
+        3 => iter_sum_distance(nums, s, d),
+        _ => solution_sum_distance(nums, s, d),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_robots(seed: mut ref i64, n: i64, spread: i64) -> (Vec[i64], String) {
+    let mut nums: Vec[i64] = Vec.new();
+    let mut at = -(n * spread / 2);
+    for _ in 0..n {
+        nums.push(at);
+        at += next_random(mut seed) % spread + 1;
+    }
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        nums.swap(i, j);
+    }
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(if next_random(mut seed) % 2 == 0 { 'L' } else { 'R' });
+    }
+    (nums, s)
+}
+
+fn main() {
+    let names = ["star", "gaps", "merge", "iter", "solution"];
+    let mut seed = 2731;
+    // (the places, the ways, the seconds, a shift)
+    let mut cases: Vec[(Vec[i64], String, i64, i64)] = Vec.new();
+    for c in 0..1500 {
+        let (n, spread, longest) = if c < 1000 {
+            (next_random(mut seed) % 10 + 1, next_random(mut seed) % 5 + 1, 21)
+        } else {
+            (next_random(mut seed) % 200 + 1, (next_random(mut seed) * 32768 + next_random(mut seed)) % 10000000 + 1, 1000000001)
+        };
+        let (nums, s) = random_robots(mut seed, n, spread);
+        let d = (next_random(mut seed) * 32768 + next_random(mut seed)) % longest;
+        let shift = (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000001 - 500000000;
+        cases.push((nums, s, d, shift));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (nums, s, d, shift)) in cases.iter().enumerate() {
+        let small = c < 1000;
+        let truth = if small { literal(nums, s, d) } else { -1 };
+        if small {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let mirrored: Vec[i64] = nums.iter().map(|x| -x).collect();
+        let flipped: String = s.chars().map(|w| if w == 'L' { 'R' } else { 'L' }).collect();
+        let shifted: Vec[i64] = nums.iter().map(|x| x + shift).collect();
+        let back: Vec[i64] = nums.iter().rev().collect();
+        let back_ways: String = s.chars().rev().collect();
+        let rights = "R".repeat(nums.len());
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums, s, d)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                answer(arm, mirrored, flipped, d) == value,
+                answer(arm, shifted, s, d) == value,
+                answer(arm, back, back_ways, d) == value,
+                0 <= value and value < 1000000007 and answer(arm, nums, rights, d) == answer(arm, nums, rights, 0),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

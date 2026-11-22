@@ -1,0 +1,212 @@
+// LeetCode #2769: Find the Maximum Achievable Number -- the differential.
+// The five arms, against the statement read literally: for every x from
+// num - 4t to num + 4t, every pair of x and num reachable by up to t
+// operations, each moving x by 1 either way and num by 1 either way,
+// gathered in a `Set`; x achievable when one of them has x equal to num,
+// and the greatest such x the answer; no gap. Every num and t from 1 to
+// 50; the literal reading is asked only up to num 25 and t 4.
+//
+// P1  up to num 25 and t 4, the answer is the literal reading's
+// P2  num one more: the answer one more
+// P3  t one more: the answer two more
+// P4  the answer meets num: x down and num up by 1 meet within t steps
+// P5  one and two more than the answer never meet num that way
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(num: i64, t: i64) -> i64 {
+    let mut best = num - 4 * t - 1;
+    for x in num - 4 * t..=num + 4 * t {
+        let mut pairs: Set[(i64, i64)] = Set.new();
+        pairs.insert((x, num));
+        let mut found = x == num;
+        for _ in 0..t {
+            let now: Vec[(i64, i64)] = pairs.iter().collect();
+            for (a, b) in now.iter() {
+                for da in [-1, 1] {
+                    for db in [-1, 1] {
+                        pairs.insert((a + da, b + db));
+                        if a + da == b + db {
+                            found = true;
+                        }
+                    }
+                }
+            }
+        }
+        if found {
+            best = x;
+        }
+    }
+    best
+}
+
+
+// ---- star (achievable.kara) -----------------------------------------
+
+fn star_the_maximum_achievable_x(num: i64, t: i64) -> i64 {
+    num + 2 * t
+}
+
+
+// ---- walk (achievable_walk.kara) ------------------------------------
+
+fn walk_meets(x: i64, num: i64, t: i64) -> bool {
+    let mut (a, b) = (x, num);
+    let mut left = t;
+    while a != b and left > 0 {
+        if a > b {
+            a -= 1;
+            b += 1;
+        } else {
+            a += 1;
+            b -= 1;
+        }
+        left -= 1;
+    }
+    a == b
+}
+
+fn walk_the_maximum_achievable_x(num: i64, t: i64) -> i64 {
+    let mut x = num + 3 * t;
+    while not walk_meets(x, num, t) {
+        x -= 1;
+    }
+    x
+}
+
+
+// ---- reach (achievable_reach.kara) ----------------------------------
+
+fn reach_the_maximum_achievable_x(num: i64, t: i64) -> i64 {
+    let mut gaps: SortedSet[i64] = SortedSet.new();
+    gaps.insert(0);
+    for _ in 0..t {
+        let now: Vec[i64] = gaps.iter().collect();
+        for g in now.iter() {
+            for step in [-2, 0, 2] {
+                gaps.insert(g + step);
+            }
+        }
+    }
+    num + gaps.max().unwrap()
+}
+
+
+// ---- table (achievable_table.kara) ----------------------------------
+
+fn table_the_maximum_achievable_x(num: i64, t: i64) -> i64 {
+    let low = num - 2 * t - 2;
+    let width = 4 * t + 5;
+    let mut met: Vec[bool] = Vec.filled(width, false);
+    met[num - low] = true;
+    for _ in 0..t {
+        let mut next = met.clone();
+        for i in 0..width {
+            // an operation moves x by -1 or +1 and num by -1 or +1: the gap
+            // x - num by -2, 0 or +2, as if x alone moved by that much
+            for step in [-2, 0, 2] {
+                let j = i + step;
+                if 0 <= j and j < width and met[j] {
+                    next[i] = true;
+                }
+            }
+        }
+        met = next;
+    }
+    let mut i = width - 1;
+    while not met[i] {
+        i -= 1;
+    }
+    low + i
+}
+
+
+// ---- solution (achievable_solution.kara) ----------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn the_maximum_achievable_x(num: i32, t: i32) -> i32 {
+        num + t * 2
+    }
+}
+
+fn solution_the_maximum_achievable_x(num: i64, t: i64) -> i64 {
+    Solution.the_maximum_achievable_x(num as i32, t as i32)
+}
+
+
+fn answer(arm: i64, num: i64, t: i64) -> i64 {
+    match arm {
+        0 => star_the_maximum_achievable_x(num, t),
+        1 => walk_the_maximum_achievable_x(num, t),
+        2 => reach_the_maximum_achievable_x(num, t),
+        3 => table_the_maximum_achievable_x(num, t),
+        _ => solution_the_maximum_achievable_x(num, t),
+    }
+}
+
+// x and num walked together, x down by 1 and num up by 1, for up to t
+// steps: whether they meet
+fn walked(x: i64, num: i64, t: i64) -> bool {
+    (0..=t).any(|k| x - k == num + k)
+}
+
+fn main() {
+    let names = ["star", "walk", "reach", "table", "solution"];
+    let mut cases: Vec[(i64, i64)] = Vec.new();
+    for num in 1..=50 {
+        for t in 1..=50 {
+            cases.push((num, t));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (num, t)) in cases.iter().enumerate() {
+        let small = num <= 25 and t <= 4;
+        let want = if small { literal(num, t) } else { 0 };
+        check = (check * 31 + want + 1) % 1000000007;
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, num, t)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == want,
+                answer(arm, num + 1, t) == value + 1,
+                answer(arm, num, t + 1) == value + 2,
+                walked(value, num, t),
+                not walked(value + 1, num, t) and not walked(value + 2, num, t),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} num {num} t {t}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

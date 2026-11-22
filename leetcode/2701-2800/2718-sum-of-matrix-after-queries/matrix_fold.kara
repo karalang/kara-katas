@@ -1,0 +1,102 @@
+// LeetCode #2718: Sum of Matrix After Queries -- the fold arm. The same
+// walk from the last query back, written as one `fold` over
+// `queries.iter().rev()` whose state is a struct of the lines taken and
+// the sum so far. O(n + q).
+
+struct Taken {
+    rows: Vec[bool],
+    cols: Vec[bool],
+    rows_left: i64,
+    cols_left: i64,
+    sum: i64,
+}
+
+fn matrix_sum_queries(n: i64, queries: Vec[Vec[i64]]) -> i64 {
+    let start = Taken {
+        rows: Vec.filled(n, false),
+        cols: Vec.filled(n, false),
+        rows_left: n,
+        cols_left: n,
+        sum: 0,
+    };
+    let done = queries.iter().rev().fold(start, |state, query| {
+        let mut state = state;
+        let index = query[1];
+        if query[0] == 0 and not state.rows[index] {
+            state.rows[index] = true;
+            state.rows_left -= 1;
+            state.sum += query[2] * state.cols_left;
+        } else if query[0] == 1 and not state.cols[index] {
+            state.cols[index] = true;
+            state.cols_left -= 1;
+            state.sum += query[2] * state.rows_left;
+        }
+        state
+    });
+    done.sum
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// q queries on an n by n matrix, values up to `most`
+fn random_queries(seed: mut ref i64, n: i64, q: i64, most: i64) -> Vec[Vec[i64]] {
+    let mut queries: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..q {
+        let kind = next_random(mut seed) % 2;
+        let index = wide(mut seed) % n;
+        let value = wide(mut seed) % (most + 1);
+        queries.push([kind, index, value].to_vec());
+    }
+    queries
+}
+
+fn main() {
+    // LeetCode's two examples; one cell; 10^4 by 10^4, LeetCode's
+    // largest, one row set to 10^5; every row and then every column of
+    // 10^4 set, the columns last
+    println(f"{matrix_sum_queries(3, [[0, 0, 1].to_vec(), [1, 2, 2].to_vec(), [0, 2, 3].to_vec(), [1, 0, 4].to_vec()].to_vec())}");
+    println(f"{matrix_sum_queries(3, [[0, 0, 4].to_vec(), [0, 1, 2].to_vec(), [1, 0, 1].to_vec(), [0, 2, 3].to_vec(), [1, 2, 1].to_vec()].to_vec())}");
+    println(f"{matrix_sum_queries(1, [[1, 0, 7].to_vec()].to_vec())}");
+    println(f"{matrix_sum_queries(10000, [[0, 9999, 100000].to_vec()].to_vec())}");
+    let mut sweep: Vec[Vec[i64]] = Vec.new();
+    for i in 0..10000 {
+        sweep.push([0, i, i].to_vec());
+    }
+    for i in 0..10000 {
+        sweep.push([1, i, 100000 - i].to_vec());
+    }
+    println(f"{matrix_sum_queries(10000, sweep)}");
+    // 2000 random cases of 1 to 8 rows and up to 20 queries of values up
+    // to 10; then 40 of up to 10^4 rows and 5 * 10^4 queries of values up
+    // to 10^5
+    let mut seed = 2718;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 8 + 1;
+        let q = next_random(mut seed) % 20 + 1;
+        let total = matrix_sum_queries(n, random_queries(mut seed, n, q, 10));
+        sum += total;
+        check = (check * 31 + total) % 1000000007;
+    }
+    println(f"2000 small cases: sums sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for _ in 0..40 {
+        let n = wide(mut seed) % 10000 + 1;
+        let q = wide(mut seed) % 50000 + 1;
+        let total = matrix_sum_queries(n, random_queries(mut seed, n, q, 100000));
+        sum += total;
+        check = (check * 31 + total % 1000000007) % 1000000007;
+    }
+    println(f"40 large cases: sums sum to {sum}, checksum {check}");
+}

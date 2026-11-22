@@ -1,0 +1,207 @@
+// LeetCode #2706: Buy Two Chocolates -- the differential. The five arms,
+// against the statement read literally: every set of chocolates, as a
+// mask over the prices, that holds exactly two and leaves the money
+// non-negative, the most money any leaves, or all of it when there is
+// none. 1000 random cases of 2 to 10 prices up to 12 and money up to 25;
+// then 500 of 2 to 50 prices up to 100 and money up to 100. Every case
+// is drawn before any arm answers.
+//
+// P1  up to 10 prices, the answer is the literal reading's
+// P2  the answer is the money, or between 0 and the money less 2
+// P3  the prices rotated: the same answer
+// P4  where two are bought, 1 to 10 more money: that much more left
+// P5  a price of 100 added: the same answer
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- star (chocolates.kara) -----------------------------------------
+
+fn star_buy_choco(prices: Vec[i64], money: i64) -> i64 {
+    let mut first = 101;
+    let mut second = 101;
+    for p in prices.iter() {
+        if p < first {
+            second = first;
+            first = p;
+        } else if p < second {
+            second = p;
+        }
+    }
+    let cost = first + second;
+    if cost <= money { money - cost } else { money }
+}
+
+
+// ---- sorted (chocolates_sorted.kara) --------------------------------
+
+fn sorted_buy_choco(prices: Vec[i64], money: i64) -> i64 {
+    let mut sorted = prices.clone();
+    sorted.sort();
+    let left = money - sorted[0] - sorted[1];
+    if left >= 0 { left } else { money }
+}
+
+
+// ---- pairs (chocolates_pairs.kara) ----------------------------------
+
+fn pairs_buy_choco(prices: Vec[i64], money: i64) -> i64 {
+    let n = prices.len();
+    let mut best: Option[i64] = None;
+    for i in 0..n {
+        for j in i + 1..n {
+            let left = money - prices[i] - prices[j];
+            if left >= 0 {
+                best = match best {
+                    Some(b) if b >= left => Some(b),
+                    _ => Some(left),
+                };
+            }
+        }
+    }
+    best.unwrap_or(money)
+}
+
+
+// ---- iter (chocolates_iter.kara) ------------------------------------
+
+fn iter_buy_choco(prices: Vec[i64], money: i64) -> i64 {
+    let (at, first) = prices.iter().enumerate().min_by_key(|(_, p)| p).unwrap();
+    let second = prices.iter().enumerate().filter(|(i, _)| i != at).map(|(_, p)| p).min().unwrap();
+    let cost = first + second;
+    if money >= cost { money - cost } else { money }
+}
+
+
+// ---- solution (chocolates_solution.kara) ----------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn buy_choco(prices: own Vec[i32], money: i32) -> i32 {
+        let mut prices = prices;
+        prices.sort();
+        let cost = prices[0] + prices[1];
+        if cost <= money {
+            money - cost
+        } else {
+            money
+        }
+    }
+}
+
+fn solution_buy_choco(prices: Vec[i64], money: i64) -> i64 {
+    let narrow: Vec[i32] = prices.iter().map(|p| p as i32).collect();
+    Solution.buy_choco(narrow, money as i32)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+// every set of chocolates, as a mask over the prices, that holds exactly
+// two and leaves the money non-negative; the most money left by any, or
+// all of it when there is none
+fn literal(prices: Vec[i64], money: i64) -> i64 {
+    let n = prices.len();
+    let mut best = -1;
+    for mask in 0..(1 << n) {
+        let mut count = 0;
+        let mut spent = 0;
+        for i in 0..n {
+            if (mask >> i) & 1 == 1 {
+                count += 1;
+                spent += prices[i];
+            }
+        }
+        if count == 2 and spent <= money and money - spent > best {
+            best = money - spent;
+        }
+    }
+    if best < 0 { money } else { best }
+}
+
+fn answer(arm: i64, prices: Vec[i64], money: i64) -> i64 {
+    match arm {
+        0 => star_buy_choco(prices, money),
+        1 => sorted_buy_choco(prices, money),
+        2 => pairs_buy_choco(prices, money),
+        3 => iter_buy_choco(prices, money),
+        _ => solution_buy_choco(prices, money),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "sorted", "pairs", "iter", "solution"];
+    let mut seed = 2706;
+    // (prices, money, how far to rotate, how much more money)
+    let mut cases: Vec[(Vec[i64], i64, i64, i64)] = Vec.new();
+    for c in 0..1500 {
+        let (n, most, purse) = if c < 1000 {
+            (next_random(mut seed) % 9 + 2, 12, 25)
+        } else {
+            (next_random(mut seed) % 49 + 2, 100, 100)
+        };
+        let prices: Vec[i64] = (0..n).map(|_| next_random(mut seed) % most + 1).collect();
+        let money = next_random(mut seed) % purse + 1;
+        let turn = next_random(mut seed) % n;
+        let more = next_random(mut seed) % 10 + 1;
+        cases.push((prices, money, turn, more));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (prices, money, turn, more)) in cases.iter().enumerate() {
+        let small = c < 1000;
+        let truth = if small { literal(prices, money) } else { -1 };
+        if small {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let n = prices.len();
+        let turned: Vec[i64] = (0..n).map(|i| prices[(i + turn) % n]).collect();
+        let mut longer = prices.clone();
+        longer.push(100);
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, prices, money)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                value == money or (0 <= value and value <= money - 2),
+                answer(arm, turned, money) == value,
+                value == money or answer(arm, prices, money + more) == value + more,
+                answer(arm, longer, money) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

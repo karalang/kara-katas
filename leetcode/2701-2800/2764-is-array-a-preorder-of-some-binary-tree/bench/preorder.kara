@@ -1,0 +1,94 @@
+// LeetCode #2764: Is Array a Preorder of Some Binary Tree -- the bench
+// (preorder.kara): a stack of the nodes whose subtrees are still open,
+// each node closing every subtree above its parent.
+
+fn is_preorder(nodes: Vec[Vec[i64]]) -> bool {
+    let mut stack: Vec[i64] = Vec.new();
+    for node in nodes.iter() {
+        let (id, parent) = (node[0], node[1]);
+        while let Some(top) = stack.last() {
+            if top == parent {
+                break;
+            }
+            stack.pop();
+        }
+        if stack.is_empty() and parent != -1 {
+            return false;
+        }
+        stack.push(id);
+    }
+    true
+}
+
+// ---- the bench: 20 trees of 10^5, each answered 100 times ---------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// a random binary tree of n nodes, ids spread over 0 to 100000, listed in
+// a random preorder; then, half the time, two places swapped
+fn tree(n: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let shift = wide(mut seed) % 100001;
+    let ids: Vec[i64] = (0..n).map(|k| (k * 37 + shift) % 100001).collect();
+    let mut kids: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for k in 1..n {
+        let mut p = wide(mut seed) % k;
+        while kids[p].len() == 2 {
+            p = wide(mut seed) % k;
+        }
+        kids[p].push(k);
+    }
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    for p in 0..n {
+        for c in kids[p].iter() {
+            parent[c] = p;
+        }
+    }
+    let mut order: Vec[i64] = Vec.new();
+    let mut stack: Vec[i64] = [0].to_vec();
+    while let Some(u) = stack.pop() {
+        order.push(u);
+        let mut ks = kids[u].clone();
+        if ks.len() == 2 and next_random(mut seed) % 2 == 1 {
+            ks.swap(0, 1);
+        }
+        for c in ks.iter().rev() {
+            stack.push(c);
+        }
+    }
+    let mut nodes: Vec[Vec[i64]] = order
+        .iter()
+        .map(|u| [ids[u], if parent[u] >= 0 { ids[parent[u]] } else { -1 }].to_vec())
+        .collect();
+    if next_random(mut seed) % 2 == 1 and n > 1 {
+        let i = wide(mut seed) % n;
+        let j = wide(mut seed) % n;
+        nodes.swap(i, j);
+    }
+    nodes
+}
+
+fn main() {
+    let count = 20;
+    let rounds = 100;
+    let mut seed = 2764;
+    // trees of 10^5 nodes, LeetCode's most
+    let cases: Vec[Vec[Vec[i64]]] = (0..count).map(|_| tree(100000, mut seed)).collect();
+    let mut good = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (c, nodes) in cases.iter().enumerate() {
+            if is_preorder(nodes) {
+                good += 1;
+                check = (check * 31 + c + r) % 1000000007;
+            }
+        }
+    }
+    println(f"{count} trees of 100000, {rounds} rounds: {good} preorders, checksum {check}");
+}

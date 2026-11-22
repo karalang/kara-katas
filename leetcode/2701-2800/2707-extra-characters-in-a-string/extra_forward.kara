@@ -1,0 +1,91 @@
+// LeetCode #2707: Extra Characters in a String -- the forward arm. The
+// fewest extra characters in each prefix, front to back: its last
+// character left over, or a word that `ends_with` it taken whole from
+// where it starts. O(n * words * word length).
+
+fn min_extra_char(s: String, dictionary: Vec[String]) -> i64 {
+    let n = s.len();
+    let mut best: Vec[i64] = (0..n + 1).map(|i| i).collect();
+    for end in 1..n + 1 {
+        let prefix = s.slice(0, end);
+        best[end] = best[end - 1] + 1;
+        for word in dictionary.iter() {
+            let len = word.len();
+            if len <= end and prefix.ends_with(word) {
+                best[end] = best[end].min(best[end - len]);
+            }
+        }
+    }
+    best[n]
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(seed: mut ref i64, n: i64, letters: i64) -> String {
+    let mut word = String.new();
+    for _ in 0..n {
+        word.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+    }
+    word
+}
+
+// `count` random words, each kept only the first time it is drawn
+fn random_dictionary(seed: mut ref i64, count: i64, longest: i64, letters: i64) -> Vec[String] {
+    let mut words: Vec[String] = Vec.new();
+    for _ in 0..count {
+        let n = next_random(mut seed) % longest + 1;
+        let word = random_word(mut seed, n, letters);
+        if not words.contains(word) {
+            words.push(word);
+        }
+    }
+    words
+}
+
+fn main() {
+    // LeetCode's two examples; a letter the dictionary lacks; 50 a's as
+    // one word, and as words of two and three; 25 "ab"s against "ba";
+    // the alphabet twice over, cut to 50, against every other letter
+    println(f"{min_extra_char("leetscode", ["leet".to_string(), "code".to_string(), "leetcode".to_string()].to_vec())}");
+    println(f"{min_extra_char("sayhelloworld", ["hello".to_string(), "world".to_string()].to_vec())}");
+    println(f"{min_extra_char("a", ["b".to_string()].to_vec())}");
+    let fifty = "a".repeat(50);
+    println(f"{min_extra_char(fifty, [fifty.clone()].to_vec())}");
+    println(f"{min_extra_char(fifty, ["aa".to_string(), "aaa".to_string()].to_vec())}");
+    println(f"{min_extra_char("ab".repeat(25), ["ba".to_string()].to_vec())}");
+    let alphabet = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwx";
+    let every_other: Vec[String] = (0..13).map(|i| ((b'a' + (2 * i) as u8) as char).to_string()).collect();
+    println(f"{min_extra_char(alphabet, every_other)}");
+    // 1000 random cases of 1 to 50 letters from a, b and c against up to
+    // 50 words of 1 to 5 of them; then 1000 of any letters against 50
+    // words of 1 to 3
+    let mut seed = 2707;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 50 + 1;
+        let s = random_word(mut seed, n, 3);
+        let count = next_random(mut seed) % 50 + 1;
+        let dictionary = random_dictionary(mut seed, count, 5, 3);
+        let extra = min_extra_char(s, dictionary);
+        sum += extra;
+        check = (check * 31 + extra) % 1000000007;
+    }
+    println(f"1000 cases of 3 letters: extra characters sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 50 + 1;
+        let s = random_word(mut seed, n, 26);
+        let dictionary = random_dictionary(mut seed, 50, 3, 26);
+        let extra = min_extra_char(s, dictionary);
+        sum += extra;
+        check = (check * 31 + extra) % 1000000007;
+    }
+    println(f"1000 cases of 26 letters: extra characters sum to {sum}, checksum {check}");
+}

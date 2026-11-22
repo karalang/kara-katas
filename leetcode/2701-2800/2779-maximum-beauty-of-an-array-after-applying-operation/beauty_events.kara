@@ -1,0 +1,71 @@
+// LeetCode #2779: Maximum Beauty of an Array After Applying Operation --
+// the events arm. Each number's reach as two events, (x - k, +1) where
+// it starts and (x + k + 1, -1) past where it ends, sorted as pairs so an
+// end comes before a start at the same value; the most reaches open at
+// once is the beauty. O(n log n).
+
+fn maximum_beauty(nums: Vec[i64], k: i64) -> i64 {
+    let mut events: Vec[(i64, i64)] = Vec.new();
+    for x in nums.iter() {
+        events.push((x - k, 1));
+        events.push((x + k + 1, -1));
+    }
+    events.sort();
+    let mut open = 0;
+    let mut best = 0;
+    for (_, change) in events.iter() {
+        open += change;
+        best = best.max(open);
+    }
+    best
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{maximum_beauty([4, 6, 1, 2].to_vec(), 2)}");
+    println(f"{maximum_beauty([1, 1, 1, 1].to_vec(), 10)}");
+    // 10^5 numbers, LeetCode's most: all 0 with k = 0; 0 to 99999 with
+    // k = 0 and with k = 10^5; and spaced by 3 with k = 1
+    let n = 100000;
+    println(f"{maximum_beauty(Vec.filled(n, 0), 0)}");
+    let rising: Vec[i64] = (0..n).collect();
+    println(f"{maximum_beauty(rising, 0)}");
+    println(f"{maximum_beauty(rising, 100000)}");
+    let spaced: Vec[i64] = (0..n / 3).map(|i| 3 * i).collect();
+    println(f"{maximum_beauty(spaced, 1)}");
+    // 3000 random arrays of 1 to 12 numbers from 0 to 20, k from 0 to 5
+    let mut seed = 2779;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let m = next_random(mut seed) % 12 + 1;
+        let nums: Vec[i64] = (0..m).map(|_| next_random(mut seed) % 21).collect();
+        let k = next_random(mut seed) % 6;
+        let b = maximum_beauty(nums, k);
+        total += b;
+        check = (check * 31 + b) % 1000000007;
+    }
+    println(f"3000 small arrays: beauties sum to {total}, checksum {check}");
+    // 20 arrays of 10^5 numbers up to 10^5, k up to 1000
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..20 {
+        let nums: Vec[i64] = (0..n).map(|_| wide(mut seed) % 100001).collect();
+        let k = wide(mut seed) % 1001;
+        let b = maximum_beauty(nums, k);
+        total += b;
+        check = (check * 31 + b) % 1000000007;
+    }
+    println(f"20 arrays of 10^5: beauties sum to {total}, checksum {check}");
+}

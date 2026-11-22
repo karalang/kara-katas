@@ -1,0 +1,100 @@
+// LeetCode #2745: Construct the Longest New String -- the memo arm. Top
+// down over what is left and the last piece placed: "AA" may be followed
+// by "BB" only, "BB" by "AA" or "AB", "AB" by "AA" or "AB", and anything
+// may start. A `struct Builder` holds a memo over the four. O(x y z).
+
+enum Piece {
+    Aa,
+    Bb,
+    Ab,
+    Start,
+}
+
+struct Builder {
+    memo: Vec[i64],
+    y: i64,
+    z: i64,
+}
+
+impl Builder {
+    fn index(self, a: i64, b: i64, c: i64, last: Piece) -> i64 {
+        let k = match last {
+            Piece.Aa => 0,
+            Piece.Bb => 1,
+            Piece.Ab => 2,
+            Piece.Start => 3,
+        };
+        ((a * (self.y + 1) + b) * (self.z + 1) + c) * 4 + k
+    }
+
+    // the longest string the pieces left can add after `last`
+    fn longest(mut ref self, a: i64, b: i64, c: i64, last: Piece) -> i64 {
+        let at = self.index(a, b, c, last);
+        if self.memo[at] >= 0 {
+            return self.memo[at];
+        }
+        let can_aa = a > 0 and not match last { Piece.Aa => true, _ => false };
+        let can_bb = b > 0 and match last { Piece.Aa | Piece.Start => true, _ => false };
+        let can_ab = c > 0 and not match last { Piece.Aa => true, _ => false };
+        let mut best = 0;
+        if can_aa {
+            best = best.max(2 + self.longest(a - 1, b, c, Piece.Aa));
+        }
+        if can_bb {
+            best = best.max(2 + self.longest(a, b - 1, c, Piece.Bb));
+        }
+        if can_ab {
+            best = best.max(2 + self.longest(a, b, c - 1, Piece.Ab));
+        }
+        self.memo[at] = best;
+        best
+    }
+}
+
+fn longest_string(x: i64, y: i64, z: i64) -> i64 {
+    let mut builder = Builder { memo: Vec.filled((x + 1) * (y + 1) * (z + 1) * 4, -1), y, z };
+    builder.longest(x, y, z, Piece.Start)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{longest_string(2, 5, 1)}");
+    println(f"{longest_string(3, 2, 2)}");
+    // one of each; as many "AA" as "BB"; and LeetCode's largest counts
+    println(f"{longest_string(1, 1, 1)}");
+    println(f"{longest_string(7, 7, 3)}");
+    println(f"{longest_string(50, 50, 50)}");
+    // every count from 1 to 12 of each piece; then 100 random counts up to
+    // 50, LeetCode's most
+    let mut sum = 0;
+    let mut check = 0;
+    for x in 1..=12 {
+        for y in 1..=12 {
+            for z in 1..=12 {
+                let length = longest_string(x, y, z);
+                sum += length;
+                check = (check * 31 + length) % 1000000007;
+            }
+        }
+    }
+    println(f"1728 small counts: lengths sum to {sum}, checksum {check}");
+    let mut seed = 2745;
+    sum = 0;
+    check = 0;
+    for _ in 0..100 {
+        let x = next_random(mut seed) % 50 + 1;
+        let y = next_random(mut seed) % 50 + 1;
+        let z = next_random(mut seed) % 50 + 1;
+        let length = longest_string(x, y, z);
+        sum += length;
+        check = (check * 31 + length) % 1000000007;
+    }
+    println(f"100 counts up to 50: lengths sum to {sum}, checksum {check}");
+}

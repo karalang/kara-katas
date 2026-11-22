@@ -1,0 +1,325 @@
+// LeetCode #2767: Partition String Into Minimum Beautiful Substrings --
+// the differential. The five arms, against the statement read literally:
+// every choice of cuts among the n - 1 places between characters, as the
+// bits of a number, kept when every piece has no leading zero and equals
+// one of the powers of 5 written out in binary, and the fewest pieces
+// over those kept, or -1; no table. Every string of 1 to 8 digits; then
+// 1500 of powers of 5 joined while they fit in 12, half of them with one
+// place flipped; then 500 the same up to 15. Every case is drawn before
+// any arm answers; the literal reading is asked only up to 12 digits.
+//
+// P1  up to 12 digits, the answer is the literal reading's
+// P2  a 1 put at the end of a string that splits: at most one more piece
+// P3  the string written twice, when it splits: at most twice the pieces
+// P4  a 0 put at the front: -1
+// P5  -1 or from 1 to n, and -1 whenever the string starts with a 0
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(s: String) -> i64 {
+    let n = s.len();
+    let mut powers: Vec[String] = Vec.new();
+    let mut p = 1;
+    while p < 1 << 15 {
+        powers.push(f"{p:b}");
+        p *= 5;
+    }
+    let mut best = -1;
+    for cuts in 0..(1 << (n - 1)) {
+        let mut pieces = 0;
+        let mut start = 0;
+        let mut good = true;
+        for end in 1..=n {
+            if end == n or (cuts >> (end - 1)) & 1 == 1 {
+                let piece = s[start..end].to_string();
+                if not powers.contains(piece) {
+                    good = false;
+                }
+                pieces += 1;
+                start = end;
+            }
+        }
+        if good and (best == -1 or pieces < best) {
+            best = pieces;
+        }
+    }
+    best
+}
+
+
+// ---- star (beautiful.kara) ------------------------------------------
+
+fn star_is_power_of_five(v: i64) -> bool {
+    let mut v = v;
+    while v > 1 and v % 5 == 0 {
+        v /= 5;
+    }
+    v == 1
+}
+
+fn star_minimum_beautiful_substrings(s: String) -> i64 {
+    let n = s.len();
+    let mut best: Vec[i64] = Vec.filled(n + 1, -1);
+    best[0] = 0;
+    for i in 1..=n {
+        for j in 0..i {
+            if best[j] < 0 or s[j..j + 1] != "1" {
+                continue;
+            }
+            let value = i64.from_str_radix(s[j..i], 2).unwrap();
+            if star_is_power_of_five(value) and (best[i] < 0 or best[j] + 1 < best[i]) {
+                best[i] = best[j] + 1;
+            }
+        }
+    }
+    best[n]
+}
+
+
+// ---- search (beautiful_search.kara) ---------------------------------
+
+fn search_fewest(s: Str, from: i64) -> i64 {
+    if from == s.len() {
+        return 0;
+    }
+    if s[from..from + 1] == "0" {
+        return -1;
+    }
+    let mut best = -1;
+    let mut value = 0;
+    for to in from..s.len() {
+        value = value * 2 + if s[to..to + 1] == "1" { 1 } else { 0 };
+        let mut v = value;
+        while v % 5 == 0 {
+            v /= 5;
+        }
+        if v != 1 {
+            continue;
+        }
+        let rest = search_fewest(s, to + 1);
+        if rest >= 0 and (best < 0 or rest + 1 < best) {
+            best = rest + 1;
+        }
+    }
+    best
+}
+
+fn search_minimum_beautiful_substrings(s: String) -> i64 {
+    search_fewest(s, 0)
+}
+
+
+// ---- bfs (beautiful_bfs.kara) ---------------------------------------
+
+fn bfs_minimum_beautiful_substrings(s: String) -> i64 {
+    let powers = ["1", "101", "11001", "1111101", "1001110001", "110000110101", "11110100001001"];
+    let n = s.len();
+    let mut steps: Vec[i64] = Vec.filled(n + 1, -1);
+    steps[0] = 0;
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    queue.push_back(0);
+    while let Some(i) = queue.pop_front() {
+        for p in powers.iter() {
+            let j = i + p.len();
+            if j <= n and steps[j] < 0 and s[i..].starts_with(p) {
+                steps[j] = steps[i] + 1;
+                queue.push_back(j);
+            }
+        }
+    }
+    steps[n]
+}
+
+
+// ---- memo (beautiful_memo.kara) -------------------------------------
+
+fn memo_rest(bits: Vec[i64], from: i64, memo: mut ref Vec[Option[i64]]) -> i64 {
+    if from == bits.len() {
+        return 0;
+    }
+    if let Some(known) = memo[from] {
+        return known;
+    }
+    let power_of_five = |v: i64| {
+        let mut v = v;
+        while v > 1 and v % 5 == 0 {
+            v /= 5;
+        }
+        v == 1
+    };
+    let mut best = -1;
+    if bits[from] == 1 {
+        let mut value = 0;
+        for to in from..bits.len() {
+            value = value * 2 + bits[to];
+            if power_of_five(value) {
+                let after = memo_rest(bits, to + 1, mut memo);
+                if after >= 0 and (best < 0 or after + 1 < best) {
+                    best = after + 1;
+                }
+            }
+        }
+    }
+    memo[from] = Some(best);
+    best
+}
+
+fn memo_minimum_beautiful_substrings(s: String) -> i64 {
+    let bits: Vec[i64] = s.bytes().iter().map(|b| (b - b'0') as i64).collect();
+    let mut memo: Vec[Option[i64]] = Vec.filled(bits.len(), None);
+    memo_rest(bits, 0, mut memo)
+}
+
+
+// ---- solution (beautiful_solution.kara) -----------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_beautiful_substrings(s: String) -> i32 {
+        let s = s.bytes();
+        let n = s.len();
+        let mut dp = Vec.filled(n + 1, i32.MAX);
+        dp[0] = 0;
+        for i in 1..=n {
+            for j in 0..i {
+                if s[j] == b'0' or dp[j] == i32.MAX {
+                    continue;
+                }
+                let mut v: u32 = 0;
+                for k in j..i {
+                    v = v * 2 + (s[k] - b'0');
+                }
+                let mut x = v;
+                while x % 5 == 0 {
+                    x /= 5;
+                }
+                if x == 1 {
+                    dp[i] = dp[i].min(dp[j] + 1);
+                }
+            }
+        }
+        if dp[n] == i32.MAX { -1 } else { dp[n] }
+    }
+}
+
+fn solution_minimum_beautiful_substrings(s: String) -> i64 {
+    Solution.minimum_beautiful_substrings(s)
+}
+
+
+fn answer(arm: i64, s: String) -> i64 {
+    match arm {
+        0 => star_minimum_beautiful_substrings(s),
+        1 => search_minimum_beautiful_substrings(s),
+        2 => bfs_minimum_beautiful_substrings(s),
+        3 => memo_minimum_beautiful_substrings(s),
+        _ => solution_minimum_beautiful_substrings(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn binary(v: i64, length: i64) -> String {
+    (0..length).map(|k| if (v >> (length - 1 - k)) & 1 == 1 { '1' } else { '0' }).collect()
+}
+
+// powers of 5 joined while they fit in `most` digits, a power longer than
+// that drawn again, then half the time one place flipped
+fn joined(most: i64, seed: mut ref i64) -> String {
+    let powers = ["1", "101", "11001", "1111101", "1001110001", "110000110101", "11110100001001"];
+    let mut s = String.new();
+    loop {
+        let p = ref powers[next_random(mut seed) % 7];
+        if p.len() > most {
+            continue;
+        }
+        if s.len() + p.len() > most {
+            break;
+        }
+        s.push_str(p);
+    }
+    if next_random(mut seed) % 2 == 1 {
+        let k = next_random(mut seed) % s.len();
+        let flipped = if s[k..k + 1] == "1" { "0" } else { "1" };
+        s = f"{s[..k]}{flipped}{s[k + 1..]}";
+    }
+    s
+}
+
+fn main() {
+    let names = ["star", "search", "bfs", "memo", "solution"];
+    let mut seed = 2767;
+    let mut cases: Vec[String] = Vec.new();
+    for length in 1..=8 {
+        for v in 0..(1 << length) {
+            cases.push(binary(v, length));
+        }
+    }
+    for c in 0..2000 {
+        cases.push(joined(if c < 1500 { 12 } else { 15 }, mut seed));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, s) in cases.iter().enumerate() {
+        let n = s.len();
+        let small = n <= 12;
+        let want = if small { literal(s) } else { 0 };
+        check = (check * 31 + want + 2) % 1000000007;
+        let one_more = f"{s}1";
+        let twice = f"{s}{s}";
+        let zero_first = f"0{s}";
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, s)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let splits = value >= 0;
+            let verdicts = [
+                not small or value == want,
+                not splits or n + 1 > 15 or {
+                    let after = answer(arm, one_more);
+                    after >= 1 and after <= value + 1
+                },
+                not splits or 2 * n > 15 or {
+                    let after = answer(arm, twice);
+                    after >= 1 and after <= 2 * value
+                },
+                n + 1 > 15 or answer(arm, zero_first) == -1,
+                (value == -1 or 1 <= value and value <= n) and (s[0..1] == "1" or value == -1),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {s}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

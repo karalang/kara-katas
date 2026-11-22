@@ -1,0 +1,186 @@
+// LeetCode #2828: Check if a String Is an Acronym of Words -- the
+// differential. The five arms, against the statement read literally:
+// the first character of each word, concatenated in order, a slice at a
+// time, and that string compared with s. 3000 random cases of 1 to 100
+// words of 1 to 10 letters from 'a' to 'c', s their acronym, then one
+// letter changed, one cut or one added at random, or left alone; all
+// drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the words and s both reversed: the same answer
+// P3  true: s with a letter added at the end is false
+// P4  every word cut to its first letter and given the tail "zz": the
+//     same answer
+// P5  the words against their own acronym: true
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(words: Vec[String], s: Str) -> bool {
+    let mut formed = String.new();
+    for w in words.iter() {
+        formed = formed + w[..1].to_string();
+    }
+    formed == s
+}
+
+
+// ---- star (acronym.kara) --------------------------------------------
+
+fn star_is_acronym(words: Vec[String], s: Str) -> bool {
+    words.len() == s.len() and words.iter().zip(s.bytes().iter()).all(|(w, c)| w.bytes()[0] == c)
+}
+
+
+// ---- collect (acronym_collect.kara) ---------------------------------
+
+fn collect_is_acronym(words: Vec[String], s: Str) -> bool {
+    let initials: String = words.iter().map(|w| w.chars().next().unwrap()).collect();
+    initials == s
+}
+
+
+// ---- index (acronym_index.kara) -------------------------------------
+
+fn index_is_acronym(words: Vec[String], s: Str) -> bool {
+    let b = s.bytes();
+    let mut i = 0;
+    while i < b.len() and i < words.len() {
+        if words[i].bytes()[0] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    i == b.len() and i == words.len()
+}
+
+
+// ---- prefix (acronym_prefix.kara) -----------------------------------
+
+fn prefix_is_acronym(words: Vec[String], s: Str) -> bool {
+    let mut rest = s;
+    for w in words.iter() {
+        if rest.is_empty() or not w.starts_with(rest[..1]) {
+            return false;
+        }
+        rest = rest[1..];
+    }
+    rest.is_empty()
+}
+
+
+// ---- solution (acronym_solution.kara) -------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn is_acronym(words: Vec[String], s: String) -> bool {
+        String.from_iter(words.iter().map(|w| w.chars().next().unwrap())) == s
+    }
+}
+
+fn solution_is_acronym(words: Vec[String], s: Str) -> bool {
+    Solution.is_acronym(words, s.to_string())
+}
+
+
+// ---- the checks ------------------------------------------------------------
+
+fn answer(arm: i64, words: Vec[String], s: Str) -> bool {
+    match arm {
+        0 => star_is_acronym(words, s),
+        1 => collect_is_acronym(words, s),
+        2 => index_is_acronym(words, s),
+        3 => prefix_is_acronym(words, s),
+        _ => solution_is_acronym(words, s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn word(seed: mut ref i64) -> String {
+    let n = next_random(mut seed) % 10 + 1;
+    let codes: Vec[u8] = (0..n).map(|_| (97 + next_random(mut seed) % 3) as u8).collect();
+    String.from_utf8(codes).unwrap()
+}
+
+fn main() {
+    let names = ["star", "collect", "index", "prefix", "solution"];
+    let mut seed = 2828;
+    let mut cases: Vec[(Vec[String], String)] = Vec.new();
+    for _ in 0..3000 {
+        let count = next_random(mut seed) % 100 + 1;
+        let words: Vec[String] = (0..count).map(|_| word(mut seed)).collect();
+        let mut s: Vec[u8] = words.iter().map(|w| w.bytes()[0]).collect();
+        let at = next_random(mut seed) % s.len();
+        match next_random(mut seed) % 4 {
+            0 => s[at] = (97 + next_random(mut seed) % 3) as u8,
+            1 if s.len() > 1 => {
+                s.remove(at);
+            }
+            2 => s.insert(at, b'a'),
+            _ => {}
+        }
+        cases.push((words, String.from_utf8(s).unwrap()));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut yes = 0;
+    for (c, (words, s)) in cases.iter().enumerate() {
+        let want = literal(words, s);
+        check = (check * 31 + if want { 2 } else { 1 }) % 1000000007;
+        if want {
+            yes += 1;
+        }
+        let back_words: Vec[String] = words.iter().rev().map(|w| w.clone()).collect();
+        let back_s: String = s.chars().rev().collect();
+        let longer = f"{s}a";
+        let tailed: Vec[String] = words.iter().map(|w| f"{w[..1]}zz").collect();
+        let own: String = words.iter().map(|w| w.chars().next().unwrap()).collect();
+        let got: Vec[bool] = (0..5).map(|arm| answer(arm, words, s)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == want,
+                answer(arm, back_words, back_s) == value,
+                not value or not answer(arm, words, longer),
+                answer(arm, tailed, s) == value,
+                answer(arm, words, own),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {words} / {s}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases, {yes} true: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

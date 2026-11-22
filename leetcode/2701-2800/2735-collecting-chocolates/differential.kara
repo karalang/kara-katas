@@ -1,0 +1,249 @@
+// LeetCode #2735: Collecting Chocolates -- the differential. The five
+// arms, against the statement read literally: a shortest path over the
+// states (types bought, turns taken mod n), where a step buys the
+// chocolate at an index for its price, or turns every chocolate on for
+// x. No windows of prices. 1000 random cases of 1 to 6 chocolates priced
+// up to 20 with turns up to 20; then 300 of up to 60 priced up to 10^9.
+// Every case is drawn before any arm answers.
+//
+// P1  up to 6 chocolates, the answer is the literal reading's
+// P2  the prices rotated by 0 to n - 1 places: the same answer
+// P3  the prices reversed: the same answer
+// P4  the answer is at least n times the cheapest price and at most the
+//     sum of the prices
+// P5  turns dearer by d: an answer no smaller, and at most (n - 1) d more
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- star (chocolates.kara) -----------------------------------------
+
+fn star_min_cost(nums: Vec[i64], x: i64) -> i64 {
+    let n = nums.len();
+    let mut cheapest = nums.clone();
+    let mut best: i64 = nums.iter().sum();
+    for k in 1..n {
+        for t in 0..n {
+            cheapest[t] = cheapest[t].min(nums[(t - k + n) % n]);
+        }
+        let total: i64 = cheapest.iter().sum();
+        best = best.min(k * x + total);
+    }
+    best
+}
+
+
+// ---- table (chocolates_table.kara) ----------------------------------
+
+fn table_min_cost(nums: Vec[i64], x: i64) -> i64 {
+    let n = nums.len();
+    let mut low: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, 0));
+    for t in 0..n {
+        low[t][0] = nums[t];
+        for k in 1..n {
+            low[t][k] = low[t][k - 1].min(nums[(t + n - k) % n]);
+        }
+    }
+    (0..n).map(|k| k * x + (0..n).map(|t| low[t][k]).sum()).min().unwrap()
+}
+
+
+// ---- sparse (chocolates_sparse.kara) --------------------------------
+
+fn sparse_min_cost(nums: Vec[i64], x: i64) -> i64 {
+    let n = nums.len();
+    let mut twice = nums.clone();
+    twice.extend(nums.iter());
+    let mut table: Vec[Vec[i64]] = [twice].to_vec();
+    let mut width = 1;
+    while 2 * width <= 2 * n {
+        let last = table.len() - 1;
+        let row: Vec[i64] = (0..2 * n - 2 * width + 1).map(|i| table[last][i].min(table[last][i + width])).collect();
+        table.push(row);
+        width *= 2;
+    }
+    let mut best = i64.MAX;
+    for k in 0..n {
+        let length = k + 1;
+        let mut level = 0;
+        while (1 << (level + 1)) <= length {
+            level += 1;
+        }
+        let mut total = k * x;
+        for t in 0..n {
+            let end = t + n + 1;
+            let start = end - length;
+            total += table[level][start].min(table[level][end - (1 << level)]);
+        }
+        best = best.min(total);
+    }
+    best
+}
+
+
+// ---- shift (chocolates_shift.kara) ----------------------------------
+
+fn shift_min_cost(nums: Vec[i64], x: i64) -> i64 {
+    let n = nums.len();
+    let mut shifted = nums.clone();
+    let mut cheapest = nums.clone();
+    let mut best: i64 = nums.iter().sum();
+    for k in 1..n {
+        shifted.rotate_right(1);
+        cheapest = cheapest.iter().zip(shifted.iter()).map(|(a, b)| a.min(b)).collect();
+        best = best.min(k * x + cheapest.iter().sum());
+    }
+    best
+}
+
+
+// ---- solution (chocolates_solution.kara) ----------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_cost(nums: Vec[i32], x: i32) -> i64 {
+        let n = nums.len();
+        let mut f: Vec[i64] = nums.iter().map(|v| v as i64).collect();
+        let mut ans: i64 = f.iter().sum();
+        for k in 1..n {
+            for i in 0..n {
+                f[i] = f[i].min(nums[(i + k) % n] as i64);
+            }
+            ans = ans.min(f.iter().sum() + k * x);
+        }
+        ans
+    }
+}
+
+fn solution_min_cost(nums: Vec[i64], x: i64) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|v| v as i32).collect();
+    Solution.min_cost(nums, x as i32)
+}
+
+
+// ---- the statement read literally ------------------------------------------
+
+// Dijkstra over (types bought as a mask, turns taken mod n): buying the
+// chocolate at index i after r turns gets type (i + r) mod n for nums[i];
+// a turn costs x
+fn literal(nums: Vec[i64], x: i64) -> i64 {
+    let n = nums.len();
+    let full = (1 << n) - 1;
+    let mut dist: Vec[i64] = Vec.filled((1 << n) * n, i64.MAX);
+    let mut queue: PriorityQueue[(i64, i64, i64)] = PriorityQueue.new();
+    dist[0] = 0;
+    queue.push((0, 0, 0));
+    while let Some((d, mask, r)) = queue.pop() {
+        if d > dist[mask * n + r] {
+            continue;
+        }
+        if mask == full {
+            return d;
+        }
+        for i in 0..n {
+            let kind = (i + r) % n;
+            let next = mask | (1 << kind);
+            if next != mask and d + nums[i] < dist[next * n + r] {
+                dist[next * n + r] = d + nums[i];
+                queue.push((d + nums[i], next, r));
+            }
+        }
+        let turned = (r + 1) % n;
+        if d + x < dist[mask * n + turned] {
+            dist[mask * n + turned] = d + x;
+            queue.push((d + x, mask, turned));
+        }
+    }
+    -1
+}
+
+fn answer(arm: i64, nums: Vec[i64], x: i64) -> i64 {
+    match arm {
+        0 => star_min_cost(nums, x),
+        1 => table_min_cost(nums, x),
+        2 => sparse_min_cost(nums, x),
+        3 => shift_min_cost(nums, x),
+        _ => solution_min_cost(nums, x),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_up_to(seed: mut ref i64, most: i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1
+}
+
+fn main() {
+    let names = ["star", "table", "sparse", "shift", "solution"];
+    let mut seed = 2735;
+    // (the prices, the turn's cost, a rotation, a rise in the turn's cost)
+    let mut cases: Vec[(Vec[i64], i64, i64, i64)] = Vec.new();
+    for c in 0..1300 {
+        let (n, most) = if c < 1000 { (next_random(mut seed) % 6 + 1, 20) } else { (next_random(mut seed) % 60 + 1, 1000000000) };
+        let nums: Vec[i64] = (0..n).map(|_| random_up_to(mut seed, most)).collect();
+        let x = random_up_to(mut seed, most);
+        let turn = next_random(mut seed) % n;
+        let rise = random_up_to(mut seed, most);
+        cases.push((nums, x, turn, rise));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (nums, x, turn, rise)) in cases.iter().enumerate() {
+        let small = c < 1000;
+        let truth = if small { literal(nums, x) } else { -1 };
+        if small {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let n = nums.len();
+        let mut rotated = nums.clone();
+        rotated.rotate_left(turn);
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let low = nums.iter().min().unwrap();
+        let total: i64 = nums.iter().sum();
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums, x)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let dearer = answer(arm, nums, x + rise);
+            let verdicts = [
+                not small or value == truth,
+                answer(arm, rotated, x) == value,
+                answer(arm, reversed, x) == value,
+                n * low <= value and value <= total,
+                value <= dearer and dearer <= value + (n - 1) * rise,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

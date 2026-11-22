@@ -1,0 +1,74 @@
+// LeetCode #2782: Number of Unique Categories -- by first elements: an
+// element opens a new category when no earlier element shares its
+// category, each element asked against every one before it until one
+// does. At most n(n - 1) / 2 questions.
+
+fn number_of_categories(n: i64, handler: mut ref CategoryHandler) -> i64 {
+    let mut categories = 0;
+    for i in 0..n {
+        let mut seen = false;
+        for j in 0..i {
+            if handler.have_same_category(j, i) {
+                seen = true;
+                break;
+            }
+        }
+        if not seen {
+            categories += 1;
+        }
+    }
+    categories
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+// LeetCode's interactive judge: each element's category, hidden from the
+// solution, which may only ask whether two elements share one; the
+// questions asked are counted
+struct CategoryHandler {
+    categories: Vec[i64],
+    asked: i64,
+}
+
+impl CategoryHandler {
+    fn new(categories: own Vec[i64]) -> CategoryHandler {
+        CategoryHandler { categories: categories, asked: 0 }
+    }
+
+    fn have_same_category(mut ref self, a: i64, b: i64) -> bool {
+        self.asked += 1;
+        let n = self.categories.len();
+        a >= 0 and b >= 0 and a < n and b < n and self.categories[a] == self.categories[b]
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples; 100 elements, LeetCode's most, all of one
+    // category, and each of its own
+    println(f"{number_of_categories(6, mut CategoryHandler.new([1, 1, 2, 2, 3, 3]))}");
+    println(f"{number_of_categories(5, mut CategoryHandler.new([1, 2, 3, 4, 5]))}");
+    println(f"{number_of_categories(3, mut CategoryHandler.new([1, 1, 1]))}");
+    println(f"{number_of_categories(100, mut CategoryHandler.new(Vec.filled(100, 7)))}");
+    println(f"{number_of_categories(100, mut CategoryHandler.new((0..100).collect()))}");
+    // 3000 random sets of 1 to 12 elements from 1 to 4 categories; then
+    // 300 of 100 elements from up to 100 categories
+    let mut seed = 2782;
+    for (count, most, kinds) in [(3000, 12, 4), (300, 100, 100)].iter() {
+        let mut sum = 0;
+        let mut check = 0;
+        for _ in 0..count {
+            let n = if most == 12 { next_random(mut seed) % 12 + 1 } else { most };
+            let k = next_random(mut seed) % kinds + 1;
+            let categories: Vec[i64] = (0..n).map(|_| next_random(mut seed) % k).collect();
+            let a = number_of_categories(n, mut CategoryHandler.new(categories));
+            sum += a;
+            check = (check * 31 + a) % 1000000007;
+        }
+        println(f"{count} sets of up to {most}: categories sum to {sum}, checksum {check}");
+    }
+}

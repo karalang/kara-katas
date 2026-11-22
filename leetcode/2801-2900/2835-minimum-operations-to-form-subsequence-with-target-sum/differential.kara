@@ -1,0 +1,347 @@
+// LeetCode #2835: Minimum Operations to Form Subsequence With Target Sum
+// -- the differential. The five arms, against the statement read
+// literally: a breadth-first search over the arrays the operations can
+// make, each a count of every size, from no operation up, until one
+// holds a subsequence summing to the target, found by a subset-sum
+// bitset. 2000 random arrays of 1 to 5 powers up to 2^3 with targets up
+// to 24, then 50 of up to 1000 powers up to 2^30 with targets below
+// 2^31. Every case is drawn before any arm answers; the literal reading
+// is asked only of the first 2000.
+//
+// P1  up to 5 powers of at most 8, the answer is the literal reading's
+// P2  the powers reversed: the same answer
+// P3  every power and the target doubled: the same answer
+// P4  the target's own bits added as powers: no operation
+// P5  -1 exactly when the powers sum to less than the target
+// P6  each arm agrees with at least three of the other four
+
+fn reaches(count: Vec[i64], target: i64) -> bool {
+    // the sums some subsequence makes, as bits
+    let mut sums = 1;
+    for b in 0..4 {
+        for _ in 0..count[b] {
+            sums = sums | (sums << (1 << b));
+        }
+    }
+    (sums >> target) & 1 == 1
+}
+
+fn literal(nums: Vec[i64], target: i64) -> i64 {
+    if nums.iter().sum() < target {
+        return -1;
+    }
+    let mut start: Vec[i64] = Vec.filled(4, 0);
+    for x in nums.iter() {
+        start[x.trailing_zeros()] += 1;
+    }
+    let key = |c: Vec[i64]| c[0] + 64 * c[1] + 4096 * c[2] + 262144 * c[3];
+    let mut seen: Set[i64] = Set.new();
+    seen.insert(key(start));
+    let mut layer: Vec[Vec[i64]] = [start];
+    let mut ops = 0;
+    loop {
+        if layer.iter().any(|c| reaches(c, target)) {
+            return ops;
+        }
+        let mut next: Vec[Vec[i64]] = Vec.new();
+        for c in layer.iter() {
+            for b in 1..4 {
+                if c[b] > 0 {
+                    let mut d = c.clone();
+                    d[b] -= 1;
+                    d[b - 1] += 2;
+                    if seen.insert(key(d)) {
+                        next.push(d);
+                    }
+                }
+            }
+        }
+        layer = next;
+        ops += 1;
+    }
+}
+
+
+// ---- star (ops.kara) ------------------------------------------------
+
+fn star_min_operations(nums: Vec[i64], target: i64) -> i64 {
+    if nums.iter().sum() < target {
+        return -1;
+    }
+    let mut count: Vec[i64] = Vec.filled(32, 0);
+    for x in nums.iter() {
+        count[x.trailing_zeros()] += 1;
+    }
+    let mut ops = 0;
+    for i in 0..31 {
+        if (target >> i) & 1 == 1 {
+            if count[i] > 0 {
+                count[i] -= 1;
+            } else {
+                let mut j = i + 1;
+                while count[j] == 0 {
+                    j += 1;
+                }
+                ops += j - i;
+                count[j] -= 1;
+                for k in i..j {
+                    count[k] += 1;
+                }
+            }
+        }
+        count[i + 1] += count[i] / 2;
+    }
+    ops
+}
+
+
+// ---- heap (ops_heap.kara) -------------------------------------------
+
+fn heap_min_operations(nums: Vec[i64], target: i64) -> i64 {
+    let mut total = nums.iter().sum();
+    if total < target {
+        return -1;
+    }
+    let mut heap: PriorityQueue[i64] = PriorityQueue.max_first();
+    for x in nums.iter() {
+        heap.push(x);
+    }
+    let mut left = target;
+    let mut ops = 0;
+    while left > 0 {
+        let x = heap.pop().unwrap();
+        if x <= left {
+            left -= x;
+            total -= x;
+        } else if total - x >= left {
+            total -= x;
+        } else {
+            heap.push(x / 2);
+            heap.push(x / 2);
+            ops += 1;
+        }
+    }
+    ops
+}
+
+
+// ---- buckets (ops_buckets.kara) -------------------------------------
+
+fn buckets_min_operations(nums: Vec[i64], target: i64) -> i64 {
+    let mut total = nums.iter().sum();
+    if total < target {
+        return -1;
+    }
+    let mut count: Vec[i64] = Vec.filled(31, 0);
+    for x in nums.iter() {
+        count[x.trailing_zeros()] += 1;
+    }
+    let mut left = target;
+    let mut ops = 0;
+    for b in (0..31).rev() {
+        let x = 1 << b;
+        // taken: as many as fit in what is left
+        let take = count[b].min(left / x);
+        left -= take * x;
+        total -= take * x;
+        count[b] -= take;
+        // thrown away: as many as the rest can do without
+        let spare = count[b].min((total - left) / x);
+        total -= spare * x;
+        count[b] -= spare;
+        // split: any one still here is needed in halves
+        if count[b] > 0 {
+            ops += count[b];
+            count[b - 1] += 2 * count[b];
+            count[b] = 0;
+        }
+    }
+    ops
+}
+
+
+// ---- carry (ops_carry.kara) -----------------------------------------
+
+fn carry_settle(count: own Vec[i64], bit: i64, target: i64) -> i64 {
+    if bit == 31 {
+        return 0;
+    }
+    let mut count = count;
+    let mut ops = 0;
+    if (target >> bit) & 1 == 1 {
+        if count[bit] > 0 {
+            count[bit] -= 1;
+        } else {
+            let mut j = bit + 1;
+            while count[j] == 0 {
+                j += 1;
+            }
+            ops = j - bit;
+            count[j] -= 1;
+            for k in bit..j {
+                count[k] += 1;
+            }
+        }
+    }
+    count[bit + 1] += count[bit] / 2;
+    ops + carry_settle(count, bit + 1, target)
+}
+
+fn carry_min_operations(nums: Vec[i64], target: i64) -> i64 {
+    if nums.iter().sum() < target {
+        return -1;
+    }
+    let mut count: Vec[i64] = Vec.filled(32, 0);
+    for x in nums.iter() {
+        let mut b = 0;
+        while (1 << b) < x {
+            b += 1;
+        }
+        count[b] += 1;
+    }
+    carry_settle(count, 0, target)
+}
+
+
+// ---- solution (ops_solution.kara) -----------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_operations(nums: Vec[i32], target: i32) -> i32 {
+        let total: i64 = nums.iter().map(|x| x as i64).sum();
+        if total < target {
+            return -1;
+        }
+        let mut cnt = [0; 32];
+        for x in ref nums {
+            cnt[x.trailing_zeros() as usize] += 1;
+        }
+        let mut ans: i32 = 0;
+        let mut i = 0;
+        while i < 31 {
+            if (target >> i) & 1 == 1 {
+                if cnt[i] > 0 {
+                    cnt[i] -= 1;
+                } else {
+                    let mut j = i + 1;
+                    while cnt[j] == 0 {
+                        j += 1;
+                    }
+                    ans += (j - i) as i32;
+                    cnt[j] -= 1;
+                    for k in i..j {
+                        cnt[k] += 1;
+                    }
+                }
+            }
+            cnt[i + 1] += cnt[i] / 2;
+            i += 1;
+        }
+        ans
+    }
+}
+
+fn solution_min_operations(nums: Vec[i64], target: i64) -> i64 {
+    Solution.min_operations(nums.iter().map(|v| v as i32).collect(), target as i32)
+}
+
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64], target: i64) -> i64 {
+    match arm {
+        0 => star_min_operations(nums, target),
+        1 => heap_min_operations(nums, target),
+        2 => buckets_min_operations(nums, target),
+        3 => carry_min_operations(nums, target),
+        _ => solution_min_operations(nums, target),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn powers(n: i64, top: i64, seed: mut ref i64) -> Vec[i64] {
+    (0..n).map(|_| 1 << (next_random(mut seed) % (top + 1))).collect()
+}
+
+fn main() {
+    let names = ["star", "heap", "buckets", "carry", "solution"];
+    let mut seed = 2835;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..2050 {
+        if c < 2000 {
+            let n = next_random(mut seed) % 5 + 1;
+            let nums = powers(n, 3, mut seed);
+            cases.push((nums, next_random(mut seed) % 24 + 1));
+        } else {
+            let n = next_random(mut seed) % 1000 + 1;
+            let nums = powers(n, 29, mut seed);
+            cases.push((nums, wide(mut seed) % 1073741823 + 1));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (nums, target)) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(nums, target) } else { 0 };
+        check = (check * 31 + want + 1) % 1000000007;
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let doubled: Vec[i64] = nums.iter().map(|x| 2 * x).collect();
+        let mut with_bits = nums.clone();
+        for b in 0..31 {
+            if (target >> b) & 1 == 1 {
+                with_bits.push(1 << b);
+            }
+        }
+        let short = nums.iter().sum() < target;
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums, target)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == want,
+                answer(arm, reversed, target) == value,
+                answer(arm, doubled, 2 * target) == value,
+                answer(arm, with_bits, target) == 0,
+                (value == -1) == short,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums} target {target}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

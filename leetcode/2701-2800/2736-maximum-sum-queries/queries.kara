@@ -1,0 +1,89 @@
+// LeetCode #2736: Maximum Sum Queries -- the ★ arm. Offline: the pairs
+// sorted by nums1 falling and the queries by x falling, so each query
+// sees exactly the pairs with nums1 >= x let in before it. The pairs let
+// in are kept on a stack with nums2 rising and sums falling: a new pair
+// whose nums2 is no more than the top's is beaten by the top (which has
+// at least its nums1 too) and dropped; otherwise it pops every top whose
+// sum it reaches, and goes on. A query's answer is the sum of the first
+// entry with nums2 >= y, found by binary search. O((n + q) log(n + q)).
+
+fn maximum_sum_queries(nums1: Vec[i64], nums2: Vec[i64], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let n = nums1.len();
+    let mut pairs: Vec[(i64, i64)] = (0..n).map(|i| (nums1[i], nums2[i])).collect();
+    pairs.sort_by(|a, b| b.0.cmp(a.0));
+    let mut order: Vec[i64] = (0..queries.len()).collect();
+    order.sort_by(|a, b| queries[b][0].cmp(queries[a][0]));
+    let mut answer: Vec[i64] = Vec.filled(queries.len(), -1);
+    // (nums2, sum), nums2 rising and sum falling from the bottom
+    let mut stack: Vec[(i64, i64)] = Vec.new();
+    let mut j = 0;
+    for q in order.iter() {
+        let x = queries[q][0];
+        let y = queries[q][1];
+        while j < n and pairs[j].0 >= x {
+            let (a, b) = pairs[j];
+            j += 1;
+            if stack.len() > 0 and stack[stack.len() - 1].0 >= b {
+                continue;
+            }
+            while stack.len() > 0 and stack[stack.len() - 1].1 <= a + b {
+                stack.pop();
+            }
+            stack.push((b, a + b));
+        }
+        let mut low = 0;
+        let mut high = stack.len();
+        while low < high {
+            let middle = (low + high) / 2;
+            if stack[middle].0 >= y {
+                high = middle;
+            } else {
+                low = middle + 1;
+            }
+        }
+        if low < stack.len() {
+            answer[q] = stack[low].1;
+        }
+    }
+    answer
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a number from 1 to most, most up to 10^9
+fn random_up_to(seed: mut ref i64, most: i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{maximum_sum_queries([4, 3, 1, 2].to_vec(), [2, 4, 9, 5].to_vec(), [[4, 1].to_vec(), [1, 3].to_vec(), [2, 5].to_vec()].to_vec())}");
+    println(f"{maximum_sum_queries([3, 2, 5].to_vec(), [2, 3, 4].to_vec(), [[4, 4].to_vec(), [3, 2].to_vec(), [1, 1].to_vec()].to_vec())}");
+    println(f"{maximum_sum_queries([2, 1].to_vec(), [2, 3].to_vec(), [[3, 3].to_vec()].to_vec())}");
+    // 1000 random cases of 1 to 20 pairs and queries up to 30; then 10 of
+    // 2000 pairs and 2000 queries up to 10^9
+    let mut seed = 2736;
+    let mut sum = 0;
+    let mut check = 0;
+    for c in 0..1010 {
+        let (n, q, most) = if c < 1000 { (next_random(mut seed) % 20 + 1, next_random(mut seed) % 20 + 1, 30) } else { (2000, 2000, 1000000000) };
+        let nums1: Vec[i64] = (0..n).map(|_| random_up_to(mut seed, most)).collect();
+        let nums2: Vec[i64] = (0..n).map(|_| random_up_to(mut seed, most)).collect();
+        let queries: Vec[Vec[i64]] = (0..q).map(|_| [random_up_to(mut seed, most), random_up_to(mut seed, most)].to_vec()).collect();
+        for best in maximum_sum_queries(nums1, nums2, queries).iter() {
+            sum += best;
+            check = (check * 31 + best + 1) % 1000000007;
+        }
+        if c == 999 {
+            println(f"1000 small cases: answers sum to {sum}, checksum {check}");
+            sum = 0;
+            check = 0;
+        }
+    }
+    println(f"10 cases of 2000 pairs: answers sum to {sum}, checksum {check}");
+}

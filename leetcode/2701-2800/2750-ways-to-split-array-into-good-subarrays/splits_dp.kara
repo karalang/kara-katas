@@ -1,0 +1,75 @@
+// LeetCode #2750: Ways to Split Array Into Good Subarrays -- the dp arm.
+// `ends[i]`, the ways to split the first i numbers into good pieces;
+// the last piece runs from some cut j to i and holds one 1, so j lies
+// after the 1 before the last and at or before the last 1, a range of
+// cuts summed from a prefix sum of `ends`. O(n).
+
+const MOD: i64 = 1000000007;
+
+fn number_of_good_subarray_splits(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut ends: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut prefix: Vec[i64] = Vec.filled(n + 2, 0);
+    ends[0] = 1;
+    prefix[1] = 1;
+    // the positions of the last two 1s among the first i numbers
+    let mut last = -1;
+    let mut before = -1;
+    for i in 1..=n {
+        if nums[i - 1] == 1 {
+            before = last;
+            last = i - 1;
+        }
+        if last >= 0 {
+            // cuts j from before + 1 to last
+            ends[i] = (prefix[last + 1] - prefix[before + 1] + MOD) % MOD;
+        }
+        prefix[i + 1] = (prefix[i] + ends[i]) % MOD;
+    }
+    ends[n]
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n numbers, each a 1 with chance `percent` in 100
+fn random_bits(seed: mut ref i64, n: i64, percent: i64) -> Vec[i64] {
+    (0..n).map(|_| if next_random(mut seed) % 100 < percent { 1 } else { 0 }).collect()
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{number_of_good_subarray_splits([0, 1, 0, 0, 1].to_vec())}");
+    println(f"{number_of_good_subarray_splits([0, 1, 0].to_vec())}");
+    // no 1 at all; 10^5 ones, LeetCode's most; and 10^5 of 1, 0 by turns
+    println(f"{number_of_good_subarray_splits(Vec.filled(10, 0))}");
+    println(f"{number_of_good_subarray_splits(Vec.filled(100000, 1))}");
+    let turns: Vec[i64] = (0..100000).map(|i| 1 - i % 2).collect();
+    println(f"{number_of_good_subarray_splits(turns)}");
+    // 3000 random arrays of 1 to 20 numbers; then 20 of 10^5, each with
+    // its own share of ones
+    let mut seed = 2750;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 20 + 1;
+        let percent = next_random(mut seed) % 100;
+        let ways = number_of_good_subarray_splits(random_bits(mut seed, n, percent));
+        sum += ways;
+        check = (check * 31 + ways) % 1000000007;
+    }
+    println(f"3000 small arrays: ways sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for _ in 0..20 {
+        let percent = next_random(mut seed) % 30 + 1;
+        let ways = number_of_good_subarray_splits(random_bits(mut seed, 100000, percent));
+        sum += ways;
+        check = (check * 31 + ways) % 1000000007;
+    }
+    println(f"20 arrays of 100000: ways sum to {sum}, checksum {check}");
+}

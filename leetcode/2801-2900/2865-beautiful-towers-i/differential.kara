@@ -1,0 +1,269 @@
+// LeetCode #2865: Beautiful Towers I -- the differential. The five arms,
+// against the statement read literally: every way to give each tower a
+// height from 1 to its most, kept when the heights rise to a peak and
+// then fall, the largest sum taken. 2000 random arrays of 1 to 6 towers
+// of most 1 to 4, then 50 of up to 300, every other one up to 10^9 and
+// one in four sorted, all drawn before any arm answers; the literal
+// reading is asked only of the first 2000.
+//
+// P1  up to 6 towers, the answer is the literal reading's
+// P2  the towers reversed: the same answer
+// P3  every most doubled: twice the answer
+// P4  a tower of most 1 added at the end: one more
+// P5  from max + (n - 1) * min to the sum, and the sum exactly when the
+//     mosts already make a mountain
+// P6  each arm agrees with at least three of the other four
+
+fn mountain(heights: Vec[i64]) -> bool {
+    let mut fallen = false;
+    for i in 1..heights.len() {
+        if heights[i] < heights[i - 1] {
+            fallen = true;
+        } else if heights[i] > heights[i - 1] and fallen {
+            return false;
+        }
+    }
+    true
+}
+
+fn search(most: Vec[i64], heights: mut ref Vec[i64]) -> i64 {
+    if heights.len() == most.len() {
+        return if mountain(heights) { heights.iter().sum() } else { 0 };
+    }
+    let mut best = 0;
+    for h in 1..most[heights.len()] + 1 {
+        heights.push(h);
+        best = best.max(search(most, mut heights));
+        heights.pop();
+    }
+    best
+}
+
+fn literal(most: Vec[i64]) -> i64 {
+    let mut heights: Vec[i64] = Vec.new();
+    search(most, mut heights)
+}
+
+
+// ---- star (towers.kara) ---------------------------------------------
+
+fn star_maximum_sum_of_heights(max_heights: Vec[i64]) -> i64 {
+    let n = max_heights.len();
+    let mut left: Vec[i64] = Vec.filled(n, 0);
+    let mut stack: Vec[i64] = Vec.new();
+    for i in 0..n {
+        while not stack.is_empty() and max_heights[stack[stack.len() - 1]] > max_heights[i] {
+            stack.pop();
+        }
+        left[i] = match stack.last() {
+            Some(j) => left[*j] + (i - *j) * max_heights[i],
+            None => (i + 1) * max_heights[i],
+        };
+        stack.push(i);
+    }
+    stack.clear();
+    let mut best = 0;
+    let mut right: Vec[i64] = Vec.filled(n, 0);
+    for i in (0..n).rev() {
+        while not stack.is_empty() and max_heights[stack[stack.len() - 1]] > max_heights[i] {
+            stack.pop();
+        }
+        right[i] = match stack.last() {
+            Some(j) => right[*j] + (*j - i) * max_heights[i],
+            None => (n - i) * max_heights[i],
+        };
+        stack.push(i);
+        best = best.max(left[i] + right[i] - max_heights[i]);
+    }
+    best
+}
+
+
+// ---- jumps (towers_jumps.kara) --------------------------------------
+
+fn jumps_sides(heights: Vec[i64]) -> Vec[i64] {
+    let n = heights.len();
+    let mut found: Vec[i64] = Vec.filled(n, -1);
+    let mut side: Vec[i64] = Vec.filled(n, 0);
+    for i in 0..n {
+        let mut j = i - 1;
+        while j >= 0 and heights[j] > heights[i] {
+            j = found[j];
+        }
+        found[i] = j;
+        side[i] = (i - j) * heights[i] + if j >= 0 { side[j] } else { 0 };
+    }
+    side
+}
+
+fn jumps_maximum_sum_of_heights(max_heights: Vec[i64]) -> i64 {
+    let n = max_heights.len();
+    let left = jumps_sides(max_heights);
+    let mut reversed = max_heights.clone();
+    reversed.reverse();
+    let right = jumps_sides(reversed);
+    (0..n).map(|i| left[i] + right[n - 1 - i] - max_heights[i]).max().unwrap()
+}
+
+
+// ---- iter (towers_iter.kara) ----------------------------------------
+
+fn iter_maximum_sum_of_heights(max_heights: Vec[i64]) -> i64 {
+    let n = max_heights.len();
+    (0..n)
+        .map(|p| {
+            let left: i64 = (0..p + 1).rev().scan(max_heights[p], |low, j| { let low = low.min(max_heights[j]); Some((low, low)) }).sum();
+            let right: i64 = (p..n).scan(max_heights[p], |low, j| { let low = low.min(max_heights[j]); Some((low, low)) }).sum();
+            left + right - max_heights[p]
+        })
+        .max()
+        .unwrap()
+}
+
+
+// ---- split (towers_split.kara) --------------------------------------
+
+fn split_best(heights: Vec[i64], lo: i64, hi: i64) -> i64 {
+    if lo > hi {
+        return 0;
+    }
+    let mut m = lo;
+    for i in lo + 1..hi + 1 {
+        if heights[i] < heights[m] {
+            m = i;
+        }
+    }
+    let low = heights[m];
+    let peak_left = split_best(heights, lo, m - 1) + low * (hi - m + 1);
+    let peak_right = split_best(heights, m + 1, hi) + low * (m - lo + 1);
+    peak_left.max(peak_right)
+}
+
+fn split_maximum_sum_of_heights(max_heights: Vec[i64]) -> i64 {
+    split_best(max_heights, 0, max_heights.len() - 1)
+}
+
+
+// ---- solution (towers_solution.kara) --------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn maximum_sum_of_heights(max_heights: Vec[i32]) -> i64 {
+        let n = max_heights.len();
+        let mut ans = 0;
+        for i in 0..n {
+            let mut sum = max_heights[i] as i64;
+            let mut mn = max_heights[i];
+            for j in (0..i).rev() {
+                mn = mn.min(max_heights[j]);
+                sum += mn;
+            }
+            mn = max_heights[i];
+            for j in i + 1..n {
+                mn = mn.min(max_heights[j]);
+                sum += mn;
+            }
+            ans = ans.max(sum);
+        }
+        ans
+    }
+}
+
+fn solution_maximum_sum_of_heights(max_heights: Vec[i64]) -> i64 {
+    Solution.maximum_sum_of_heights(max_heights.iter().map(|x| x as i32).collect())
+}
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, heights: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_maximum_sum_of_heights(heights),
+        1 => jumps_maximum_sum_of_heights(heights),
+        2 => iter_maximum_sum_of_heights(heights),
+        3 => split_maximum_sum_of_heights(heights),
+        _ => solution_maximum_sum_of_heights(heights),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "jumps", "iter", "split", "solution"];
+    let mut seed = 2865;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..2050 {
+        let small = c < 2000;
+        let n = if small { next_random(mut seed) % 6 + 1 } else { next_random(mut seed) % 300 + 1 };
+        let top = if small { 4 } else if c % 2 == 0 { 1000000000 } else { 30 };
+        let mut most: Vec[i64] = (0..n).map(|_| wide(mut seed) % top + 1).collect();
+        if not small and c % 4 == 1 {
+            most.sort();
+        }
+        cases.push(most);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut total = 0;
+    for (c, most) in cases.iter().enumerate() {
+        let n = most.len();
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, most)).collect();
+        let want = if c < 2000 { literal(most) } else { got[0] };
+        total += want;
+        check = (check * 31 + want) % 1000000007;
+        let reversed: Vec[i64] = most.iter().rev().cloned().collect();
+        let doubled: Vec[i64] = most.iter().map(|h| 2 * h).collect();
+        let mut extended = most.clone();
+        extended.push(1);
+        let high = most.iter().max().unwrap();
+        let low = most.iter().min().unwrap();
+        let sum: i64 = most.iter().sum();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                c >= 2000 or value == want,
+                answer(arm, reversed) == value,
+                answer(arm, doubled) == 2 * value,
+                answer(arm, extended) == value + 1,
+                value >= high + (n - 1) * low and value <= sum and (value == sum) == mountain(most),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {most}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases, sums total {total}: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

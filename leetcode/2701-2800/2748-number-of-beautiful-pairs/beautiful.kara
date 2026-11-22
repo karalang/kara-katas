@@ -1,0 +1,62 @@
+// LeetCode #2748: Number of Beautiful Pairs -- the ★ arm. Only the first
+// digit of the earlier number and the last digit of the later one
+// matter, so the first digits seen so far are counted in an `Array` of 10;
+// each number adds the counts of the digits coprime to its last digit,
+// then counts its own first digit. O(9 n).
+
+fn gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+fn count_beautiful_pairs(nums: Vec[i64]) -> i64 {
+    let mut firsts: Array[i64, 10] = [0; 10];
+    let mut pairs = 0;
+    for x in nums.iter() {
+        let last = x % 10;
+        for d in 1..10 {
+            if gcd(d, last) == 1 {
+                pairs += firsts[d];
+            }
+        }
+        let mut first = x;
+        while first >= 10 {
+            first /= 10;
+        }
+        firsts[first] += 1;
+    }
+    pairs
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{count_beautiful_pairs([2, 5, 1, 4].to_vec())}");
+    println(f"{count_beautiful_pairs([11, 21, 12].to_vec())}");
+    // 100 ones, every pair beautiful; 100 of 22, none; LeetCode's largest
+    // and smallest numbers
+    println(f"{count_beautiful_pairs(Vec.filled(100, 1))}");
+    println(f"{count_beautiful_pairs(Vec.filled(100, 22))}");
+    println(f"{count_beautiful_pairs([9999, 1, 9999, 1].to_vec())}");
+    // 5000 random lists of 2 to 100 numbers from 1 to 9999, none a
+    // multiple of 10
+    let mut seed = 2748;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..5000 {
+        let n = next_random(mut seed) % 99 + 2;
+        let nums: Vec[i64] = (0..n).map(|_| {
+            let x = next_random(mut seed) % 9999 + 1;
+            if x % 10 == 0 { x + 1 } else { x }
+        }).collect();
+        let pairs = count_beautiful_pairs(nums);
+        sum += pairs;
+        check = (check * 31 + pairs) % 1000000007;
+    }
+    println(f"5000 lists: pairs sum to {sum}, checksum {check}");
+}

@@ -1,0 +1,129 @@
+// LeetCode #2768: Number of Black Blocks -- the set arm. The black cells
+// in a `Set` of pairs; from each black cell every block it lies in is
+// looked at, its four cells asked of the set, and the block counted only
+// from its first black cell in reading order, so each block once. O(c).
+
+fn count_black_blocks(m: i64, n: i64, coordinates: Vec[Vec[i64]]) -> Vec[i64] {
+    let black: Set[(i64, i64)] = coordinates.iter().map(|cell| (cell[0], cell[1])).collect();
+    let mut counts: Vec[i64] = Vec.filled(5, 0);
+    let mut seen = 0;
+    for cell in coordinates.iter() {
+        let (x, y) = (cell[0], cell[1]);
+        for bx in (x - 1).max(0)..=x.min(m - 2) {
+            for by in (y - 1).max(0)..=y.min(n - 2) {
+                let corners = [(bx, by), (bx, by + 1), (bx + 1, by), (bx + 1, by + 1)];
+                let first = corners.iter().find(|c| black.contains(c)).unwrap();
+                if first == (x, y) {
+                    counts[corners.iter().filter(|c| black.contains(c)).count()] += 1;
+                    seen += 1;
+                }
+            }
+        }
+    }
+    counts[0] = (m - 1) * (n - 1) - seen;
+    counts
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+fn pairs(list: Slice[(i64, i64)]) -> Vec[Vec[i64]] {
+    list.iter().map(|(a, b)| [a, b].to_vec()).collect()
+}
+
+fn shuffle(cells: mut ref Vec[Vec[i64]], seed: mut ref i64) {
+    for i in (1..cells.len()).rev() {
+        let j = wide(mut seed) % (i + 1);
+        cells.swap(i, j);
+    }
+}
+
+fn fold(counts: Vec[i64], sums: mut ref Vec[i64], check: mut ref i64) {
+    for i in 0..5 {
+        sums[i] += counts[i];
+        *check = (*check * 31 + counts[i] % 1000000007 + 1) % 1000000007;
+    }
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{count_black_blocks(3, 3, pairs([(0, 0)]))}");
+    println(f"{count_black_blocks(3, 3, pairs([(0, 0), (1, 1), (0, 2)]))}");
+    // the greatest grid, LeetCode's most, with no black cell and with its
+    // four corners black
+    println(f"{count_black_blocks(100000, 100000, Vec.new())}");
+    println(f"{count_black_blocks(100000, 100000, pairs([(0, 0), (0, 99999), (99999, 0), (99999, 99999)]))}");
+    // 100 by 100 all black, 10^4 cells, LeetCode's most; and a
+    // checkerboard over it
+    let mut full: Vec[Vec[i64]] = Vec.new();
+    let mut board: Vec[Vec[i64]] = Vec.new();
+    for x in 0..100 {
+        for y in 0..100 {
+            full.push([x, y].to_vec());
+            if (x + y) % 2 == 0 {
+                board.push([x, y].to_vec());
+            }
+        }
+    }
+    println(f"{count_black_blocks(100, 100, full)}");
+    println(f"{count_black_blocks(100, 100, board)}");
+    // 3000 grids of 2 to 6 by 2 to 6, each cell black at a density of its
+    // own, listed in a random order
+    let mut seed = 2768;
+    let mut sums: Vec[i64] = Vec.filled(5, 0);
+    let mut check = 0;
+    for _ in 0..3000 {
+        let m = next_random(mut seed) % 5 + 2;
+        let n = next_random(mut seed) % 5 + 2;
+        let density = next_random(mut seed) % 4 + 1;
+        let mut cells: Vec[Vec[i64]] = Vec.new();
+        for x in 0..m {
+            for y in 0..n {
+                if next_random(mut seed) % 5 < density {
+                    cells.push([x, y].to_vec());
+                }
+            }
+        }
+        shuffle(mut cells, mut seed);
+        fold(count_black_blocks(m, n, cells), mut sums, mut check);
+    }
+    println(f"3000 small grids: counts sum to {sums}, checksum {check}");
+    // 10 grids up to 10^5 by 10^5, each with 10^4 distinct black cells in a
+    // square of side 101 to 1000 placed at random, by a stride through the
+    // square coprime with its area
+    let mut sums: Vec[i64] = Vec.filled(5, 0);
+    let mut check = 0;
+    for _ in 0..10 {
+        let side = wide(mut seed) % 900 + 101;
+        let area = side * side;
+        let m = side + wide(mut seed) % (100001 - side);
+        let n = side + wide(mut seed) % (100001 - side);
+        let x0 = wide(mut seed) % (m - side + 1);
+        let y0 = wide(mut seed) % (n - side + 1);
+        let mut stride = wide(mut seed) % area;
+        while gcd(stride, area) != 1 {
+            stride = wide(mut seed) % area;
+        }
+        let start = wide(mut seed) % area;
+        let cells: Vec[Vec[i64]] = (0..10000)
+            .map(|k| {
+                let at = (start + k * stride) % area;
+                [x0 + at / side, y0 + at % side].to_vec()
+            })
+            .collect();
+        fold(count_black_blocks(m, n, cells), mut sums, mut check);
+    }
+    println(f"10 grids of 10^4 cells: counts sum to {sums}, checksum {check}");
+}

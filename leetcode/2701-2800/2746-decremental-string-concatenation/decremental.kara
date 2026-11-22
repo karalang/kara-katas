@@ -1,0 +1,95 @@
+// LeetCode #2746: Decremental String Concatenation -- the ★ arm. Whether
+// a join loses a letter depends only on the string's first and last
+// letters, so the state is that pair: `best[f][l]`, the shortest string so
+// far that starts with f and ends with l, in a 26 by 26 `Array`, rolled
+// word by word with the word put after or before. O(26^2 n).
+
+const NONE: i64 = 1000000000;
+
+fn minimize_concatenated_length(words: Vec[String]) -> i64 {
+    let first_of = |w: Str| (w.bytes()[0] - b'a') as i64;
+    let last_of = |w: Str| (w.bytes()[w.len() - 1] - b'a') as i64;
+    let mut best: Array[Array[i64, 26], 26] = [[NONE; 26]; 26];
+    best[first_of(words[0])][last_of(words[0])] = words[0].len();
+    for w in words.iter().skip(1) {
+        let (a, b) = (first_of(w), last_of(w));
+        let mut next: Array[Array[i64, 26], 26] = [[NONE; 26]; 26];
+        for f in 0..26 {
+            for l in 0..26 {
+                let length = best[f][l];
+                if length == NONE {
+                    continue;
+                }
+                // the word after: it loses its first letter if that is l
+                let after = length + w.len() - if l == a { 1 } else { 0 };
+                next[f][b] = next[f][b].min(after);
+                // the word before: it loses its last letter if that is f
+                let before = length + w.len() - if b == f { 1 } else { 0 };
+                next[a][l] = next[a][l].min(before);
+            }
+        }
+        best = next;
+    }
+    let mut shortest = NONE;
+    for f in 0..26 {
+        for l in 0..26 {
+            shortest = shortest.min(best[f][l]);
+        }
+    }
+    shortest
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n words of 1 to `longest` letters from the first k of the alphabet
+fn random_words(seed: mut ref i64, n: i64, longest: i64, k: i64) -> Vec[String] {
+    let mut words: Vec[String] = Vec.new();
+    for _ in 0..n {
+        let len = next_random(mut seed) % longest + 1;
+        let mut w = String.new();
+        for _ in 0..len {
+            w.push((b'a' + (next_random(mut seed) % k) as u8) as char);
+        }
+        words.push(w);
+    }
+    words
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{minimize_concatenated_length(["aa", "ab", "bc"].into_iter().map(|w| w.to_string()).collect())}");
+    println(f"{minimize_concatenated_length(["ab", "b"].into_iter().map(|w| w.to_string()).collect())}");
+    println(f"{minimize_concatenated_length(["aaa", "c", "aba"].into_iter().map(|w| w.to_string()).collect())}");
+    // one word; and 1000 words of 50 "a"s, LeetCode's most
+    println(f"{minimize_concatenated_length(["xyz"].into_iter().map(|w| w.to_string()).collect())}");
+    let many: Vec[String] = (0..1000).map(|_| "a".repeat(50)).collect();
+    println(f"{minimize_concatenated_length(many)}");
+    // 3000 random lists of 1 to 12 words of 1 to 4 letters from the first
+    // 1 to 3; then 30 of 1000 words of up to 50 letters from the first 5
+    let mut seed = 2746;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let k = next_random(mut seed) % 3 + 1;
+        let n = next_random(mut seed) % 12 + 1;
+        let words = random_words(mut seed, n, 4, k);
+        let length = minimize_concatenated_length(words);
+        sum += length;
+        check = (check * 31 + length) % 1000000007;
+    }
+    println(f"3000 small lists: lengths sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for _ in 0..30 {
+        let words = random_words(mut seed, 1000, 50, 5);
+        let length = minimize_concatenated_length(words);
+        sum += length;
+        check = (check * 31 + length) % 1000000007;
+    }
+    println(f"30 lists of 1000 words: lengths sum to {sum}, checksum {check}");
+}

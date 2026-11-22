@@ -1,0 +1,288 @@
+// LeetCode #2762: Continuous Subarrays -- the differential. The five arms,
+// against the statement read literally: every pair i <= j, counted when
+// every two numbers in nums[i..=j] lie at most 2 apart, each pair of
+// indices asked by `all` in turn; no window. 2000 random arrays of 1 to
+// 12 numbers from 1 to 6; then 100 of up to 2000 numbers, a walk of steps
+// from -2 to 2. Every case is drawn before any arm answers; the literal
+// reading is asked only of the first 2000.
+//
+// P1  up to 12 numbers, the answer is the literal reading's
+// P2  every number 1000 more: the same answer
+// P3  the numbers reversed: the same answer
+// P4  every number x made 10^9 + 1 - x: the same answer
+// P5  from n to n (n + 1) / 2; and a number 3 above the greatest put at
+//     the end: one more
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut count = 0;
+    for i in 0..n {
+        for j in i..n {
+            let close = (i..=j).all(|a| (i..=j).all(|b| (nums[a] - nums[b]).abs() <= 2));
+            if close {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+
+// ---- star (continuous.kara) -----------------------------------------
+
+fn star_continuous_subarrays(nums: Vec[i64]) -> i64 {
+    let mut lows: VecDeque[i64] = VecDeque.new();
+    let mut highs: VecDeque[i64] = VecDeque.new();
+    let mut left = 0;
+    let mut count = 0;
+    for right in 0..nums.len() {
+        let v = nums[right];
+        while let Some(back) = lows.back() {
+            if nums[back] <= v {
+                break;
+            }
+            lows.pop_back();
+        }
+        while let Some(back) = highs.back() {
+            if nums[back] >= v {
+                break;
+            }
+            highs.pop_back();
+        }
+        lows.push_back(right);
+        highs.push_back(right);
+        while nums[highs[0]] - nums[lows[0]] > 2 {
+            left += 1;
+            if lows[0] < left {
+                lows.pop_front();
+            }
+            if highs[0] < left {
+                highs.pop_front();
+            }
+        }
+        count += right - left + 1;
+    }
+    count
+}
+
+
+// ---- map (continuous_map.kara) --------------------------------------
+
+fn map_continuous_subarrays(nums: Vec[i64]) -> i64 {
+    let mut counts: SortedMap[i64, i64] = SortedMap.new();
+    let mut left = 0;
+    let mut total = 0;
+    for right in 0..nums.len() {
+        counts[nums[right]] = counts.get(nums[right]).unwrap_or(0) + 1;
+        loop {
+            let Some((low, _)) = counts.first() else { break };
+            let Some((high, _)) = counts.last() else { break };
+            if high - low <= 2 {
+                break;
+            }
+            let out = nums[left];
+            counts[out] -= 1;
+            if counts[out] == 0 {
+                counts.remove(out);
+            }
+            left += 1;
+        }
+        total += right - left + 1;
+    }
+    total
+}
+
+
+// ---- last (continuous_last.kara) ------------------------------------
+
+fn last_continuous_subarrays(nums: Vec[i64]) -> i64 {
+    let mut last: Map[i64, i64] = Map.new();
+    let mut left = 0;
+    let mut total = 0;
+    for right in 0..nums.len() {
+        let v = nums[right];
+        for (value, index) in last.iter() {
+            if (value - v).abs() > 2 and index + 1 > left {
+                left = index + 1;
+            }
+        }
+        last.retain(|_, index| *index >= left);
+        last[v] = right;
+        total += right - left + 1;
+    }
+    total
+}
+
+
+// ---- sparse (continuous_sparse.kara) --------------------------------
+
+struct Sparse {
+    lows: Vec[Vec[i64]],
+    highs: Vec[Vec[i64]],
+}
+
+impl Sparse {
+    fn new(nums: Vec[i64]) -> Sparse {
+        let mut lows: Vec[Vec[i64]] = [nums.clone()].to_vec();
+        let mut highs: Vec[Vec[i64]] = [nums.clone()].to_vec();
+        let mut width = 1;
+        while 2 * width <= nums.len() {
+            let low = lows.last().unwrap();
+            let high = highs.last().unwrap();
+            let next_low: Vec[i64] = (0..nums.len() - 2 * width + 1).map(|i| low[i].min(low[i + width])).collect();
+            let next_high: Vec[i64] = (0..nums.len() - 2 * width + 1).map(|i| high[i].max(high[i + width])).collect();
+            lows.push(next_low);
+            highs.push(next_high);
+            width *= 2;
+        }
+        Sparse { lows, highs }
+    }
+
+    fn span(self, from: i64, to: i64) -> i64 {
+        let mut k = 0;
+        while 1 << (k + 1) <= to - from + 1 {
+            k += 1;
+        }
+        let other = to - (1 << k) + 1;
+        let high = self.highs[k][from].max(self.highs[k][other]);
+        let low = self.lows[k][from].min(self.lows[k][other]);
+        high - low
+    }
+}
+
+fn sparse_continuous_subarrays(nums: Vec[i64]) -> i64 {
+    let table = Sparse.new(nums);
+    let mut left = 0;
+    let mut total = 0;
+    for right in 0..nums.len() {
+        while table.span(left, right) > 2 {
+            left += 1;
+        }
+        total += right - left + 1;
+    }
+    total
+}
+
+
+// ---- solution (continuous_solution.kara) ----------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn continuous_subarrays(nums: Vec[i32]) -> i64 {
+        let mut freq: SortedMap[i32, i32] = SortedMap.new();
+        let mut left = 0;
+        let mut ans: i64 = 0;
+        for right in 0..nums.len() {
+            *freq.entry(nums[right]).or_insert(0) += 1;
+            while *freq.keys().next_back().unwrap() - *freq.keys().next().unwrap() > 2 {
+                let c = freq.get_mut(nums[left]).unwrap();
+                *c -= 1;
+                if *c == 0 {
+                    freq.remove(nums[left]);
+                }
+                left += 1;
+            }
+            ans += right - left + 1;
+        }
+        ans
+    }
+}
+
+fn solution_continuous_subarrays(nums: Vec[i64]) -> i64 {
+    Solution.continuous_subarrays(nums.iter().map(|x| x as i32).collect())
+}
+
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_continuous_subarrays(nums),
+        1 => map_continuous_subarrays(nums),
+        2 => last_continuous_subarrays(nums),
+        3 => sparse_continuous_subarrays(nums),
+        _ => solution_continuous_subarrays(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "map", "last", "sparse", "solution"];
+    let mut seed = 2762;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 6 + 1).collect();
+        cases.push(nums);
+    }
+    for _ in 0..100 {
+        let n = next_random(mut seed) % 2000 + 1;
+        let mut value = 100000000;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            value += next_random(mut seed) % 5 - 2;
+            nums.push(value);
+        }
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, nums) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(nums) } else { 0 };
+        check = (check * 31 + want + 1) % 1000000007;
+        let n = nums.len();
+        let raised: Vec[i64] = nums.iter().map(|x| x + 1000).collect();
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let mirrored: Vec[i64] = nums.iter().map(|x| 1000000001 - x).collect();
+        let mut apart = nums.clone();
+        apart.push(nums.iter().max().unwrap() + 3);
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == want,
+                answer(arm, raised) == value,
+                answer(arm, reversed) == value,
+                answer(arm, mirrored) == value,
+                n <= value and value <= n * (n + 1) / 2 and answer(arm, apart) == value + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

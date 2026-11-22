@@ -1,0 +1,63 @@
+// LeetCode #2892: Minimizing Array After Replacing Pairs With Their
+// Product -- the merges done as the statement does them, on a stack of
+// what is left: each value pushed, then the two on top replaced by
+// their product while it is at most k. A 0 pushed merges with what is
+// under it, and the 0 left merges with everything after.
+
+fn min_array_length(nums: Vec[i64], k: i64) -> i64 {
+    let mut stack: Vec[i64] = Vec.new();
+    for x in nums.iter() {
+        stack.push(x);
+        while stack.len() >= 2 and stack[stack.len() - 1] * stack[stack.len() - 2] <= k {
+            let top = stack.pop().unwrap();
+            let under = stack.pop().unwrap();
+            stack.push(top * under);
+        }
+    }
+    stack.len()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; 10^5 values, LeetCode's most: all 1 with
+    // k 1, all 10^9 with k 10^9, and all 2 with k 2^30
+    println(f"{min_array_length([2, 3, 3, 7, 3, 5].to_vec(), 20)} {min_array_length([3, 3, 3, 3].to_vec(), 6)}");
+    let n = 100000;
+    println(f"{min_array_length(Vec.filled(n, 1), 1)} {min_array_length(Vec.filled(n, 1000000000), 1000000000)} {min_array_length(Vec.filled(n, 2), 1 << 30)}");
+    // 3000 random arrays of 1 to 8 values from 0 to 6, k 1 to 40, one in
+    // fifteen allowed a 0; then 100 of 1000 to 10^5, half the values 1 and
+    // the rest up to 1000, k up to 10^9, one in ten with a 0 somewhere
+    let mut seed = 2892;
+    let mut total = 0;
+    let mut check = 0;
+    for c in 0..3100 {
+        let small = c < 3000;
+        let n = if small { next_random(mut seed) % 8 + 1 } else { wide(mut seed) % 99001 + 1000 };
+        let zero = c % (if small { 15 } else { 10 }) == 0;
+        let mut nums: Vec[i64] = (0..n).map(|_| if small { next_random(mut seed) % 6 + 1 } else if next_random(mut seed) % 2 == 0 { 1 } else { next_random(mut seed) % 1000 + 1 }).collect();
+        if zero {
+            let at = wide(mut seed) % n;
+            nums[at] = 0;
+        }
+        let k = if small { next_random(mut seed) % 40 + 1 } else { wide(mut seed) % 1000000000 + 1 };
+        let length = min_array_length(nums, k);
+        total += length;
+        check = (check * 31 + length) % 1000000007;
+        if c == 2999 {
+            println(f"3000 short arrays: lengths total {total}, checksum {check}");
+            total = 0;
+            check = 0;
+        }
+    }
+    println(f"100 long arrays: lengths total {total}, checksum {check}");
+}

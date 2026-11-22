@@ -1,0 +1,325 @@
+// LeetCode #2772: Apply Operations to Make All Array Elements Equal to
+// Zero -- the differential. The five arms, against the statement read
+// literally: every array reachable by operations, each a window of k
+// numbers all above 0 taken down by 1, searched from the array given,
+// the arrays already seen in a `Set`; true when the all-zero array is
+// among them. 2000 random arrays of 1 to 7 numbers built by up to 2
+// operations at each start, half with one number moved; then 50 of up to
+// 3000 built by up to 9 with windows up to 300. Every case is drawn
+// before any arm answers; the literal reading is asked only of the first
+// 2000.
+//
+// P1  up to 7 numbers, the answer is the literal reading's
+// P2  the numbers reversed: the same answer
+// P3  every number doubled: the same answer
+// P4  a window of 1: true
+// P5  true only when the sum is a multiple of k; and one more operation
+//     on the first window: the same answer
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(nums: Vec[i64], k: i64) -> bool {
+    let n = nums.len();
+    let mut seen: Set[Vec[i64]] = Set.new();
+    let mut stack: Vec[Vec[i64]] = [nums.clone()].to_vec();
+    seen.insert(nums.clone());
+    while let Some(now) = stack.pop() {
+        if now.iter().all(|x| x == 0) {
+            return true;
+        }
+        for start in 0..n - k + 1 {
+            if (start..start + k).all(|i| now[i] > 0) {
+                let mut next = now.clone();
+                for i in start..start + k {
+                    next[i] -= 1;
+                }
+                if seen.insert(next.clone()) {
+                    stack.push(next);
+                }
+            }
+        }
+    }
+    false
+}
+
+
+// ---- star (zero.kara) -----------------------------------------------
+
+fn star_check_array(nums: Vec[i64], k: i64) -> bool {
+    let n = nums.len();
+    let mut ends: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut covering = 0;
+    for i in 0..n {
+        covering -= ends[i];
+        let left = nums[i] - covering;
+        if left < 0 {
+            return false;
+        }
+        if left > 0 {
+            if i + k > n {
+                return false;
+            }
+            covering += left;
+            ends[i + k] += left;
+        }
+    }
+    true
+}
+
+
+// ---- queue (zero_queue.kara) ----------------------------------------
+
+fn queue_check_array(nums: Vec[i64], k: i64) -> bool {
+    let n = nums.len();
+    let mut open: VecDeque[(i64, i64)] = VecDeque.new();
+    let mut covering = 0;
+    for i in 0..n {
+        while let Some((end, count)) = open.front().cloned() {
+            if end > i {
+                break;
+            }
+            covering -= count;
+            open.pop_front();
+        }
+        let left = nums[i] - covering;
+        if left < 0 or (left > 0 and i + k > n) {
+            return false;
+        }
+        if left > 0 {
+            covering += left;
+            open.push_back((i + k, left));
+        }
+    }
+    true
+}
+
+
+// ---- fenwick (zero_fenwick.kara) ------------------------------------
+
+struct Fenwick {
+    tree: Vec[i64],
+}
+
+impl Fenwick {
+    fn new(n: i64) -> Fenwick {
+        Fenwick { tree: Vec.filled(n + 1, 0) }
+    }
+
+    fn add(mut ref self, at: i64, delta: i64) {
+        let mut k = at + 1;
+        while k < self.tree.len() {
+            self.tree[k] += delta;
+            k += k & -k;
+        }
+    }
+
+    fn prefix(self, at: i64) -> i64 {
+        let mut k = at + 1;
+        let mut sum = 0;
+        while k > 0 {
+            sum += self.tree[k];
+            k -= k & -k;
+        }
+        sum
+    }
+}
+
+fn fenwick_check_array(nums: Vec[i64], k: i64) -> bool {
+    let n = nums.len();
+    let mut diff = Fenwick.new(n + 1);
+    diff.add(0, nums[0]);
+    for i in 1..n {
+        diff.add(i, nums[i] - nums[i - 1]);
+    }
+    for i in 0..n {
+        let now = diff.prefix(i);
+        if now < 0 {
+            return false;
+        }
+        if now > 0 {
+            if i + k > n {
+                return false;
+            }
+            diff.add(i, -now);
+            diff.add(i + k, now);
+        }
+    }
+    true
+}
+
+
+// ---- back (zero_back.kara) ------------------------------------------
+
+fn back_check_array(nums: Vec[i64], k: i64) -> bool {
+    let n = nums.len();
+    let mut ending: Vec[i64] = Vec.filled(n, 0);
+    let mut covering = 0;
+    for i in (0..n).rev() {
+        if i + k < n {
+            covering -= ending[i + k];
+        }
+        let left = nums[i] - covering;
+        if left < 0 {
+            return false;
+        }
+        if left > 0 {
+            if i + 1 < k {
+                return false;
+            }
+            ending[i] = left;
+            covering += left;
+        }
+    }
+    true
+}
+
+
+// ---- solution (zero_solution.kara) ----------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn check_array(nums: Vec[i32], k: i32) -> bool {
+        let n = nums.len();
+        let k = k as i64;
+        let mut d = Vec.filled(n + 1, 0);
+        let mut s: i64 = 0;
+        for i in 0..n {
+            s += d[i];
+            let x = nums[i] + s;
+            if x == 0 {
+                continue;
+            }
+            if x < 0 or i + k > n {
+                return false;
+            }
+            s -= x;
+            d[i + k] += x;
+        }
+        true
+    }
+}
+
+fn solution_check_array(nums: ref Vec[i64], k: i64) -> bool {
+    Solution.check_array(nums.iter().map(|x| x as i32).collect(), k as i32)
+}
+
+
+fn answer(arm: i64, nums: Vec[i64], k: i64) -> bool {
+    match arm {
+        0 => star_check_array(nums, k),
+        1 => queue_check_array(nums, k),
+        2 => fenwick_check_array(nums, k),
+        3 => back_check_array(nums, k),
+        _ => solution_check_array(nums, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// n numbers built by up to `most` operations at each start of a window
+// of k; then, half the time, one number moved 1 up or down
+fn built(n: i64, k: i64, most: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut nums: Vec[i64] = Vec.filled(n, 0);
+    let mut running = 0;
+    let mut ops: Vec[i64] = Vec.filled(n, 0);
+    for i in 0..n {
+        if i + k <= n {
+            ops[i] = next_random(mut seed) % (most + 1);
+        }
+        running += ops[i];
+        if i >= k {
+            running -= ops[i - k];
+        }
+        nums[i] = running;
+    }
+    if next_random(mut seed) % 2 == 1 {
+        let at = wide(mut seed) % n;
+        if nums[at] > 0 and next_random(mut seed) % 2 == 1 {
+            nums[at] -= 1;
+        } else {
+            nums[at] += 1;
+        }
+    }
+    nums
+}
+
+fn main() {
+    let names = ["star", "queue", "fenwick", "back", "solution"];
+    let mut seed = 2772;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..2050 {
+        let (n, k, most) = if c < 2000 {
+            let n = next_random(mut seed) % 7 + 1;
+            (n, next_random(mut seed) % n + 1, 2)
+        } else {
+            let n = wide(mut seed) % 3000 + 1;
+            (n, wide(mut seed) % n.min(300) + 1, 9)
+        };
+        cases.push((built(n, k, most, mut seed), k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (nums, k)) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = small and literal(nums, k);
+        check = (check * 31 + if want { 2 } else { 1 }) % 1000000007;
+        let n = nums.len();
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let doubled: Vec[i64] = nums.iter().map(|x| 2 * x).collect();
+        let mut more = nums.clone();
+        for i in 0..k {
+            more[i] += 1;
+        }
+        let sum: i64 = nums.iter().sum();
+        let got: Vec[bool] = (0..5).map(|arm| answer(arm, nums, k)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == want,
+                answer(arm, reversed, k) == value,
+                answer(arm, doubled, k) == value,
+                answer(arm, nums, 1),
+                (not value or sum % k == 0) and answer(arm, more, k) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums} k {k} (n {n}), arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

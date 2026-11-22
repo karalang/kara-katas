@@ -1,0 +1,73 @@
+// LeetCode #2871: Split Array Into Maximum Number of Subarrays -- a Rust
+// solution as LeetCode's Rust users write it: `let mut cur = -1i32`,
+// `cur &= x` over `&nums`, a cut counted when it reaches 0, and
+// `ans.max(1)`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_subarrays(nums: Vec[i32]) -> i32 {
+        let mut ans: i32 = 0;
+        let mut cur = -1i32;
+        for x in ref nums {
+            cur &= x;
+            if cur == 0 {
+                ans += 1;
+                cur = -1;
+            }
+        }
+        ans.max(1)
+    }
+}
+
+fn max_subarrays(nums: Vec[i64]) -> i64 {
+    Solution.max_subarrays(nums.iter().map(|x| x as i32).collect())
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; 10^5 values, LeetCode's most, all 0, all
+    // 2^20 - 1, and 1 and 2 by turns
+    println(f"{max_subarrays([1, 0, 2, 0, 1, 2].to_vec())} {max_subarrays([5, 7, 1, 3].to_vec())}");
+    let n = 100000;
+    println(f"{max_subarrays(Vec.filled(n, 0))} {max_subarrays(Vec.filled(n, 1048575))} {max_subarrays((0..n).map(|i| i % 2 + 1).collect())}");
+    // 3000 random arrays of 1 to 8 values from 0 to 7; then 30 of 10^4
+    // to 10^5 up to 10^6, every other one with most bits set
+    let mut seed = 2871;
+    let mut total = 0;
+    let mut check = 0;
+    for c in 0..3030 {
+        let small = c < 3000;
+        let n = if small { next_random(mut seed) % 8 + 1 } else { wide(mut seed) % 90001 + 10000 };
+        let nums: Vec[i64] = (0..n)
+            .map(|_| {
+                if small {
+                    next_random(mut seed) % 8
+                } else if c % 2 == 0 {
+                    wide(mut seed) % 1000001
+                } else {
+                    (wide(mut seed) | wide(mut seed)) % 1000001
+                }
+            })
+            .collect();
+        let parts = max_subarrays(nums);
+        total += parts;
+        check = (check * 31 + parts) % 1000000007;
+        if c == 2999 {
+            println(f"3000 short arrays: {total} subarrays, checksum {check}");
+            total = 0;
+            check = 0;
+        }
+    }
+    println(f"30 long arrays: {total} subarrays, checksum {check}");
+}

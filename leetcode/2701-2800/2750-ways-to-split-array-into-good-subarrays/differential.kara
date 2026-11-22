@@ -1,0 +1,227 @@
+// LeetCode #2750: Ways to Split Array Into Good Subarrays -- the
+// differential. The five arms, against the statement read literally:
+// every choice of cuts among the n - 1 places between numbers, as the
+// bits of a number, counted when every piece it makes holds exactly one
+// 1; no product of gaps. 2000 random arrays of 1 to 14 numbers, each with
+// its own share of ones; then 100 of up to 5000. Every case is drawn
+// before any arm answers; the literal reading is asked only of the first
+// 2000.
+//
+// P1  up to 14 numbers, the answer is the literal reading's
+// P2  the numbers reversed: the same answer
+// P3  0s put at both ends: the same answer
+// P4  0, 0, 1 put at the end: the answer times the new 1's distance from
+//     the last 1, mod 10^9 + 7, or 1 with no 1 before
+// P5  from 0 to 10^9 + 6; and every number made 1: 1
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut ways = 0;
+    for cuts in 0..(1 << (n - 1)) {
+        let mut good = true;
+        let mut ones = 0;
+        for i in 0..n {
+            ones += nums[i];
+            // a piece ends at the last number, or where a cut follows i
+            if i == n - 1 or (cuts >> i) & 1 == 1 {
+                if ones != 1 {
+                    good = false;
+                }
+                ones = 0;
+            }
+        }
+        if good {
+            ways += 1;
+        }
+    }
+    ways
+}
+
+
+// ---- star (splits.kara) ---------------------------------------------
+
+const MOD: i64 = 1000000007;
+
+fn star_number_of_good_subarray_splits(nums: Vec[i64]) -> i64 {
+    let mut ways = 1;
+    let mut last: Option[i64] = None;
+    for (i, x) in nums.iter().enumerate() {
+        if x == 1 {
+            if let Some(j) = last {
+                ways = ways * (i - j) % MOD;
+            }
+            last = Some(i);
+        }
+    }
+    if last.is_none() { 0 } else { ways }
+}
+
+
+// ---- dp (splits_dp.kara) --------------------------------------------
+
+fn dp_number_of_good_subarray_splits(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut ends: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut prefix: Vec[i64] = Vec.filled(n + 2, 0);
+    ends[0] = 1;
+    prefix[1] = 1;
+    // the positions of the last two 1s among the first i numbers
+    let mut last = -1;
+    let mut before = -1;
+    for i in 1..=n {
+        if nums[i - 1] == 1 {
+            before = last;
+            last = i - 1;
+        }
+        if last >= 0 {
+            // cuts j from before + 1 to last
+            ends[i] = (prefix[last + 1] - prefix[before + 1] + MOD) % MOD;
+        }
+        prefix[i + 1] = (prefix[i] + ends[i]) % MOD;
+    }
+    ends[n]
+}
+
+
+// ---- positions (splits_positions.kara) ------------------------------
+
+fn positions_number_of_good_subarray_splits(nums: Vec[i64]) -> i64 {
+    let ones: Vec[i64] = nums.iter().enumerate().filter(|(_, x)| x == 1).map(|(i, _)| i).collect();
+    if ones.is_empty() {
+        return 0;
+    }
+    ones.windows(2).iter().fold(1, |ways, pair| ways * (pair[1] - pair[0]) % 1000000007)
+}
+
+
+// ---- text (splits_text.kara) ----------------------------------------
+
+fn text_number_of_good_subarray_splits(nums: Vec[i64]) -> i64 {
+    let text: String = nums.iter().map(|x| if x == 1 { '1' } else { '0' }).collect();
+    let runs: Vec[Str] = text.split("1").collect();
+    if runs.len() == 1 {
+        return 0;
+    }
+    let mut ways = 1;
+    for run in runs[1..runs.len() - 1].iter() {
+        ways = ways * (run.len() + 1) % 1000000007;
+    }
+    ways
+}
+
+
+// ---- solution (splits_solution.kara) --------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn number_of_good_subarray_splits(nums: Vec[i32]) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let mut ans: i64 = 1;
+        let mut prev: i32 = -1;
+        for (i, x) in nums.iter().enumerate() {
+            if x == 1 {
+                if prev != -1 {
+                    ans = ans * (i - prev) % MOD;
+                }
+                prev = i as i32;
+            }
+        }
+        if prev == -1 { 0 } else { ans as i32 }
+    }
+}
+
+fn solution_number_of_good_subarray_splits(nums: Vec[i64]) -> i64 {
+    Solution.number_of_good_subarray_splits(nums.iter().map(|x| x as i32).collect())
+}
+
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_number_of_good_subarray_splits(nums),
+        1 => dp_number_of_good_subarray_splits(nums),
+        2 => positions_number_of_good_subarray_splits(nums),
+        3 => text_number_of_good_subarray_splits(nums),
+        _ => solution_number_of_good_subarray_splits(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "dp", "positions", "text", "solution"];
+    let mut seed = 2750;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..2100 {
+        let n = if c < 2000 { next_random(mut seed) % 14 + 1 } else { next_random(mut seed) % 5000 + 1 };
+        let percent = next_random(mut seed) % 100;
+        cases.push((0..n).map(|_| if next_random(mut seed) % 100 < percent { 1 } else { 0 }).collect());
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, nums) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(nums) } else { -1 };
+        check = (check * 31 + want + 1) % 1000000007;
+        let n = nums.len();
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let mut padded: Vec[i64] = [0, 0].to_vec();
+        padded.extend(nums.iter());
+        padded.extend([0, 0, 0].iter());
+        let mut longer = nums.clone();
+        longer.extend([0, 0, 1].iter());
+        let last_one = (0..n).rev().find(|i| nums[i] == 1);
+        let all_ones: Vec[i64] = Vec.filled(n, 1);
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let grown = match last_one {
+                Some(j) => value * (n + 2 - j) % 1000000007,
+                None => 1,
+            };
+            let verdicts = [
+                not small or value == want,
+                answer(arm, reversed) == value,
+                answer(arm, padded) == value,
+                answer(arm, longer) == grown,
+                0 <= value and value < 1000000007 and answer(arm, all_ones) == 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

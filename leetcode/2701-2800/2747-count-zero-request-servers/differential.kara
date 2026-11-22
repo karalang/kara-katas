@@ -1,0 +1,305 @@
+// LeetCode #2747: Count Zero Request Servers -- the differential. The
+// five arms, against the statement read literally: for each query, every
+// server from 1 to n asked in turn whether any log of its own falls in
+// [q - x, q], ends included, in plain loops; no sorting and no window.
+// 1000 random cases of 1 to 10 servers, 1 to 20 logs and queries, times
+// up to 30; then 50 of up to 300 servers and 1000 logs and queries, times
+// up to 10^6. Every case is drawn before any arm answers; the literal
+// reading is asked only of the first 1000.
+//
+// P1  up to 10 servers, the answers are the literal reading's
+// P2  the logs listed in reverse order: the same answers
+// P3  the queries listed in reverse order: the answers reversed
+// P4  every time, of logs and queries, 1000 later: the same answers
+// P5  each answer from 0 to n; and a server n + 1 with no logs: each
+//     answer one more
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(n: i64, logs: Vec[Vec[i64]], x: i64, queries: Vec[i64]) -> Vec[i64] {
+    let mut answers: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let mut idle = 0;
+        for server in 1..=n {
+            let mut asked = false;
+            for log in logs.iter() {
+                if log[0] == server and q - x <= log[1] and log[1] <= q {
+                    asked = true;
+                }
+            }
+            if not asked {
+                idle += 1;
+            }
+        }
+        answers.push(idle);
+    }
+    answers
+}
+
+
+// ---- star (servers.kara) --------------------------------------------
+
+fn star_count_servers(n: i64, logs: Vec[Vec[i64]], x: i64, queries: Vec[i64]) -> Vec[i64] {
+    let mut by_time: Vec[(i64, i64)] = logs.iter().map(|log| (log[1], log[0])).collect();
+    by_time.sort();
+    let mut order: Vec[i64] = (0..queries.len()).collect();
+    order.sort_by_key(|i| queries[i]);
+    let mut requests: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut busy = 0;
+    let mut answers: Vec[i64] = Vec.filled(queries.len(), 0);
+    let mut (start, end) = (0, 0);
+    for i in order.iter() {
+        let q = queries[i];
+        while end < by_time.len() and by_time[end].0 <= q {
+            let server = by_time[end].1;
+            if requests[server] == 0 {
+                busy += 1;
+            }
+            requests[server] += 1;
+            end += 1;
+        }
+        while start < end and by_time[start].0 < q - x {
+            let server = by_time[start].1;
+            requests[server] -= 1;
+            if requests[server] == 0 {
+                busy -= 1;
+            }
+            start += 1;
+        }
+        answers[i] = n - busy;
+    }
+    answers
+}
+
+
+// ---- scan (servers_scan.kara) ---------------------------------------
+
+fn scan_count_servers(n: i64, logs: Vec[Vec[i64]], x: i64, queries: Vec[i64]) -> Vec[i64] {
+    queries
+        .iter()
+        .map(|q| {
+            let busy: Set[i64] = logs.iter().filter(|log| q - x <= log[1] and log[1] <= q).map(|log| log[0]).collect();
+            n - busy.len()
+        })
+        .collect()
+}
+
+
+// ---- bisect (servers_bisect.kara) -----------------------------------
+
+fn bisect_count_servers(n: i64, logs: Vec[Vec[i64]], x: i64, queries: Vec[i64]) -> Vec[i64] {
+    let mut times: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.new());
+    for log in logs.iter() {
+        times[log[0]].push(log[1]);
+    }
+    for t in times.iter_mut() {
+        t.sort();
+    }
+    let mut answers: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let mut idle = 0;
+        for server in 1..=n {
+            let t = ref times[server];
+            let at = t.partition_point(|time| time < q - x);
+            if at == t.len() or t[at] > q {
+                idle += 1;
+            }
+        }
+        answers.push(idle);
+    }
+    answers
+}
+
+
+// ---- intervals (servers_intervals.kara) -----------------------------
+
+struct Busy {
+    from: i64,
+    to: i64,
+}
+
+fn intervals_count_servers(n: i64, logs: Vec[Vec[i64]], x: i64, queries: Vec[i64]) -> Vec[i64] {
+    let mut by_server: Vec[(i64, i64)] = logs.iter().map(|log| (log[0], log[1])).collect();
+    by_server.sort();
+    let mut stretches: Vec[Busy] = Vec.new();
+    let mut last_server = -1;
+    for (server, t) in by_server.iter() {
+        if server == last_server and stretches[stretches.len() - 1].to >= t {
+            let top = stretches.len() - 1;
+            stretches[top].to = t + x;
+        } else {
+            stretches.push(Busy { from: t, to: t + x });
+        }
+        last_server = server;
+    }
+    let mut sorted: Vec[i64] = queries.clone();
+    sorted.sort();
+    let mut marks: Vec[i64] = Vec.filled(sorted.len() + 1, 0);
+    for stretch in stretches.iter() {
+        let first = sorted.partition_point(|q| q < stretch.from);
+        let past = sorted.partition_point(|q| q <= stretch.to);
+        marks[first] += 1;
+        marks[past] -= 1;
+    }
+    let mut busy: Vec[i64] = Vec.filled(sorted.len(), 0);
+    let mut running = 0;
+    for i in 0..sorted.len() {
+        running += marks[i];
+        busy[i] = running;
+    }
+    queries.iter().map(|q| n - busy[sorted.partition_point(|s| s < q)]).collect()
+}
+
+
+// ---- solution (servers_solution.kara) -------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn count_servers(n: i32, logs: own Vec[Vec[i32]], x: i32, queries: Vec[i32]) -> Vec[i32] {
+        let mut logs = logs;
+        logs.sort_by_key(|l| l[1]);
+        let mut qs: Vec[(i32, i64)] = queries.iter().enumerate().map(|(i, q)| (q, i)).collect();
+        qs.sort();
+        let mut cnt = Vec.filled(n as i64 + 1, 0);
+        let mut ans = Vec.filled(queries.len(), 0i32);
+        let mut (l, r, active) = (0, 0, 0i32);
+        for (q, i) in qs {
+            while r < logs.len() and logs[r][1] <= q {
+                let s = logs[r][0] as i64;
+                if cnt[s] == 0 {
+                    active += 1;
+                }
+                cnt[s] += 1;
+                r += 1;
+            }
+            while l < r and logs[l][1] < q - x {
+                let s = logs[l][0] as i64;
+                cnt[s] -= 1;
+                if cnt[s] == 0 {
+                    active -= 1;
+                }
+                l += 1;
+            }
+            ans[i] = n - active;
+        }
+        ans
+    }
+}
+
+fn solution_count_servers(n: i64, logs: Vec[Vec[i64]], x: i64, queries: Vec[i64]) -> Vec[i64] {
+    let logs: Vec[Vec[i32]] = logs.iter().map(|log| log.iter().map(|v| v as i32).collect()).collect();
+    let queries: Vec[i32] = queries.iter().map(|q| q as i32).collect();
+    Solution.count_servers(n as i32, logs, x as i32, queries).into_iter().map(|a| a as i64).collect()
+}
+
+
+fn answer(arm: i64, n: i64, logs: Vec[Vec[i64]], x: i64, queries: Vec[i64]) -> Vec[i64] {
+    match arm {
+        0 => star_count_servers(n, logs, x, queries),
+        1 => scan_count_servers(n, logs, x, queries),
+        2 => bisect_count_servers(n, logs, x, queries),
+        3 => intervals_count_servers(n, logs, x, queries),
+        _ => solution_count_servers(n, logs, x, queries),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Case {
+    n: i64,
+    logs: Vec[Vec[i64]],
+    x: i64,
+    queries: Vec[i64],
+}
+
+fn random_case(seed: mut ref i64, n: i64, most: i64, x: i64, last: i64) -> Case {
+    let logs_count = next_random(mut seed) % most + 1;
+    let queries_count = next_random(mut seed) % most + 1;
+    let mut logs: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..logs_count {
+        let server = next_random(mut seed) % n + 1;
+        let time = (next_random(mut seed) * 32768 + next_random(mut seed)) % last + 1;
+        logs.push([server, time].to_vec());
+    }
+    let queries: Vec[i64] = (0..queries_count).map(|_| x + 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % (last - x).max(1)).collect();
+    Case { n, logs, x, queries }
+}
+
+fn main() {
+    let names = ["star", "scan", "bisect", "intervals", "solution"];
+    let mut seed = 2747;
+    let mut cases: Vec[Case] = Vec.new();
+    for c in 0..1050 {
+        if c < 1000 {
+            let n = next_random(mut seed) % 10 + 1;
+            let x = next_random(mut seed) % 10 + 1;
+            cases.push(random_case(mut seed, n, 20, x, 30));
+        } else {
+            let n = next_random(mut seed) % 300 + 1;
+            let x = (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000 + 1;
+            cases.push(random_case(mut seed, n, 1000, x, 1000000));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, case) in cases.iter().enumerate() {
+        let (n, x) = (case.n, case.x);
+        let small = c < 1000;
+        let want = if small { literal(n, case.logs, x, case.queries) } else { Vec.new() };
+        for a in want.iter() {
+            check = (check * 31 + a + 1) % 1000000007;
+        }
+        let logs_back: Vec[Vec[i64]] = case.logs.iter().rev().cloned().collect();
+        let queries_back: Vec[i64] = case.queries.iter().rev().collect();
+        let later_logs: Vec[Vec[i64]] = case.logs.iter().map(|log| [log[0], log[1] + 1000].to_vec()).collect();
+        let later_queries: Vec[i64] = case.queries.iter().map(|q| q + 1000).collect();
+        let got: Vec[Vec[i64]] = (0..5).map(|arm| answer(arm, n, case.logs, x, case.queries)).collect();
+        for arm in 0..5 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let reversed: Vec[i64] = value.iter().rev().collect();
+            let one_more: Vec[i64] = value.iter().map(|a| a + 1).collect();
+            let verdicts = [
+                not small or value == want,
+                answer(arm, n, logs_back, x, case.queries) == value,
+                answer(arm, n, case.logs, x, queries_back) == reversed,
+                answer(arm, n, later_logs, x, later_queries) == value,
+                value.iter().all(|a| 0 <= a and a <= n) and answer(arm, n + 1, case.logs, x, case.queries) == one_more,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} n {n} x {x} logs {case.logs} queries {case.queries}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

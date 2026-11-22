@@ -1,0 +1,248 @@
+// LeetCode #2841: Maximum Sum of Almost Unique Subarray -- the
+// differential. The five arms, against the statement read literally:
+// every subarray of length k, its distinct values counted by comparing
+// each with those before it, the sums of those with m or more, and the
+// most, 0 when there is none. 2000 random arrays of 1 to 8 numbers from
+// 1 to 4, then 50 of up to 500 numbers with k up to 50, from 1 to 30
+// or from 1 to 5 x 10^8, so that P3's doubling stays in `i32` for the
+// Rust solution; all are drawn before any arm answers, and the literal
+// reading is asked only of the first 2000.
+//
+// P1  up to 8 numbers, the answer is the literal reading's
+// P2  the array reversed: the same answer
+// P3  every number doubled: the answer doubled
+// P4  m lowered to 1: no smaller
+// P5  k the whole length and m 1: the whole array's sum
+// P6  each arm agrees with at least three of the other four
+
+fn literal(nums: Vec[i64], m: i64, k: i64) -> i64 {
+    let mut best = 0;
+    for i in 0..nums.len() - k + 1 {
+        let mut distinct = 0;
+        let mut sum = 0;
+        for j in i..i + k {
+            sum += nums[j];
+            let mut fresh = true;
+            for p in i..j {
+                if nums[p] == nums[j] {
+                    fresh = false;
+                }
+            }
+            if fresh {
+                distinct += 1;
+            }
+        }
+        if distinct >= m and sum > best {
+            best = sum;
+        }
+    }
+    best
+}
+
+
+// ---- star (almost.kara) ---------------------------------------------
+
+fn star_max_sum(nums: Vec[i64], m: i64, k: i64) -> i64 {
+    let mut count: Map[i64, i64] = Map.new();
+    let mut sum = 0;
+    let mut best = 0;
+    for i in 0..nums.len() {
+        *count.entry(nums[i]).or_insert(0) += 1;
+        sum += nums[i];
+        if i >= k {
+            let out = nums[i - k];
+            sum -= out;
+            let left = count[out] - 1;
+            if left == 0 {
+                count.remove(out);
+            } else {
+                count[out] = left;
+            }
+        }
+        if i + 1 >= k and count.len() >= m {
+            best = best.max(sum);
+        }
+    }
+    best
+}
+
+
+// ---- windows (almost_windows.kara) ----------------------------------
+
+fn windows_max_sum(nums: Vec[i64], m: i64, k: i64) -> i64 {
+    nums.windows(k).into_iter()
+        .filter_map(|w| {
+            let seen: Set[i64] = w.iter().collect();
+            if seen.len() >= m { Some(w.iter().sum()) } else { None }
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+
+// ---- ranks (almost_ranks.kara) --------------------------------------
+
+fn ranks_max_sum(nums: Vec[i64], m: i64, k: i64) -> i64 {
+    let mut values = nums.clone();
+    values.sort();
+    values.dedup();
+    let rank: Vec[i64] = nums.iter().map(|x| values.binary_search(x).unwrap()).collect();
+    let mut prefix: Vec[i64] = [0];
+    for x in nums.iter() {
+        prefix.push(prefix[prefix.len() - 1] + x);
+    }
+    let mut count: Vec[i64] = Vec.filled(values.len(), 0);
+    let mut distinct = 0;
+    let mut best = 0;
+    for i in 0..nums.len() {
+        if count[rank[i]] == 0 {
+            distinct += 1;
+        }
+        count[rank[i]] += 1;
+        if i >= k {
+            count[rank[i - k]] -= 1;
+            if count[rank[i - k]] == 0 {
+                distinct -= 1;
+            }
+        }
+        if i + 1 >= k and distinct >= m {
+            best = best.max(prefix[i + 1] - prefix[i + 1 - k]);
+        }
+    }
+    best
+}
+
+
+// ---- sorted (almost_sorted.kara) ------------------------------------
+
+fn sorted_best_from(nums: Vec[i64], m: i64, k: i64, i: i64) -> i64 {
+    if i + k > nums.len() {
+        return 0;
+    }
+    let window = nums[i..i + k];
+    let distinct: SortedSet[i64] = window.iter().collect();
+    let here = if distinct.len() >= m { window.iter().sum() } else { 0 };
+    here.max(sorted_best_from(nums, m, k, i + 1))
+}
+
+fn sorted_max_sum(nums: Vec[i64], m: i64, k: i64) -> i64 {
+    sorted_best_from(nums, m, k, 0)
+}
+
+
+// ---- solution (almost_solution.kara) --------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_sum(nums: Vec[i32], m: i32, k: i32) -> i64 {
+        let k = k as i64;
+        let mut cnt: Map[i32, i32] = Map.new();
+        let mut sum: i64 = 0;
+        let mut ans: i64 = 0;
+        for i in 0..nums.len() {
+            *cnt.entry(nums[i]).or_insert(0) += 1;
+            sum += nums[i];
+            if i >= k {
+                let x = nums[i - k];
+                sum -= x;
+                let c = cnt.get_mut(x).unwrap();
+                *c -= 1;
+                if *c == 0 {
+                    cnt.remove(x);
+                }
+            }
+            if i + 1 >= k and cnt.len() >= m {
+                ans = ans.max(sum);
+            }
+        }
+        ans
+    }
+}
+
+fn solution_max_sum(nums: ref Vec[i64], m: i64, k: i64) -> i64 {
+    Solution.max_sum(nums.iter().map(|v| v as i32).collect(), m as i32, k as i32)
+}
+
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64], m: i64, k: i64) -> i64 {
+    match arm {
+        0 => star_max_sum(nums, m, k),
+        1 => windows_max_sum(nums, m, k),
+        2 => ranks_max_sum(nums, m, k),
+        3 => sorted_max_sum(nums, m, k),
+        _ => solution_max_sum(nums, m, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "windows", "ranks", "sorted", "solution"];
+    let mut seed = 2841;
+    let mut cases: Vec[(Vec[i64], i64, i64)] = Vec.new();
+    for c in 0..2050 {
+        let short = c < 2000;
+        let n = if short { next_random(mut seed) % 8 + 1 } else { next_random(mut seed) % 500 + 1 };
+        let top = if short { 4 } else if c % 2 == 0 { 500000000 } else { 30 };
+        let nums: Vec[i64] = (0..n).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % top + 1).collect();
+        let k = next_random(mut seed) % n.min(if short { 8 } else { 50 }) + 1;
+        let m = next_random(mut seed) % k + 1;
+        cases.push((nums, m, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (nums, m, k)) in cases.iter().enumerate() {
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums, m, k)).collect();
+        let want = if c < 2000 { literal(nums, m, k) } else { got[0] };
+        check = (check * 31 + want) % 1000000007;
+        let back: Vec[i64] = nums.iter().rev().collect();
+        let doubled: Vec[i64] = nums.iter().map(|x| 2 * x).collect();
+        let whole: i64 = nums.iter().sum();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                c >= 2000 or value == want,
+                answer(arm, back, m, k) == value,
+                answer(arm, doubled, m, k) == 2 * value,
+                answer(arm, nums, 1, k) >= value,
+                answer(arm, nums, 1, nums.len()) == whole,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums} m={m} k={k}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

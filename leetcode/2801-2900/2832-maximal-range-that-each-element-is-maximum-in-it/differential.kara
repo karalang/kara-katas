@@ -1,0 +1,288 @@
+// LeetCode #2832: Maximal Range That Each Element Is Maximum in It --
+// the differential. The five arms, against the statement read
+// literally: for each place, every range around it, kept when no
+// number in it is greater, and the longest. 2000 random arrays of 1 to
+// 12 distinct numbers, then 50 of up to 2000. Every case is drawn
+// before any arm answers; the literal reading is asked only of the
+// first 2000.
+//
+// P1  up to 12 numbers, the answer is the literal reading's
+// P2  the numbers reversed: the answer reversed
+// P3  every number doubled and one added: the same answer
+// P4  a number greater than all appended: the old answers unchanged, and n + 1 for it
+// P5  the largest number's answer is n, and none is below 1
+// P6  each arm agrees with at least three of the other four
+
+fn literal(nums: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut ans = Vec.new();
+    for i in 0..n {
+        let mut best = 0;
+        for l in 0..=i {
+            for r in i..n {
+                if nums[l..=r].iter().all(|x| x <= nums[i]) {
+                    best = best.max(r - l + 1);
+                }
+            }
+        }
+        ans.push(best);
+    }
+    ans
+}
+
+
+// ---- star (ranges.kara) ---------------------------------------------
+
+fn star_maximum_length_of_ranges(nums: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut left: Vec[i64] = Vec.filled(n, -1);
+    let mut right: Vec[i64] = Vec.filled(n, n);
+    let mut stack: Vec[i64] = Vec.new();
+    for i in 0..n {
+        while let Some(top) = stack.last() {
+            if nums[top] > nums[i] {
+                break;
+            }
+            stack.pop();
+        }
+        if let Some(top) = stack.last() {
+            left[i] = top;
+        }
+        stack.push(i);
+    }
+    stack.clear();
+    for i in (0..n).rev() {
+        while let Some(top) = stack.last() {
+            if nums[top] > nums[i] {
+                break;
+            }
+            stack.pop();
+        }
+        if let Some(top) = stack.last() {
+            right[i] = top;
+        }
+        stack.push(i);
+    }
+    (0..n).map(|i| right[i] - left[i] - 1).collect()
+}
+
+
+// ---- once (ranges_once.kara) ----------------------------------------
+
+fn once_maximum_length_of_ranges(nums: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut ans: Vec[i64] = Vec.filled(n, 0);
+    let mut stack: Vec[i64] = Vec.new();
+    for i in 0..=n {
+        while not stack.is_empty() and (i == n or nums[stack[stack.len() - 1]] < nums[i]) {
+            let top = stack.pop().unwrap();
+            let left = if stack.is_empty() { -1 } else { stack[stack.len() - 1] };
+            ans[top] = i - left - 1;
+        }
+        stack.push(i);
+    }
+    ans
+}
+
+
+// ---- spread (ranges_spread.kara) ------------------------------------
+
+fn spread_maximum_length_of_ranges(nums: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut ans = Vec.new();
+    for i in 0..n {
+        let mut l = i;
+        while l > 0 and nums[l - 1] < nums[i] {
+            l -= 1;
+        }
+        let mut r = i;
+        while r + 1 < n and nums[r + 1] < nums[i] {
+            r += 1;
+        }
+        ans.push(r - l + 1);
+    }
+    ans
+}
+
+
+// ---- linked (ranges_linked.kara) ------------------------------------
+
+struct Links {
+    prev: Vec[i64],
+    next: Vec[i64],
+}
+
+impl Links {
+    fn new(n: i64) -> Links {
+        Links { prev: (0..n).map(|i| i - 1).collect(), next: (0..n).map(|i| i + 1).collect() }
+    }
+
+    fn remove(mut ref self, i: i64) -> i64 {
+        let (p, q) = (self.prev[i], self.next[i]);
+        if p >= 0 {
+            self.next[p] = q;
+        }
+        if q < self.next.len() {
+            self.prev[q] = p;
+        }
+        q - p - 1
+    }
+}
+
+fn linked_maximum_length_of_ranges(nums: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut order: Vec[i64] = (0..n).collect();
+    order.sort_by_key(|i| nums[i]);
+    let mut links = Links.new(n);
+    let mut ans: Vec[i64] = Vec.filled(n, 0);
+    for i in order.iter() {
+        ans[i] = links.remove(i);
+    }
+    ans
+}
+
+
+// ---- solution (ranges_solution.kara) --------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn maximum_length_of_ranges(nums: Vec[i32]) -> Vec[i32] {
+        let n = nums.len();
+        let mut left = Vec.filled(n, -1i32);
+        let mut right = Vec.filled(n, n as i32);
+        let mut stk: Vec[i64] = Vec.new();
+        for i in 0..n {
+            while let Some(j) = stk.last().cloned() {
+                if nums[j] > nums[i] {
+                    break;
+                }
+                stk.pop();
+            }
+            if let Some(j) = stk.last().cloned() {
+                left[i] = j as i32;
+            }
+            stk.push(i);
+        }
+        stk.clear();
+        for i in (0..n).rev() {
+            while let Some(j) = stk.last().cloned() {
+                if nums[j] > nums[i] {
+                    break;
+                }
+                stk.pop();
+            }
+            if let Some(j) = stk.last().cloned() {
+                right[i] = j as i32;
+            }
+            stk.push(i);
+        }
+        (0..n).map(|i| right[i] - left[i] - 1).collect()
+    }
+}
+
+fn solution_maximum_length_of_ranges(nums: Vec[i64]) -> Vec[i64] {
+    Solution.maximum_length_of_ranges(nums.iter().map(|v| v as i32).collect())
+        .into_iter()
+        .map(|v| v as i64)
+        .collect()
+}
+
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64]) -> Vec[i64] {
+    match arm {
+        0 => star_maximum_length_of_ranges(nums),
+        1 => once_maximum_length_of_ranges(nums),
+        2 => spread_maximum_length_of_ranges(nums),
+        3 => linked_maximum_length_of_ranges(nums),
+        _ => solution_maximum_length_of_ranges(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn distinct(n: i64, seed: mut ref i64) -> Vec[i64] {
+    let step = 100000 / n;
+    let mut nums: Vec[i64] = (0..n).map(|i| i * step + next_random(mut seed) % step + 1).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        nums.swap(i, j);
+    }
+    nums
+}
+
+fn digest(xs: Vec[i64]) -> i64 {
+    xs.iter().fold(0, |h, x| (h * 131 + x) % 1000000007)
+}
+
+fn main() {
+    let names = ["star", "once", "spread", "linked", "solution"];
+    let mut seed = 2832;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..2050 {
+        let n = if c < 2000 { next_random(mut seed) % 12 + 1 } else { next_random(mut seed) % 2000 + 1 };
+        cases.push(distinct(n, mut seed));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, nums) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(nums) } else { Vec.new() };
+        check = (check * 31 + digest(want) + 1) % 1000000007;
+        let n = nums.len();
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let raised: Vec[i64] = nums.iter().map(|v| 2 * v + 1).collect();
+        let mut longer = nums.clone();
+        longer.push(100001);
+        let top = (0..n).max_by_key(|i| nums[i]).unwrap();
+        let got: Vec[Vec[i64]] = (0..5).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..5 {
+            let value = ref got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let back: Vec[i64] = answer(arm, reversed).iter().rev().collect();
+            let mut extended = value.clone();
+            extended.push(n + 1);
+            let verdicts = [
+                not small or value == want,
+                back == value,
+                answer(arm, raised) == value,
+                answer(arm, longer) == extended,
+                value.len() == n and value[top] == n and value.iter().all(|x| x >= 1),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

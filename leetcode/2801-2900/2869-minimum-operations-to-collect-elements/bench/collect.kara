@@ -1,0 +1,52 @@
+// LeetCode #2869: Minimum Operations to Collect Elements -- the bench:
+// the ★ arm over 50000 arrays of 50 values, LeetCode's most, each
+// holding 1 and its k drawn from those whose 1..k all appear, all drawn
+// first, then each answered 20 times.
+
+fn min_operations(nums: Vec[i64], k: i64) -> i64 {
+    let full = (1 << k) - 1;
+    let mut mask = 0;
+    let n = nums.len();
+    for i in (0..n).rev() {
+        if nums[i] <= k {
+            mask |= 1 << (nums[i] - 1);
+        }
+        if mask == full {
+            return n - i;
+        }
+    }
+    n
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 50000;
+    let rounds = 20;
+    let n = 50;
+    let mut seed = 2869;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for _ in 0..count {
+        let mut nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % n + 1).collect();
+        nums[next_random(mut seed) % n] = 1;
+        let mut reach = 1;
+        while nums.contains(reach + 1) {
+            reach += 1;
+        }
+        let k = next_random(mut seed) % reach + 1;
+        cases.push((nums, k));
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (nums, k) in cases.iter() {
+            let ops = min_operations(nums, k);
+            total += ops;
+            check = (check * 31 + ops + r) % 1000000007;
+        }
+    }
+    println(f"{count} arrays of {n}, {rounds} rounds: {total} operations, checksum {check}");
+}

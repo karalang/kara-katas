@@ -1,0 +1,84 @@
+// LeetCode #2761: Prime Pairs With Target Sum -- a Rust solution as
+// LeetCode's Rust users write it, carried to Kāra by `karac fix`: `n`
+// shadowed `as usize`, the multiples crossed out by `(i * i..=n)
+// .step_by(i)`, and each pair a `vec![x as i32, (n - x) as i32]`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn find_prime_pairs(n: i32) -> Vec[Vec[i32]] {
+        let n = n as i64;
+        let mut is_prime = Vec.filled(n + 1, true);
+        is_prime[0] = false;
+        if n >= 1 {
+            is_prime[1] = false;
+        }
+        let mut i = 2;
+        while i * i <= n {
+            if is_prime[i] {
+                for j in (i * i..=n).step_by(i) {
+                    is_prime[j] = false;
+                }
+            }
+            i += 1;
+        }
+        let mut res = Vec.new();
+        for x in 2..=n / 2 {
+            if is_prime[x] and is_prime[n - x] {
+                res.push([x as i32, (n - x) as i32]);
+            }
+        }
+        res
+    }
+}
+
+fn find_prime_pairs(n: i64) -> Vec[Vec[i64]] {
+    Solution.find_prime_pairs(n as i32)
+        .into_iter()
+        .map(|pair| pair.into_iter().map(|v| v as i64).collect())
+        .collect()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn fold(pairs: Vec[Vec[i64]], count: mut ref i64, check: mut ref i64) {
+    *count += pairs.len();
+    *check = (*check * 31 + pairs.len()) % 1000000007;
+    for pair in pairs.iter() {
+        *check = (*check * 31 + pair[0] * 1000003 + pair[1]) % 1000000007;
+    }
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{find_prime_pairs(10)}");
+    println(f"{find_prime_pairs(2)}");
+    // the smallest n with a pair; an odd n, whose one chance is 2; and a
+    // few more
+    println(f"{find_prime_pairs(4)}");
+    println(f"{find_prime_pairs(9)}");
+    println(f"{find_prime_pairs(11)}");
+    println(f"{find_prime_pairs(100)}");
+    // every n from 1 to 2000; then 20 random n up to 10^6, LeetCode's most,
+    // and 10^6 itself
+    let mut count = 0;
+    let mut check = 0;
+    for n in 1..=2000 {
+        fold(find_prime_pairs(n), mut count, mut check);
+    }
+    println(f"n from 1 to 2000: {count} pairs, checksum {check}");
+    let mut seed = 2761;
+    count = 0;
+    check = 0;
+    for _ in 0..20 {
+        let n = (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000 + 1;
+        fold(find_prime_pairs(n), mut count, mut check);
+    }
+    fold(find_prime_pairs(1000000), mut count, mut check);
+    println(f"21 n up to 10^6: {count} pairs, checksum {check}");
+}

@@ -1,0 +1,71 @@
+// LeetCode #2809: Minimum Time to Make Array Sum At Most x -- ★: after t
+// seconds the sum is sum1 + t * sum2 less what the t resets saved, and
+// the j-th of them saves nums1[i] + j * nums2[i]; so each index is reset
+// at most once, the ones chosen in order of nums2, and best[j] the most
+// j resets can save over the pairs sorted by nums2, a knapsack run from
+// the top so that each pair is taken once. The answer is the least t
+// whose sum is at most x, or -1.
+
+fn minimum_time(nums1: Vec[i64], nums2: Vec[i64], x: i64) -> i64 {
+    let n = nums1.len();
+    let mut pairs: Vec[(i64, i64)] = nums2.iter().zip(nums1.iter()).collect();
+    pairs.sort();
+    let mut best: Vec[i64] = Vec.filled(n + 1, 0);
+    for (i, (b, a)) in pairs.iter().enumerate() {
+        for j in (1..=i + 1).rev() {
+            best[j] = best[j].max(best[j - 1] + a + j * b);
+        }
+    }
+    let sum1: i64 = nums1.iter().sum();
+    let sum2: i64 = nums2.iter().sum();
+    for t in 0..=n {
+        if sum1 + t * sum2 - best[t] <= x {
+            return t;
+        }
+    }
+    -1
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; nothing to do; 1000 pairs, LeetCode's most,
+    // nums1 at its largest with nums2 all 1, and counting up with nums2 0
+    println(f"{minimum_time([1, 2, 3], [1, 2, 3], 4)}");
+    println(f"{minimum_time([1, 2, 3], [3, 3, 3], 4)}");
+    println(f"{minimum_time([5, 5], [1, 1], 10)}");
+    let n = 1000;
+    println(f"{minimum_time(Vec.filled(n, 1000), Vec.filled(n, 1), 600000)}");
+    println(f"{minimum_time((0..n).map(|i| i + 1).collect(), Vec.filled(n, 0), 0)}");
+    // 3000 random cases of 1 to 6 pairs up to 10 with x up to 40; then 30
+    // of up to 1000 pairs up to 1000 with x up to 10^6
+    let mut seed = 2809;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let m = next_random(mut seed) % 6 + 1;
+        let nums1: Vec[i64] = (0..m).map(|_| next_random(mut seed) % 11).collect();
+        let nums2: Vec[i64] = (0..m).map(|_| next_random(mut seed) % 11).collect();
+        let a = minimum_time(nums1, nums2, next_random(mut seed) % 41);
+        sum += a;
+        check = (check * 31 + a + 1) % 1000000007;
+    }
+    println(f"3000 small cases: times sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for _ in 0..30 {
+        let m = next_random(mut seed) % n + 1;
+        let nums1: Vec[i64] = (0..m).map(|_| next_random(mut seed) % 1001).collect();
+        let nums2: Vec[i64] = (0..m).map(|_| next_random(mut seed) % 1001).collect();
+        let x = (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000001;
+        let a = minimum_time(nums1, nums2, x);
+        sum += a;
+        check = (check * 31 + a + 1) % 1000000007;
+    }
+    println(f"30 large cases: times sum to {sum}, checksum {check}");
+}

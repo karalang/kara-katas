@@ -1,0 +1,190 @@
+// LeetCode #2864: Maximum Odd Binary Number -- the differential. The
+// five arms, against the statement read literally: every string of n
+// bits with as many ones as s, written as a number, the odd ones kept,
+// the largest taken. 2000 random strings of 1 to 8 bits, then 50 of up
+// to 100, each with at least one one, all drawn before any arm answers;
+// the literal reading is asked only of the first 2000.
+//
+// P1  up to 8 bits, the answer is the literal reading's
+// P2  as long as s, as many ones, and ending in a one
+// P3  s reversed: the same answer
+// P4  a zero added to s: the answer with a zero before its last bit
+// P5  a one added to s: a one put before the answer
+// P6  each arm agrees with at least three of the other four
+
+fn literal(s: Str) -> String {
+    let n = s.len();
+    let ones = s.chars().filter(|c| c == '1').count();
+    let mut best = -1;
+    for m in 0..(1 << n) {
+        if m % 2 == 1 and m.count_ones() == ones and m > best {
+            best = m;
+        }
+    }
+    (0..n).map(|i| if (best >> (n - 1 - i)) & 1 == 1 { '1' } else { '0' }).collect()
+}
+
+
+// ---- star (odd.kara) ------------------------------------------------
+
+fn star_maximum_odd_binary_number(s: Str) -> String {
+    let ones = s.chars().filter(|c| c == '1').count();
+    let zeros = s.len() - ones;
+    "1".repeat(ones - 1) + "0".repeat(zeros) + "1"
+}
+
+
+// ---- sorted (odd_sorted.kara) ---------------------------------------
+
+fn sorted_maximum_odd_binary_number(s: Str) -> String {
+    let mut bits: Vec[char] = s.chars().collect();
+    bits.sort_by(|a, b| b.cmp(a));
+    let last_one = bits.iter().rposition(|c| c == '1').unwrap();
+    let one = bits.remove(last_one);
+    bits.push(one);
+    bits.iter().collect()
+}
+
+
+// ---- swap (odd_swap.kara) -------------------------------------------
+
+fn swap_maximum_odd_binary_number(s: Str) -> String {
+    let mut bits: Vec[u8] = s.bytes().to_vec();
+    let n = bits.len();
+    let mut front = 0;
+    for i in 0..n {
+        if bits[i] == b'1' {
+            bits.swap(front, i);
+            front += 1;
+        }
+    }
+    bits.swap(front - 1, n - 1);
+    String.from_utf8(bits).unwrap()
+}
+
+
+// ---- build (odd_build.kara) -----------------------------------------
+
+fn build_maximum_odd_binary_number(s: Str) -> String {
+    let n = s.len();
+    let mut ones = 0;
+    for c in s.chars() {
+        if c == '1' {
+            ones += 1;
+        }
+    }
+    let mut out = String.new();
+    for i in 0..n {
+        if i == n - 1 {
+            out.push('1');
+        } else if ones > 1 {
+            out.push('1');
+            ones -= 1;
+        } else {
+            out.push('0');
+        }
+    }
+    out
+}
+
+
+// ---- solution (odd_solution.kara) -----------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn maximum_odd_binary_number(s: String) -> String {
+        let cnt = s.bytes().iter().filter(|b| b == b'1').count();
+        "1".repeat(cnt - 1) + "0".repeat(s.len() - cnt) + "1"
+    }
+}
+
+fn solution_maximum_odd_binary_number(s: Str) -> String {
+    Solution.maximum_odd_binary_number(s.to_string())
+}
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, s: Str) -> String {
+    match arm {
+        0 => star_maximum_odd_binary_number(s),
+        1 => sorted_maximum_odd_binary_number(s),
+        2 => swap_maximum_odd_binary_number(s),
+        3 => build_maximum_odd_binary_number(s),
+        _ => solution_maximum_odd_binary_number(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "sorted", "swap", "build", "solution"];
+    let mut seed = 2864;
+    let mut cases: Vec[String] = Vec.new();
+    for c in 0..2050 {
+        let n = if c < 2000 { next_random(mut seed) % 8 + 1 } else { next_random(mut seed) % 100 + 1 };
+        let mut bits: Vec[char] = (0..n).map(|_| if next_random(mut seed) % 3 == 0 { '1' } else { '0' }).collect();
+        bits[next_random(mut seed) % n] = '1';
+        cases.push(bits.iter().collect());
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut ones_total = 0;
+    for (c, s) in cases.iter().enumerate() {
+        let n = s.len();
+        let ones = s.chars().filter(|b| b == '1').count();
+        let got: Vec[String] = (0..5).map(|arm| answer(arm, s)).collect();
+        let want = if c < 2000 { literal(s) } else { got[0].clone() };
+        ones_total += ones;
+        for b in want.bytes().iter() {
+            check = (check * 31 + b as i64) % 1000000007;
+        }
+        let reversed: String = s.chars().rev().collect();
+        let zeroed = s.clone() + "0";
+        let oned = s.clone() + "1";
+        for arm in 0..5 {
+            let value = ref got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == *value {
+                    same += 1;
+                }
+            }
+            let widened = value[0..n - 1].to_string() + "01";
+            let verdicts = [
+                c >= 2000 or *value == want,
+                value.len() == n and value.chars().filter(|b| b == '1').count() == ones and value.ends_with("1"),
+                answer(arm, reversed) == *value,
+                answer(arm, zeroed) == widened,
+                answer(arm, oned) == "1".to_string() + value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {s}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases, {ones_total} ones: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

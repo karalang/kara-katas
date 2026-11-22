@@ -1,0 +1,61 @@
+// LeetCode #2817: Minimum Absolute Difference Between Elements With
+// Constraint -- a counted window: a `SortedMap` from each number at least
+// x behind to how often it is there, asked for nums[i]'s `ceiling` and
+// `floor`.
+
+fn min_absolute_difference(nums: Vec[i64], x: i64) -> i64 {
+    let mut behind: SortedMap[i64, i64] = SortedMap.new();
+    let mut best = i64.MAX;
+    for i in x..nums.len() {
+        *behind.entry(nums[i - x]).or_insert(0) += 1;
+        let v = nums[i];
+        if let Some((up, _)) = behind.ceiling(v) {
+            best = best.min(up - v);
+        }
+        if let Some((down, _)) = behind.floor(v) {
+            best = best.min(v - down);
+        }
+    }
+    best
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's three examples; x = 0, a number against itself; 2000
+    // numbers rising by 7, x = 1000; and falling by 1000, x = 1999
+    println(f"{min_absolute_difference([4, 3, 2, 4], 2)}");
+    println(f"{min_absolute_difference([5, 3, 2, 10, 15], 1)}");
+    println(f"{min_absolute_difference([1, 2, 3, 4], 3)}");
+    println(f"{min_absolute_difference([8, 1], 0)}");
+    println(f"{min_absolute_difference((0..2000).map(|i| i * 7 + 1).collect(), 1000)}");
+    println(f"{min_absolute_difference((0..2000).map(|i| 2000000 - i * 1000).collect(), 1999)}");
+    // 3000 random arrays of 1 to 10 numbers up to 20 with x below the
+    // count; then 50 of up to 1000 numbers up to 10^9
+    let mut seed = 2817;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 10 + 1;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 20 + 1).collect();
+        let x = next_random(mut seed) % n;
+        check = (check * 31 + min_absolute_difference(nums, x)) % 1000000007;
+    }
+    println(f"3000 small arrays: checksum {check}");
+    check = 0;
+    for _ in 0..50 {
+        let n = next_random(mut seed) % 1000 + 1;
+        let nums: Vec[i64] = (0..n).map(|_| wide(mut seed) % 1000000000 + 1).collect();
+        let x = next_random(mut seed) % n;
+        check = (check * 31 + min_absolute_difference(nums, x)) % 1000000007;
+    }
+    println(f"50 large arrays: checksum {check}");
+}

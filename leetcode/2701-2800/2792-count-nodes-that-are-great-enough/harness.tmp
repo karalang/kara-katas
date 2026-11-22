@@ -1,0 +1,104 @@
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a tree from LeetCode's level order, -1 for null: the values, and each
+// node's left and right child, -1 for none, the root node 0
+fn level(list: Slice[i64]) -> (Vec[i64], Vec[i64], Vec[i64]) {
+    let vals: Vec[i64] = list.iter().filter(|v| v >= 0).collect();
+    let n = vals.len();
+    let mut left: Vec[i64] = Vec.filled(n, -1);
+    let mut right: Vec[i64] = Vec.filled(n, -1);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    queue.push_back(0);
+    let mut next = 1;
+    let mut at = 1;
+    while let Some(u) = queue.pop_front() {
+        for side in 0..2 {
+            if at < list.len() {
+                if list[at] >= 0 {
+                    if side == 0 {
+                        left[u] = next;
+                    } else {
+                        right[u] = next;
+                    }
+                    queue.push_back(next);
+                    next += 1;
+                }
+                at += 1;
+            }
+        }
+    }
+    (vals, left, right)
+}
+
+// a random tree of n nodes with values from 1 to top: each node after
+// the first hung on a free side of a random earlier one
+fn random_tree(n: i64, top: i64, seed: mut ref i64) -> (Vec[i64], Vec[i64], Vec[i64]) {
+    let vals: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top + 1).collect();
+    let mut left: Vec[i64] = Vec.filled(n, -1);
+    let mut right: Vec[i64] = Vec.filled(n, -1);
+    for i in 1..n {
+        let mut placed = false;
+        while not placed {
+            let p = next_random(mut seed) % i;
+            if next_random(mut seed) % 2 == 0 {
+                if left[p] < 0 {
+                    left[p] = i;
+                    placed = true;
+                }
+            } else if right[p] < 0 {
+                right[p] = i;
+                placed = true;
+            }
+        }
+    }
+    (vals, left, right)
+}
+
+fn main() {
+    // LeetCode's three examples; a path of 10^4 nodes, LeetCode's most,
+    // going left, its values falling, so every node with k below it is
+    // great enough; the same rising, so none is
+    let (v, l, r) = level([7, 6, 5, 4, 3, 2, 1]);
+    println(f"{count_great_enough_nodes(v, l, r, 2)}");
+    let (v, l, r) = level([1, 2, 3]);
+    println(f"{count_great_enough_nodes(v, l, r, 1)}");
+    let (v, l, r) = level([3, 2, 2]);
+    println(f"{count_great_enough_nodes(v, l, r, 2)}");
+    let n = 10000;
+    let down: Vec[i64] = (0..n).map(|i| if i + 1 < n { i + 1 } else { -1 }).collect();
+    let none: Vec[i64] = Vec.filled(n, -1);
+    let falling: Vec[i64] = (0..n).map(|i| n - i).collect();
+    let rising: Vec[i64] = (0..n).map(|i| i + 1).collect();
+    println(f"{count_great_enough_nodes(falling, down, none, 10)}");
+    println(f"{count_great_enough_nodes(rising, down, none, 10)}");
+    // 3000 random trees of 1 to 12 nodes with values from 1 to 5 and k
+    // from 1 to 4; then 20 of 10^4 nodes with values up to 10^4 and k up
+    // to 10
+    let mut seed = 2792;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let m = next_random(mut seed) % 12 + 1;
+        let (v, l, r) = random_tree(m, 5, mut seed);
+        let k = next_random(mut seed) % 4 + 1;
+        let a = count_great_enough_nodes(v, l, r, k);
+        sum += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"3000 small trees: great enough sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for _ in 0..20 {
+        let (v, l, r) = random_tree(n, 10000, mut seed);
+        let k = next_random(mut seed) % 10 + 1;
+        let a = count_great_enough_nodes(v, l, r, k);
+        sum += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"20 trees of 10^4: great enough sum to {sum}, checksum {check}");
+}

@@ -1,0 +1,58 @@
+// LeetCode #2855: Minimum Right Shifts to Sort the Array -- the bench:
+// the ★ arm over 10^5 arrays of 100 distinct values up to 100,
+// LeetCode's most, two times in three sorted and shifted, else with two
+// values swapped after it, all drawn first, then each answered 50 times.
+
+fn minimum_right_shifts(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut drop = -1;
+    for i in 0..n - 1 {
+        if nums[i] > nums[i + 1] {
+            if drop >= 0 {
+                return -1;
+            }
+            drop = i;
+        }
+    }
+    if drop < 0 {
+        return 0;
+    }
+    if nums[n - 1] > nums[0] {
+        return -1;
+    }
+    n - 1 - drop
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 100000;
+    let rounds = 50;
+    let mut seed = 2855;
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..count {
+        let mut nums: Vec[i64] = (1..101).collect();
+        nums.rotate_right(next_random(mut seed) % 100);
+        if next_random(mut seed) % 3 == 2 {
+            let i = next_random(mut seed) % 100;
+            let j = next_random(mut seed) % 100;
+            nums.swap(i, j);
+        }
+        arrays.push(nums);
+    }
+    let mut sortable = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for nums in arrays.iter() {
+            let shifts = minimum_right_shifts(nums);
+            if shifts >= 0 {
+                sortable += 1;
+            }
+            check = (check * 31 + shifts + 1 + r) % 1000000007;
+        }
+    }
+    println(f"{count} arrays, {rounds} rounds: {sortable} sortable, checksum {check}");
+}

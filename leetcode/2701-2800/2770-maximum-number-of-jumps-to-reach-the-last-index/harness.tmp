@@ -1,0 +1,61 @@
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// 45 random bits from three draws
+fn wide(seed: mut ref i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) * 32768 + next_random(mut seed)
+}
+
+fn fold(a: i64, reached: mut ref i64, total: mut ref i64, check: mut ref i64) {
+    if a >= 0 {
+        *reached += 1;
+        *total += a;
+    }
+    *check = (*check * 31 + a + 1) % 1000000007;
+}
+
+fn main() {
+    // LeetCode's three examples
+    let example = [1, 3, 6, 4, 1, 2].to_vec();
+    for target in [2, 3, 0] {
+        println(f"{maximum_jumps(example, target)}");
+    }
+    // 1000 numbers, LeetCode's most: rising by 1 with a target of 1; the
+    // ends of LeetCode's range in turn with a target of 2 * 10^9; all
+    // equal with a target of 0; and the same with the last one apart
+    let rising: Vec[i64] = (0..1000).collect();
+    println(f"{maximum_jumps(rising, 1)}");
+    let ends: Vec[i64] = (0..1000).map(|i| if i % 2 == 0 { -1000000000 } else { 1000000000 }).collect();
+    println(f"{maximum_jumps(ends, 2000000000)}");
+    let mut equal: Vec[i64] = Vec.filled(1000, 7);
+    println(f"{maximum_jumps(equal, 0)}");
+    equal[999] = 8;
+    println(f"{maximum_jumps(equal, 0)}");
+    // 3000 arrays of 2 to 12 numbers from 0 to 9, targets from 0 to 4
+    let mut seed = 2770;
+    let mut reached = 0;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 11 + 2;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 10).collect();
+        let target = next_random(mut seed) % 5;
+        fold(maximum_jumps(nums, target), mut reached, mut total, mut check);
+    }
+    println(f"3000 small arrays: {reached} reached, jumps sum to {total}, checksum {check}");
+    // 20 arrays of 1000 from -10^9 to 10^9, targets from 0 to 2 * 10^9
+    let mut reached = 0;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..20 {
+        let nums: Vec[i64] = (0..1000).map(|_| wide(mut seed) % 2000000001 - 1000000000).collect();
+        let target = wide(mut seed) % 2000000001;
+        fold(maximum_jumps(nums, target), mut reached, mut total, mut check);
+    }
+    println(f"20 arrays of 1000: {reached} reached, jumps sum to {total}, checksum {check}");
+}

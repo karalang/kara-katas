@@ -1,0 +1,535 @@
+// LeetCode #2818: Apply Operations to Maximize Score -- the differential.
+// The five arms, against the statement read literally: every subarray,
+// its number of highest prime score, the first of them on a tie, each
+// prime score counted by asking every p from 2 to v whether it is a prime
+// dividing v; the chosen numbers sorted largest first, and the first k
+// multiplied. 2000 random arrays of 1 to 10 numbers up to 100 with k up
+// to the count of subarrays; then 50 of up to 400 numbers up to 10^5
+// with k up to the count. Every case is drawn before any arm answers;
+// the literal reading is asked only of the first 2000.
+//
+// P1  up to 10 numbers, the answer is the literal reading's
+// P2  one operation more: the answer times some number of the array
+// P3  every subarray walked from each start, the best so far carried:
+//     the same answer
+// P4  between 1 and 10^9 + 6, a product of numbers from 1 up
+// P5  k = 1: the largest number
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- the statement read literally ------------------------------------------
+
+fn is_prime(p: i64) -> bool {
+    p >= 2 and (2..p).all(|d| p % d != 0)
+}
+
+fn literal_score(v: i64) -> i64 {
+    (2..=v).filter(|p| v % p == 0 and is_prime(p)).count()
+}
+
+fn product_of_first(values: Vec[i64], k: i64) -> i64 {
+    let mut sorted = values.clone();
+    sorted.sort();
+    sorted.reverse();
+    let mut total = 1;
+    for i in 0..k {
+        total = total * sorted[i] % 1000000007;
+    }
+    total
+}
+
+fn literal(nums: Vec[i64], k: i64) -> i64 {
+    let n = nums.len();
+    let mut chosen: Vec[i64] = Vec.new();
+    for l in 0..n {
+        for r in l..n {
+            let mut best = l;
+            for i in l..=r {
+                if literal_score(nums[i]) > literal_score(nums[best]) {
+                    best = i;
+                }
+            }
+            chosen.push(nums[best]);
+        }
+    }
+    product_of_first(chosen, k)
+}
+
+// ---- every subarray from each start, the best carried ----------------------
+
+fn trial_score(v: i64) -> i64 {
+    let mut rest = v;
+    let mut count = 0;
+    let mut p = 2;
+    while p * p <= rest {
+        if rest % p == 0 {
+            count += 1;
+            while rest % p == 0 {
+                rest /= p;
+            }
+        }
+        p += 1;
+    }
+    if rest > 1 { count + 1 } else { count }
+}
+
+fn walked(nums: Vec[i64], k: i64) -> i64 {
+    let n = nums.len();
+    let s: Vec[i64] = nums.iter().map(|v| trial_score(v)).collect();
+    let mut chosen: Vec[i64] = Vec.new();
+    for l in 0..n {
+        let mut best = l;
+        for r in l..n {
+            if s[r] > s[best] {
+                best = r;
+            }
+            chosen.push(nums[best]);
+        }
+    }
+    product_of_first(chosen, k)
+}
+
+
+// ---- star (score.kara) ----------------------------------------------
+
+const STAR_MOD: i64 = 1000000007;
+
+fn star_prime_scores(limit: i64) -> Vec[i64] {
+    let mut score: Vec[i64] = Vec.filled(limit + 1, 0);
+    for p in 2..=limit {
+        if score[p] == 0 {
+            let mut q = p;
+            while q <= limit {
+                score[q] += 1;
+                q += p;
+            }
+        }
+    }
+    score
+}
+
+fn star_power(base: i64, exp: i64) -> i64 {
+    let mut result = 1;
+    let mut b = base % STAR_MOD;
+    let mut e = exp;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % STAR_MOD;
+        }
+        b = b * b % STAR_MOD;
+        e /= 2;
+    }
+    result
+}
+
+fn star_maximum_score(nums: Vec[i64], k: i64) -> i64 {
+    let n = nums.len();
+    let score = star_prime_scores(nums.iter().max().unwrap());
+    let s: Vec[i64] = nums.iter().map(|v| score[v]).collect();
+    let mut left: Vec[i64] = Vec.filled(n, -1);
+    let mut right: Vec[i64] = Vec.filled(n, n);
+    let mut stack: Vec[i64] = Vec.new();
+    for i in 0..n {
+        while not stack.is_empty() and s[stack[stack.len() - 1]] < s[i] {
+            right[stack.pop().unwrap()] = i;
+        }
+        if let Some(t) = stack.last() {
+            left[i] = t;
+        }
+        stack.push(i);
+    }
+    let mut order: Vec[i64] = (0..n).collect();
+    order.sort_by_key(|i| -nums[i]);
+    let mut rest = k;
+    let mut total = 1;
+    for i in order.iter() {
+        if rest == 0 {
+            break;
+        }
+        let take = ((i - left[i]) * (right[i] - i)).min(rest);
+        total = total * star_power(nums[i], take) % STAR_MOD;
+        rest -= take;
+    }
+    total
+}
+
+
+// ---- walk (score_walk.kara) -----------------------------------------
+
+const WALK_MOD: i64 = 1000000007;
+
+fn walk_distinct_primes(v: i64) -> i64 {
+    let mut rest = v;
+    let mut count = 0;
+    let mut p = 2;
+    while p * p <= rest {
+        if rest % p == 0 {
+            count += 1;
+            while rest % p == 0 {
+                rest /= p;
+            }
+        }
+        p += 1;
+    }
+    if rest > 1 {
+        count += 1;
+    }
+    count
+}
+
+fn walk_power(base: i64, exp: i64) -> i64 {
+    let mut result = 1;
+    let mut b = base % WALK_MOD;
+    let mut e = exp;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % WALK_MOD;
+        }
+        b = b * b % WALK_MOD;
+        e /= 2;
+    }
+    result
+}
+
+fn walk_maximum_score(nums: Vec[i64], k: i64) -> i64 {
+    let n = nums.len();
+    let s: Vec[i64] = nums.iter().map(|v| walk_distinct_primes(v)).collect();
+    let mut ruled: SortedMap[i64, i64] = SortedMap.new();
+    for i in 0..n {
+        let mut lo = i;
+        while lo > 0 and s[lo - 1] < s[i] {
+            lo -= 1;
+        }
+        let mut hi = i;
+        while hi + 1 < n and s[hi + 1] <= s[i] {
+            hi += 1;
+        }
+        let count = (i - lo + 1) * (hi - i + 1);
+        ruled.insert(nums[i], ruled.get(nums[i]).unwrap_or(0) + count);
+    }
+    let mut rest = k;
+    let mut total = 1;
+    for (v, count) in ruled.iter().rev() {
+        let take = count.min(rest);
+        total = total * walk_power(v, take) % WALK_MOD;
+        rest -= take;
+        if rest == 0 {
+            break;
+        }
+    }
+    total
+}
+
+
+// ---- split (score_split.kara) ---------------------------------------
+
+const SPLIT_MOD: i64 = 1000000007;
+
+fn split_smallest_factors(limit: i64) -> Vec[i64] {
+    let mut spf: Vec[i64] = (0..=limit).collect();
+    let mut p = 2;
+    while p * p <= limit {
+        if spf[p] == p {
+            let mut q = p * p;
+            while q <= limit {
+                if spf[q] == q {
+                    spf[q] = p;
+                }
+                q += p;
+            }
+        }
+        p += 1;
+    }
+    spf
+}
+
+fn split_score_of(v: i64, spf: Vec[i64]) -> i64 {
+    let mut rest = v;
+    let mut count = 0;
+    while rest > 1 {
+        let p = spf[rest];
+        count += 1;
+        while rest % p == 0 {
+            rest /= p;
+        }
+    }
+    count
+}
+
+fn split_power(base: i64, exp: i64) -> i64 {
+    if exp == 0 {
+        return 1;
+    }
+    let half = split_power(base, exp / 2);
+    let square = half * half % SPLIT_MOD;
+    if exp % 2 == 1 { square * (base % SPLIT_MOD) % SPLIT_MOD } else { square }
+}
+
+fn split_split(s: Vec[i64], lo: i64, hi: i64, nums: Vec[i64], pairs: mut ref Vec[(i64, i64)]) {
+    if lo > hi {
+        return;
+    }
+    let mut m = lo;
+    for i in lo + 1..=hi {
+        if s[i] > s[m] {
+            m = i;
+        }
+    }
+    pairs.push((nums[m], (m - lo + 1) * (hi - m + 1)));
+    split_split(s, lo, m - 1, nums, mut pairs);
+    split_split(s, m + 1, hi, nums, mut pairs);
+}
+
+fn split_maximum_score(nums: Vec[i64], k: i64) -> i64 {
+    let spf = split_smallest_factors(nums.iter().max().unwrap());
+    let s: Vec[i64] = nums.iter().map(|v| split_score_of(v, spf)).collect();
+    let mut pairs: Vec[(i64, i64)] = Vec.new();
+    split_split(s, 0, nums.len() - 1, nums, mut pairs);
+    pairs.sort_by(|a, b| b.0.cmp(a.0));
+    let mut rest = k;
+    let mut total = 1;
+    for (v, count) in pairs.iter() {
+        if rest == 0 {
+            break;
+        }
+        let take = count.min(rest);
+        total = total * split_power(v, take) % SPLIT_MOD;
+        rest -= take;
+    }
+    total
+}
+
+
+// ---- heap (score_heap.kara) -----------------------------------------
+
+const HEAP_MOD: i64 = 1000000007;
+
+fn heap_prime_scores(limit: i64) -> Vec[i64] {
+    let mut score: Vec[i64] = Vec.filled(limit + 1, 0);
+    for p in 2..=limit {
+        if score[p] == 0 {
+            for q in (p..=limit).step_by(p) {
+                score[q] += 1;
+            }
+        }
+    }
+    score
+}
+
+fn heap_power(base: i64, exp: i64) -> i64 {
+    let mut result = 1;
+    let mut b = base % HEAP_MOD;
+    let mut e = exp;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % HEAP_MOD;
+        }
+        b = b * b % HEAP_MOD;
+        e /= 2;
+    }
+    result
+}
+
+fn heap_maximum_score(nums: Vec[i64], k: i64) -> i64 {
+    let n = nums.len();
+    let score = heap_prime_scores(nums.iter().max().unwrap());
+    let s: Vec[i64] = nums.iter().map(|v| score[v]).collect();
+    let mut next_above: Vec[i64] = Vec.filled(n, n);
+    let mut stack: Vec[i64] = Vec.new();
+    for i in (0..n).rev() {
+        while not stack.is_empty() and s[stack[stack.len() - 1]] <= s[i] {
+            stack.pop();
+        }
+        if let Some(t) = stack.last() {
+            next_above[i] = t;
+        }
+        stack.push(i);
+    }
+    let mut last_at_least: Vec[i64] = Vec.filled(n, -1);
+    stack.clear();
+    for i in 0..n {
+        while not stack.is_empty() and s[stack[stack.len() - 1]] < s[i] {
+            stack.pop();
+        }
+        if let Some(t) = stack.last() {
+            last_at_least[i] = t;
+        }
+        stack.push(i);
+    }
+    let mut heap: PriorityQueue[(i64, i64)] = PriorityQueue.max_first();
+    for i in 0..n {
+        heap.push((nums[i], (i - last_at_least[i]) * (next_above[i] - i)));
+    }
+    let mut rest = k;
+    let mut total = 1;
+    while rest > 0 {
+        let (v, count) = heap.pop().unwrap();
+        let take = count.min(rest);
+        total = total * heap_power(v, take) % HEAP_MOD;
+        rest -= take;
+    }
+    total
+}
+
+
+// ---- solution (score_solution.kara) ---------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn maximum_score(nums: Vec[i32], k: i32) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let n = nums.len();
+        let mx = *nums.iter().max().unwrap() as i64;
+        let mut omega = Vec.filled(mx + 1, 0);
+        for i in 2..=mx {
+            if omega[i] == 0 {
+                let mut j = i;
+                while j <= mx {
+                    omega[j] += 1;
+                    j += i;
+                }
+            }
+        }
+        let mut left = Vec.filled(n, -1i32);
+        let mut right = Vec.filled(n, n as i32);
+        let mut st: Vec[i64] = Vec.new();
+        for i in 0..n {
+            while let Some(t) = st.last().cloned() {
+                if omega[nums[t]] < omega[nums[i]] {
+                    right[t] = i as i32;
+                    st.pop();
+                } else {
+                    break;
+                }
+            }
+            if let Some(t) = st.last().cloned() {
+                left[i] = t as i32;
+            }
+            st.push(i);
+        }
+        let mut idx: Vec[i64] = (0..n).collect();
+        idx.sort_by(|a, b| nums[b].cmp(nums[a]));
+        let mut k = k as i64;
+        let mut ans: i64 = 1;
+        for i in idx {
+            if k == 0 {
+                break;
+            }
+            let cnt = ((i - left[i]) * (right[i] - i)).min(k);
+            ans = ans * Solution.pow(nums[i], cnt, MOD) % MOD;
+            k -= cnt;
+        }
+        ans as i32
+    }
+
+    fn pow(b: i64, e: i64, m: i64) -> i64 {
+        let mut b = b;
+        let mut e = e;
+        let mut r = 1;
+        b %= m;
+        while e > 0 {
+            if e & 1 == 1 {
+                r = r * b % m;
+            }
+            b = b * b % m;
+            e >>= 1;
+        }
+        r
+    }
+}
+
+fn solution_maximum_score(nums: Vec[i64], k: i64) -> i64 {
+    Solution.maximum_score(nums.iter().map(|v| v as i32).collect(), k as i32)
+}
+
+
+// ---- the checks ------------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64], k: i64) -> i64 {
+    match arm {
+        0 => star_maximum_score(nums, k),
+        1 => walk_maximum_score(nums, k),
+        2 => split_maximum_score(nums, k),
+        3 => heap_maximum_score(nums, k),
+        _ => solution_maximum_score(nums, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "walk", "split", "heap", "solution"];
+    let mut seed = 2818;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..2050 {
+        let (n, top) = if c < 2000 {
+            (next_random(mut seed) % 10 + 1, 100)
+        } else {
+            (next_random(mut seed) % 400 + 1, 100000)
+        };
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top + 1).collect();
+        cases.push((nums, next_random(mut seed) % (n * (n + 1) / 2) + 1));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (nums, k)) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(nums, k) } else { 0 };
+        let carried = walked(nums, k);
+        check = (check * 31 + want + carried) % 1000000007;
+        let n = nums.len();
+        let all = n * (n + 1) / 2;
+        let top = nums.iter().max().unwrap();
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums, k)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let step = if k < all {
+                let more = answer(arm, nums, k + 1);
+                nums.iter().any(|v| value * v % 1000000007 == more)
+            } else {
+                true
+            };
+            let verdicts = [
+                not small or value == want,
+                step,
+                value == carried,
+                value >= 1 and value < 1000000007,
+                answer(arm, nums, 1) == top,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums} k {k}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

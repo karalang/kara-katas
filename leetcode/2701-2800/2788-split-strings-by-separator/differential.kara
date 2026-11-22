@@ -1,0 +1,252 @@
+// LeetCode #2788: Split Strings by Separator -- the differential. The
+// five arms, against the statement read literally: in each word every
+// slice from a start, the word's start or just after a separator, to an
+// end, the word's end or a separator, with no separator inside and
+// something in it, taken in the order of the words and of their starts;
+// no `split`. 2000 random cases of 1 to 5 words of 1 to 8 characters from
+// a, b, . and |, split by . or |; then 50 of up to 100 words of up to 20,
+// LeetCode's most, from a, b, c and the six separators, split by one of
+// them. Every case is drawn before any arm answers; the literal reading
+// is asked only of the first 2000.
+//
+// P1  up to 5 words, the pieces are the literal reading's
+// P2  the words joined into one by the separator: the same pieces
+// P3  the words and each word reversed: the pieces reversed, each reversed
+// P4  every separator doubled: the same pieces
+// P5  no piece empty or holding the separator, and their letters all the
+//     letters of the words that are not the separator
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- star (split.kara) ----------------------------------------------
+
+fn star_split_words_by_separator(words: Vec[String], separator: char) -> Vec[String] {
+    let sep = separator.to_string();
+    words
+        .iter()
+        .flat_map(|w| w.split(sep))
+        .filter(|piece| not piece.is_empty())
+        .map(|piece| piece.to_string())
+        .collect()
+}
+
+
+// ---- scan (split_scan.kara) -----------------------------------------
+
+fn scan_split_words_by_separator(words: Vec[String], separator: char) -> Vec[String] {
+    let mut out: Vec[String] = Vec.new();
+    for w in words.iter() {
+        let mut piece = String.new();
+        for c in w.chars() {
+            if c == separator {
+                if not piece.is_empty() {
+                    out.push(piece);
+                    piece = String.new();
+                }
+            } else {
+                piece.push(c);
+            }
+        }
+        if not piece.is_empty() {
+            out.push(piece);
+        }
+    }
+    out
+}
+
+
+// ---- cuts (split_cuts.kara) -----------------------------------------
+
+fn cuts_split_words_by_separator(words: Vec[String], separator: char) -> Vec[String] {
+    let mut out: Vec[String] = Vec.new();
+    for w in words.iter() {
+        let mut cuts: Vec[i64] = [-1].to_vec();
+        for (i, c) in w.char_indices() {
+            if c == separator {
+                cuts.push(i);
+            }
+        }
+        cuts.push(w.len());
+        for pair in cuts.windows(2) {
+            let (from, to) = (pair[0] + 1, pair[1]);
+            if from < to {
+                out.push(w[from..to].to_string());
+            }
+        }
+    }
+    out
+}
+
+
+// ---- joined (split_joined.kara) -------------------------------------
+
+fn joined_split_words_by_separator(words: Vec[String], separator: char) -> Vec[String] {
+    let sep = separator.to_string();
+    let joined = words.join(sep);
+    let mut out: Vec[String] = Vec.new();
+    for piece in joined.split(sep) {
+        if piece.len() > 0 {
+            out.push(piece.to_string());
+        }
+    }
+    out
+}
+
+
+// ---- solution (split_solution.kara) ---------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn split_words_by_separator(words: Vec[String], separator: char) -> Vec[String] {
+        words
+            .iter()
+            .flat_map(|w| w.split(separator.to_string()))
+            .filter(|s| not s.is_empty())
+            .map(|s| s.to_string())
+            .collect()
+    }
+}
+
+fn solution_split_words_by_separator(words: Vec[String], separator: char) -> Vec[String] {
+    Solution.split_words_by_separator(words, separator)
+}
+
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(words: Vec[String], separator: char) -> Vec[String] {
+    let mut out: Vec[String] = Vec.new();
+    for w in words.iter() {
+        let cs: Vec[char] = w.chars().collect();
+        let n = cs.len();
+        for a in 0..n {
+            if a > 0 and cs[a - 1] != separator {
+                continue;
+            }
+            for b in a + 1..=n {
+                let closed = b == n or cs[b] == separator;
+                let clean = (a..b).all(|k| cs[k] != separator);
+                if closed and clean {
+                    out.push(cs[a..b].iter().collect());
+                }
+            }
+        }
+    }
+    out
+}
+
+fn answer(arm: i64, words: Vec[String], separator: char) -> Vec[String] {
+    match arm {
+        0 => star_split_words_by_separator(words, separator),
+        1 => scan_split_words_by_separator(words, separator),
+        2 => cuts_split_words_by_separator(words, separator),
+        3 => joined_split_words_by_separator(words, separator),
+        _ => solution_split_words_by_separator(words, separator),
+    }
+}
+
+fn reversed(w: ref String) -> String {
+    w.chars().rev().collect()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_text(n: i64, from: Str, seed: mut ref i64) -> String {
+    let letters: Vec[char] = from.chars().collect();
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(letters[next_random(mut seed) % letters.len()]);
+    }
+    s
+}
+
+fn main() {
+    let names = ["star", "scan", "cuts", "joined", "solution"];
+    let separators: Vec[char] = ".,|$#@".chars().collect();
+    let mut seed = 2788;
+    let mut cases: Vec[(Vec[String], char)] = Vec.new();
+    for c in 0..2050 {
+        let mut words: Vec[String] = Vec.new();
+        if c < 2000 {
+            let count = next_random(mut seed) % 5 + 1;
+            for _ in 0..count {
+                let n = next_random(mut seed) % 8 + 1;
+                words.push(random_text(n, "ab.|", mut seed));
+            }
+            let separator = if next_random(mut seed) % 2 == 0 { '.' } else { '|' };
+            cases.push((words, separator));
+        } else {
+            let count = next_random(mut seed) % 100 + 1;
+            for _ in 0..count {
+                let n = next_random(mut seed) % 20 + 1;
+                words.push(random_text(n, "abc.,|$#@", mut seed));
+            }
+            let separator = separators[next_random(mut seed) % 6];
+            cases.push((words, separator));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (words, separator)) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(words, separator) } else { Vec.new() };
+        for p in want.iter() {
+            check = p.bytes().iter().fold(check, |h, b| (h * 31 + b) % 1000000007);
+            check = (check * 31 + 1) % 1000000007;
+        }
+        check = (check * 31 + 2) % 1000000007;
+        let sep = separator.to_string();
+        let one: Vec[String] = [words.join(sep)];
+        let back: Vec[String] = words.iter().rev().map(|w| reversed(w)).collect();
+        let doubled: Vec[String] = words.iter().map(|w| w.replace(sep, f"{sep}{sep}")).collect();
+        let letters: i64 = words.iter().map(|w| w.chars().filter(|ch| ch != separator).count()).sum();
+        let got: Vec[Vec[String]] = (0..5).map(|arm| answer(arm, words, separator)).collect();
+        for arm in 0..5 {
+            let value = ref got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let flipped: Vec[String] = value.iter().rev().map(|p| reversed(p)).collect();
+            let clean = value.iter().all(|p| not p.is_empty() and not p.contains(sep));
+            let total: i64 = value.iter().map(|p| p.chars().count()).sum();
+            let verdicts = [
+                not small or value == want,
+                answer(arm, one, separator) == value,
+                answer(arm, back, separator) == flipped,
+                answer(arm, doubled, separator) == value,
+                clean and total == letters,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {words} by {separator}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

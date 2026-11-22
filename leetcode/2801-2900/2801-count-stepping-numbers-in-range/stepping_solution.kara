@@ -1,0 +1,119 @@
+// LeetCode #2801: Count Stepping Numbers in Range -- a Rust solution as
+// LeetCode's Rust users write it, carried to Kāra by `karac fix`: a
+// nested `fn dfs` over the digits with a `vec![vec![-1; 10]; n]` memo,
+// a nested `fn calc` around it, and low's own check by `windows(2)`.
+
+const MOD: i64 = 1_000_000_007;
+
+fn dfs(i: i64, pre: i64, tight: bool, started: bool, d: ref Vec[i64], memo: mut ref Vec[Vec[i64]]) -> i64 {
+    if i == d.len() {
+        return if started { 1 } else { 0 };
+    }
+    if started and not tight and memo[i][pre] != -1 {
+        return memo[i][pre];
+    }
+    let up = if tight { d[i] } else { 9 };
+    let mut res = 0;
+    for j in 0..=up {
+        if not started {
+            res += dfs(i + 1, j, tight and j == up, j > 0, d, mut memo);
+        } else if (j as i32 - pre as i32).abs() == 1 {
+            res += dfs(i + 1, j, tight and j == up, true, d, mut memo);
+        }
+    }
+    res %= MOD;
+    if started and not tight {
+        memo[i][pre] = res;
+    }
+    res
+}
+
+fn calc(s: Str) -> i64 {
+    let d: Vec[i64] = s.bytes().iter().map(|b| (b - b'0') as i64).collect();
+    let mut memo = Vec.filled(d.len(), Vec.filled(10, -1));
+    dfs(0, 0, true, false, d, mut memo)
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn count_stepping_numbers(low: String, high: String) -> i32 {
+        let ok = low.bytes().windows(2).into_iter().all(|w| (w[0] as i32 - w[1] as i32).abs() == 1);
+        ((calc(high) - calc(low) + if ok { 1 } else { 0 } + MOD) % MOD) as i32
+    }
+}
+
+fn count_stepping_numbers(low: String, high: String) -> i64 {
+    Solution.count_stepping_numbers(low, high)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a number of m digits, its first not 0, mostly stepping when `near`
+fn number(m: i64, near: bool, seed: mut ref i64) -> String {
+    let digits = "0123456789";
+    let mut d = next_random(mut seed) % 9 + 1;
+    let mut s = digits[d..d + 1].to_string();
+    for _ in 1..m {
+        let r = next_random(mut seed) % 10;
+        d = if near and r < 8 {
+            if r % 2 == 0 and d > 0 or d == 9 { d - 1 } else { d + 1 }
+        } else {
+            r
+        };
+        s.push_str(digits[d..d + 1]);
+    }
+    s
+}
+
+// the lesser of two numbers written out first
+fn ordered(a: String, b: String) -> (String, String) {
+    if a.len() < b.len() or (a.len() == b.len() and a <= b) {
+        (a.clone(), b.clone())
+    } else {
+        (b.clone(), a.clone())
+    }
+}
+
+fn main() {
+    // LeetCode's two examples; 1 to 10^100 - 1, LeetCode's widest; a
+    // range of one stepping number of 100 digits; the 100-digit numbers
+    println(f"{count_stepping_numbers("1", "11")}");
+    println(f"{count_stepping_numbers("90", "101")}");
+    println(f"{count_stepping_numbers("1", "9".repeat(100))}");
+    let one = "10".repeat(50);
+    println(f"{count_stepping_numbers(one, one)}");
+    let top = f"1{"0".repeat(99)}";
+    println(f"{count_stepping_numbers(top, "9".repeat(100))}");
+    // 3000 random ranges within 1 to 10^4; then 50 of up to 100 digits,
+    // every other one made mostly of steps
+    let mut seed = 2801;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let a = next_random(mut seed) % 10000 + 1;
+        let b = next_random(mut seed) % 10000 + 1;
+        let (low, high) = ordered(f"{a}", f"{b}");
+        let ans = count_stepping_numbers(low, high);
+        sum += ans;
+        check = (check * 31 + ans) % 1000000007;
+    }
+    println(f"3000 ranges up to 10^4: counts sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for t in 0..50 {
+        let near = t % 2 == 0;
+        let a = number(next_random(mut seed) % 100 + 1, near, mut seed);
+        let b = number(next_random(mut seed) % 100 + 1, near, mut seed);
+        let (low, high) = ordered(a, b);
+        let ans = count_stepping_numbers(low, high);
+        sum += ans;
+        check = (check * 31 + ans) % 1000000007;
+    }
+    println(f"50 ranges of up to 100 digits: counts sum to {sum}, checksum {check}");
+}

@@ -1,0 +1,51 @@
+// LeetCode #2856: Minimum Array Length After Pair Removals -- the bench:
+// the ★ arm over 5000 sorted arrays of 1000 values, each from 1 to k for
+// k up to 1000, one time in four with a run of one value making up to
+// three quarters, all drawn first, then each answered 50 times.
+
+fn min_length_after_removals(nums: &[i64]) -> i64 {
+    let n = nums.len() as i64;
+    let mut most = 0;
+    let mut run = 0;
+    for i in 0..nums.len() {
+        run = if i > 0 && nums[i] == nums[i - 1] { run + 1 } else { 1 };
+        most = most.max(run);
+    }
+    if 2 * most > n { 2 * most - n } else { n % 2 }
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 5000;
+    let rounds = 50;
+    let n = 1000i64;
+    let mut seed = 2856;
+    let mut arrays: Vec<Vec<i64>> = Vec::new();
+    for _ in 0..count {
+        let k = next_random(&mut seed) % 1000 + 1;
+        let mut nums: Vec<i64> = (0..n).map(|_| next_random(&mut seed) % k + 1).collect();
+        if next_random(&mut seed) % 4 == 0 {
+            let run = next_random(&mut seed) % (3 * n / 4 + 1);
+            let v = next_random(&mut seed) % 1000 + 1;
+            for i in 0..run as usize {
+                nums[i] = v;
+            }
+        }
+        nums.sort();
+        arrays.push(nums);
+    }
+    let mut total = 0i64;
+    let mut check = 0i64;
+    for r in 0..rounds {
+        for nums in arrays.iter() {
+            let left = min_length_after_removals(nums);
+            total += left;
+            check = (check * 31 + left + r) % 1000000007;
+        }
+    }
+    println!("{count} arrays, {rounds} rounds: {total} left, checksum {check}");
+}

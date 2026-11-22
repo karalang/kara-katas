@@ -1,0 +1,74 @@
+// LeetCode #2838: Maximum Coins Heroes Can Collect -- a `SortedMap` from
+// each monster power to the coins of every monster at most that strong,
+// built by summing the powers' coins in key order; a hero's coins are
+// the entry at the `floor` of its power, or none.
+
+fn maximum_coins(heroes: Vec[i64], monsters: Vec[i64], coins: Vec[i64]) -> Vec[i64] {
+    let mut at: SortedMap[i64, i64] = SortedMap.new();
+    for j in 0..monsters.len() {
+        *at.entry(monsters[j]).or_insert(0) += coins[j];
+    }
+    let mut upto: SortedMap[i64, i64] = SortedMap.new();
+    let mut running = 0;
+    for (power, c) in at.iter() {
+        running += c;
+        upto.insert(power, running);
+    }
+    heroes
+        .iter()
+        .map(|h| match upto.floor(h) {
+            Some((_, total)) => total,
+            None => 0,
+        })
+        .collect()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn digest(xs: Vec[i64]) -> i64 {
+    xs.iter().fold(0, |h, x| (h * 131 + x) % 1000000007)
+}
+
+fn main() {
+    // LeetCode's three examples; a hero beating every monster; and one
+    // too weak for any
+    println(f"{maximum_coins([1, 4, 2], [1, 1, 5, 2, 3], [2, 3, 4, 5, 6])}");
+    println(f"{maximum_coins([5], [2, 3, 1, 2], [10, 6, 5, 2])}");
+    println(f"{maximum_coins([4, 4], [5, 7, 8], [1, 1, 1])}");
+    println(f"{maximum_coins([1000000000, 1], [1000000000, 999999999, 2], [1000000000, 1000000000, 1000000000])}");
+    // 3000 random battles of 1 to 6 heroes and monsters with powers up to
+    // 8; then 50 of up to 1000 each with powers and coins up to 10^9
+    let mut seed = 2838;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 6 + 1;
+        let m = next_random(mut seed) % 6 + 1;
+        let heroes: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 8 + 1).collect();
+        let monsters: Vec[i64] = (0..m).map(|_| next_random(mut seed) % 8 + 1).collect();
+        let coins: Vec[i64] = (0..m).map(|_| next_random(mut seed) % 10 + 1).collect();
+        check = (check * 31 + digest(maximum_coins(heroes, monsters, coins))) % 1000000007;
+    }
+    println(f"3000 small battles: checksum {check}");
+    check = 0;
+    let mut total = 0;
+    for _ in 0..50 {
+        let n = next_random(mut seed) % 1000 + 1;
+        let m = next_random(mut seed) % 1000 + 1;
+        let heroes: Vec[i64] = (0..n).map(|_| wide(mut seed) % 1000000000 + 1).collect();
+        let monsters: Vec[i64] = (0..m).map(|_| wide(mut seed) % 1000000000 + 1).collect();
+        let coins: Vec[i64] = (0..m).map(|_| wide(mut seed) % 1000000000 + 1).collect();
+        let out = maximum_coins(heroes, monsters, coins);
+        total += out.iter().sum();
+        check = (check * 31 + digest(out)) % 1000000007;
+    }
+    println(f"50 large battles: coins total {total}, checksum {check}");
+}

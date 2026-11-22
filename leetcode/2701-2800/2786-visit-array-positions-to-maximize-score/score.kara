@@ -1,0 +1,65 @@
+// LeetCode #2786: Visit Array Positions to Maximize Score -- the ★ arm.
+// The best score of a walk from 0 ending on an even number and on an odd
+// one, `best[0]` and `best[1]`; each number in turn extends the better of
+// a walk ending on its own parity and one ending on the other less x.
+// O(n).
+
+fn max_score(nums: Vec[i64], x: i64) -> i64 {
+    let unreached = -1000000000000000;
+    let mut best = [unreached, unreached];
+    best[nums[0] % 2] = nums[0];
+    for v in nums[1..].iter() {
+        let p = v % 2;
+        best[p] = best[p].max(best[1 - p] - x) + v;
+    }
+    best[0].max(best[1])
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; an even start before odd numbers worth less
+    // and more than x; 10^5 numbers of 10^6, LeetCode's most, alternating
+    // parity, with x = 1 and x = 10^6
+    println(f"{max_score([2, 3, 6, 1, 9, 2].to_vec(), 5)}");
+    println(f"{max_score([2, 4, 6, 8].to_vec(), 3)}");
+    println(f"{max_score([2, 3, 3, 3].to_vec(), 4)}");
+    println(f"{max_score([2, 9, 9, 9].to_vec(), 4)}");
+    let n = 100000;
+    let alternating: Vec[i64] = (0..n).map(|i| 1000000 - i % 2).collect();
+    println(f"{max_score(alternating, 1)}");
+    println(f"{max_score(alternating, 1000000)}");
+    // 3000 random arrays of 2 to 12 numbers from 1 to 10 with x from 1 to
+    // 10; then 20 of 10^5 numbers up to 10^6 with x up to 10^6
+    let mut seed = 2786;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let m = next_random(mut seed) % 11 + 2;
+        let nums: Vec[i64] = (0..m).map(|_| next_random(mut seed) % 10 + 1).collect();
+        let x = next_random(mut seed) % 10 + 1;
+        let a = max_score(nums, x);
+        sum += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"3000 small arrays: scores sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for _ in 0..20 {
+        let nums: Vec[i64] = (0..n).map(|_| wide(mut seed) % 1000000 + 1).collect();
+        let x = wide(mut seed) % 1000000 + 1;
+        let a = max_score(nums, x);
+        sum += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"20 arrays of 10^5: scores sum to {sum}, checksum {check}");
+}

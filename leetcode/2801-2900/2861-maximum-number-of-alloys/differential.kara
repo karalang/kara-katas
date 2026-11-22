@@ -1,0 +1,290 @@
+// LeetCode #2861: Maximum Number of Alloys -- the differential. The five
+// arms, against the statement read literally: each machine tried with
+// 0, 1, 2, ... alloys, the metals it lacks bought at their prices, until
+// the next count costs more than the budget. 2000 random cases of 1 to 4
+// metals and 1 to 3 machines with small amounts, then 50 of up to 100
+// of each at LeetCode's full ranges, all drawn before any arm answers;
+// the literal reading is asked only of the first 2000.
+//
+// P1  small amounts, the answer is the literal reading's
+// P2  the machines in reverse order: the same answer
+// P3  small amounts, every stock and the budget doubled: twice the
+//     answer, or one more (doubled, the large ones leave the limits)
+// P4  one more metal, its stock beyond any need: the same answer
+// P5  one more machine needing twice the first one's metals: the same answer
+// P6  each arm agrees with at least three of the other four
+
+fn literal(n: i64, budget: i64, composition: Vec[Vec[i64]], stock: Vec[i64], cost: Vec[i64]) -> i64 {
+    let mut best = 0;
+    for machine in composition.iter() {
+        let mut x = 0;
+        loop {
+            let mut spent = 0;
+            for j in 0..n {
+                if machine[j] * (x + 1) > stock[j] {
+                    spent += (machine[j] * (x + 1) - stock[j]) * cost[j];
+                }
+            }
+            if spent > budget {
+                break;
+            }
+            x += 1;
+        }
+        best = best.max(x);
+    }
+    best
+}
+
+
+// ---- star (alloys.kara) ---------------------------------------------
+
+fn star_max_number_of_alloys(n: i64, k: i64, budget: i64, composition: Vec[Vec[i64]], stock: Vec[i64], cost: Vec[i64]) -> i64 {
+    let mut best = 0;
+    for machine in composition.iter() {
+        let price = |x: i64| (0..n).map(|j| (machine[j] * x - stock[j]).max(0) * cost[j]).sum();
+        let mut lo = 0;
+        let mut hi = 200000000;
+        while lo < hi {
+            let mid = (lo + hi + 1) / 2;
+            if price(mid) <= budget {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        best = best.max(lo);
+    }
+    best
+}
+
+
+// ---- any (alloys_any.kara) ------------------------------------------
+
+fn any_max_number_of_alloys(n: i64, k: i64, budget: i64, composition: Vec[Vec[i64]], stock: Vec[i64], cost: Vec[i64]) -> i64 {
+    let can = |x: i64| composition.iter().any(|machine| {
+        let mut spent = 0;
+        for j in 0..n {
+            spent += (machine[j] * x - stock[j]).max(0) * cost[j];
+            if spent > budget {
+                return false;
+            }
+        }
+        true
+    });
+    let mut lo = 0;
+    let mut hi = 200000000;
+    while lo < hi {
+        let mid = lo + (hi - lo + 1) / 2;
+        if can(mid) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+
+// ---- slopes (alloys_slopes.kara) ------------------------------------
+
+fn slopes_most_for(n: i64, budget: i64, machine: Vec[i64], stock: Vec[i64], cost: Vec[i64]) -> i64 {
+    let mut bends: Vec[(i64, i64)] = (0..n).map(|j| (stock[j] / machine[j], j)).collect();
+    bends.sort();
+    let mut slope = 0;
+    let mut offset = 0;
+    for m in 0..n {
+        let (e, j) = bends[m];
+        slope += cost[j] * machine[j];
+        offset += cost[j] * stock[j];
+        if m + 1 < n and bends[m + 1].0 == e {
+            continue;
+        }
+        if m + 1 == n or slope * bends[m + 1].0 - offset > budget {
+            return (budget + offset) / slope;
+        }
+    }
+    0
+}
+
+fn slopes_max_number_of_alloys(n: i64, k: i64, budget: i64, composition: Vec[Vec[i64]], stock: Vec[i64], cost: Vec[i64]) -> i64 {
+    composition.iter().map(|machine| slopes_most_for(n, budget, machine, stock, cost)).max().unwrap()
+}
+
+
+// ---- gallop (alloys_gallop.kara) ------------------------------------
+
+fn gallop_affordable(n: i64, budget: i64, machine: Vec[i64], stock: Vec[i64], cost: Vec[i64], x: i64) -> bool {
+    let mut spent = 0;
+    for j in 0..n {
+        let short = machine[j] * x - stock[j];
+        if short > 0 {
+            spent += short * cost[j];
+            if spent > budget {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn gallop_max_number_of_alloys(n: i64, k: i64, budget: i64, composition: Vec[Vec[i64]], stock: Vec[i64], cost: Vec[i64]) -> i64 {
+    let mut best = 0;
+    for machine in composition.iter() {
+        let mut x = 0;
+        let mut step = 1;
+        while gallop_affordable(n, budget, machine, stock, cost, x + step) {
+            x += step;
+            step *= 2;
+        }
+        while step > 1 {
+            step /= 2;
+            if gallop_affordable(n, budget, machine, stock, cost, x + step) {
+                x += step;
+            }
+        }
+        best = best.max(x);
+    }
+    best
+}
+
+
+// ---- solution (alloys_solution.kara) --------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_number_of_alloys(n: i32, k: i32, budget: i32, composition: Vec[Vec[i32]], stock: Vec[i32], cost: Vec[i32]) -> i32 {
+        let mut ans: i64 = 0;
+        for comp in composition.iter() {
+            let mut (lo, hi) = (0, 200_000_000);
+            while lo < hi {
+                let mid = (lo + hi + 1) / 2;
+                let mut need: i64 = 0;
+                for j in 0..n as usize {
+                    need += (comp[j] * mid - stock[j]).max(0) * cost[j];
+                }
+                if need <= budget {
+                    lo = mid;
+                } else {
+                    hi = mid - 1;
+                }
+            }
+            ans = ans.max(lo);
+        }
+        ans as i32
+    }
+}
+
+fn solution_max_number_of_alloys(n: i64, k: i64, budget: i64, composition: Vec[Vec[i64]], stock: Vec[i64], cost: Vec[i64]) -> i64 {
+    let to32: Fn(ref Vec[i64]) -> Vec[i32] = |v: ref Vec[i64]| v.iter().map(|x| x as i32).collect();
+    let comp: Vec[Vec[i32]] = composition.iter().map(|r| to32(r)).collect();
+    Solution.max_number_of_alloys(n as i32, k as i32, budget as i32, comp, to32(stock), to32(cost))
+}
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, n: i64, k: i64, budget: i64, composition: Vec[Vec[i64]], stock: Vec[i64], cost: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_max_number_of_alloys(n, k, budget, composition, stock, cost),
+        1 => any_max_number_of_alloys(n, k, budget, composition, stock, cost),
+        2 => slopes_max_number_of_alloys(n, k, budget, composition, stock, cost),
+        3 => gallop_max_number_of_alloys(n, k, budget, composition, stock, cost),
+        _ => solution_max_number_of_alloys(n, k, budget, composition, stock, cost),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn grid(rows: i64, cols: i64, low: i64, top: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    (0..rows).map(|_| (0..cols).map(|_| low + wide(mut seed) % (top - low + 1)).collect()).collect()
+}
+
+struct Case {
+    n: i64,
+    k: i64,
+    budget: i64,
+    composition: Vec[Vec[i64]],
+    stock: Vec[i64],
+    cost: Vec[i64],
+}
+
+fn main() {
+    let names = ["star", "any", "slopes", "gallop", "solution"];
+    let mut seed = 2861;
+    let mut cases: Vec[Case] = Vec.new();
+    for c in 0..2050 {
+        let small = c < 2000;
+        let (n, k) = if small { (next_random(mut seed) % 4 + 1, next_random(mut seed) % 3 + 1) } else { (next_random(mut seed) % 100 + 1, next_random(mut seed) % 100 + 1) };
+        let (most_comp, most_stock, most_cost, most_budget) = if small { (5, 20, 5, 50) } else { (100, 100000000, 100, 100000000) };
+        let composition = grid(k, n, 1, most_comp, mut seed);
+        let stock = grid(1, n, 0, most_stock, mut seed)[0].clone();
+        let cost = grid(1, n, 1, most_cost, mut seed)[0].clone();
+        let budget = wide(mut seed) % (most_budget + 1);
+        cases.push(Case { n, k, budget, composition, stock, cost });
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut total = 0;
+    for (c, t) in cases.iter().enumerate() {
+        let (n, k, budget) = (t.n, t.k, t.budget);
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, n, k, budget, t.composition, t.stock, t.cost)).collect();
+        let want = if c < 2000 { literal(n, budget, t.composition, t.stock, t.cost) } else { got[0] };
+        total += want;
+        check = (check * 31 + want) % 1000000007;
+        let reversed: Vec[Vec[i64]] = t.composition.iter().rev().cloned().collect();
+        let doubled_stock: Vec[i64] = t.stock.iter().map(|s| 2 * s).collect();
+        let wider: Vec[Vec[i64]] = t.composition.iter().map(|m| m.iter().cloned().chain([1].into_iter()).collect()).collect();
+        let more_stock: Vec[i64] = t.stock.iter().cloned().chain([1000000000].into_iter()).collect();
+        let more_cost: Vec[i64] = t.cost.iter().cloned().chain([1].into_iter()).collect();
+        let mut greedy = t.composition.clone();
+        greedy.push(t.composition[0].iter().map(|a| 2 * a).collect());
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let twice = answer(arm, n, k, 2 * budget, t.composition, doubled_stock, t.cost);
+            let verdicts = [
+                c >= 2000 or value == want,
+                answer(arm, n, k, budget, reversed, t.stock, t.cost) == value,
+                c >= 2000 or twice == 2 * value or twice == 2 * value + 1,
+                answer(arm, n + 1, k, budget, wider, more_stock, more_cost) == value,
+                answer(arm, n, k + 1, budget, greedy, t.stock, t.cost) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} n {n} k {k} budget {budget}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases, {total} alloys: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

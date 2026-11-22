@@ -1,0 +1,419 @@
+// LeetCode #2851: String Transformation -- the differential. The five
+// arms, against the statement read literally: from s, every suffix of
+// length 1 to n - 1 taken to the front, k times over, the ways to reach
+// each string counted in a `Map[String, i64]`, and t's count. 2000
+// random pairs of 2 to 6 letters over a and b with k up to 12, then 50
+// of up to 1500 letters, each a block of up to 8 repeated, t a rotation
+// of s two times in three, k up to about 10^12, all drawn before any arm
+// answers; the literal reading is asked only of the first 2000.
+//
+// P1  up to 6 letters, the answer is the literal reading's
+// P2  s and t swapped: the same answer
+// P3  both strings reversed: the same answer
+// P4  every letter of both moved on one, c to a: the same answer
+// P5  t not found in s + s: 0
+// P6  each arm agrees with at least three of the other four
+
+fn literal(s: Str, t: Str, k: i64) -> i64 {
+    let n = s.len();
+    let mut ways: Map[String, i64] = Map.new();
+    ways.insert(s.to_string(), 1);
+    for _ in 0..k {
+        let mut next: Map[String, i64] = Map.new();
+        for (w, count) in ways.iter() {
+            for l in 1..n {
+                let moved = f"{w.substring(n - l, n)}{w.substring(0, n - l)}";
+                let have = next.get(moved).cloned().unwrap_or(0);
+                next.insert(moved, (have + count) % 1000000007);
+            }
+        }
+        ways = next;
+    }
+    ways.get(t.to_string()).cloned().unwrap_or(0)
+}
+
+
+// ---- star (ways.kara) -----------------------------------------------
+
+const STAR_MOD: i64 = 1000000007;
+
+fn star_power(base: i64, exp: i64) -> i64 {
+    let mut result = 1;
+    let mut b = base % STAR_MOD;
+    let mut e = exp;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % STAR_MOD;
+        }
+        b = b * b % STAR_MOD;
+        e /= 2;
+    }
+    result
+}
+
+fn star_number_of_ways(s: Str, t: Str, k: i64) -> i64 {
+    let n = s.len();
+    let text: Vec[u8] = s.bytes().iter().chain(s.bytes().iter()).collect();
+    let pat: Vec[u8] = t.bytes().iter().collect();
+    let mut fail: Vec[i64] = Vec.filled(n, 0);
+    let mut j = 0;
+    for i in 1..n {
+        while j > 0 and pat[i] != pat[j] {
+            j = fail[j - 1];
+        }
+        if pat[i] == pat[j] {
+            j += 1;
+        }
+        fail[i] = j;
+    }
+    let mut at_zero = 0;
+    let mut elsewhere = 0;
+    j = 0;
+    for i in 0..2 * n - 1 {
+        while j > 0 and text[i] != pat[j] {
+            j = fail[j - 1];
+        }
+        if text[i] == pat[j] {
+            j += 1;
+        }
+        if j == n {
+            if i + 1 == n {
+                at_zero += 1;
+            } else {
+                elsewhere += 1;
+            }
+            j = fail[j - 1];
+        }
+    }
+    let all = star_power(n - 1, k);
+    let sign = if k % 2 == 0 { 1 } else { STAR_MOD - 1 };
+    let inverse = star_power(n, STAR_MOD - 2);
+    let zero_ways = (all + (n - 1) * sign) % STAR_MOD * inverse % STAR_MOD;
+    let other_ways = (all - sign + STAR_MOD) % STAR_MOD * inverse % STAR_MOD;
+    (at_zero * zero_ways + elsewhere * other_ways) % STAR_MOD
+}
+
+
+// ---- matrix (ways_matrix.kara) --------------------------------------
+
+const MATRIX_MOD: i64 = 1000000007;
+
+fn matrix_times(a: Array[Array[i64, 2], 2], b: Array[Array[i64, 2], 2]) -> Array[Array[i64, 2], 2] {
+    let mut c = [[0; 2]; 2];
+    for i in 0..2 {
+        for j in 0..2 {
+            c[i][j] = (a[i][0] * b[0][j] + a[i][1] * b[1][j]) % MATRIX_MOD;
+        }
+    }
+    c
+}
+
+fn matrix_number_of_ways(s: Str, t: Str, k: i64) -> i64 {
+    let n = s.len();
+    let joined: Vec[u8] = t.bytes().iter().chain(s.bytes().iter()).chain(s.bytes().iter()).collect();
+    let m = joined.len();
+    let mut z: Vec[i64] = Vec.filled(m, 0);
+    let mut (lo, hi) = (0, 0);
+    for i in 1..m {
+        if i < hi {
+            z[i] = (hi - i).min(z[i - lo]);
+        }
+        while i + z[i] < m and joined[z[i]] == joined[i + z[i]] {
+            z[i] += 1;
+        }
+        if i + z[i] > hi {
+            lo = i;
+            hi = i + z[i];
+        }
+    }
+    // a move: zero' = (n - 1) * other, other' = zero + (n - 2) * other
+    let step: Array[Array[i64, 2], 2] = [[0, (n - 1) % MATRIX_MOD], [1, (n - 2) % MATRIX_MOD]];
+    let mut result: Array[Array[i64, 2], 2] = [[1, 0], [0, 1]];
+    let mut b = step;
+    let mut e = k;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = matrix_times(result, b);
+        }
+        b = matrix_times(b, b);
+        e /= 2;
+    }
+    let zero_ways = result[0][0];
+    let other_ways = result[1][0];
+    let mut total = 0;
+    for r in 0..n {
+        if z[n + r] >= n {
+            total = (total + if r == 0 { zero_ways } else { other_ways }) % MATRIX_MOD;
+        }
+    }
+    total
+}
+
+
+// ---- halves (ways_halves.kara) --------------------------------------
+
+const HALVES_MOD: i64 = 1000000007;
+
+fn halves_join(n: i64, a: (i64, i64), b: (i64, i64)) -> (i64, i64) {
+    let (z1, o1) = a;
+    let (z2, o2) = b;
+    let z = (z1 * z2 + (n - 1) % HALVES_MOD * o1 % HALVES_MOD * o2) % HALVES_MOD;
+    let o = (z1 * o2 + o1 * z2 % HALVES_MOD + (n - 2) % HALVES_MOD * o1 % HALVES_MOD * o2) % HALVES_MOD;
+    (z, o)
+}
+
+fn halves_after(n: i64, k: i64) -> (i64, i64) {
+    if k == 0 {
+        return (1, 0);
+    }
+    if k == 1 {
+        return (0, 1);
+    }
+    let half = halves_after(n, k / 2);
+    let both = halves_join(n, half, half);
+    if k % 2 == 1 { halves_join(n, both, (0, 1)) } else { both }
+}
+
+fn halves_number_of_ways(s: Str, t: Str, k: i64) -> i64 {
+    let n = s.len();
+    let text: Vec[i64] = s.bytes().iter().chain(s.bytes().iter()).map(|b| b as i64).collect();
+    let moduli = [1000000007, 998244353];
+    let base = 131;
+    let mut matches: Vec[bool] = Vec.filled(n, true);
+    for m in moduli.iter() {
+        let target = t.bytes().iter().fold(0, |h, b| (h * base + b) % m);
+        let mut top = 1;
+        for _ in 1..n {
+            top = top * base % m;
+        }
+        let mut h = 0;
+        for i in 0..2 * n - 1 {
+            if i >= n {
+                h = (h - text[i - n] * top % m + m) % m;
+            }
+            h = (h * base + text[i]) % m;
+            if i >= n - 1 and h != target {
+                matches[i + 1 - n] = false;
+            }
+        }
+    }
+    let (zero_ways, other_ways) = halves_after(n, k);
+    let mut total = 0;
+    for (r, hit) in matches.iter().enumerate() {
+        if hit {
+            total = (total + if r == 0 { zero_ways } else { other_ways }) % HALVES_MOD;
+        }
+    }
+    total
+}
+
+
+// ---- rotate (ways_rotate.kara) --------------------------------------
+
+fn rotate_power(base: u64, exp: u64, m: u64) -> u64 {
+    if exp == 0 {
+        return 1;
+    }
+    let half = rotate_power(base, exp / 2, m);
+    let sq = half * half % m;
+    if exp % 2 == 1 { sq * (base % m) % m } else { sq }
+}
+
+fn rotate_number_of_ways(s: Str, t: Str, k: i64) -> i64 {
+    let m: u64 = 1000000007;
+    let n = s.len();
+    let target: Vec[u8] = t.bytes().iter().collect();
+    let mut turn: Vec[u8] = s.bytes().iter().collect();
+    let mut hits: Vec[i64] = Vec.new();
+    for r in 0..n {
+        if turn == target {
+            hits.push(r);
+        }
+        turn.rotate_right(1);
+    }
+    let size = n as u64;
+    let all = rotate_power(size - 1, k as u64, m);
+    let inverse = rotate_power(size, m - 2, m);
+    let even = k % 2 == 0;
+    let zero_ways = if even { (all + size - 1) % m } else { (all + m - (size - 1)) % m } * inverse % m;
+    let other_ways = if even { (all + m - 1) % m } else { (all + 1) % m } * inverse % m;
+    let total = hits.iter().fold(0, |acc, r| (acc + if r == 0 { zero_ways } else { other_ways }) % m);
+    total as i64
+}
+
+
+// ---- solution (ways_solution.kara) ----------------------------------
+
+const SOLUTION_MOD: i64 = 1_000_000_007;
+
+fn solution_pow_mod(b: i64, e: i64) -> i64 {
+    let mut b = b;
+    let mut e = e;
+    let mut r = 1;
+    b %= SOLUTION_MOD;
+    while e > 0 {
+        if e & 1 == 1 {
+            r = r * b % SOLUTION_MOD;
+        }
+        b = b * b % SOLUTION_MOD;
+        e >>= 1;
+    }
+    r
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn number_of_ways(s: String, t: String, k: i64) -> i32 {
+        let n = s.len();
+        let p = t.bytes();
+        let ss: Vec[u8] = s.bytes().iter().chain(s.bytes().iter()).collect();
+        let mut lps = Vec.filled(n, 0);
+        let mut j = 0;
+        for i in 1..n {
+            while j > 0 and p[i] != p[j] {
+                j = lps[j - 1];
+            }
+            if p[i] == p[j] {
+                j += 1;
+            }
+            lps[i] = j;
+        }
+        let mut (zero, other) = (0, 0);
+        j = 0;
+        for i in 0..2 * n - 1 {
+            while j > 0 and ss[i] != p[j] {
+                j = lps[j - 1];
+            }
+            if ss[i] == p[j] {
+                j += 1;
+            }
+            if j == n {
+                if i + 1 == n {
+                    zero += 1;
+                } else {
+                    other += 1;
+                }
+                j = lps[j - 1];
+            }
+        }
+        let all = solution_pow_mod(n - 1, k);
+        let sign = if k % 2 == 0 { 1 } else { SOLUTION_MOD - 1 };
+        let inv = solution_pow_mod(n, SOLUTION_MOD - 2);
+        let f0 = (all + (n - 1) * sign % SOLUTION_MOD) % SOLUTION_MOD * inv % SOLUTION_MOD;
+        let f1 = (all - sign + SOLUTION_MOD) % SOLUTION_MOD * inv % SOLUTION_MOD;
+        ((zero * f0 + other * f1) % SOLUTION_MOD) as i32
+    }
+}
+
+fn solution_number_of_ways(s: Str, t: Str, k: i64) -> i64 {
+    Solution.number_of_ways(s.to_string(), t.to_string(), k)
+}
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, s: Str, t: Str, k: i64) -> i64 {
+    match arm {
+        0 => star_number_of_ways(s, t, k),
+        1 => matrix_number_of_ways(s, t, k),
+        2 => halves_number_of_ways(s, t, k),
+        3 => rotate_number_of_ways(s, t, k),
+        _ => solution_number_of_ways(s, t, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn rotated(s: Str, r: i64) -> String {
+    let n = s.len();
+    f"{s.substring(n - r, n)}{s.substring(0, n - r)}"
+}
+
+fn shifted(s: Str) -> String {
+    s.bytes().iter().map(|b| (b'a' + (b - b'a' + 1) % 3) as char).collect()
+}
+
+fn reversed(s: Str) -> String {
+    s.bytes().iter().rev().map(|b| b as char).collect()
+}
+
+fn main() {
+    let names = ["star", "matrix", "halves", "rotate", "solution"];
+    let mut seed = 2851;
+    let mut cases: Vec[(String, String, i64)] = Vec.new();
+    for c in 0..2050 {
+        let small = c < 2000;
+        let n = if small { next_random(mut seed) % 5 + 2 } else { next_random(mut seed) % 1499 + 2 };
+        let block = if small { n } else { next_random(mut seed) % 8 + 1 };
+        let letters = if small { 2 } else { next_random(mut seed) % 3 + 1 };
+        let unit: String = (0..block).map(|_| (b'a' + (next_random(mut seed) % letters) as u8) as char).collect();
+        let s: String = (0..n).map(|i| unit.bytes()[i % block] as char).collect();
+        let t = if small {
+            if next_random(mut seed) % 2 == 0 { rotated(s, next_random(mut seed) % n) } else { (0..n).map(|_| (b'a' + (next_random(mut seed) % 2) as u8) as char).collect() }
+        } else if next_random(mut seed) % 3 < 2 {
+            rotated(s, next_random(mut seed) % n)
+        } else {
+            (0..n).map(|_| (b'a' + (next_random(mut seed) % letters) as u8) as char).collect()
+        };
+        let k = if small { next_random(mut seed) % 12 + 1 } else { (next_random(mut seed) * 30000 + next_random(mut seed)) * 1000 + 1 };
+        cases.push((s, t, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut matched = 0;
+    for (c, case) in cases.iter().enumerate() {
+        let (s, t, k) = case;
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, s, t, k)).collect();
+        let want = if c < 2000 { literal(s, t, k) } else { got[0] };
+        if want > 0 {
+            matched += 1;
+        }
+        check = (check * 31 + want) % 1000000007;
+        let found = f"{s}{s}".contains(t);
+        let (rs, rt) = (reversed(s), reversed(t));
+        let (ms, mt) = (shifted(s), shifted(t));
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                c >= 2000 or value == want,
+                answer(arm, t, s, k) == value,
+                answer(arm, rs, rt, k) == value,
+                answer(arm, ms, mt, k) == value,
+                found or value == 0,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {s} {t} {k}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases, {matched} with a way: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

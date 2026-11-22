@@ -1,0 +1,78 @@
+// LeetCode #2792: Count Nodes That Are Great Enough -- the bench: the ★
+// arm over 20 random trees of 10^4 nodes, LeetCode's most, with values
+// up to 10^4 and k = 10, all drawn first, then each answered 20 times.
+
+fn count_great_enough_nodes(vals: Vec[i64], left: Vec[i64], right: Vec[i64], k: i64) -> i64 {
+    let n = vals.len();
+    let mut order: Vec[i64] = Vec.new();
+    let mut stack: Vec[i64] = [0];
+    while let Some(u) = stack.pop() {
+        order.push(u);
+        for c in [left[u], right[u]].iter() {
+            if c >= 0 {
+                stack.push(c);
+            }
+        }
+    }
+    let mut least: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    let mut great = 0;
+    for u in order.iter().rev() {
+        let mut mine: Vec[i64] = [vals[u]];
+        for c in [left[u], right[u]].iter() {
+            if c >= 0 {
+                mine.extend(least[c].iter());
+            }
+        }
+        mine.sort();
+        mine.truncate(k);
+        if mine.len() == k and mine[k - 1] < vals[u] {
+            great += 1;
+        }
+        least[u] = mine;
+    }
+    great
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 20;
+    let rounds = 20;
+    let n = 10000;
+    let mut seed = 2792;
+    let mut cases: Vec[(Vec[i64], Vec[i64], Vec[i64])] = Vec.new();
+    for _ in 0..count {
+        let vals: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 10000 + 1).collect();
+        let mut left: Vec[i64] = Vec.filled(n, -1);
+        let mut right: Vec[i64] = Vec.filled(n, -1);
+        for i in 1..n {
+            let mut placed = false;
+            while not placed {
+                let p = next_random(mut seed) % i;
+                if next_random(mut seed) % 2 == 0 {
+                    if left[p] < 0 {
+                        left[p] = i;
+                        placed = true;
+                    }
+                } else if right[p] < 0 {
+                    right[p] = i;
+                    placed = true;
+                }
+            }
+        }
+        cases.push((vals, left, right));
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (vals, left, right) in cases.iter() {
+            let a = count_great_enough_nodes(vals, left, right, 10);
+            total += a;
+            check = (check * 31 + a + r) % 1000000007;
+        }
+    }
+    println(f"{count} trees of 10^4, {rounds} rounds: great enough sum to {total}, checksum {check}");
+}

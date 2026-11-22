@@ -1,0 +1,44 @@
+// LeetCode #2873: Maximum Value of an Ordered Triplet I -- the ★ arm's
+// pass as one `fold` over (best, largest, largest gap).
+
+fn maximum_triplet_value(nums: Vec[i64]) -> i64 {
+    let (best, _, _) = nums.iter().fold((0, 0, 0), |(best, top, gap), v| (best.max(gap * v), top.max(v), gap.max(top - v)));
+    best
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's three examples; 100 values, LeetCode's most, rising,
+    // falling, and 10^6 with a 1 between
+    println(f"{maximum_triplet_value([12, 6, 1, 2, 7].to_vec())} {maximum_triplet_value([1, 10, 3, 4, 19].to_vec())} {maximum_triplet_value([1, 2, 3].to_vec())}");
+    let n = 100;
+    println(f"{maximum_triplet_value((1..n + 1).collect())} {maximum_triplet_value((1..n + 1).rev().collect())} {maximum_triplet_value((0..n).map(|i| if i == 50 { 1 } else { 1000000 }).collect())}");
+    // 3000 random arrays of 3 to 8 values from 1 to 9; then 3000 of 3 to
+    // 100 up to 10^6
+    let mut seed = 2873;
+    let mut total = 0;
+    let mut check = 0;
+    for c in 0..6000 {
+        let small = c < 3000;
+        let n = if small { next_random(mut seed) % 6 + 3 } else { next_random(mut seed) % 98 + 3 };
+        let nums: Vec[i64] = (0..n).map(|_| if small { next_random(mut seed) % 9 + 1 } else { wide(mut seed) % 1000000 + 1 }).collect();
+        let best = maximum_triplet_value(nums);
+        total += best;
+        check = (check * 31 + best % 1000000007) % 1000000007;
+        if c == 2999 or c == 5999 {
+            println(f"3000 {if small { "short" } else { "long" }} arrays: values total {total}, checksum {check}");
+            total = 0;
+            check = 0;
+        }
+    }
+}

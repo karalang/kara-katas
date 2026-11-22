@@ -1,0 +1,66 @@
+// LeetCode #2749: Minimum Operations to Make the Integer Zero -- the
+// kernighan arm. The same least k, with t's set bits counted by hand:
+// `t & (t - 1)` clears the lowest one, so the loop runs once a bit, and
+// stops as soon as there are more bits than k. O(60 log t).
+
+fn make_the_integer_zero(num1: i64, num2: i64) -> i64 {
+    let mut k = 1;
+    while k <= 60 {
+        let mut t = num1 - k * num2;
+        if t >= k {
+            let mut bits = 0;
+            while t != 0 and bits <= k {
+                t &= t - 1;
+                bits += 1;
+            }
+            if bits <= k {
+                return k;
+            }
+        }
+        k += 1;
+    }
+    -1
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{make_the_integer_zero(3, -2)}");
+    println(f"{make_the_integer_zero(5, 7)}");
+    // one step of 2^0; a power of two less one; and LeetCode's extremes
+    println(f"{make_the_integer_zero(1, 0)}");
+    println(f"{make_the_integer_zero(1023, 0)}");
+    println(f"{make_the_integer_zero(1000000000, -1000000000)}");
+    println(f"{make_the_integer_zero(1000000000, 1000000000)}");
+    println(f"{make_the_integer_zero(1, -1000000000)}");
+    // 2000 random pairs with num1 up to 100 and num2 from -10 to 10; then
+    // 100000 across LeetCode's whole range
+    let mut seed = 2749;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let num1 = next_random(mut seed) % 100 + 1;
+        let num2 = next_random(mut seed) % 21 - 10;
+        let steps = make_the_integer_zero(num1, num2);
+        sum += steps;
+        check = (check * 31 + steps + 1) % 1000000007;
+    }
+    println(f"2000 small pairs: steps sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for _ in 0..100000 {
+        let num1 = (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000 + 1;
+        let size = (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000001;
+        let num2 = if next_random(mut seed) % 2 == 0 { size } else { -size };
+        let steps = make_the_integer_zero(num1, num2);
+        sum += steps;
+        check = (check * 31 + steps + 1) % 1000000007;
+    }
+    println(f"100000 pairs: steps sum to {sum}, checksum {check}");
+}

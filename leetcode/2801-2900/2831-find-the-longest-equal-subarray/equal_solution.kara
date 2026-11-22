@@ -1,0 +1,71 @@
+// LeetCode #2831: Find the Longest Equal Subarray -- a Rust solution as
+// LeetCode's Rust users write it, carried to Kāra by `karac fix`: the
+// places of each value in a `HashMap<i32, Vec<usize>>` by
+// `entry().or_default()`, and a sliding window over each list's
+// `values()`, the answer as `i32`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn longest_equal_subarray(nums: Vec[i32], k: i32) -> i32 {
+        let mut pos: Map[i32, Vec[i64]] = Map.new();
+        for (i, x) in nums.iter().enumerate() {
+            pos.entry(x).or_insert(Vec.new()).push(i);
+        }
+        let k = k as i64;
+        let mut ans = 0;
+        for ids in pos.values() {
+            let mut l = 0;
+            for r in 0..ids.len() {
+                while ids[r] - ids[l] - (r - l) > k {
+                    l += 1;
+                }
+                ans = ans.max(r - l + 1);
+            }
+        }
+        ans as i32
+    }
+}
+
+fn longest_equal_subarray(nums: Vec[i64], k: i64) -> i64 {
+    Solution.longest_equal_subarray(nums.iter().map(|v| v as i32).collect(), k as i32)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; one number; k = 0, the longest run;
+    // k large enough to delete everything else; and 2000 numbers
+    // alternating 1 and 2 with k = 999
+    println(f"{longest_equal_subarray([1, 3, 2, 3, 1, 3], 3)}");
+    println(f"{longest_equal_subarray([1, 1, 2, 2, 1, 1], 2)}");
+    println(f"{longest_equal_subarray([1], 0)}");
+    println(f"{longest_equal_subarray([1, 2, 2, 3, 3, 3, 2, 2, 2, 2], 0)}");
+    println(f"{longest_equal_subarray([4, 1, 4, 2, 4, 3, 4], 7)}");
+    println(f"{longest_equal_subarray((0..2000).map(|i| i % 2 + 1).collect(), 999)}");
+    // 3000 random arrays of 1 to 12 numbers from 1 to 3, none above the
+    // count, with k up to the count; then 50 of up to 3000 numbers from 1
+    // to 20 with k up to 100
+    let mut seed = 2831;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % n.min(3) + 1).collect();
+        let k = next_random(mut seed) % (n + 1);
+        check = (check * 31 + longest_equal_subarray(nums, k)) % 1000000007;
+    }
+    println(f"3000 short arrays: checksum {check}");
+    check = 0;
+    for _ in 0..50 {
+        let n = next_random(mut seed) % 3000 + 1;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % n.min(20) + 1).collect();
+        let k = next_random(mut seed) % 101;
+        check = (check * 31 + longest_equal_subarray(nums, k)) % 1000000007;
+    }
+    println(f"50 long arrays: checksum {check}");
+}

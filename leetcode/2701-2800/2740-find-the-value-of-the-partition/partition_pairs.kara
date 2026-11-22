@@ -1,0 +1,58 @@
+// LeetCode #2740: Find the Value of the Partition -- the pairs arm. No
+// sorting: the least difference over every two numbers of the array,
+// which is the value, since the closest two can always be put on either
+// side of a cut. O(n^2).
+
+fn find_value_of_partition(nums: Vec[i64]) -> i64 {
+    let mut best = i64.MAX;
+    for i in 0..nums.len() {
+        for j in i + 1..nums.len() {
+            best = best.min((nums[i] - nums[j]).abs());
+        }
+    }
+    best
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_numbers(seed: mut ref i64, n: i64, most: i64) -> Vec[i64] {
+    (0..n).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1).collect()
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{find_value_of_partition([1, 3, 2, 4].to_vec())}");
+    println(f"{find_value_of_partition([100, 1, 10].to_vec())}");
+    // two equal numbers; the two ends of LeetCode's range; and numbers
+    // spread evenly, so every gap is the answer
+    println(f"{find_value_of_partition([5, 5].to_vec())}");
+    println(f"{find_value_of_partition([1, 1000000000].to_vec())}");
+    println(f"{find_value_of_partition((0..50).map(|i| 1000 - 7 * i).collect())}");
+    // 2000 random arrays of 2 to 20 numbers up to 100; then 20 of 2000
+    // numbers up to 10^9
+    let mut seed = 2740;
+    let mut sum = 0;
+    let mut check = 0;
+    for c in 0..2020 {
+        let nums = if c < 2000 {
+            let n = next_random(mut seed) % 19 + 2;
+            random_numbers(mut seed, n, 100)
+        } else {
+            random_numbers(mut seed, 2000, 1000000000)
+        };
+        let value = find_value_of_partition(nums);
+        sum += value;
+        check = (check * 31 + value) % 1000000007;
+        if c == 1999 {
+            println(f"2000 small arrays: values sum to {sum}, checksum {check}");
+            sum = 0;
+            check = 0;
+        }
+    }
+    println(f"20 arrays of 2000 numbers: values sum to {sum}, checksum {check}");
+}

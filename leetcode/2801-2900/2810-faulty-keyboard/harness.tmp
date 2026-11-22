@@ -1,0 +1,58 @@
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// m letters from `letters`, the first never an i
+fn typed(m: i64, letters: Str, seed: mut ref i64) -> String {
+    let pool: Vec[char] = letters.chars().collect();
+    let mut s = String.new();
+    while s.len() < m {
+        let c = pool[next_random(mut seed) % pool.len()];
+        if not (s.is_empty() and c == 'i') {
+            s.push(c);
+        }
+    }
+    s
+}
+
+fn digest(s: String) -> i64 {
+    s.bytes().iter().fold(0, |h, b| (h * 131 + b as i64) % 1000000007)
+}
+
+fn main() {
+    // LeetCode's two examples; 100 letters, LeetCode's most, with no i;
+    // every other one an i
+    println(final_string("string"));
+    println(final_string("poiinter"));
+    let plain = "abcdefghjklmnopqrstuvwxyz".repeat(4);
+    println(final_string(plain));
+    let mut half = String.new();
+    for k in 0..50 {
+        half.push_str(if k % 2 == 0 { "ai" } else { "bi" });
+    }
+    println(final_string(f"z{half}"));
+    // 3000 random strings of 1 to 10 letters from a, b and i; then 50 of
+    // up to 100 from the whole alphabet, i as likely as the rest together
+    let mut seed = 2810;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let s = final_string(typed(next_random(mut seed) % 10 + 1, "abi", mut seed));
+        sum += s.len();
+        check = (check * 31 + digest(s)) % 1000000007;
+    }
+    println(f"3000 short strings: lengths sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    let wide_pool = f"abcdefghijklmnopqrstuvwxyz{"i".repeat(25)}";
+    for _ in 0..50 {
+        let s = final_string(typed(next_random(mut seed) % 100 + 1, wide_pool, mut seed));
+        sum += s.len();
+        check = (check * 31 + digest(s)) % 1000000007;
+    }
+    println(f"50 long strings: lengths sum to {sum}, checksum {check}");
+}

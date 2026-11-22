@@ -1,0 +1,243 @@
+// LeetCode #2810: Faulty Keyboard -- the differential. The five arms,
+// against the statement read literally: the keys pressed in turn on a
+// screen of characters, a letter written at the end, an i making a new
+// screen of the old one's characters read from the last place to the
+// first; no `rev()` and no pieces. 2000 random strings of 1 to 10
+// letters from a, b and i; then 50 of up to 100 from the whole alphabet,
+// i as likely as the rest together, the first never an i. Every case is
+// drawn before any arm answers; the literal reading is asked only of the
+// first 2000.
+//
+// P1  up to 10 letters, the screen is the literal reading's
+// P2  one letter for each key that is not an i, and no i
+// P3  the same letters as typed, counted
+// P4  two more i's typed at the end: the same screen
+// P5  one more i: the screen turned round
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(s: String) -> String {
+    let keys: Vec[char] = s.chars().collect();
+    let mut screen: Vec[char] = Vec.new();
+    for k in keys.iter() {
+        if k == 'i' {
+            let mut turned: Vec[char] = Vec.new();
+            let mut at = screen.len();
+            while at > 0 {
+                at -= 1;
+                turned.push(screen[at]);
+            }
+            screen = turned;
+        } else {
+            screen.push(k);
+        }
+    }
+    let mut out = String.new();
+    for c in screen.iter() {
+        out.push(c);
+    }
+    out
+}
+
+
+// ---- star (keyboard.kara) -------------------------------------------
+
+fn star_final_string(s: String) -> String {
+    let mut screen = String.new();
+    for c in s.chars() {
+        if c == 'i' {
+            screen = screen.chars().rev().collect();
+        } else {
+            screen.push(c);
+        }
+    }
+    screen
+}
+
+
+// ---- deque (keyboard_deque.kara) ------------------------------------
+
+fn deque_final_string(s: String) -> String {
+    let mut letters: VecDeque[char] = VecDeque.new();
+    let mut forward = true;
+    for c in s.chars() {
+        if c == 'i' {
+            forward = not forward;
+        } else if forward {
+            letters.push_back(c);
+        } else {
+            letters.push_front(c);
+        }
+    }
+    if forward {
+        letters.iter().collect()
+    } else {
+        letters.iter().rev().collect()
+    }
+}
+
+
+// ---- chars (keyboard_chars.kara) ------------------------------------
+
+fn chars_final_string(s: String) -> String {
+    let mut screen: Vec[char] = Vec.new();
+    for c in s.chars() {
+        if c == 'i' {
+            screen.reverse();
+        } else {
+            screen.push(c);
+        }
+    }
+    screen.iter().collect()
+}
+
+
+// ---- split (keyboard_split.kara) ------------------------------------
+
+fn split_final_string(s: String) -> String {
+    let pieces: Vec[Str] = s.split("i").collect();
+    let mut left = String.new();
+    let mut right: Vec[Str] = Vec.new();
+    for (j, piece) in pieces.iter().rev().enumerate() {
+        if j % 2 == 0 {
+            right.push(piece);
+        } else {
+            let turned: String = piece.chars().rev().collect();
+            left.push_str(turned);
+        }
+    }
+    for piece in right.iter().rev() {
+        left.push_str(piece);
+    }
+    left
+}
+
+
+// ---- solution (keyboard_solution.kara) ------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn final_string(s: String) -> String {
+        let mut res: Vec[char] = Vec.with_capacity(s.len());
+        for c in s.chars() {
+            match c {
+                'i' => res.reverse(),
+                _ => res.push(c),
+            }
+        }
+        res.into_iter().collect()
+    }
+}
+
+fn solution_final_string(s: String) -> String {
+    Solution.final_string(s)
+}
+
+
+fn answer(arm: i64, s: String) -> String {
+    match arm {
+        0 => star_final_string(s),
+        1 => deque_final_string(s),
+        2 => chars_final_string(s),
+        3 => split_final_string(s),
+        _ => solution_final_string(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn typed(m: i64, letters: Str, seed: mut ref i64) -> String {
+    let pool: Vec[char] = letters.chars().collect();
+    let mut s = String.new();
+    while s.len() < m {
+        let c = pool[next_random(mut seed) % pool.len()];
+        if not (s.is_empty() and c == 'i') {
+            s.push(c);
+        }
+    }
+    s
+}
+
+fn digest(s: String) -> i64 {
+    s.bytes().iter().fold(0, |h, b| (h * 131 + b as i64) % 1000000007)
+}
+
+// how many of each letter, a to z
+fn counts(s: String) -> Vec[i64] {
+    let mut c: Vec[i64] = Vec.filled(26, 0);
+    for b in s.bytes().iter() {
+        c[b - b'a'] += 1;
+    }
+    c
+}
+
+fn main() {
+    let names = ["star", "deque", "chars", "split", "solution"];
+    let mut seed = 2810;
+    let wide_pool = f"abcdefghijklmnopqrstuvwxyz{"i".repeat(25)}";
+    let mut cases: Vec[String] = Vec.new();
+    for c in 0..2050 {
+        if c < 2000 {
+            cases.push(typed(next_random(mut seed) % 10 + 1, "abi", mut seed));
+        } else {
+            cases.push(typed(next_random(mut seed) % 100 + 1, wide_pool, mut seed));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, s) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(s) } else { String.new() };
+        check = (check * 31 + digest(want) + 1) % 1000000007;
+        let letters = s.chars().filter(|k| k != 'i').count();
+        let mut typed_counts = counts(s);
+        typed_counts[8] = 0;
+        let got: Vec[String] = (0..5).map(|arm| answer(arm, s)).collect();
+        for arm in 0..5 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let turned: String = value.chars().rev().collect();
+            let verdicts = [
+                not small or value == want,
+                value.len() == letters and not value.contains("i"),
+                counts(value) == typed_counts,
+                answer(arm, f"{s}ii") == value,
+                answer(arm, f"{s}i") == turned,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {s}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

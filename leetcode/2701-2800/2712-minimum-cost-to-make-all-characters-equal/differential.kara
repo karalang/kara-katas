@@ -1,0 +1,237 @@
+// LeetCode #2712: Minimum Cost to Make All Characters Equal -- the
+// differential. The five arms, against the statement read literally:
+// every string of n bits a node, each prefix and suffix flip an edge at
+// its price, and Dijkstra's search from the string given to the nearer
+// of the two strings with every character equal. No boundaries. 1000
+// random strings of 1 to 8 bits and 10 of up to 10^5, each bit changed
+// from the one before 0 to 8 times in 8. Every case is drawn before any
+// arm answers.
+//
+// P1  up to 8 bits, the answer is the literal reading's
+// P2  every bit flipped: the same answer
+// P3  the string reversed: the same answer
+// P4  the last bit written once more: the answer is no smaller
+// P5  the answer is at least the number of changes between neighbours
+//     and at most that many times half the length
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- star (equal.kara) ----------------------------------------------
+
+fn star_minimum_cost(s: String) -> i64 {
+    let bits = s.bytes();
+    let n = bits.len();
+    let mut cost = 0;
+    for i in 1..n {
+        if bits[i] != bits[i - 1] {
+            cost += i.min(n - i);
+        }
+    }
+    cost
+}
+
+
+// ---- meet (equal_meet.kara) -----------------------------------------
+
+fn meet_minimum_cost(s: String) -> i64 {
+    let bits = s.bytes();
+    let n = bits.len();
+    let mut left: Vec[i64] = (0..n).map(|_| 0).collect();
+    for i in 1..n {
+        left[i] = left[i - 1] + if bits[i] != bits[i - 1] { i } else { 0 };
+    }
+    let mut right: Vec[i64] = (0..n).map(|_| 0).collect();
+    for i in (0..n - 1).rev() {
+        right[i] = right[i + 1] + if bits[i] != bits[i + 1] { n - 1 - i } else { 0 };
+    }
+    (0..n).map(|i| left[i] + right[i]).min().unwrap()
+}
+
+
+// ---- halves (equal_halves.kara) -------------------------------------
+
+fn halves_minimum_cost(s: String) -> i64 {
+    let bits: Vec[char] = s.chars().collect();
+    let n = bits.len();
+    let half = n / 2;
+    let mut cost = 0;
+    for i in 1..half + 1 {
+        if bits[i] != bits[i - 1] {
+            cost += i;
+        }
+    }
+    for i in half + 1..n {
+        if bits[i] != bits[i - 1] {
+            cost += n - i;
+        }
+    }
+    cost
+}
+
+
+// ---- iter (equal_iter.kara) -----------------------------------------
+
+fn iter_minimum_cost(s: String) -> i64 {
+    let n = s.len();
+    s.bytes().windows(2).into_iter().enumerate().filter(|(_, w)| w[0] != w[1]).map(|(i, _)| (i + 1).min(n - i - 1)).sum()
+}
+
+
+// ---- solution (equal_solution.kara) ---------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_cost(s: String) -> i64 {
+        let s = s.bytes();
+        let n = s.len();
+        let mut ans: i64 = 0;
+        for i in 1..n {
+            if s[i] != s[i - 1] {
+                ans += min(i, n - i);
+            }
+        }
+        ans
+    }
+}
+
+fn solution_minimum_cost(s: String) -> i64 {
+    Solution.minimum_cost(s)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+// every string of n bits a node, as a mask with bit i the i-th
+// character; from each, the prefix flip of 0..=i at cost i + 1 and the
+// suffix flip of i..n at cost n - i; Dijkstra's search from the string
+// given, by repeated scans for the cheapest unsettled node, to the first
+// of the two strings with every character equal
+fn literal(s: String) -> i64 {
+    let n = s.len();
+    let size = 1 << n;
+    let mut start = 0;
+    for (i, c) in s.chars().enumerate() {
+        if c == '1' {
+            start |= 1 << i;
+        }
+    }
+    let mut dist: Vec[i64] = (0..size).map(|_| -1).collect();
+    let mut done: Vec[bool] = (0..size).map(|_| false).collect();
+    dist[start] = 0;
+    loop {
+        let mut at = -1;
+        for v in 0..size {
+            if not done[v] and dist[v] >= 0 and (at < 0 or dist[v] < dist[at]) {
+                at = v;
+            }
+        }
+        if at == 0 or at == size - 1 {
+            return dist[at];
+        }
+        done[at] = true;
+        for i in 0..n {
+            let prefix = at ^ ((1 << (i + 1)) - 1);
+            let suffix = at ^ (size - (1 << i));
+            for (next, cost) in [(prefix, i + 1), (suffix, n - i)] {
+                if dist[next] < 0 or dist[at] + cost < dist[next] {
+                    dist[next] = dist[at] + cost;
+                }
+            }
+        }
+    }
+}
+
+fn answer(arm: i64, s: String) -> i64 {
+    match arm {
+        0 => star_minimum_cost(s),
+        1 => meet_minimum_cost(s),
+        2 => halves_minimum_cost(s),
+        3 => iter_minimum_cost(s),
+        _ => solution_minimum_cost(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_bits(seed: mut ref i64, n: i64, change_in_8: i64) -> String {
+    let mut bits = String.new();
+    let mut last = if next_random(mut seed) % 2 == 0 { '0' } else { '1' };
+    bits.push(last);
+    for _ in 0..n - 1 {
+        if next_random(mut seed) % 8 < change_in_8 {
+            last = if last == '0' { '1' } else { '0' };
+        }
+        bits.push(last);
+    }
+    bits
+}
+
+fn main() {
+    let names = ["star", "meet", "halves", "iter", "solution"];
+    let mut seed = 2712;
+    let mut cases: Vec[String] = Vec.new();
+    for c in 0..1010 {
+        let n = if c < 1000 { next_random(mut seed) % 8 + 1 } else { (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000 + 1 };
+        let change = next_random(mut seed) % 9;
+        cases.push(random_bits(mut seed, n, change));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, s) in cases.iter().enumerate() {
+        let small = c < 1000;
+        let truth = if small { literal(s) } else { -1 };
+        if small {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let n = s.len();
+        let flipped: String = s.chars().map(|b| if b == '0' { '1' } else { '0' }).collect();
+        let reversed: String = s.chars().rev().collect();
+        let longer = f"{s}{s.slice(n - 1, n)}";
+        let bits = s.bytes();
+        let changes = (1..n).filter(|i| bits[i] != bits[i - 1]).count();
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, s)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                answer(arm, flipped) == value,
+                answer(arm, reversed) == value,
+                answer(arm, longer) >= value,
+                changes <= value and value <= changes * (n / 2),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

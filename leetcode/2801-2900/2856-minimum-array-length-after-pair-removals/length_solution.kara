@@ -1,0 +1,76 @@
+// LeetCode #2856: Minimum Array Length After Pair Removals -- a Rust
+// solution as LeetCode's Rust users write it: a `HashMap<i32, usize>`
+// of counts by `*cnt.entry(x).or_insert(0) += 1`, the largest by
+// `values().max().unwrap()`, and the rule on it, `(2 * mx - n) as i32`
+// or `(n % 2) as i32`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_length_after_removals(nums: Vec[i32]) -> i32 {
+        let n = nums.len();
+        let mut cnt: Map[i32, i64] = Map.new();
+        for x in ref nums {
+            *cnt.entry(x).or_insert(0) += 1;
+        }
+        let mx = *cnt.values().max().unwrap();
+        if 2 * mx > n {
+            (2 * mx - n) as i32
+        } else {
+            (n % 2) as i32
+        }
+    }
+}
+
+fn min_length_after_removals(nums: Vec[i64]) -> i64 {
+    Solution.min_length_after_removals(nums.iter().map(|x| x as i32).collect())
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's three examples; one element; 10^5 of one value,
+    // LeetCode's most, and 10^5 with one value in 50001 places
+    println(f"{min_length_after_removals([1, 3, 4, 9].to_vec())} {min_length_after_removals([2, 3, 6, 9].to_vec())} {min_length_after_removals([1, 1, 2].to_vec())} {min_length_after_removals([5].to_vec())}");
+    let same: Vec[i64] = Vec.filled(100000, 1000000000);
+    let most: Vec[i64] = (0..100000).map(|i| if i < 50001 { 1 } else { 9 }).collect();
+    println(f"{min_length_after_removals(same)} {min_length_after_removals(most)}");
+    // 3000 random sorted arrays of 1 to 8 values up to 4, then 40 of up
+    // to 10^5 values, each from 1 to k for k up to 1000, one time in four
+    // with a run of one value up to 10^9 making up to three quarters
+    let mut seed = 2856;
+    let mut check = 0;
+    let mut total = 0;
+    for c in 0..3040 {
+        let small = c < 3000;
+        let n = if small { next_random(mut seed) % 8 + 1 } else { wide(mut seed) % 100000 + 1 };
+        let k = if small { 4 } else { next_random(mut seed) % 1000 + 1 };
+        let mut nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % k + 1).collect();
+        if not small and next_random(mut seed) % 4 == 0 {
+            let run = wide(mut seed) % (3 * n / 4 + 1);
+            let v = wide(mut seed) % 1000000000 + 1;
+            for i in 0..run {
+                nums[i] = v;
+            }
+        }
+        nums.sort();
+        let left = min_length_after_removals(nums);
+        total += left;
+        check = (check * 31 + left) % 1000000007;
+        if c == 2999 {
+            println(f"3000 short arrays: {total} left, checksum {check}");
+            total = 0;
+            check = 0;
+        }
+    }
+    println(f"40 long arrays: {total} left, checksum {check}");
+}

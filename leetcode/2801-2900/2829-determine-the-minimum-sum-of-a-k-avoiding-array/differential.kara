@@ -1,0 +1,179 @@
+// LeetCode #2829: Determine the Minimum Sum of a k-avoiding Array -- the
+// differential. The five arms, against the statement read literally:
+// every set of n distinct numbers from 1 to n + k, by a bit mask, kept
+// when no two of them sum to k, and the least sum. Every n and k from 1
+// to 50; the literal reading is asked only of n and k up to 8.
+//
+// P1  n and k up to 8, the answer is the literal reading's
+// P2  one number more: a larger sum
+// P3  k at least 2n, or k of 1 or 2: 1 + 2 + .. + n, nothing to avoid
+// P4  at least 1 + 2 + .. + n, and at most k + (k + 1) + .. + (k + n - 1)
+// P5  k + 1 in place of k, for an even k: no smaller sum
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(n: i64, k: i64) -> i64 {
+    let top = n + k;
+    let mut best = i64.MAX;
+    for mask in 0..(1 << top) {
+        let chosen: Vec[i64] = (0..top).filter(|i| (mask >> i) & 1 == 1).map(|i| i + 1).collect();
+        if chosen.len() != n {
+            continue;
+        }
+        let avoids = chosen.iter().all(|a| chosen.iter().all(|b| a == b or a + b != k));
+        if avoids {
+            best = best.min(chosen.iter().sum());
+        }
+    }
+    best
+}
+
+
+// ---- star (avoid.kara) ----------------------------------------------
+
+fn star_minimum_sum(n: i64, k: i64) -> i64 {
+    let mut taken: Vec[bool] = Vec.filled(n + k + 1, false);
+    let mut count = 0;
+    let mut sum = 0;
+    let mut v = 1;
+    while count < n {
+        if v >= k or not taken[k - v] {
+            taken[v] = true;
+            count += 1;
+            sum += v;
+        }
+        v += 1;
+    }
+    sum
+}
+
+
+// ---- formula (avoid_formula.kara) -----------------------------------
+
+fn formula_series(from: i64, count: i64) -> i64 {
+    count * (2 * from + count - 1) / 2
+}
+
+fn formula_minimum_sum(n: i64, k: i64) -> i64 {
+    let m = n.min(k / 2);
+    formula_series(1, m) + formula_series(k, n - m)
+}
+
+
+// ---- set (avoid_set.kara) -------------------------------------------
+
+fn set_minimum_sum(n: i64, k: i64) -> i64 {
+    let mut taken: Set[i64] = Set.new();
+    let mut v = 1;
+    while taken.len() < n {
+        if not taken.contains(k - v) {
+            taken.insert(v);
+        }
+        v += 1;
+    }
+    taken.iter().sum()
+}
+
+
+// ---- chain (avoid_chain.kara) ---------------------------------------
+
+fn chain_minimum_sum(n: i64, k: i64) -> i64 {
+    (1..=k / 2).chain(k..).take(n).sum()
+}
+
+
+// ---- solution (avoid_solution.kara) ---------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_sum(n: i32, k: i32) -> i32 {
+        let mut set = Set.new();
+        let mut i: i32 = 1;
+        while set.len() < n {
+            if not set.contains(k - i) {
+                set.insert(i);
+            }
+            i += 1;
+        }
+        set.iter().sum()
+    }
+}
+
+fn solution_minimum_sum(n: i64, k: i64) -> i64 {
+    Solution.minimum_sum(n as i32, k as i32)
+}
+
+
+// ---- the checks ------------------------------------------------------------
+
+fn answer(arm: i64, n: i64, k: i64) -> i64 {
+    match arm {
+        0 => star_minimum_sum(n, k),
+        1 => formula_minimum_sum(n, k),
+        2 => set_minimum_sum(n, k),
+        3 => chain_minimum_sum(n, k),
+        _ => solution_minimum_sum(n, k),
+    }
+}
+
+fn main() {
+    let names = ["star", "formula", "set", "chain", "solution"];
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut cases = 0;
+    for n in 1..=50 {
+        for k in 1..=50 {
+            cases += 1;
+            let small = n <= 8 and k <= 8;
+            let want = if small { literal(n, k) } else { 0 };
+            check = (check * 31 + want + 1) % 1000000007;
+            let least = n * (n + 1) / 2;
+            let most = n * (2 * k + n - 1) / 2;
+            let got: Vec[i64] = (0..5).map(|arm| answer(arm, n, k)).collect();
+            for arm in 0..5 {
+                let value = got[arm];
+                let mut same = 0;
+                for o in 0..5 {
+                    if o != arm and got[o] == value {
+                        same += 1;
+                    }
+                }
+                let free = k >= 2 * n or k <= 2;
+                let verdicts = [
+                    not small or value == want,
+                    answer(arm, n + 1, k) > value,
+                    not free or value == least,
+                    value >= least and value <= most.max(least),
+                    k % 2 == 1 or answer(arm, n, k + 1) >= value,
+                    same >= 3,
+                ];
+                for q in 0..6 {
+                    checks += 1;
+                    if not verdicts[q] {
+                        by_property[q] += 1;
+                        if failures.len() < 10 {
+                            failures.push(f"n {n} k {k}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

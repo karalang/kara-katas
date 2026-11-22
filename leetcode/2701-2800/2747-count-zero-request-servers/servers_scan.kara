@@ -1,0 +1,79 @@
+// LeetCode #2747: Count Zero Request Servers -- the scan arm. Each query
+// looks at every log: the servers of those in [q - x, q] gathered in a
+// `Set`, and the answer is n less its size. O(Q L).
+
+fn count_servers(n: i64, logs: Vec[Vec[i64]], x: i64, queries: Vec[i64]) -> Vec[i64] {
+    queries
+        .iter()
+        .map(|q| {
+            let busy: Set[i64] = logs.iter().filter(|log| q - x <= log[1] and log[1] <= q).map(|log| log[0]).collect();
+            n - busy.len()
+        })
+        .collect()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn total(answers: Vec[i64], sum: mut ref i64, check: mut ref i64) {
+    for a in answers.iter() {
+        *sum += a;
+        *check = (*check * 31 + a) % 1000000007;
+    }
+}
+
+fn main() {
+    // LeetCode's two examples
+    let logs: Vec[Vec[i64]] = vec_of([[1, 3], [2, 6], [1, 5]]);
+    println(f"{count_servers(3, logs, 5, [10, 11].to_vec())}");
+    let logs: Vec[Vec[i64]] = vec_of([[2, 4], [2, 1], [1, 2], [3, 1]]);
+    println(f"{count_servers(3, logs, 2, [3, 4].to_vec())}");
+    // a request exactly at each end of the window counts; one just outside
+    // does not
+    let logs: Vec[Vec[i64]] = vec_of([[1, 5], [2, 10], [3, 4]]);
+    println(f"{count_servers(4, logs, 5, [10, 11, 15, 16].to_vec())}");
+    // 1000 random cases of 1 to 10 servers, 1 to 20 logs and 1 to 20
+    // queries, times up to 30; then 3 of 1000 servers, 3000 logs and 3000
+    // queries, times up to 10^6
+    let mut seed = 2747;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 10 + 1;
+        let x = next_random(mut seed) % 10 + 1;
+        let (logs, queries) = random_case(mut seed, n, 20, x, 30);
+        total(count_servers(n, logs, x, queries), mut sum, mut check);
+    }
+    println(f"1000 small cases: answers sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for _ in 0..3 {
+        let x = (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000 + 1;
+        let (logs, queries) = random_case(mut seed, 1000, 3000, x, 1000000);
+        total(count_servers(1000, logs, x, queries), mut sum, mut check);
+    }
+    println(f"3 cases of 3000 logs: answers sum to {sum}, checksum {check}");
+}
+
+fn vec_of(pairs: Slice[Array[i64, 2]]) -> Vec[Vec[i64]] {
+    pairs.iter().map(|p| p.to_vec()).collect()
+}
+
+// `most` logs and queries at most, each log a server from 1 to n at a time
+// from 1 to `last`, each query a time from x + 1 to `last`
+fn random_case(seed: mut ref i64, n: i64, most: i64, x: i64, last: i64) -> (Vec[Vec[i64]], Vec[i64]) {
+    let logs_count = next_random(mut seed) % most + 1;
+    let queries_count = next_random(mut seed) % most + 1;
+    let mut logs: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..logs_count {
+        let server = next_random(mut seed) % n + 1;
+        let time = (next_random(mut seed) * 32768 + next_random(mut seed)) % last + 1;
+        logs.push([server, time].to_vec());
+    }
+    let queries: Vec[i64] = (0..queries_count).map(|_| x + 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % (last - x).max(1)).collect();
+    (logs, queries)
+}

@@ -1,0 +1,55 @@
+// LeetCode #2869: Minimum Operations to Collect Elements -- the values
+// up to k gathered into a `Set` from the right, counting operations
+// until it holds k of them.
+
+fn min_operations(nums: Vec[i64], k: i64) -> i64 {
+    let mut seen: Set[i64] = Set.new();
+    let mut ops = 0;
+    for v in nums.iter().rev() {
+        ops += 1;
+        if v <= k {
+            seen.insert(v);
+        }
+        if seen.len() == k {
+            break;
+        }
+    }
+    ops
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples; 50 values, LeetCode's most, falling and
+    // rising
+    println(f"{min_operations([3, 1, 5, 4, 2].to_vec(), 2)} {min_operations([3, 1, 5, 4, 2].to_vec(), 5)} {min_operations([3, 2, 5, 3, 1].to_vec(), 3)}");
+    println(f"{min_operations((1..51).rev().collect(), 50)} {min_operations((1..51).collect(), 25)}");
+    // 3000 random arrays of 1 to 8 values from 1 to n, then 3000 of 50,
+    // each holding 1, k drawn from those whose 1..k all appear
+    let mut seed = 2869;
+    let mut total = 0;
+    let mut check = 0;
+    for c in 0..6000 {
+        let n = if c < 3000 { next_random(mut seed) % 8 + 1 } else { 50 };
+        let mut nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % n + 1).collect();
+        nums[next_random(mut seed) % n] = 1;
+        let mut reach = 1;
+        while nums.contains(reach + 1) {
+            reach += 1;
+        }
+        let k = next_random(mut seed) % reach + 1;
+        let ops = min_operations(nums, k);
+        total += ops;
+        check = (check * 31 + ops) % 1000000007;
+        if c == 2999 or c == 5999 {
+            println(f"3000 {if c < 3000 { "short" } else { "long" }} arrays: {total} operations, checksum {check}");
+            total = 0;
+            check = 0;
+        }
+    }
+}

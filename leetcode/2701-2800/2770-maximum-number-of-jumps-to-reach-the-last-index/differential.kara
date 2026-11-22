@@ -1,0 +1,290 @@
+// LeetCode #2770: Maximum Number of Jumps to Reach the Last Index -- the
+// differential. The five arms, against the statement read literally:
+// every set of the indices between the first and the last, as the bits
+// of a number, taken as the indices a path stops at, kept when every
+// jump in it is within target, and the most jumps over those kept, or
+// -1; no table. 2000 random arrays of 2 to 12 numbers from 0 to 9 with
+// targets from 0 to 4; then 40 of up to 300 from -10^9 to 10^9 with
+// targets up to 2 * 10^9. Every case is drawn before any arm answers; the
+// literal reading is asked only of the first 2000.
+//
+// P1  up to 12 numbers, the answer is the literal reading's
+// P2  every number negated: the same answer
+// P3  every number 1000 more: the same answer
+// P4  the target one more: no fewer jumps
+// P5  -1 or from 1 to n - 1, and n - 1 when the target is at least the
+//     greatest number less the least
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(nums: Vec[i64], target: i64) -> i64 {
+    let n = nums.len();
+    let mut best = -1;
+    for stops in 0..(1 << (n - 2)) {
+        let mut path: Vec[i64] = [0].to_vec();
+        for k in 1..n - 1 {
+            if (stops >> (k - 1)) & 1 == 1 {
+                path.push(k);
+            }
+        }
+        path.push(n - 1);
+        let mut fits = true;
+        for k in 1..path.len() {
+            let step = nums[path[k]] - nums[path[k - 1]];
+            if step < -target or step > target {
+                fits = false;
+            }
+        }
+        if fits and path.len() - 1 > best {
+            best = path.len() - 1;
+        }
+    }
+    best
+}
+
+
+// ---- star (jumps.kara) ----------------------------------------------
+
+fn star_maximum_jumps(nums: Vec[i64], target: i64) -> i64 {
+    let n = nums.len();
+    let mut most: Vec[i64] = Vec.filled(n, -1);
+    most[0] = 0;
+    for j in 1..n {
+        for i in 0..j {
+            if most[i] >= 0 and (nums[j] - nums[i]).abs() <= target {
+                most[j] = most[j].max(most[i] + 1);
+            }
+        }
+    }
+    most[n - 1]
+}
+
+
+// ---- memo (jumps_memo.kara) -----------------------------------------
+
+fn memo_from(i: i64, nums: Vec[i64], target: i64, memo: mut ref Vec[Option[i64]]) -> i64 {
+    if let Some(known) = memo[i] {
+        return known;
+    }
+    let n = nums.len();
+    let mut best = if i == n - 1 { 0 } else { -1 };
+    for j in i + 1..n {
+        if (nums[j] - nums[i]).abs() <= target {
+            let rest = memo_from(j, nums, target, mut memo);
+            if rest >= 0 {
+                best = best.max(rest + 1);
+            }
+        }
+    }
+    memo[i] = Some(best);
+    best
+}
+
+fn memo_maximum_jumps(nums: Vec[i64], target: i64) -> i64 {
+    let mut memo: Vec[Option[i64]] = Vec.filled(nums.len(), None);
+    memo_from(0, nums, target, mut memo)
+}
+
+
+// ---- push (jumps_push.kara) -----------------------------------------
+
+fn push_maximum_jumps(nums: Vec[i64], target: i64) -> i64 {
+    let n = nums.len();
+    let jumps: Vec[Vec[i64]] = (0..n)
+        .map(|i| (i + 1..n).filter(|j| (nums[j] - nums[i]).abs() <= target).collect())
+        .collect();
+    let mut most: Vec[i64] = Vec.filled(n, -1);
+    most[0] = 0;
+    for i in 0..n {
+        if most[i] < 0 {
+            continue;
+        }
+        for j in jumps[i].iter() {
+            if most[i] + 1 > most[j] {
+                most[j] = most[i] + 1;
+            }
+        }
+    }
+    most[n - 1]
+}
+
+
+// ---- tree (jumps_tree.kara) -----------------------------------------
+
+struct MaxTree {
+    size: i64,
+    best: Vec[i64],
+}
+
+impl MaxTree {
+    fn new(n: i64) -> MaxTree {
+        let mut size = 1;
+        while size < n {
+            size *= 2;
+        }
+        MaxTree { size: size, best: Vec.filled(2 * size, -1) }
+    }
+
+    fn raise(mut ref self, at: i64, value: i64) {
+        let mut k = at + self.size;
+        while k >= 1 {
+            self.best[k] = self.best[k].max(value);
+            k /= 2;
+        }
+    }
+
+    // the greatest value over places lo..hi
+    fn most(self, lo: i64, hi: i64) -> i64 {
+        let mut result = -1;
+        let mut l = lo + self.size;
+        let mut r = hi + self.size;
+        while l < r {
+            if l % 2 == 1 {
+                result = result.max(self.best[l]);
+                l += 1;
+            }
+            if r % 2 == 1 {
+                r -= 1;
+                result = result.max(self.best[r]);
+            }
+            l /= 2;
+            r /= 2;
+        }
+        result
+    }
+}
+
+fn tree_maximum_jumps(nums: Vec[i64], target: i64) -> i64 {
+    let mut values = nums.clone();
+    values.sort();
+    values.dedup();
+    let place = |x: i64| values.partition_point(|v| v < x);
+    let mut tree = MaxTree.new(values.len());
+    tree.raise(place(nums[0]), 0);
+    let mut last = 0;
+    for j in 1..nums.len() {
+        let lo = place(nums[j] - target);
+        let hi = values.partition_point(|v| v <= nums[j] + target);
+        let before = tree.most(lo, hi);
+        last = if before >= 0 { before + 1 } else { -1 };
+        if last >= 0 {
+            tree.raise(place(nums[j]), last);
+        }
+    }
+    last
+}
+
+
+// ---- solution (jumps_solution.kara) ---------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn maximum_jumps(nums: Vec[i32], target: i32) -> i32 {
+        let n = nums.len();
+        let mut dp = Vec.filled(n, -1i32);
+        dp[0] = 0;
+        for j in 1..n {
+            for i in 0..j {
+                if dp[i] != -1 and (nums[j] as i64 - nums[i] as i64).abs() <= target {
+                    dp[j] = dp[j].max(dp[i] + 1);
+                }
+            }
+        }
+        dp[n - 1]
+    }
+}
+
+fn solution_maximum_jumps(nums: ref Vec[i64], target: i64) -> i64 {
+    Solution.maximum_jumps(nums.iter().map(|x| x as i32).collect(), target as i32)
+}
+
+
+fn answer(arm: i64, nums: Vec[i64], target: i64) -> i64 {
+    match arm {
+        0 => star_maximum_jumps(nums, target),
+        1 => memo_maximum_jumps(nums, target),
+        2 => push_maximum_jumps(nums, target),
+        3 => tree_maximum_jumps(nums, target),
+        _ => solution_maximum_jumps(nums, target),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "memo", "push", "tree", "solution"];
+    let mut seed = 2770;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..2040 {
+        if c < 2000 {
+            let n = next_random(mut seed) % 11 + 2;
+            let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 10).collect();
+            cases.push((nums, next_random(mut seed) % 5));
+        } else {
+            let n = next_random(mut seed) % 299 + 2;
+            let nums: Vec[i64] = (0..n).map(|_| wide(mut seed) % 2000000001 - 1000000000).collect();
+            cases.push((nums, wide(mut seed) % 2000000001));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (nums, target)) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(nums, target) } else { 0 };
+        check = (check * 31 + want + 1) % 1000000007;
+        let n = nums.len();
+        let negated: Vec[i64] = nums.iter().map(|x| -x).collect();
+        let raised: Vec[i64] = nums.iter().map(|x| x + 1000).collect();
+        let spread = nums.iter().max().unwrap() - nums.iter().min().unwrap();
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums, target)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == want,
+                answer(arm, negated, target) == value,
+                answer(arm, raised, target) == value,
+                answer(arm, nums, target + 1) >= value,
+                (value == -1 or (1 <= value and value <= n - 1)) and (target < spread or value == n - 1),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums} target {target}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

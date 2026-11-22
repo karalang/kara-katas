@@ -1,0 +1,472 @@
+// LeetCode #2812: Find the Safest Path in a Grid -- the differential. The
+// five arms, against the statement read literally: every path from the
+// top left to the bottom right that visits no cell twice, walked by a
+// depth-first search, each cell's safeness its Manhattan distance to the
+// nearest thief found by looking at every thief, a path's the least of
+// its cells', the answer the best path's; no breadth-first search, no
+// heap and no table of distances. 2000 random grids of 1 to 4 with a
+// thief in about one cell of four; then 50 of up to 40 with one in about
+// one cell of 100. Every case is drawn before any arm answers; the
+// literal reading is asked only of the first 2000.
+//
+// P1  up to 4 by 4, the answer is the literal reading's
+// P2  from 0 to the start's and the end's own safeness, whichever is less
+// P3  the grid transposed: the same answer
+// P4  the grid turned a half turn: the same answer
+// P5  one more thief: no larger; a thief on the start: 0
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- star (safest.kara) ---------------------------------------------
+
+fn star_thief_distances(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let n = grid.len();
+    let mut dist: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, -1));
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    for r in 0..n {
+        for c in 0..n {
+            if grid[r][c] == 1 {
+                dist[r][c] = 0;
+                queue.push_back((r, c));
+            }
+        }
+    }
+    while let Some((r, c)) = queue.pop_front() {
+        for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr >= 0 and nr < n and nc >= 0 and nc < n and dist[nr][nc] == -1 {
+                dist[nr][nc] = dist[r][c] + 1;
+                queue.push_back((nr, nc));
+            }
+        }
+    }
+    dist
+}
+
+fn star_reachable(dist: Vec[Vec[i64]], s: i64) -> bool {
+    let n = dist.len();
+    if dist[0][0] < s {
+        return false;
+    }
+    let mut seen: Vec[Vec[bool]] = Vec.filled(n, Vec.filled(n, false));
+    seen[0][0] = true;
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    queue.push_back((0, 0));
+    while let Some((r, c)) = queue.pop_front() {
+        if r == n - 1 and c == n - 1 {
+            return true;
+        }
+        for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr >= 0 and nr < n and nc >= 0 and nc < n and not seen[nr][nc] and dist[nr][nc] >= s {
+                seen[nr][nc] = true;
+                queue.push_back((nr, nc));
+            }
+        }
+    }
+    false
+}
+
+fn star_maximum_safeness_factor(grid: Vec[Vec[i64]]) -> i64 {
+    let n = grid.len();
+    let dist = star_thief_distances(grid);
+    let mut lo = 0;
+    let mut hi = dist[0][0].min(dist[n - 1][n - 1]);
+    while lo < hi {
+        let mid = (lo + hi + 1) / 2;
+        if star_reachable(dist, mid) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+
+// ---- heap (safest_heap.kara) ----------------------------------------
+
+fn heap_thief_distances(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let n = grid.len();
+    let mut dist: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, -1));
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    for r in 0..n {
+        for c in 0..n {
+            if grid[r][c] == 1 {
+                dist[r][c] = 0;
+                queue.push_back((r, c));
+            }
+        }
+    }
+    while let Some((r, c)) = queue.pop_front() {
+        for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr >= 0 and nr < n and nc >= 0 and nc < n and dist[nr][nc] == -1 {
+                dist[nr][nc] = dist[r][c] + 1;
+                queue.push_back((nr, nc));
+            }
+        }
+    }
+    dist
+}
+
+fn heap_maximum_safeness_factor(grid: Vec[Vec[i64]]) -> i64 {
+    let n = grid.len();
+    let dist = heap_thief_distances(grid);
+    let mut best: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, -1));
+    let mut queue: PriorityQueue[(i64, i64, i64)] = PriorityQueue.new();
+    best[0][0] = dist[0][0];
+    queue.push((-dist[0][0], 0, 0));
+    while let Some((negated, r, c)) = queue.pop() {
+        let safe = -negated;
+        if safe < best[r][c] {
+            continue;
+        }
+        if r == n - 1 and c == n - 1 {
+            return safe;
+        }
+        for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr >= 0 and nr < n and nc >= 0 and nc < n {
+                let through = safe.min(dist[nr][nc]);
+                if through > best[nr][nc] {
+                    best[nr][nc] = through;
+                    queue.push((-through, nr, nc));
+                }
+            }
+        }
+    }
+    best[n - 1][n - 1]
+}
+
+
+// ---- union (safest_union.kara) --------------------------------------
+
+fn union_thief_distances(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let n = grid.len();
+    let mut dist: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, 2 * n));
+    for r in 0..n {
+        for c in 0..n {
+            if grid[r][c] == 1 {
+                dist[r][c] = 0;
+            } else {
+                if r > 0 {
+                    dist[r][c] = dist[r][c].min(dist[r - 1][c] + 1);
+                }
+                if c > 0 {
+                    dist[r][c] = dist[r][c].min(dist[r][c - 1] + 1);
+                }
+            }
+        }
+    }
+    for r in (0..n).rev() {
+        for c in (0..n).rev() {
+            if r + 1 < n {
+                dist[r][c] = dist[r][c].min(dist[r + 1][c] + 1);
+            }
+            if c + 1 < n {
+                dist[r][c] = dist[r][c].min(dist[r][c + 1] + 1);
+            }
+        }
+    }
+    dist
+}
+
+fn union_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut root = x;
+    while parent[root] != root {
+        root = parent[root];
+    }
+    let mut at = x;
+    while parent[at] != root {
+        let next = parent[at];
+        parent[at] = root;
+        at = next;
+    }
+    root
+}
+
+fn union_maximum_safeness_factor(grid: Vec[Vec[i64]]) -> i64 {
+    let n = grid.len();
+    let dist = union_thief_distances(grid);
+    let mut order: Vec[(i64, i64)] = Vec.new();
+    for r in 0..n {
+        for c in 0..n {
+            order.push((dist[r][c], r * n + c));
+        }
+    }
+    order.sort();
+    let mut parent: Vec[i64] = (0..n * n).collect();
+    let mut added: Vec[bool] = Vec.filled(n * n, false);
+    for (d, cell) in order.iter().rev() {
+        added[cell] = true;
+        let (r, c) = (cell / n, cell % n);
+        for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr >= 0 and nr < n and nc >= 0 and nc < n and added[nr * n + nc] {
+                let a = union_find(mut parent, cell);
+                let b = union_find(mut parent, nr * n + nc);
+                parent[a] = b;
+            }
+        }
+        if added[0] and added[n * n - 1] and union_find(mut parent, 0) == union_find(mut parent, n * n - 1) {
+            return d;
+        }
+    }
+    0
+}
+
+
+// ---- layers (safest_layers.kara) ------------------------------------
+
+fn layers_maximum_safeness_factor(grid: Vec[Vec[i64]]) -> i64 {
+    let n = grid.len();
+    let mut dist: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, -1));
+    let mut layer: Vec[(i64, i64)] = Vec.new();
+    for r in 0..n {
+        for c in 0..n {
+            if grid[r][c] == 1 {
+                dist[r][c] = 0;
+                layer.push((r, c));
+            }
+        }
+    }
+    let mut d = 0;
+    while not layer.is_empty() {
+        d += 1;
+        let mut next: Vec[(i64, i64)] = Vec.new();
+        for (r, c) in layer.iter() {
+            for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+                let (nr, nc) = (r + dr, c + dc);
+                if nr >= 0 and nr < n and nc >= 0 and nc < n and dist[nr][nc] == -1 {
+                    dist[nr][nc] = d;
+                    next.push((nr, nc));
+                }
+            }
+        }
+        layer = next;
+    }
+    let mut buckets: Vec[Vec[(i64, i64)]] = Vec.filled(d, Vec.new());
+    let mut reached: Vec[Vec[bool]] = Vec.filled(n, Vec.filled(n, false));
+    let mut level = dist[0][0];
+    buckets[level].push((0, 0));
+    while level >= 0 {
+        while let Some((r, c)) = buckets[level].pop() {
+            if reached[r][c] {
+                continue;
+            }
+            reached[r][c] = true;
+            if r == n - 1 and c == n - 1 {
+                return level;
+            }
+            for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+                let (nr, nc) = (r + dr, c + dc);
+                if nr >= 0 and nr < n and nc >= 0 and nc < n and not reached[nr][nc] {
+                    buckets[level.min(dist[nr][nc])].push((nr, nc));
+                }
+            }
+        }
+        level -= 1;
+    }
+    0
+}
+
+
+// ---- solution (safest_solution.kara) --------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn maximum_safeness_factor(grid: Vec[Vec[i32]]) -> i32 {
+        let n = grid.len();
+        let mut dist = Vec.filled(n, Vec.filled(n, -1));
+        let mut q = VecDeque.new();
+        for i in 0..n {
+            for j in 0..n {
+                if grid[i][j] == 1 {
+                    dist[i][j] = 0;
+                    q.push_back((i, j));
+                }
+            }
+        }
+        let dirs = [(0, 1), (1, 0), (0, -1), (-1, 0)];
+        while let Some((i, j)) = q.pop_front() {
+            for (di, dj) in dirs.iter() {
+                let ni = i as i32 + di;
+                let nj = j as i32 + dj;
+                if ni >= 0 and nj >= 0 and ni < n as i32 and nj < n as i32 {
+                    if dist[ni][nj] == -1 {
+                        dist[ni][nj] = dist[i][j] + 1;
+                        q.push_back((ni, nj));
+                    }
+                }
+            }
+        }
+        let mut heap = PriorityQueue.max_first();
+        let mut seen = Vec.filled(n, Vec.filled(n, false));
+        heap.push((dist[0][0], 0, 0));
+        seen[0][0] = true;
+        while let Some((d, i, j)) = heap.pop() {
+            if i == n - 1 and j == n - 1 {
+                return d;
+            }
+            for (di, dj) in dirs.iter() {
+                let ni = i as i32 + di;
+                let nj = j as i32 + dj;
+                if ni >= 0 and nj >= 0 and ni < n as i32 and nj < n as i32 {
+                    if not seen[ni][nj] {
+                        seen[ni][nj] = true;
+                        heap.push((d.min(dist[ni][nj]), ni, nj));
+                    }
+                }
+            }
+        }
+        0
+    }
+}
+
+fn solution_maximum_safeness_factor(grid: Vec[Vec[i64]]) -> i64 {
+    let grid: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|v| v as i32).collect()).collect();
+    Solution.maximum_safeness_factor(grid)
+}
+
+
+
+// ---- the statement read literally ------------------------------------------
+
+// the Manhattan distance from (r, c) to the nearest thief, every thief
+// looked at
+fn nearest(grid: Vec[Vec[i64]], r: i64, c: i64) -> i64 {
+    let n = grid.len();
+    let mut best = 2 * n;
+    for tr in 0..n {
+        for tc in 0..n {
+            if grid[tr][tc] == 1 {
+                best = best.min((tr - r).abs() + (tc - c).abs());
+            }
+        }
+    }
+    best
+}
+
+// the best safeness of a path that has reached (r, c) with `least` so
+// far, never stepping on a cell in `on_path`
+fn walk(grid: Vec[Vec[i64]], r: i64, c: i64, least: i64, on_path: mut ref Vec[Vec[bool]]) -> i64 {
+    let n = grid.len();
+    let here = least.min(nearest(grid, r, c));
+    if r == n - 1 and c == n - 1 {
+        return here;
+    }
+    on_path[r][c] = true;
+    let mut best = -1;
+    for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+        let (nr, nc) = (r + dr, c + dc);
+        if nr >= 0 and nr < n and nc >= 0 and nc < n and not on_path[nr][nc] {
+            best = best.max(walk(grid, nr, nc, here, mut on_path));
+        }
+    }
+    on_path[r][c] = false;
+    best
+}
+
+fn literal(grid: Vec[Vec[i64]]) -> i64 {
+    let n = grid.len();
+    let mut on_path: Vec[Vec[bool]] = Vec.filled(n, Vec.filled(n, false));
+    walk(grid, 0, 0, 2 * n, mut on_path)
+}
+
+fn answer(arm: i64, grid: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_maximum_safeness_factor(grid),
+        1 => heap_maximum_safeness_factor(grid),
+        2 => union_maximum_safeness_factor(grid),
+        3 => layers_maximum_safeness_factor(grid),
+        _ => solution_maximum_safeness_factor(grid),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_grid(n: i64, odds: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut grid: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..n {
+        let row: Vec[i64] = (0..n).map(|_| if next_random(mut seed) % odds == 0 { 1 } else { 0 }).collect();
+        grid.push(row);
+    }
+    let r = next_random(mut seed) % n;
+    let c = next_random(mut seed) % n;
+    grid[r][c] = 1;
+    grid
+}
+
+fn main() {
+    let names = ["star", "heap", "union", "layers", "solution"];
+    let mut seed = 2812;
+    let mut cases: Vec[(Vec[Vec[i64]], i64, i64)] = Vec.new();
+    for c in 0..2050 {
+        let (n, odds) = if c < 2000 { (next_random(mut seed) % 4 + 1, 4) } else { (next_random(mut seed) % 40 + 1, 100) };
+        let grid = random_grid(n, odds, mut seed);
+        let r = next_random(mut seed) % n;
+        let k = next_random(mut seed) % n;
+        cases.push((grid, r, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (grid, extra_r, extra_c)) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(grid) } else { 0 };
+        check = (check * 31 + want + 2) % 1000000007;
+        let n = grid.len();
+        let ceiling = nearest(grid, 0, 0).min(nearest(grid, n - 1, n - 1));
+        let transposed: Vec[Vec[i64]] = (0..n).map(|r| (0..n).map(|k| grid[k][r]).collect()).collect();
+        let turned: Vec[Vec[i64]] = (0..n).map(|r| (0..n).map(|k| grid[n - 1 - r][n - 1 - k]).collect()).collect();
+        let mut more = grid.clone();
+        more[extra_r][extra_c] = 1;
+        let mut at_start = grid.clone();
+        at_start[0][0] = 1;
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, grid)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == want,
+                value >= 0 and value <= ceiling,
+                answer(arm, transposed) == value,
+                answer(arm, turned) == value,
+                answer(arm, more) <= value and answer(arm, at_start) == 0,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {grid}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

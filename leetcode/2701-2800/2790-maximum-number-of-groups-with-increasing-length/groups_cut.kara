@@ -1,0 +1,88 @@
+// LeetCode #2790: Maximum Number of Groups With Increasing Length -- by
+// binary search and a cut: k groups of sizes 1 to k can be filled just
+// when, for each t up to k, the t largest groups, needing t * k - t(t -
+// 1) / 2 places, can be met by the numbers each given at most t times,
+// the sum of min(u, t); those sums found once for every t from the
+// sorted limits, and the greatest such k searched. O(n log n).
+
+fn max_increasing_groups(usage_limits: Vec[i64]) -> i64 {
+    let n = usage_limits.len();
+    let mut limits = usage_limits.clone();
+    limits.sort();
+    // given[t]: the sum of min(u, t), the limits below t in full and t
+    // from each of the rest
+    let mut given: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut below = 0;
+    let mut full = 0;
+    for t in 1..=n {
+        while below < n and limits[below] < t {
+            full += limits[below];
+            below += 1;
+        }
+        given[t] = full + (n - below) * t;
+    }
+    let fits = |k: i64| {
+        for t in 1..=k {
+            if given[t] < t * k - t * (t - 1) / 2 {
+                return false;
+            }
+        }
+        true
+    };
+    let mut (low, high) = (0, n);
+    while low < high {
+        let mid = (low + high + 1) / 2;
+        if fits(mid) {
+            low = mid;
+        } else {
+            high = mid - 1;
+        }
+    }
+    low
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's three examples; one number allowed 10^9 times; 10^5
+    // numbers each allowed 10^9 times, LeetCode's most; 10^5 numbers
+    // each allowed once
+    println(f"{max_increasing_groups([1, 2, 5])}");
+    println(f"{max_increasing_groups([2, 1, 2])}");
+    println(f"{max_increasing_groups([1, 1])}");
+    println(f"{max_increasing_groups([1000000000])}");
+    let n = 100000;
+    println(f"{max_increasing_groups(Vec.filled(n, 1000000000))}");
+    println(f"{max_increasing_groups(Vec.filled(n, 1))}");
+    // 3000 random arrays of 1 to 12 limits from 1 to 10; then 20 of 10^5
+    // limits up to 10^9
+    let mut seed = 2790;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let m = next_random(mut seed) % 12 + 1;
+        let limits: Vec[i64] = (0..m).map(|_| next_random(mut seed) % 10 + 1).collect();
+        let a = max_increasing_groups(limits);
+        sum += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"3000 small arrays: groups sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for _ in 0..20 {
+        let limits: Vec[i64] = (0..n).map(|_| wide(mut seed) % 1000000000 + 1).collect();
+        let a = max_increasing_groups(limits);
+        sum += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"20 arrays of 10^5: groups sum to {sum}, checksum {check}");
+}

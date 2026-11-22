@@ -1,0 +1,117 @@
+// LeetCode #2801: Count Stepping Numbers in Range -- forward, a layer at
+// a time: below[d] the stepping numbers already less than the bound's
+// prefix and ending in d, and whether the prefix itself still steps; each
+// digit of the bound moves every count to its neighbours, adds the digits
+// under the bound's that step from the prefix, and starts a new number at
+// every place after the first. The range as ★: to high less to low, and
+// low when it steps.
+
+const MOD: i64 = 1000000007;
+
+fn count_up_to(s: String) -> i64 {
+    let digits: Vec[i64] = s.bytes().iter().map(|b| b as i64 - 48).collect();
+    let mut below: Vec[i64] = Vec.filled(10, 0);
+    for d in 1..digits[0] {
+        below[d] = 1;
+    }
+    let mut stepping = true;
+    for i in 1..digits.len() {
+        let mut next: Vec[i64] = Vec.filled(10, 0);
+        for d in 0..10 {
+            if d > 0 {
+                next[d] += below[d - 1];
+            }
+            if d < 9 {
+                next[d] += below[d + 1];
+            }
+            if d > 0 {
+                next[d] += 1;
+            }
+            if stepping and d < digits[i] and (d - digits[i - 1]).abs() == 1 {
+                next[d] += 1;
+            }
+            next[d] %= MOD;
+        }
+        stepping = stepping and (digits[i] - digits[i - 1]).abs() == 1;
+        below = next;
+    }
+    let all: i64 = below.iter().sum();
+    (all + if stepping { 1 } else { 0 }) % MOD
+}
+
+fn count_stepping_numbers(low: String, high: String) -> i64 {
+    let b = low.bytes();
+    let own = if (1..b.len()).all(|i| (b[i] as i64 - b[i - 1] as i64).abs() == 1) { 1 } else { 0 };
+    ((count_up_to(high) - count_up_to(low) + own) % MOD + MOD) % MOD
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a number of m digits, its first not 0, mostly stepping when `near`
+fn number(m: i64, near: bool, seed: mut ref i64) -> String {
+    let digits = "0123456789";
+    let mut d = next_random(mut seed) % 9 + 1;
+    let mut s = digits[d..d + 1].to_string();
+    for _ in 1..m {
+        let r = next_random(mut seed) % 10;
+        d = if near and r < 8 {
+            if r % 2 == 0 and d > 0 or d == 9 { d - 1 } else { d + 1 }
+        } else {
+            r
+        };
+        s.push_str(digits[d..d + 1]);
+    }
+    s
+}
+
+// the lesser of two numbers written out first
+fn ordered(a: String, b: String) -> (String, String) {
+    if a.len() < b.len() or (a.len() == b.len() and a <= b) {
+        (a.clone(), b.clone())
+    } else {
+        (b.clone(), a.clone())
+    }
+}
+
+fn main() {
+    // LeetCode's two examples; 1 to 10^100 - 1, LeetCode's widest; a
+    // range of one stepping number of 100 digits; the 100-digit numbers
+    println(f"{count_stepping_numbers("1", "11")}");
+    println(f"{count_stepping_numbers("90", "101")}");
+    println(f"{count_stepping_numbers("1", "9".repeat(100))}");
+    let one = "10".repeat(50);
+    println(f"{count_stepping_numbers(one, one)}");
+    let top = f"1{"0".repeat(99)}";
+    println(f"{count_stepping_numbers(top, "9".repeat(100))}");
+    // 3000 random ranges within 1 to 10^4; then 50 of up to 100 digits,
+    // every other one made mostly of steps
+    let mut seed = 2801;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let a = next_random(mut seed) % 10000 + 1;
+        let b = next_random(mut seed) % 10000 + 1;
+        let (low, high) = ordered(f"{a}", f"{b}");
+        let ans = count_stepping_numbers(low, high);
+        sum += ans;
+        check = (check * 31 + ans) % 1000000007;
+    }
+    println(f"3000 ranges up to 10^4: counts sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for t in 0..50 {
+        let near = t % 2 == 0;
+        let a = number(next_random(mut seed) % 100 + 1, near, mut seed);
+        let b = number(next_random(mut seed) % 100 + 1, near, mut seed);
+        let (low, high) = ordered(a, b);
+        let ans = count_stepping_numbers(low, high);
+        sum += ans;
+        check = (check * 31 + ans) % 1000000007;
+    }
+    println(f"50 ranges of up to 100 digits: counts sum to {sum}, checksum {check}");
+}

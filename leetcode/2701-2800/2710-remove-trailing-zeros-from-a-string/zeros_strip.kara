@@ -1,0 +1,77 @@
+// LeetCode #2710: Remove Trailing Zeros From a String -- the strip arm.
+// The library's `strip_suffix` takes one "0" off the end while there is
+// one, each time giving a shorter view of the same text, and the last
+// view is copied out. O(n).
+
+fn remove_trailing_zeros(num: String) -> String {
+    let mut rest: Str = num.as_str();
+    while let Some(shorter) = rest.strip_suffix("0") {
+        rest = shorter;
+    }
+    rest.to_string()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n digits, the first not zero, each after it a zero `zeros_in_4` times
+// in 4 and otherwise any digit
+fn random_number(seed: mut ref i64, n: i64, zeros_in_4: i64) -> String {
+    let mut digits = String.new();
+    digits.push((b'1' + (next_random(mut seed) % 9) as u8) as char);
+    for _ in 0..n - 1 {
+        if next_random(mut seed) % 4 < zeros_in_4 {
+            digits.push('0');
+        } else {
+            digits.push((b'0' + (next_random(mut seed) % 10) as u8) as char);
+        }
+    }
+    digits
+}
+
+fn fold(check: i64, text: Str) -> i64 {
+    let mut check = check;
+    for c in text.chars() {
+        check = (check * 131 + c as i64) % 1000000007;
+    }
+    (check * 131 + text.len()) % 1000000007
+}
+
+fn main() {
+    // LeetCode's two examples; one digit; 10; a 1 and 999 zeros, and 1000
+    // nines, LeetCode's longest; zeros only inside; zeros inside and out
+    println(remove_trailing_zeros("51230100"));
+    println(remove_trailing_zeros("123"));
+    println(remove_trailing_zeros("1"));
+    println(remove_trailing_zeros("10"));
+    let long = f"1{"0".repeat(999)}";
+    println(f"{remove_trailing_zeros(long).len()}");
+    println(f"{remove_trailing_zeros("9".repeat(1000)).len()}");
+    let inside = f"1{"0".repeat(67)}1";
+    println(remove_trailing_zeros(inside));
+    println(remove_trailing_zeros("10203000"));
+    // 3000 random numbers of up to 1000 digits, zeros 0 to 3 times in 4,
+    // half of them with up to 19 more zeros on the end, cut to 1000
+    let mut seed = 2710;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 1000 + 1;
+        let zeros = next_random(mut seed) % 4;
+        let mut num = random_number(mut seed, n, zeros);
+        if next_random(mut seed) % 2 == 0 {
+            num.push_str("0".repeat(next_random(mut seed) % 20));
+        }
+        if num.len() > 1000 {
+            num = num.slice(0, 1000).to_string();
+        }
+        let out = remove_trailing_zeros(num);
+        sum += num.len() - out.len();
+        check = fold(check, out);
+    }
+    println(f"3000 numbers: {sum} zeros removed, checksum {check}");
+}

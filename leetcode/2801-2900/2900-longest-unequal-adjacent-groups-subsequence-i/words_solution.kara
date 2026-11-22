@@ -1,0 +1,102 @@
+// LeetCode #2900: Longest Unequal Adjacent Groups Subsequence I -- a
+// Rust solution as LeetCode's Rust users write it: the first word
+// cloned into the answer, then `for i in 1..groups.len()` taking each
+// word whose group differs from the one before, `words[i].clone()`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn get_longest_subsequence(words: Vec[String], groups: Vec[i32]) -> Vec[String] {
+        let mut ans = [words[0].clone()];
+        for i in 1..groups.len() {
+            if groups[i] != groups[i - 1] {
+                ans.push(words[i].clone());
+            }
+        }
+        ans
+    }
+}
+
+fn get_longest_subsequence(words: Vec[String], groups: Vec[i64]) -> Vec[String] {
+    Solution.get_longest_subsequence(words, groups.iter().map(|g| g as i32).collect())
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n distinct words of lowercase letters: a random letter, then i in base
+// 26, so no two are the same
+fn draw_words(n: i64, seed: mut ref i64) -> Vec[String] {
+    let letters: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    let mut words: Vec[String] = Vec.new();
+    for i in 0..n {
+        let mut word = String.new();
+        word.push(letters[next_random(mut seed) % 26]);
+        let mut rest = i;
+        loop {
+            word.push(letters[rest % 26]);
+            rest /= 26;
+            if rest == 0 {
+                break;
+            }
+        }
+        words.push(word);
+    }
+    words
+}
+
+fn digest(chosen: Vec[String], total: mut ref i64, check: mut ref i64) {
+    *total += chosen.len();
+    *check = (*check * 31 + chosen.len()) % 1000000007;
+    for word in chosen.iter() {
+        for b in word.bytes().iter() {
+            *check = (*check * 31 + b as i64) % 1000000007;
+        }
+        *check = (*check * 31 + 1) % 1000000007;
+    }
+}
+
+fn main() {
+    // LeetCode's two examples; 100 words, LeetCode's most, in one group,
+    // in groups taking turns, and in runs of three
+    let one = get_longest_subsequence(["e", "a", "b"].iter().map(|w| w.to_string()).collect(), [0, 0, 1]);
+    let two = get_longest_subsequence(["a", "b", "c", "d"].iter().map(|w| w.to_string()).collect(), [1, 0, 1, 1]);
+    println(f"{one.join(" ")} | {two.join(" ")}");
+    let mut seed = 2900;
+    let words = draw_words(100, mut seed);
+    let same = get_longest_subsequence(words, Vec.filled(100, 0));
+    let turns = get_longest_subsequence(words, (0..100).map(|i| i % 2).collect());
+    let threes = get_longest_subsequence(words, (0..100).map(|i| i / 3 % 2).collect());
+    println(f"{same.len()} {turns.len()} {threes.len()}: {threes[0]} {threes[33]}");
+    // 3000 random cases of 1 to 8 words, then 1000 of 100 words with
+    // runs of a group up to 5 long
+    let mut total = 0;
+    let mut check = 0;
+    for c in 0..4000 {
+        let small = c < 3000;
+        let n = if small { next_random(mut seed) % 8 + 1 } else { 100 };
+        let words = draw_words(n, mut seed);
+        let mut groups: Vec[i64] = Vec.new();
+        let mut group = next_random(mut seed) % 2;
+        while groups.len() < n {
+            let run = if small { 1 } else { next_random(mut seed) % 5 + 1 };
+            for _ in 0..run {
+                if groups.len() < n {
+                    groups.push(if small { next_random(mut seed) % 2 } else { group });
+                }
+            }
+            group = 1 - group;
+        }
+        digest(get_longest_subsequence(words, groups), mut total, mut check);
+        if c == 2999 {
+            println(f"3000 small cases: {total} words chosen, checksum {check}");
+            total = 0;
+            check = 0;
+        }
+    }
+    println(f"1000 cases of 100: {total} words chosen, checksum {check}");
+}

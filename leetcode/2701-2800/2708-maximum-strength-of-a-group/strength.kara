@@ -1,0 +1,76 @@
+// LeetCode #2708: Maximum Strength of a Group -- the ★ arm. Every number
+// but the zeros multiplies the strength up in size, so all of them are
+// taken; if that leaves an odd count of negatives, the one nearest zero
+// is left behind, which costs the least. A lone number is its own
+// answer, and a group that ends up empty, only zeros and one negative,
+// takes a zero instead. O(n).
+
+fn max_strength(nums: Vec[i64]) -> i64 {
+    if nums.len() == 1 {
+        return nums[0];
+    }
+    let mut product = 1;
+    let mut taken = 0;
+    let mut negatives = 0;
+    let mut nearest = -10;
+    for v in nums.iter() {
+        if v != 0 {
+            product *= v;
+            taken += 1;
+        }
+        if v < 0 {
+            negatives += 1;
+            nearest = nearest.max(v);
+        }
+    }
+    if negatives % 2 == 1 {
+        product /= nearest;
+        taken -= 1;
+    }
+    if taken > 0 { product } else { 0 }
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; one negative alone; zero alone; a negative
+    // and a zero; one negative and two zeros; 13 nines, LeetCode's
+    // largest group, and 13 minus nines; zeros around one negative
+    println(f"{max_strength([3, -1, -5, 2, 5, -9].to_vec())}");
+    println(f"{max_strength([-4, -5, -4].to_vec())}");
+    println(f"{max_strength([-9].to_vec())}");
+    println(f"{max_strength([0].to_vec())}");
+    println(f"{max_strength([-1, 0].to_vec())}");
+    println(f"{max_strength([-9, 0, 0].to_vec())}");
+    println(f"{max_strength((0..13).map(|_| 9).collect())}");
+    println(f"{max_strength((0..13).map(|_| -9).collect())}");
+    println(f"{max_strength([0, 0, -1, 0].to_vec())}");
+    // 1000 random groups of 1 to 13 from -9 to 9; then 5000 of 1 to 4
+    // from -3 to 1, where zeros and lone negatives are common
+    let mut seed = 2708;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 13 + 1;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 19 - 9).collect();
+        let strength = max_strength(nums);
+        sum += strength;
+        check = (check * 31 + (strength % 1000000007 + 1000000007) % 1000000007) % 1000000007;
+    }
+    println(f"1000 groups: strengths sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for _ in 0..5000 {
+        let n = next_random(mut seed) % 4 + 1;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 5 - 3).collect();
+        let strength = max_strength(nums);
+        sum += strength;
+        check = (check * 31 + (strength % 1000000007 + 1000000007) % 1000000007) % 1000000007;
+    }
+    println(f"5000 groups of 1 to 4 from -3 to 1: strengths sum to {sum}, checksum {check}");
+}

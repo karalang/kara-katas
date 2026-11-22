@@ -1,0 +1,48 @@
+// LeetCode #2802: Find The K-th Lucky Number -- the bench: the ★ arm
+// over 200000 k up to 10^9, LeetCode's largest, all drawn first, then
+// each answered 10 times.
+
+fn kth_lucky_number(k: i64) -> String {
+    let n = k + 1;
+    let mut top = 1;
+    while top * 2 <= n {
+        top *= 2;
+    }
+    let mut lucky = String.new();
+    let mut bit = top / 2;
+    while bit > 0 {
+        lucky.push_str(if n & bit == 0 { "4" } else { "7" });
+        bit /= 2;
+    }
+    lucky
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn digest(s: String) -> i64 {
+    s.bytes().iter().fold(0, |h, b| (h * 131 + b as i64) % 1000000007)
+}
+
+fn main() {
+    let count = 200000;
+    let rounds = 10;
+    let mut seed = 2802;
+    let ks: Vec[i64] = (0..count).map(|_| wide(mut seed) % 1000000000 + 1).collect();
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for k in ks.iter() {
+            let s = kth_lucky_number(k);
+            total += s.len();
+            check = (check * 31 + digest(s) + r) % 1000000007;
+        }
+    }
+    println(f"{count} k up to 10^9, {rounds} rounds: lengths sum to {total}, checksum {check}");
+}

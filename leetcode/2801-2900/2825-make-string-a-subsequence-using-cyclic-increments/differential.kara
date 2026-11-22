@@ -1,0 +1,246 @@
+// LeetCode #2825: Make String a Subsequence Using Cyclic Increments --
+// the differential. The five arms, against the statement read
+// literally: every set of indices of str1 incremented once, 'z' to 'a',
+// and each result asked whether str2 is a subsequence of it. 2000 random
+// pairs of str1 of 1 to 10 letters and str2 of 1 to 5 from the four
+// letters 'y' to 'b'; then 50 of up to 3000 letters with str2 of up to
+// 1500, from six. Every case is drawn before any arm answers; the
+// literal reading is asked only of the first 2000.
+//
+// P1  up to 10 letters, the answer is the literal reading's
+// P2  true: str2 without its last letter is true too
+// P3  every letter of both strings one further round the alphabet: the
+//     same answer
+// P4  true: str1 with a letter put at the front, or at the end, is
+//     true too
+// P5  str1 against itself, and against itself with every letter
+//     incremented: true
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- the statement read literally ------------------------------------------
+
+fn is_subsequence(t: Vec[u8], s: Vec[u8]) -> bool {
+    let mut j = 0;
+    for c in s.iter() {
+        if j < t.len() and t[j] == c {
+            j += 1;
+        }
+    }
+    j == t.len()
+}
+
+fn literal(str1: Str, str2: Str) -> bool {
+    let a = str1.bytes();
+    let n = a.len();
+    for mask in 0..(1 << n) {
+        let changed: Vec[u8] = (0..n).map(|i| if (mask >> i) & 1 == 1 { (a[i] - 97 + 1) % 26 + 97 } else { a[i] }).collect();
+        if is_subsequence(str2.bytes().to_vec(), changed) {
+            return true;
+        }
+    }
+    false
+}
+
+fn turned(s: Str, by: i64) -> String {
+    let codes: Vec[u8] = s.bytes().iter().map(|c| ((c as i64 - 97 + by) % 26 + 97) as u8).collect();
+    String.from_utf8(codes).unwrap()
+}
+
+
+// ---- star (cyclic.kara) ---------------------------------------------
+
+fn star_can_make_subsequence(str1: Str, str2: Str) -> bool {
+    let (a, b) = (str1.bytes(), str2.bytes());
+    let mut j = 0;
+    for c in a.iter() {
+        if j == b.len() {
+            break;
+        }
+        let next = if c == b'z' { b'a' } else { c + 1 };
+        if c == b[j] or next == b[j] {
+            j += 1;
+        }
+    }
+    j == b.len()
+}
+
+
+// ---- chars (cyclic_chars.kara) --------------------------------------
+
+fn chars_successor(c: char) -> char {
+    char.try_from((c as u32 - 97 + 1) % 26 + 97).ok().unwrap()
+}
+
+fn chars_can_make_subsequence(str1: Str, str2: Str) -> bool {
+    let mut want = str2.chars().peekable();
+    for c in str1.chars() {
+        match want.peek() {
+            None => return true,
+            Some(d) => {
+                if d == c or d == chars_successor(c) {
+                    let _ = want.next();
+                }
+            }
+        }
+    }
+    want.peek().is_none()
+}
+
+
+// ---- jumps (cyclic_jumps.kara) --------------------------------------
+
+fn jumps_can_make_subsequence(str1: Str, str2: Str) -> bool {
+    let a: Vec[i64] = str1.bytes().iter().map(|c| (c - b'a') as i64).collect();
+    let n = a.len();
+    let mut next: Vec[Array[i64, 26]] = Vec.filled(n + 1, [n; 26]);
+    for i in (0..n).rev() {
+        next[i] = next[i + 1];
+        next[i][a[i]] = i;
+    }
+    let mut at = 0;
+    for c in str2.bytes().iter() {
+        let d = (c - b'a') as i64;
+        let found = next[at][d].min(next[at][(d + 25) % 26]);
+        if found == n {
+            return false;
+        }
+        at = found + 1;
+    }
+    true
+}
+
+
+// ---- find (cyclic_find.kara) ----------------------------------------
+
+fn find_can_make_subsequence(str1: Str, str2: Str) -> bool {
+    let a = str1.bytes();
+    let mut start = 0;
+    for d in str2.bytes().iter() {
+        let before = if d == b'a' { b'z' } else { d - 1 };
+        match a[start..].iter().position(|c| c == d or c == before) {
+            Some(k) => start += k + 1,
+            None => return false,
+        }
+    }
+    true
+}
+
+
+// ---- solution (cyclic_solution.kara) --------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn can_make_subsequence(str1: String, str2: String) -> bool {
+        let s1 = str1.bytes();
+        let s2 = str2.bytes();
+        let mut j = 0;
+        for c in s1 {
+            if j < s2.len() {
+                let d = s2[j];
+                if c == d or (c - b'a' + 1) % 26 + b'a' == d {
+                    j += 1;
+                }
+            }
+        }
+        j == s2.len()
+    }
+}
+
+fn solution_can_make_subsequence(str1: Str, str2: Str) -> bool {
+    Solution.can_make_subsequence(str1.to_string(), str2.to_string())
+}
+
+
+// ---- the checks ------------------------------------------------------------
+
+fn answer(arm: i64, str1: Str, str2: Str) -> bool {
+    match arm {
+        0 => star_can_make_subsequence(str1, str2),
+        1 => chars_can_make_subsequence(str1, str2),
+        2 => jumps_can_make_subsequence(str1, str2),
+        3 => find_can_make_subsequence(str1, str2),
+        _ => solution_can_make_subsequence(str1, str2),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letters(n: i64, from: i64, width: i64, seed: mut ref i64) -> String {
+    let codes: Vec[u8] = (0..n).map(|_| ((from + next_random(mut seed) % width) % 26 + 97) as u8).collect();
+    String.from_utf8(codes).unwrap()
+}
+
+fn main() {
+    let names = ["star", "chars", "jumps", "find", "solution"];
+    let mut seed = 2825;
+    let mut cases: Vec[(String, String)] = Vec.new();
+    for c in 0..2050 {
+        if c < 2000 {
+            let s1 = letters(next_random(mut seed) % 10 + 1, 24, 4, mut seed);
+            cases.push((s1, letters(next_random(mut seed) % 5 + 1, 24, 4, mut seed)));
+        } else {
+            let s1 = letters(next_random(mut seed) % 3000 + 1, 23, 6, mut seed);
+            cases.push((s1, letters(next_random(mut seed) % 1500 + 1, 23, 6, mut seed)));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut yes = 0;
+    for (c, (s1, s2)) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = small and literal(s1, s2);
+        check = (check * 31 + if want { 2 } else { 1 }) % 1000000007;
+        let shorter = s2[..s2.len() - 1].to_string();
+        let front = f"a{s1}";
+        let back = f"{s1}z";
+        let got: Vec[bool] = (0..5).map(|arm| answer(arm, s1, s2)).collect();
+        if got[0] {
+            yes += 1;
+        }
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == want,
+                not value or answer(arm, s1, shorter),
+                answer(arm, turned(s1, 1), turned(s2, 1)) == value,
+                not value or (answer(arm, front, s2) and answer(arm, back, s2)),
+                answer(arm, s1, s1) and answer(arm, s1, turned(s1, 1)),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {s1} / {s2}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases, {yes} true: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

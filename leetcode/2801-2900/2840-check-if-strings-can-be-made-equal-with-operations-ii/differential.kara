@@ -1,0 +1,242 @@
+// LeetCode #2840: Check if Strings Can be Made Equal With Operations II
+// -- the differential. The five arms, against the statement read
+// literally: every string s1 reaches by swaps an even distance apart,
+// found by a search to a fixed point over a `Set`, and whether s2 is
+// among them. 2000 pairs of 1 to 6 letters over a, b and c, then 50 of
+// up to 1000 over all 26: a third of the second strings random, a
+// third the first shuffled within its parities, and a third that with
+// one letter changed too. Every case is drawn before any arm answers;
+// the literal reading is asked only of the first 2000.
+//
+// P1  up to 6 letters, the answer is the literal reading's
+// P2  s1 and s2 the other way round: the same answer
+// P3  s1 against itself: true
+// P4  every letter of both moved on one, z to a: the same answer
+// P5  both strings reversed: the same answer
+// P6  each arm agrees with at least three of the other four
+
+fn literal(s1: Str, s2: Str) -> bool {
+    let n = s1.len();
+    let mut seen: Set[String] = Set.new();
+    let mut todo: Vec[String] = [s1.to_string()];
+    seen.insert(s1.to_string());
+    while let Some(s) = todo.pop() {
+        for i in 0..n {
+            for j in (i + 2..n).step_by(2) {
+                let mut cs: Vec[char] = s.chars().collect();
+                cs.swap(i, j);
+                let t: String = cs.iter().collect();
+                if seen.insert(t.clone()) {
+                    todo.push(t);
+                }
+            }
+        }
+    }
+    seen.contains(s2)
+}
+
+
+// ---- star (strings.kara) --------------------------------------------
+
+fn star_check_strings(s1: Str, s2: Str) -> bool {
+    let mut count: Vec[i64] = Vec.filled(52, 0);
+    for (i, (a, b)) in s1.bytes().iter().zip(s2.bytes().iter()).enumerate() {
+        let side = i % 2 * 26;
+        count[side + (a - b'a')] += 1;
+        count[side + (b - b'a')] -= 1;
+    }
+    count.iter().all(|n| n == 0)
+}
+
+
+// ---- sorted (strings_sorted.kara) -----------------------------------
+
+fn sorted_halves(s: Str) -> (Vec[u8], Vec[u8]) {
+    let b = s.bytes();
+    let mut even: Vec[u8] = b.iter().step_by(2).collect();
+    let mut odd: Vec[u8] = b.iter().skip(1).step_by(2).collect();
+    even.sort();
+    odd.sort();
+    (even, odd)
+}
+
+fn sorted_check_strings(s1: Str, s2: Str) -> bool {
+    sorted_halves(s1) == sorted_halves(s2)
+}
+
+
+// ---- map (strings_map.kara) -----------------------------------------
+
+fn map_check_strings(s1: Str, s2: Str) -> bool {
+    let mut count: Map[(i64, char), i64] = Map.new();
+    for (i, c) in s1.chars().enumerate() {
+        *count.entry((i % 2, c)).or_insert(0) += 1;
+    }
+    for (i, c) in s2.chars().enumerate() {
+        let key = (i % 2, c);
+        match count.get(key) {
+            None => return false,
+            Some(n) => {
+                if n == 1 {
+                    count.remove(key);
+                } else {
+                    count.insert(key, n - 1);
+                }
+            }
+        }
+    }
+    count.is_empty()
+}
+
+
+// ---- swaps (strings_swaps.kara) -------------------------------------
+
+fn swaps_check_strings(s1: Str, s2: Str) -> bool {
+    let mut a: Vec[u8] = s1.bytes().to_vec();
+    let b: Vec[u8] = s2.bytes().to_vec();
+    let n = a.len();
+    for i in 0..n {
+        if a[i] != b[i] {
+            let mut j = i + 2;
+            while j < n and a[j] != b[i] {
+                j += 2;
+            }
+            if j >= n {
+                return false;
+            }
+            a.swap(i, j);
+        }
+    }
+    true
+}
+
+
+// ---- solution (strings_solution.kara) -------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn check_strings(s1: String, s2: String) -> bool {
+        let mut cnt = [[0i32; 26]; 2];
+        for (i, c) in s1.bytes().iter().enumerate() {
+            cnt[i & 1][(c - b'a') as usize] += 1;
+        }
+        for (i, c) in s2.bytes().iter().enumerate() {
+            cnt[i & 1][(c - b'a') as usize] -= 1;
+        }
+        cnt.iter().all(|row| row.iter().all(|x| x == 0))
+    }
+}
+
+fn solution_check_strings(s1: Str, s2: Str) -> bool {
+    Solution.check_strings(s1.to_string(), s2.to_string())
+}
+
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, s1: Str, s2: Str) -> bool {
+    match arm {
+        0 => star_check_strings(s1, s2),
+        1 => sorted_check_strings(s1, s2),
+        2 => map_check_strings(s1, s2),
+        3 => swaps_check_strings(s1, s2),
+        _ => solution_check_strings(s1, s2),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letters(n: i64, kinds: i64, seed: mut ref i64) -> String {
+    let codes: Vec[u8] = (0..n).map(|_| (97 + next_random(mut seed) % kinds) as u8).collect();
+    String.from_utf8(codes).unwrap()
+}
+
+fn shifted(s: Str) -> String {
+    s.bytes().iter().map(|b| ((b - b'a' + 1) % 26 + b'a') as char).collect()
+}
+
+fn main() {
+    let names = ["star", "sorted", "map", "swaps", "solution"];
+    let mut seed = 2840;
+    let mut cases: Vec[(String, String)] = Vec.new();
+    for c in 0..2050 {
+        let (n, kinds) = if c < 2000 { (next_random(mut seed) % 6 + 1, 3) } else { (next_random(mut seed) % 1000 + 1, 26) };
+        let s1 = letters(n, kinds, mut seed);
+        // a third random, a third s1 shuffled within its parities, and a
+        // third that with one letter changed too
+        let kind = c % 3;
+        let s2 = if kind == 0 {
+            letters(n, kinds, mut seed)
+        } else {
+            let mut cs: Vec[u8] = s1.bytes().to_vec();
+            for i in (2..n).rev() {
+                let j = i % 2 + 2 * (next_random(mut seed) % (i / 2 + 1));
+                if j <= i {
+                    cs.swap(i, j);
+                }
+            }
+            if kind == 2 {
+                cs[next_random(mut seed) % n] = (97 + next_random(mut seed) % kinds) as u8;
+            }
+            String.from_utf8(cs).unwrap()
+        };
+        cases.push((s1, s2));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut yes = 0;
+    for (c, (s1, s2)) in cases.iter().enumerate() {
+        let got: Vec[bool] = (0..5).map(|arm| answer(arm, s1, s2)).collect();
+        let want = if c < 2000 { literal(s1, s2) } else { got[0] };
+        if want {
+            yes += 1;
+        }
+        check = (check * 31 + if want { 2 } else { 1 }) % 1000000007;
+        let r1: String = s1.chars().rev().collect();
+        let r2: String = s2.chars().rev().collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                c >= 2000 or value == want,
+                answer(arm, s2, s1) == value,
+                answer(arm, s1, s1),
+                answer(arm, shifted(s1), shifted(s2)) == value,
+                answer(arm, r1, r2) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {s1} {s2}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases, {yes} true: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

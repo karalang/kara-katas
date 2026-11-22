@@ -1,0 +1,222 @@
+// LeetCode #2849: Determine if a Cell Is Reachable at a Given Time --
+// the differential. The five arms, against the statement read
+// literally: the cells reachable in exactly t moves, found one move at a
+// time over a `Set[(i64, i64)]` of the infinite grid, and whether the
+// finish is among them. 2000 random cases within 1 to 8 with t up to 6,
+// then 50 over LeetCode's grid with t within 3 of the distance, all
+// drawn before any arm answers; the literal reading is asked only of
+// the first 2000.
+//
+// P1  t up to 6, the answer is the literal reading's
+// P2  start and finish swapped: the same answer
+// P3  the grid mirrored, x and y made 10^9 + 1 - x and 10^9 + 1 - y: the same answer
+// P4  x and y swapped in both cells: the same answer
+// P5  true at t: true at t + 2
+// P6  each arm agrees with at least three of the other four
+
+fn literal(sx: i64, sy: i64, fx: i64, fy: i64, t: i64) -> bool {
+    let mut at: Set[(i64, i64)] = Set.new();
+    at.insert((sx, sy));
+    for _ in 0..t {
+        let mut next: Set[(i64, i64)] = Set.new();
+        for (x, y) in at.iter() {
+            for mx in -1..2 {
+                for my in -1..2 {
+                    if mx != 0 or my != 0 {
+                        next.insert((x + mx, y + my));
+                    }
+                }
+            }
+        }
+        at = next;
+    }
+    at.contains((fx, fy))
+}
+
+
+// ---- star (reachable.kara) ------------------------------------------
+
+fn star_is_reachable_at_time(sx: i64, sy: i64, fx: i64, fy: i64, t: i64) -> bool {
+    if sx == fx and sy == fy {
+        return t != 1;
+    }
+    (sx - fx).abs().max((sy - fy).abs()) <= t
+}
+
+
+// ---- square (reachable_square.kara) ---------------------------------
+
+fn square_is_reachable_at_time(sx: i64, sy: i64, fx: i64, fy: i64, t: i64) -> bool {
+    let across = (sx - t..=sx + t).contains(fx);
+    let down = (sy - t..=sy + t).contains(fy);
+    across and down and not (t == 1 and fx == sx and fy == sy)
+}
+
+
+// ---- plan (reachable_plan.kara) -------------------------------------
+
+struct Plan {
+    diagonal: i64,
+    straight: i64,
+}
+
+impl Plan {
+    fn toward(dx: i64, dy: i64) -> Plan {
+        let a = dx.abs();
+        let b = dy.abs();
+        Plan { diagonal: a.min(b), straight: (a - b).abs() }
+    }
+
+    fn moves(self) -> i64 {
+        self.diagonal + self.straight
+    }
+}
+
+fn plan_is_reachable_at_time(sx: i64, sy: i64, fx: i64, fy: i64, t: i64) -> bool {
+    let plan = Plan.toward(fx - sx, fy - sy);
+    let spare = t - plan.moves();
+    spare >= 0 and not (plan.moves() == 0 and spare == 1)
+}
+
+
+// ---- layers (reachable_layers.kara) ---------------------------------
+
+fn layers_is_reachable_at_time(sx: i64, sy: i64, fx: i64, fy: i64, t: i64) -> bool {
+    let mut layer: Set[(i64, i64)] = Set.new();
+    layer.insert((0, 0));
+    for _ in 0..t.min(2) {
+        let mut next: Set[(i64, i64)] = Set.new();
+        for (x, y) in layer.iter() {
+            for mx in -1..2 {
+                for my in -1..2 {
+                    if mx != 0 or my != 0 {
+                        next.insert((x + mx, y + my));
+                    }
+                }
+            }
+        }
+        layer = next;
+    }
+    let extra = (t - 2).max(0);
+    let shrink = |d: i64| (d.abs() - extra).max(0);
+    layer.contains((shrink(fx - sx), shrink(fy - sy)))
+}
+
+
+// ---- solution (reachable_solution.kara) -----------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn is_reachable_at_time(sx: i32, sy: i32, fx: i32, fy: i32, t: i32) -> bool {
+        let dx = (sx - fx).abs();
+        let dy = (sy - fy).abs();
+        if dx == 0 and dy == 0 {
+            return t != 1;
+        }
+        dx.max(dy) <= t
+    }
+}
+
+fn solution_is_reachable_at_time(sx: i64, sy: i64, fx: i64, fy: i64, t: i64) -> bool {
+    Solution.is_reachable_at_time(sx as i32, sy as i32, fx as i32, fy as i32, t as i32)
+}
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, c: (i64, i64, i64, i64, i64)) -> bool {
+    let (sx, sy, fx, fy, t) = c;
+    match arm {
+        0 => star_is_reachable_at_time(sx, sy, fx, fy, t),
+        1 => square_is_reachable_at_time(sx, sy, fx, fy, t),
+        2 => plan_is_reachable_at_time(sx, sy, fx, fy, t),
+        3 => layers_is_reachable_at_time(sx, sy, fx, fy, t),
+        _ => solution_is_reachable_at_time(sx, sy, fx, fy, t),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "square", "plan", "layers", "solution"];
+    let mut seed = 2849;
+    let mut cases: Vec[(i64, i64, i64, i64, i64)] = Vec.new();
+    for c in 0..2050 {
+        if c < 2000 {
+            let sx = next_random(mut seed) % 8 + 1;
+            let sy = next_random(mut seed) % 8 + 1;
+            let fx = next_random(mut seed) % 8 + 1;
+            let fy = next_random(mut seed) % 8 + 1;
+            let t = next_random(mut seed) % 7;
+            cases.push((sx, sy, fx, fy, t));
+        } else {
+            let sx = next_random(mut seed) * 30000 % 1000000000 + 1;
+            let sy = next_random(mut seed) * 30000 % 1000000000 + 1;
+            let fx = (sx + next_random(mut seed) % 2001 - 1000).max(1).min(1000000000);
+            let fy = (sy + next_random(mut seed) % 2001 - 1000).max(1).min(1000000000);
+            let d = (sx - fx).abs().max((sy - fy).abs());
+            let t = (d + next_random(mut seed) % 7 - 3).max(0);
+            cases.push((sx, sy, fx, fy, t));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut yes = 0;
+    for (c, case) in cases.iter().enumerate() {
+        let (sx, sy, fx, fy, t) = case;
+        let got: Vec[bool] = (0..5).map(|arm| answer(arm, case)).collect();
+        let want = if c < 2000 { literal(sx, sy, fx, fy, t) } else { got[0] };
+        if want {
+            yes += 1;
+        }
+        check = (check * 3 + if want { 2 } else { 1 }) % 1000000007;
+        let far = 1000000001;
+        let swapped = (fx, fy, sx, sy, t);
+        let mirrored = (far - sx, far - sy, far - fx, far - fy, t);
+        let turned = (sy, sx, fy, fx, t);
+        let later = (sx, sy, fx, fy, t + 2);
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                c >= 2000 or value == want,
+                answer(arm, swapped) == value,
+                answer(arm, mirrored) == value,
+                answer(arm, turned) == value,
+                not value or answer(arm, later),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {case}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases, {yes} true: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

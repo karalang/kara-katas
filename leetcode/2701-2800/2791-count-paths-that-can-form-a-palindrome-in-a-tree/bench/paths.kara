@@ -1,0 +1,69 @@
+// LeetCode #2791: Count Paths That Can Form a Palindrome in a Tree -- the
+// bench: the ★ arm over 20 random trees of 10^5 nodes, LeetCode's most,
+// with letters from a to z, all drawn first, then each answered 5 times.
+
+fn count_palindrome_paths(parent: Vec[i64], s: Str) -> i64 {
+    let n = parent.len();
+    let letters: Vec[i64] = s.bytes().iter().map(|b| (b - 97) as i64).collect();
+    let mut children: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for i in 1..n {
+        children[parent[i]].push(i);
+    }
+    let mut mask: Vec[i64] = Vec.filled(n, 0);
+    let mut todo: Vec[i64] = [0];
+    while let Some(u) = todo.pop() {
+        for c in children[u].iter() {
+            mask[c] = mask[u] ^ (1 << letters[c]);
+            todo.push(c);
+        }
+    }
+    let mut seen: Map[i64, i64] = Map.new();
+    let mut paths = 0;
+    for m in mask.iter() {
+        paths += seen.get(m) ?? 0;
+        for b in 0..26 {
+            paths += seen.get(m ^ (1 << b)) ?? 0;
+        }
+        *seen.entry(m).or_insert(0) += 1;
+    }
+    paths
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let count = 20;
+    let rounds = 5;
+    let n = 100000;
+    let alphabet: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    let mut seed = 2791;
+    let mut cases: Vec[(Vec[i64], String)] = Vec.new();
+    for _ in 0..count {
+        let mut parent: Vec[i64] = [-1];
+        for i in 1..n {
+            parent.push(wide(mut seed) % i);
+        }
+        let mut s = String.new();
+        for _ in 0..n {
+            s.push(alphabet[next_random(mut seed) % 26]);
+        }
+        cases.push((parent, s));
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (parent, s) in cases.iter() {
+            let a = count_palindrome_paths(parent, s);
+            total += a;
+            check = (check * 31 + a + r) % 1000000007;
+        }
+    }
+    println(f"{count} trees of 10^5, {rounds} rounds: paths sum to {total}, checksum {check}");
+}

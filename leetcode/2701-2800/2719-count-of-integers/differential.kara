@@ -1,0 +1,382 @@
+// LeetCode #2719: Count of Integers -- the differential. The five arms,
+// against the statement read literally: every integer from num1 to num2
+// in turn, its digits summed, and the good ones counted. No digit
+// recursion. 1000 random ranges of up to 3 digits with sums up to 30;
+// then 20 of up to 22 digits with sums up to 200. Every case is drawn
+// before any arm answers.
+//
+// P1  up to 3 digits, the answer is the literal reading's
+// P2  the range cut after a number m inside it: the two parts' answers
+//     add up to the answer, mod 10^9 + 7
+// P3  the sums cut after a k between min_sum and max_sum: the two
+//     parts' answers add up to the answer
+// P4  every sum from 1 to 400 allowed: num2 - num1 + 1, mod 10^9 + 7
+// P5  the range num1 to num1: 1 when num1's digit sum is allowed, else 0
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- star (integers.kara) -------------------------------------------
+
+const MOD: i64 = 1000000007;
+
+fn star_good_up_to(bound: Str, min_sum: i64, max_sum: i64) -> i64 {
+    let digits: Vec[i64] = bound.bytes().iter().map(|b| (b - b'0') as i64).collect();
+    let mut memo: Vec[Vec[i64]] = Vec.filled(digits.len(), Vec.filled(max_sum + 1, -1));
+    star_walk(digits, 0, 0, true, min_sum, max_sum, mut memo)
+}
+
+fn star_walk(digits: Vec[i64], place: i64, sum: i64, tight: bool, min_sum: i64, max_sum: i64, memo: mut ref Vec[Vec[i64]]) -> i64 {
+    if sum > max_sum {
+        return 0;
+    }
+    if place == digits.len() {
+        return if sum >= min_sum { 1 } else { 0 };
+    }
+    if not tight and memo[place][sum] >= 0 {
+        return memo[place][sum];
+    }
+    let top = if tight { digits[place] } else { 9 };
+    let mut ways = 0;
+    for d in 0..=top {
+        ways = (ways + star_walk(digits, place + 1, sum + d, tight and d == top, min_sum, max_sum, mut memo)) % MOD;
+    }
+    if not tight {
+        memo[place][sum] = ways;
+    }
+    ways
+}
+
+fn star_count(num1: Str, num2: Str, min_sum: i64, max_sum: i64) -> i64 {
+    let own: i64 = num1.bytes().iter().map(|b| (b - b'0') as i64).sum();
+    let itself = if min_sum <= own and own <= max_sum { 1 } else { 0 };
+    (star_good_up_to(num2, min_sum, max_sum) - star_good_up_to(num1, min_sum, max_sum) + itself + MOD) % MOD
+}
+
+
+// ---- table (integers_table.kara) ------------------------------------
+
+
+fn table_good_up_to(bound: Str, min_sum: i64, max_sum: i64) -> i64 {
+    let digits: Vec[i64] = bound.bytes().iter().map(|b| (b - b'0') as i64).collect();
+    let n = digits.len();
+    let mut ways: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.filled(max_sum + 1, 0));
+    ways[0][0] = 1;
+    for k in 1..=n {
+        for s in 0..=max_sum {
+            let mut w = 0;
+            for d in 0..=9 {
+                if d <= s {
+                    w = (w + ways[k - 1][s - d]) % MOD;
+                }
+            }
+            ways[k][s] = w;
+        }
+    }
+    let mut found = 0;
+    let mut prefix = 0;
+    for place in 0..n {
+        let free = n - place - 1;
+        for d in 0..digits[place] {
+            for s in min_sum..=max_sum {
+                let need = s - prefix - d;
+                if need >= 0 {
+                    found = (found + ways[free][need]) % MOD;
+                }
+            }
+        }
+        prefix += digits[place];
+    }
+    if min_sum <= prefix and prefix <= max_sum {
+        found = (found + 1) % MOD;
+    }
+    found
+}
+
+fn table_count(num1: Str, num2: Str, min_sum: i64, max_sum: i64) -> i64 {
+    let own: i64 = num1.bytes().iter().map(|b| (b - b'0') as i64).sum();
+    let itself = if min_sum <= own and own <= max_sum { 1 } else { 0 };
+    (table_good_up_to(num2, min_sum, max_sum) - table_good_up_to(num1, min_sum, max_sum) + itself + MOD) % MOD
+}
+
+
+// ---- both (integers_both.kara) --------------------------------------
+
+
+struct Walk {
+    low: Vec[i64],
+    high: Vec[i64],
+    min_sum: i64,
+    max_sum: i64,
+    memo: Map[(i64, i64, bool, bool), i64],
+}
+
+impl Walk {
+    fn ways(mut ref self, place: i64, sum: i64, at_low: bool, at_high: bool) -> i64 {
+        if sum > self.max_sum {
+            return 0;
+        }
+        if place == self.high.len() {
+            return if sum >= self.min_sum { 1 } else { 0 };
+        }
+        let key = (place, sum, at_low, at_high);
+        if let Some(w) = self.memo.get(key) {
+            return w;
+        }
+        let from = if at_low { self.low[place] } else { 0 };
+        let to = if at_high { self.high[place] } else { 9 };
+        let mut total = 0;
+        for d in from..=to {
+            total = (total + self.ways(place + 1, sum + d, at_low and d == from, at_high and d == to)) % MOD;
+        }
+        self.memo.insert(key, total);
+        total
+    }
+}
+
+fn both_count(num1: Str, num2: Str, min_sum: i64, max_sum: i64) -> i64 {
+    let high: Vec[i64] = num2.bytes().iter().map(|b| (b - b'0') as i64).collect();
+    let mut low: Vec[i64] = Vec.filled(high.len() - num1.len(), 0);
+    for b in num1.bytes() {
+        low.push((b - b'0'));
+    }
+    let mut walk = Walk { low, high, min_sum, max_sum, memo: Map.new() };
+    walk.ways(0, 0, true, true)
+}
+
+
+// ---- sweep (integers_sweep.kara) ------------------------------------
+
+
+fn sweep_good_up_to(bound: Str, min_sum: i64, max_sum: i64) -> i64 {
+    let mut below: Vec[i64] = Vec.filled(max_sum + 1, 0);
+    let mut equal_sum = 0;
+    for b in bound.bytes() {
+        let digit = (b - b'0') as i64;
+        let mut next: Vec[i64] = Vec.filled(max_sum + 1, 0);
+        for s in 0..=max_sum {
+            if below[s] != 0 {
+                for d in 0..=9 {
+                    if s + d <= max_sum {
+                        next[s + d] = (next[s + d] + below[s]) % MOD;
+                    }
+                }
+            }
+        }
+        for d in 0..digit {
+            if equal_sum + d <= max_sum {
+                next[equal_sum + d] = (next[equal_sum + d] + 1) % MOD;
+            }
+        }
+        equal_sum += digit;
+        below = next;
+    }
+    let mut found = if min_sum <= equal_sum and equal_sum <= max_sum { 1 } else { 0 };
+    for s in min_sum..=max_sum {
+        found = (found + below[s]) % MOD;
+    }
+    found
+}
+
+fn sweep_count(num1: Str, num2: Str, min_sum: i64, max_sum: i64) -> i64 {
+    let own: i64 = num1.bytes().iter().map(|b| (b - b'0') as i64).sum();
+    let itself = if min_sum <= own and own <= max_sum { 1 } else { 0 };
+    (sweep_good_up_to(num2, min_sum, max_sum) - sweep_good_up_to(num1, min_sum, max_sum) + itself + MOD) % MOD
+}
+
+
+// ---- solution (integers_solution.kara) ------------------------------
+
+
+fn solution_dfs(i: i64, sum: i32, tight: bool, d: ref Vec[i64], memo: mut ref Vec[Vec[i64]], min_sum: i32, max_sum: i32) -> i64 {
+    if sum > max_sum {
+        return 0;
+    }
+    if i == d.len() {
+        return if sum >= min_sum { 1 } else { 0 };
+    }
+    if not tight and memo[i][sum] != -1 {
+        return memo[i][sum];
+    }
+    let up = if tight { d[i] } else { 9 };
+    let mut res = 0;
+    for x in 0..=up {
+        res = (res + solution_dfs(i + 1, sum + x as i32, tight and x == up, d, mut memo, min_sum, max_sum)) % MOD;
+    }
+    if not tight {
+        memo[i][sum] = res;
+    }
+    res
+}
+
+fn solution_calc(s: Str, min_sum: i32, max_sum: i32) -> i64 {
+    let d: Vec[i64] = s.bytes().iter().map(|b| (b - b'0') as i64).collect();
+    let n = d.len();
+    let mut memo = Vec.filled(n, Vec.filled(401, -1));
+    solution_dfs(0, 0, true, d, mut memo, min_sum, max_sum)
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn count(num1: String, num2: String, min_sum: i32, max_sum: i32) -> i32 {
+        let mut ans = solution_calc(num2, min_sum, max_sum) - solution_calc(num1, min_sum, max_sum);
+        let s1: i32 = num1.bytes().iter().map(|b| (b - b'0') as i32).sum();
+        if s1 >= min_sum and s1 <= max_sum {
+            ans += 1;
+        }
+        ((ans % MOD + MOD) % MOD) as i32
+    }
+}
+
+fn solution_count(num1: Str, num2: Str, min_sum: i64, max_sum: i64) -> i64 {
+    Solution.count(num1.to_string(), num2.to_string(), min_sum as i32, max_sum as i32)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+fn digit_sum(x: i64) -> i64 {
+    let mut x = x;
+    let mut sum = 0;
+    while x > 0 {
+        sum += x % 10;
+        x /= 10;
+    }
+    sum
+}
+
+// every integer from num1 to num2, its digit sum tested
+fn literal(num1: Str, num2: Str, min_sum: i64, max_sum: i64) -> i64 {
+    let low: i64 = i64.parse(num1).unwrap();
+    let high: i64 = i64.parse(num2).unwrap();
+    let mut good = 0;
+    for x in low..=high {
+        let s = digit_sum(x);
+        if min_sum <= s and s <= max_sum {
+            good += 1;
+        }
+    }
+    good
+}
+
+fn answer(arm: i64, num1: Str, num2: Str, min_sum: i64, max_sum: i64) -> i64 {
+    match arm {
+        0 => star_count(num1, num2, min_sum, max_sum),
+        1 => table_count(num1, num2, min_sum, max_sum),
+        2 => both_count(num1, num2, min_sum, max_sum),
+        3 => sweep_count(num1, num2, min_sum, max_sum),
+        _ => solution_count(num1, num2, min_sum, max_sum),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_number(seed: mut ref i64, longest: i64) -> String {
+    let n = next_random(mut seed) % longest + 1;
+    let mut digits = String.new();
+    digits.push((b'1' + (next_random(mut seed) % 9) as u8) as char);
+    for _ in 1..n {
+        digits.push((b'0' + (next_random(mut seed) % 10) as u8) as char);
+    }
+    digits
+}
+
+fn at_most(a: Str, b: Str) -> bool {
+    a.len() < b.len() or (a.len() == b.len() and a <= b)
+}
+
+// the number one more, as digits
+fn plus_one(a: Str) -> String {
+    let mut digits: Vec[u8] = a.bytes().to_vec();
+    let mut i = digits.len() - 1;
+    while i >= 0 and digits[i] == b'9' {
+        digits[i] = b'0';
+        i -= 1;
+    }
+    let mut out = String.new();
+    if i < 0 {
+        out.push('1');
+    } else {
+        digits[i] += 1;
+    }
+    for d in digits.iter() {
+        out.push(d as char);
+    }
+    out
+}
+
+fn modulo(a: Str) -> i64 {
+    a.bytes().iter().fold(0, |m, b| (m * 10 + (b - b'0')) % 1000000007)
+}
+
+fn main() {
+    let names = ["star", "table", "both", "sweep", "solution"];
+    let mut seed = 2719;
+    // (num1, m, num2, min_sum, k, max_sum), num1 <= m <= num2 and
+    // min_sum <= k <= max_sum
+    let mut cases: Vec[(String, String, String, i64, i64, i64)] = Vec.new();
+    for c in 0..1020 {
+        let (longest, most) = if c < 1000 { (3, 30) } else { (22, 200) };
+        let mut three: Vec[String] = (0..3).map(|_| random_number(mut seed, longest)).collect();
+        three.sort_by(|a, b| if at_most(a, b) { if a == b { Ordering.Equal } else { Ordering.Less } } else { Ordering.Greater });
+        let mut sums: Vec[i64] = (0..3).map(|_| next_random(mut seed) % most + 1).collect();
+        sums.sort();
+        cases.push((three[0].clone(), three[1].clone(), three[2].clone(), sums[0], sums[1], sums[2]));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (num1, m, num2, low, k, high)) in cases.iter().enumerate() {
+        let small = c < 1000;
+        let truth = if small { literal(num1, num2, low, high) } else { -1 };
+        if small {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let after = plus_one(m);
+        let span = (modulo(num2) - modulo(num1) + 1 + 1000000007) % 1000000007;
+        let own = num1.bytes().iter().map(|b| (b - b'0') as i64).sum();
+        let alone = if low <= own and own <= high { 1 } else { 0 };
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, num1, num2, low, high)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                m == num2 or (answer(arm, num1, m, low, high) + answer(arm, after, num2, low, high)) % 1000000007 == value,
+                k == high or (answer(arm, num1, num2, low, k) + answer(arm, num1, num2, k + 1, high)) % 1000000007 == value,
+                answer(arm, num1, num2, 1, 400) == span,
+                answer(arm, num1, num1, low, high) == alone,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

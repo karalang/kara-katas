@@ -1,0 +1,218 @@
+// LeetCode #2784: Check if Array is Good -- the differential. The five
+// arms, against the statement read literally: n the greatest number,
+// base[n] written out as 1 to n - 1 and n twice, and the array good when
+// it is a permutation of it, each number of either counted in both by
+// `filter`; no sorting and no table. 2000 random cases of base[n] for n
+// from 1 to 12 shuffled, two in three with one number changed to one
+// from 1 to 13; then 50 of base[99], LeetCode's longest, so changed to
+// one up to 200. Every case is drawn before any arm answers; the literal
+// reading is asked only of the first 2000.
+//
+// P1  up to 13 numbers, the answer is the literal reading's
+// P2  the numbers reversed: the same answer
+// P3  a 0 put first: not good
+// P4  with n one less than the length and n there, one n made n + 1 and
+//     another n + 1 put after: the same answer
+// P5  good only with two or more numbers, the greatest one less than
+//     the length, and the sum n(n + 1) / 2 + n
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- star (good.kara) -----------------------------------------------
+
+fn star_is_good(nums: Vec[i64]) -> bool {
+    let n = nums.len() - 1;
+    if n < 1 {
+        return false;
+    }
+    let mut counts: Vec[i64] = Vec.filled(n + 1, 0);
+    for v in nums.iter() {
+        if v < 1 or v > n {
+            return false;
+        }
+        counts[v] += 1;
+    }
+    (1..n).all(|v| counts[v] == 1) and counts[n] == 2
+}
+
+
+// ---- sorted (good_sorted.kara) --------------------------------------
+
+fn sorted_is_good(nums: Vec[i64]) -> bool {
+    let n = nums.iter().max().unwrap();
+    let mut base: Vec[i64] = (1..=n).collect();
+    base.push(n);
+    let mut sorted = nums.clone();
+    sorted.sort();
+    sorted == base
+}
+
+
+// ---- distinct (good_distinct.kara) ----------------------------------
+
+fn distinct_is_good(nums: Vec[i64]) -> bool {
+    let m = nums.iter().max().unwrap();
+    let distinct: Set[i64] = nums.iter().collect();
+    nums.len() == m + 1
+        and distinct.len() == m
+        and (1..=m).all(|v| distinct.contains(v))
+        and nums.iter().filter(|v| v == m).count() == 2
+}
+
+
+// ---- places (good_places.kara) --------------------------------------
+
+fn places_is_good(nums: Vec[i64]) -> bool {
+    let n = nums.len() - 1;
+    if n < 1 or nums.iter().any(|v| v < 1 or v > n) {
+        return false;
+    }
+    let mut a = nums.clone();
+    for i in 0..=n {
+        while a[i] != i + 1 and a[a[i] - 1] != a[i] {
+            let to = a[i] - 1;
+            a.swap(i, to);
+        }
+    }
+    (0..n).all(|i| a[i] == i + 1) and a[n] == n
+}
+
+
+// ---- solution (good_solution.kara) ----------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn is_good(nums: own Vec[i32]) -> bool {
+        let mut nums = nums;
+        nums.sort();
+        let n = nums.len();
+        for i in 0..n - 1 {
+            if nums[i] != (i + 1) as i32 {
+                return false;
+            }
+        }
+        nums[n - 1] == (n - 1) as i32
+    }
+}
+
+fn solution_is_good(nums: Vec[i64]) -> bool {
+    Solution.is_good(nums.iter().map(|v| v as i32).collect())
+}
+
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(nums: Vec[i64]) -> bool {
+    let n = nums.iter().max().unwrap();
+    let mut base: Vec[i64] = (1..n).collect();
+    base.push(n);
+    base.push(n);
+    let count = |list: ref Vec[i64], x: i64| list.iter().filter(|v| v == x).count();
+    nums.len() == base.len()
+        and nums.iter().chain(base.iter()).all(|x| count(nums, x) == count(base, x))
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> bool {
+    match arm {
+        0 => star_is_good(nums),
+        1 => sorted_is_good(nums),
+        2 => distinct_is_good(nums),
+        3 => places_is_good(nums),
+        _ => solution_is_good(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn shuffled_base(n: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut nums: Vec[i64] = (1..=n).collect();
+    nums.push(n);
+    for i in (1..n + 1).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        nums.swap(i, j);
+    }
+    nums
+}
+
+fn main() {
+    let names = ["star", "sorted", "distinct", "places", "solution"];
+    let mut seed = 2784;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..2050 {
+        let (n, top) = if c < 2000 { (next_random(mut seed) % 12 + 1, 13) } else { (99, 200) };
+        let mut nums = shuffled_base(n, mut seed);
+        if next_random(mut seed) % 3 != 0 {
+            let at = next_random(mut seed) % (n + 1);
+            nums[at] = next_random(mut seed) % top + 1;
+        }
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, nums) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = small and literal(nums);
+        check = (check * 31 + if want { 2 } else { 1 }) % 1000000007;
+        let len = nums.len();
+        let n = len - 1;
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let mut zero_first: Vec[i64] = [0].to_vec();
+        zero_first.extend(nums.iter());
+        let raised: Option[Vec[i64]] = nums.iter().position(|v| v == n).map(|at| {
+            let mut r = nums.clone();
+            r[at] = n + 1;
+            r.push(n + 1);
+            r
+        });
+        let sum: i64 = nums.iter().sum();
+        let greatest = nums.iter().max().unwrap();
+        let got: Vec[bool] = (0..5).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == want,
+                answer(arm, reversed) == value,
+                not answer(arm, zero_first),
+                match raised {
+                    Some(ref r) => answer(arm, r) == value,
+                    None => true,
+                },
+                not value or len >= 2 and greatest == n and sum == n * (n + 1) / 2 + n,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

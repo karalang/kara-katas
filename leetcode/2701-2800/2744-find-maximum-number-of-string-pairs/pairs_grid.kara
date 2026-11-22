@@ -1,0 +1,68 @@
+// LeetCode #2744: Find Maximum Number of String Pairs -- the grid arm. A
+// 26 by 26 grid of the words seen, first letter by second: a word makes
+// a pair when its letters crossed over were seen. O(n).
+
+fn maximum_number_of_string_pairs(words: Vec[String]) -> i64 {
+    let mut seen: Array[Array[bool, 26], 26] = [[false; 26]; 26];
+    let mut pairs = 0;
+    for w in words.iter() {
+        let letters: Vec[i64] = w.bytes().iter().map(|b| (b - b'a') as i64).collect();
+        if seen[letters[1]][letters[0]] {
+            pairs += 1;
+        }
+        seen[letters[0]][letters[1]] = true;
+    }
+    pairs
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n distinct words of two letters from the first k of the alphabet
+fn random_words(seed: mut ref i64, n: i64, k: i64) -> Vec[String] {
+    let mut words: Vec[String] = Vec.new();
+    while words.len() < n {
+        let a = (b'a' + (next_random(mut seed) % k) as u8) as char;
+        let b = (b'a' + (next_random(mut seed) % k) as u8) as char;
+        let w = f"{a}{b}";
+        if not words.contains(w) {
+            words.push(w);
+        }
+    }
+    words
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{maximum_number_of_string_pairs(["cd", "ac", "dc", "ca", "zz"].into_iter().map(|w| w.to_string()).collect())}");
+    println(f"{maximum_number_of_string_pairs(["ab", "ba", "cc"].into_iter().map(|w| w.to_string()).collect())}");
+    println(f"{maximum_number_of_string_pairs(["aa", "ab"].into_iter().map(|w| w.to_string()).collect())}");
+    // one word; and 25 words with their 25 reverses, LeetCode's most
+    println(f"{maximum_number_of_string_pairs(["xy"].into_iter().map(|w| w.to_string()).collect())}");
+    let mut both: Vec[String] = Vec.new();
+    for i in 0..25 {
+        let a = (b'a' + i as u8) as char;
+        let b = (b'a' + i as u8 + 1) as char;
+        both.push(f"{a}{b}");
+        both.push(f"{b}{a}");
+    }
+    println(f"{maximum_number_of_string_pairs(both)}");
+    // 5000 random lists of 1 to 50 distinct words from the first 1 to 26
+    // letters, never more words than the letters allow
+    let mut seed = 2744;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..5000 {
+        let k = next_random(mut seed) % 26 + 1;
+        let n = next_random(mut seed) % (k * k).min(50) + 1;
+        let words = random_words(mut seed, n, k);
+        let pairs = maximum_number_of_string_pairs(words);
+        sum += pairs;
+        check = (check * 31 + pairs) % 1000000007;
+    }
+    println(f"5000 lists: pairs sum to {sum}, checksum {check}");
+}

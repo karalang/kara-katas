@@ -1,0 +1,79 @@
+// LeetCode #2788: Split Strings by Separator -- a Rust solution as
+// LeetCode's Rust users write it, carried to Kāra by `karac fix`: each
+// word's `split(separator)` by a `char` pattern, the pieces kept by
+// `filter(|s| !s.is_empty())` and turned to `String`s by
+// `map(|s| s.to_string())`, all through `flat_map`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn split_words_by_separator(words: Vec[String], separator: char) -> Vec[String] {
+        words
+            .iter()
+            .flat_map(|w| w.split(separator.to_string()))
+            .filter(|s| not s.is_empty())
+            .map(|s| s.to_string())
+            .collect()
+    }
+}
+
+fn split_words_by_separator(words: Vec[String], separator: char) -> Vec[String] {
+    Solution.split_words_by_separator(words, separator)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_text(n: i64, from: Str, seed: mut ref i64) -> String {
+    let letters: Vec[char] = from.chars().collect();
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(letters[next_random(mut seed) % letters.len()]);
+    }
+    s
+}
+
+fn strings(words: Slice[Str]) -> Vec[String] {
+    words.iter().map(|w| w.to_string()).collect()
+}
+
+fn fold(pieces: ref Vec[String], check: i64) -> i64 {
+    pieces.iter().fold(check, |c, p| {
+        let inner = p.bytes().iter().fold(c, |h, b| (h * 31 + b) % 1000000007);
+        (inner * 31 + 1) % 1000000007
+    })
+}
+
+fn main() {
+    // LeetCode's three examples; a separator only between, at the ends,
+    // and doubled; 100 words of 20, LeetCode's most, every other letter
+    // the separator
+    println(f"{split_words_by_separator(strings(["one.two.three", "four.five", "six"]), '.')}");
+    println(f"{split_words_by_separator(strings(["$easy$", "$problem$"]), '$')}");
+    println(f"{split_words_by_separator(strings(["|||"]), '|')}");
+    println(f"{split_words_by_separator(strings(["a#b", "#c#", "d##e", "f"]), '#')}");
+    let long: Vec[String] = (0..100).map(|_| "a@".repeat(10)).collect();
+    println(f"{split_words_by_separator(long, '@').len()}");
+    // 3000 random cases of 1 to 5 words of 1 to 8 characters from a, b
+    // and the separators . and |, split by one of them
+    let mut seed = 2788;
+    let mut pieces = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let count = next_random(mut seed) % 5 + 1;
+        let mut words: Vec[String] = Vec.new();
+        for _ in 0..count {
+            let n = next_random(mut seed) % 8 + 1;
+            words.push(random_text(n, "ab.|", mut seed));
+        }
+        let separator = if next_random(mut seed) % 2 == 0 { '.' } else { '|' };
+        let got = split_words_by_separator(words, separator);
+        pieces += got.len();
+        check = fold(got, check);
+    }
+    println(f"3000 small cases: {pieces} pieces, checksum {check}");
+}

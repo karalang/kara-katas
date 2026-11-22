@@ -1,0 +1,54 @@
+// LeetCode #2742: Painting the Walls -- the bench: the ★ arm, a
+// knapsack over the walls covered, over sets of 500 walls drawn first.
+
+fn paint_walls(cost: Vec[i64], time: Vec[i64]) -> i64 {
+    let n = cost.len();
+    let far = i64.MAX / 2;
+    let mut least: Vec[i64] = Vec.filled(n + 1, far);
+    least[0] = 0;
+    for i in 0..n {
+        for j in (1..=n).rev() {
+            let from = (j - time[i] - 1).max(0);
+            least[j] = least[j].min(least[from] + cost[i]);
+        }
+    }
+    least[n]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 20;
+    let n = 500;
+    let rounds = 100;
+    let mut seed = 2742;
+    let mut cases: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    for _ in 0..count {
+        // 500 walls, LeetCode's most, costing up to 10^6 and taking up to
+        // 20 units, so that many of them are paid for
+        let mut cost: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            let hi = next_random(mut seed);
+            let lo = next_random(mut seed);
+            cost.push((hi * 32768 + lo) % 1000000 + 1);
+        }
+        let mut time: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            time.push(next_random(mut seed) % 20 + 1);
+        }
+        cases.push((cost, time));
+    }
+    let mut sum = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (cost, time) in cases.iter() {
+            let least = paint_walls(cost, time);
+            sum += least;
+            check = (check * 31 + least + r) % 1000000007;
+        }
+    }
+    println(f"{count} cases of {n} walls, {rounds} rounds: costs sum to {sum}, checksum {check}");
+}

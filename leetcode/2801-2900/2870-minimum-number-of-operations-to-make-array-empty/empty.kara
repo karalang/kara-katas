@@ -1,0 +1,78 @@
+// LeetCode #2870: Minimum Number of Operations to Make Array Empty --
+// ★: each value is removed on its own, two or three at a time, and f
+// copies take ceil(f / 3) operations, with 4 = 2 + 2 when f leaves a
+// remainder of 1; a value seen once cannot go. The counts come from the
+// sorted array's runs.
+
+fn min_operations(nums: Vec[i64]) -> i64 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut ops = 0;
+    let mut i = 0;
+    while i < sorted.len() {
+        let mut j = i;
+        while j < sorted.len() and sorted[j] == sorted[i] {
+            j += 1;
+        }
+        let f = j - i;
+        if f == 1 {
+            return -1;
+        }
+        ops += (f + 2) / 3;
+        i = j;
+    }
+    ops
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; 10^5 values, LeetCode's most, all equal,
+    // and every value twice
+    println(f"{min_operations([2, 3, 3, 2, 2, 4, 2, 3, 4].to_vec())} {min_operations([2, 1, 2, 2, 3, 3].to_vec())}");
+    let n = 100000;
+    println(f"{min_operations(Vec.filled(n, 1000000))} {min_operations((0..n).map(|i| i / 2 + 1).collect())}");
+    // 3000 random arrays of 2 to 10 values from 1 to 4; then 30 of 10^4
+    // to 10^5, every other one with each value it holds at least twice
+    let mut seed = 2870;
+    let mut total = 0;
+    let mut check = 0;
+    for c in 0..3030 {
+        let small = c < 3000;
+        let nums: Vec[i64] = if small {
+            (0..next_random(mut seed) % 9 + 2).map(|_| next_random(mut seed) % 4 + 1).collect()
+        } else {
+            let n = wide(mut seed) % 90001 + 10000;
+            let mut nums: Vec[i64] = Vec.new();
+            while nums.len() < n {
+                let v = wide(mut seed) % 1000000 + 1;
+                let copies = if c % 2 == 0 { next_random(mut seed) % 7 + 2 } else { next_random(mut seed) % 3 + 1 };
+                for _ in 0..copies {
+                    nums.push(if c % 2 == 0 { v } else { v % (n / 3) + 1 });
+                }
+            }
+            for i in (1..nums.len()).rev() {
+                nums.swap(i, wide(mut seed) % (i + 1));
+            }
+            nums
+        };
+        let ops = min_operations(nums);
+        total += ops;
+        check = (check * 31 + ops + 1) % 1000000007;
+        if c == 2999 {
+            println(f"3000 short arrays: {total} operations, checksum {check}");
+            total = 0;
+            check = 0;
+        }
+    }
+    println(f"30 long arrays: {total} operations, checksum {check}");
+}

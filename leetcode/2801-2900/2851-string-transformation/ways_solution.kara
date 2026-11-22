@@ -1,0 +1,126 @@
+// LeetCode #2851: String Transformation -- a Rust solution as LeetCode's
+// Rust users write it: `const MOD: i64 = 1_000_000_007`, a top-level
+// `fn pow_mod(mut b: i64, mut e: i64)`, the prefix function of t over a
+// `vec![0usize; n]` and a KMP scan of s + s from `as_bytes()`, and the
+// closed form for the ways to land on shift 0 and on any other.
+
+const MOD: i64 = 1_000_000_007;
+
+fn pow_mod(b: i64, e: i64) -> i64 {
+    let mut b = b;
+    let mut e = e;
+    let mut r = 1;
+    b %= MOD;
+    while e > 0 {
+        if e & 1 == 1 {
+            r = r * b % MOD;
+        }
+        b = b * b % MOD;
+        e >>= 1;
+    }
+    r
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn number_of_ways(s: String, t: String, k: i64) -> i32 {
+        let n = s.len();
+        let p = t.bytes();
+        let ss: Vec[u8] = s.bytes().iter().chain(s.bytes().iter()).collect();
+        let mut lps = Vec.filled(n, 0);
+        let mut j = 0;
+        for i in 1..n {
+            while j > 0 and p[i] != p[j] {
+                j = lps[j - 1];
+            }
+            if p[i] == p[j] {
+                j += 1;
+            }
+            lps[i] = j;
+        }
+        let mut (zero, other) = (0, 0);
+        j = 0;
+        for i in 0..2 * n - 1 {
+            while j > 0 and ss[i] != p[j] {
+                j = lps[j - 1];
+            }
+            if ss[i] == p[j] {
+                j += 1;
+            }
+            if j == n {
+                if i + 1 == n {
+                    zero += 1;
+                } else {
+                    other += 1;
+                }
+                j = lps[j - 1];
+            }
+        }
+        let all = pow_mod(n - 1, k);
+        let sign = if k % 2 == 0 { 1 } else { MOD - 1 };
+        let inv = pow_mod(n, MOD - 2);
+        let f0 = (all + (n - 1) * sign % MOD) % MOD * inv % MOD;
+        let f1 = (all - sign + MOD) % MOD * inv % MOD;
+        ((zero * f0 + other * f1) % MOD) as i32
+    }
+}
+
+fn number_of_ways(s: Str, t: Str, k: i64) -> i64 {
+    Solution.number_of_ways(s.to_string(), t.to_string(), k)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn rotated(s: Str, r: i64) -> String {
+    let n = s.len();
+    f"{s.substring(n - r, n)}{s.substring(0, n - r)}"
+}
+
+fn main() {
+    // LeetCode's two examples; two letters swapped 10^15 times, LeetCode's
+    // most, an even count, and one more; 2000 of one letter, any rotation
+    // a match, 10^15 times
+    println(f"{number_of_ways("abcd", "cdab", 2)} {number_of_ways("ababab", "ababab", 1)}");
+    println(f"{number_of_ways("ab", "ab", 1000000000000000)} {number_of_ways("ab", "ba", 1000000000000001)} {number_of_ways("ab", "ba", 1000000000000000)}");
+    let same = "a".repeat(2000);
+    println(f"{number_of_ways(same, same, 1000000000000000)}");
+    // 3000 random pairs of 2 to 6 letters over a and b with k up to 20,
+    // then 60 of up to 2000 letters, each a block of up to 8 repeated, t
+    // a rotation of s two times in three, k up to 10^15
+    let mut seed = 2851;
+    let mut check = 0;
+    let mut matched = 0;
+    for c in 0..3060 {
+        let small = c < 3000;
+        let n = if small { next_random(mut seed) % 5 + 2 } else { next_random(mut seed) % 1999 + 2 };
+        let block = if small { n } else { next_random(mut seed) % 8 + 1 };
+        let letters = if small { 2 } else { next_random(mut seed) % 3 + 1 };
+        let unit: String = (0..block).map(|_| (b'a' + (next_random(mut seed) % letters) as u8) as char).collect();
+        let s: String = (0..n).map(|i| unit.bytes()[i % block] as char).collect();
+        let t = if small {
+            (0..n).map(|_| (b'a' + (next_random(mut seed) % 2) as u8) as char).collect()
+        } else if next_random(mut seed) % 3 < 2 {
+            rotated(s, next_random(mut seed) % n)
+        } else {
+            (0..n).map(|_| (b'a' + (next_random(mut seed) % letters) as u8) as char).collect()
+        };
+        let k = if small { next_random(mut seed) % 20 + 1 } else { (next_random(mut seed) * 30000 + next_random(mut seed)) * 1000 + 1 };
+        let ways = number_of_ways(s, t, k);
+        if ways > 0 {
+            matched += 1;
+        }
+        check = (check * 31 + ways) % 1000000007;
+        if c == 2999 {
+            println(f"3000 short pairs: {matched} with a way, checksum {check}");
+            matched = 0;
+            check = 0;
+        }
+    }
+    println(f"60 long pairs: {matched} with a way, checksum {check}");
+}

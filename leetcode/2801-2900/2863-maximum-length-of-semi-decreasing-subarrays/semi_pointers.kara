@@ -1,0 +1,81 @@
+// LeetCode #2863: Maximum Length of Semi-Decreasing Subarrays -- two
+// pointers over prefix maxima and suffix minima: high[i], the most up
+// to i, and low[j], the least from j, both only rise, so a stretch from
+// i to j holds a start above an end exactly when high[i] > low[j], and
+// j can only move right as i does.
+
+fn max_subarray_length(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut high = nums.clone();
+    for i in 1..n {
+        high[i] = high[i].max(high[i - 1]);
+    }
+    let mut low = nums.clone();
+    for j in (0..n - 1).rev() {
+        low[j] = low[j].min(low[j + 1]);
+    }
+    let mut best = 0;
+    let mut j = 0;
+    for i in 0..n {
+        if j < i {
+            j = i;
+        }
+        while j + 1 < n and high[i] > low[j + 1] {
+            j += 1;
+        }
+        if high[i] > low[j] and j > i {
+            best = best.max(j - i + 1);
+        }
+    }
+    best
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's three examples; 10^5 values falling, LeetCode's most,
+    // 10^5 rising, and 10^5 equal
+    println(f"{max_subarray_length([7, 6, 5, 4, 3, 2, 1, 6, 10, 11].to_vec())} {max_subarray_length([57, 55, 50, 60, 61, 58, 63, 59, 64, 60, 63].to_vec())} {max_subarray_length([1, 2, 3, 4].to_vec())}");
+    let n = 100000;
+    println(f"{max_subarray_length((0..n).map(|i| 1000000000 - 2 * i).collect())} {max_subarray_length((0..n).map(|i| 2 * i - 1000000000).collect())} {max_subarray_length(Vec.filled(n, 7))}");
+    // 3000 random arrays of 1 to 8 values from 0 to 5; then 30 of 10^4
+    // to 10^5, every other one rising with a few values moved
+    let mut seed = 2863;
+    let mut total = 0;
+    let mut check = 0;
+    for c in 0..3030 {
+        let small = c < 3000;
+        let n = if small { next_random(mut seed) % 8 + 1 } else { wide(mut seed) % 90001 + 10000 };
+        let mut nums: Vec[i64] = if small {
+            (0..n).map(|_| next_random(mut seed) % 6).collect()
+        } else if c % 2 == 0 {
+            (0..n).map(|_| wide(mut seed) % 2000000001 - 1000000000).collect()
+        } else {
+            (0..n).map(|i| 20000 * i - 1000000000).collect()
+        };
+        if not small and c % 2 == 1 {
+            for _ in 0..5 {
+                let i = wide(mut seed) % n;
+                nums[i] = wide(mut seed) % 2000000001 - 1000000000;
+            }
+        }
+        let longest = max_subarray_length(nums);
+        total += longest;
+        check = (check * 31 + longest) % 1000000007;
+        if c == 2999 {
+            println(f"3000 short arrays: lengths total {total}, checksum {check}");
+            total = 0;
+            check = 0;
+        }
+    }
+    println(f"30 long arrays: lengths total {total}, checksum {check}");
+}

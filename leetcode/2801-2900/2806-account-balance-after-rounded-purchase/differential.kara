@@ -1,0 +1,153 @@
+// LeetCode #2806: Account Balance After Rounded Purchase -- the
+// differential. The five arms, against the statement read literally:
+// every multiple of 10 from 0 up past the amount, the nearest kept and
+// the largest of the nearest on a tie, and the balance 100 less it; no
+// division. 2050 amounts drawn from 0 to 100, LeetCode's whole range,
+// all before any arm answers.
+//
+// P1  the balance is the literal reading's
+// P2  a multiple of 10 from 0 to 100
+// P3  the rounded amount within 5 of the amount
+// P4  10 more spent, when it is still within 100: 10 less left
+// P5  1 more spent: no more left
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(purchase_amount: i64) -> i64 {
+    let mut nearest = 0;
+    let mut m = 0;
+    while m <= purchase_amount + 10 {
+        if (m - purchase_amount).abs() <= (nearest - purchase_amount).abs() {
+            nearest = m;
+        }
+        m += 10;
+    }
+    100 - nearest
+}
+
+
+// ---- star (balance.kara) --------------------------------------------
+
+fn star_account_balance_after_purchase(purchase_amount: i64) -> i64 {
+    100 - (purchase_amount + 5) / 10 * 10
+}
+
+
+// ---- remainder (balance_remainder.kara) -----------------------------
+
+fn remainder_account_balance_after_purchase(purchase_amount: i64) -> i64 {
+    let r = purchase_amount % 10;
+    let rounded = if r >= 5 { purchase_amount - r + 10 } else { purchase_amount - r };
+    100 - rounded
+}
+
+
+// ---- nearer (balance_nearer.kara) -----------------------------------
+
+fn nearer_account_balance_after_purchase(purchase_amount: i64) -> i64 {
+    let below = purchase_amount / 10 * 10;
+    let rounded_src = [below, below + 10];
+    let rounded = rounded_src.iter().min_by_key(|m| ((m - purchase_amount).abs(), -m)).unwrap();
+    100 - rounded
+}
+
+
+// ---- float (balance_float.kara) -------------------------------------
+
+fn float_account_balance_after_purchase(purchase_amount: i64) -> i64 {
+    let tens = (purchase_amount as f64 / 10.0).round() as i64;
+    100 - tens * 10
+}
+
+
+// ---- solution (balance_solution.kara) -------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn account_balance_after_purchase(purchase_amount: i32) -> i32 {
+        let rounded = match purchase_amount % 10 {
+            0..=4 => purchase_amount / 10 * 10,
+            _ => (purchase_amount / 10 + 1) * 10,
+        };
+        100 - rounded
+    }
+}
+
+fn solution_account_balance_after_purchase(purchase_amount: i64) -> i64 {
+    Solution.account_balance_after_purchase(purchase_amount as i32)
+}
+
+
+fn answer(arm: i64, p: i64) -> i64 {
+    match arm {
+        0 => star_account_balance_after_purchase(p),
+        1 => remainder_account_balance_after_purchase(p),
+        2 => nearer_account_balance_after_purchase(p),
+        3 => float_account_balance_after_purchase(p),
+        _ => solution_account_balance_after_purchase(p),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "remainder", "nearer", "float", "solution"];
+    let mut seed = 2806;
+    let mut cases: Vec[i64] = Vec.new();
+    for _ in 0..2050 {
+        cases.push(next_random(mut seed) % 101);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, p) in cases.iter().enumerate() {
+        let want = literal(p);
+        check = (check * 31 + want + 1) % 1000000007;
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, p)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let rounded = 100 - value;
+            let verdicts = [
+                value == want,
+                value % 10 == 0 and value >= 0 and value <= 100,
+                (rounded - p).abs() <= 5,
+                p + 10 > 100 or answer(arm, p + 10) == value - 10,
+                p + 1 > 100 or answer(arm, p + 1) <= value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} amount {p}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

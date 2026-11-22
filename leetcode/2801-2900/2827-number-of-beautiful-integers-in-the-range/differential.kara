@@ -1,0 +1,413 @@
+// LeetCode #2827: Number of Beautiful Integers in the Range -- the
+// differential. The five arms, against the statement read literally:
+// every number from low to high, its digits counted even and odd, kept
+// when the counts are equal and k divides it. 2000 random ranges of up
+// to 2000 numbers, starting anywhere from 1 to 10^9 by a random
+// magnitude; then 50 ranges up to 10^9 and k from 1 to 20. Every case is
+// drawn before any arm answers; the literal reading is asked only of the
+// first 2000.
+//
+// P1  up to 2000 numbers, the answer is the literal reading's
+// P2  the range cut in two at a point inside it: the two answers sum to
+//     the answer
+// P3  k = 1: no fewer
+// P4  at least 0, and at most the multiples of k in the range
+// P5  from 1 to high less from 1 to low - 1: the same answer
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- the statement read literally ------------------------------------------
+
+fn beautiful(v: i64, k: i64) -> bool {
+    let digits = v.to_string();
+    let even = digits.chars().filter(|c| (c as u32 - 48) % 2 == 0).count();
+    even * 2 == digits.len() and v % k == 0
+}
+
+fn literal(low: i64, high: i64, k: i64) -> i64 {
+    (low..=high).filter(|v| beautiful(v, k)).count()
+}
+
+
+// ---- star (beautiful.kara) ------------------------------------------
+
+fn star_walk(digits: Vec[i64], pos: i64, diff: i64, rem: i64, tight: bool, started: bool, k: i64, memo: mut ref Vec[i64]) -> i64 {
+    let n = digits.len();
+    if pos == n {
+        return if started and diff == 0 and rem == 0 { 1 } else { 0 };
+    }
+    let key = (pos * (2 * n + 1) + diff + n) * k + rem;
+    if not tight and started and memo[key] >= 0 {
+        return memo[key];
+    }
+    let top = if tight { digits[pos] } else { 9 };
+    let mut total = 0;
+    for d in 0..=top {
+        let now = started or d > 0;
+        let next_diff = if now { diff + if d % 2 == 0 { 1 } else { -1 } } else { 0 };
+        total += star_walk(digits, pos + 1, next_diff, (rem * 10 + d) % k, tight and d == top, now, k, mut memo);
+    }
+    if not tight and started {
+        memo[key] = total;
+    }
+    total
+}
+
+fn star_count_upto(x: i64, k: i64) -> i64 {
+    if x <= 0 {
+        return 0;
+    }
+    let digits: Vec[i64] = x.to_string().bytes().iter().map(|c| (c - b'0') as i64).collect();
+    let n = digits.len();
+    let mut memo: Vec[i64] = Vec.filled(n * (2 * n + 1) * k, -1);
+    star_walk(digits, 0, 0, 0, true, false, k, mut memo)
+}
+
+fn star_number_of_beautiful_integers(low: i64, high: i64, k: i64) -> i64 {
+    star_count_upto(high, k) - star_count_upto(low - 1, k)
+}
+
+
+// ---- free (beautiful_free.kara) -------------------------------------
+
+struct Table {
+    k: i64,
+    width: i64,
+    counts: Vec[Vec[i64]],
+}
+
+impl Table {
+    fn build(max_len: i64, k: i64) -> Table {
+        let width = 2 * max_len + 1;
+        let mut counts: Vec[Vec[i64]] = Vec.new();
+        let mut first: Vec[i64] = Vec.filled(width * k, 0);
+        first[max_len * k] = 1;
+        counts.push(first);
+        let mut power = 1;
+        for len in 1..=max_len {
+            let mut next: Vec[i64] = Vec.filled(width * k, 0);
+            for b in 0..width {
+                for r in 0..k {
+                    let c = counts[len - 1][b * k + r];
+                    if c == 0 {
+                        continue;
+                    }
+                    for d in 0..10 {
+                        let nb = b + if d % 2 == 0 { 1 } else { -1 };
+                        if nb < 0 or nb >= width {
+                            continue;
+                        }
+                        next[nb * k + (d * power + r) % k] += c;
+                    }
+                }
+            }
+            counts.push(next);
+            power = power * 10 % k;
+        }
+        Table { k, width, counts }
+    }
+
+    // strings of `len` digits whose balance is `balance` and whose value
+    // is `rem` mod k
+    fn get(self, len: i64, balance: i64, rem: i64) -> i64 {
+        let b = balance + (self.width - 1) / 2;
+        if b < 0 or b >= self.width {
+            return 0;
+        }
+        self.counts[len][b * self.k + rem]
+    }
+}
+
+fn free_parity(d: i64) -> i64 {
+    if d % 2 == 0 { 1 } else { -1 }
+}
+
+fn free_pow_mod(e: i64, k: i64) -> i64 {
+    (0..e).fold(1 % k, |p, _| p * 10 % k)
+}
+
+fn free_count_upto(x: i64, k: i64, table: Table) -> i64 {
+    if x <= 0 {
+        return 0;
+    }
+    let digits: Vec[i64] = x.to_string().bytes().iter().map(|c| (c - b'0') as i64).collect();
+    let n = digits.len();
+    let mut total = 0;
+    for len in 1..n {
+        for d in 1..10 {
+            let need = (k - d * free_pow_mod(len - 1, k) % k) % k;
+            total += table.get(len - 1, -free_parity(d), need);
+        }
+    }
+    let mut prefix = 0;
+    let mut balance = 0;
+    for i in 0..n {
+        let rest = n - i - 1;
+        let start = if i == 0 { 1 } else { 0 };
+        for d in start..digits[i] {
+            let value = (prefix * 10 + d) % k * free_pow_mod(rest, k) % k;
+            total += table.get(rest, -(balance + free_parity(d)), (k - value) % k);
+        }
+        prefix = (prefix * 10 + digits[i]) % k;
+        balance += free_parity(digits[i]);
+    }
+    if balance == 0 and prefix == 0 {
+        total += 1;
+    }
+    total
+}
+
+fn free_number_of_beautiful_integers(low: i64, high: i64, k: i64) -> i64 {
+    let table = Table.build(10, k);
+    free_count_upto(high, k, table) - free_count_upto(low - 1, k, table)
+}
+
+
+// ---- halves (beautiful_halves.kara) ---------------------------------
+
+fn halves_balance_of(v: i64, digits: i64) -> i64 {
+    let mut rest = v;
+    let mut balance = 0;
+    for _ in 0..digits {
+        balance += if rest % 10 % 2 == 0 { 1 } else { -1 };
+        rest /= 10;
+    }
+    balance
+}
+
+// low halves of h digits by (balance + h) * k + remainder
+fn halves_low_table(h: i64, k: i64) -> Vec[i64] {
+    let mut table: Vec[i64] = Vec.filled((2 * h + 1) * k, 0);
+    let top = 10.pow(h as u32);
+    for low in 0..top {
+        table[(halves_balance_of(low, h) + h) * k + low % k] += 1;
+    }
+    table
+}
+
+// balanced numbers of 2h digits whose high half is in `from..until`
+fn halves_with_high(from: i64, until: i64, h: i64, k: i64, lows: Vec[i64]) -> i64 {
+    let shift = 10.pow(h as u32) % k;
+    let mut total = 0;
+    for high in from..until {
+        let need = -halves_balance_of(high, h);
+        let rem = (k - high % k * shift % k) % k;
+        if need >= -h and need <= h {
+            total += lows[(need + h) * k + rem];
+        }
+    }
+    total
+}
+
+fn halves_count_upto(x: i64, k: i64) -> i64 {
+    if x <= 0 {
+        return 0;
+    }
+    let n = x.to_string().len();
+    let mut total = 0;
+    let mut h = 1;
+    while 2 * h <= n {
+        let lows = halves_low_table(h, k);
+        let base = 10.pow(h as u32);
+        if 2 * h < n {
+            total += halves_with_high(base / 10, base, h, k, lows);
+        } else {
+            let (top, bottom) = (x / base, x % base);
+            total += halves_with_high(base / 10, top, h, k, lows);
+            let (need, shift) = (-halves_balance_of(top, h), top % k * (base % k) % k);
+            for low in 0..=bottom {
+                if halves_balance_of(low, h) == need and (shift + low) % k == 0 {
+                    total += 1;
+                }
+            }
+        }
+        h += 1;
+    }
+    total
+}
+
+fn halves_number_of_beautiful_integers(low: i64, high: i64, k: i64) -> i64 {
+    halves_count_upto(high, k) - halves_count_upto(low - 1, k)
+}
+
+
+// ---- map (beautiful_map.kara) ---------------------------------------
+
+struct Walk {
+    lo: Vec[i64],
+    hi: Vec[i64],
+    k: i64,
+    memo: Map[(i64, i64, i64, bool, bool, bool), i64],
+}
+
+impl Walk {
+    fn count(mut ref self, pos: i64, diff: i64, rem: i64, on_lo: bool, on_hi: bool, started: bool) -> i64 {
+        if pos == self.hi.len() {
+            return if started and diff == 0 and rem == 0 { 1 } else { 0 };
+        }
+        let key = (pos, diff, rem, on_lo, on_hi, started);
+        if let Some(v) = self.memo.get(key) {
+            return v;
+        }
+        let from = if on_lo { self.lo[pos] } else { 0 };
+        let to = if on_hi { self.hi[pos] } else { 9 };
+        let mut total = 0;
+        for d in from..=to {
+            let now = started or d > 0;
+            let next_diff = if now { diff + if d % 2 == 0 { 1 } else { -1 } } else { 0 };
+            let next_rem = (rem * 10 + d) % self.k;
+            total += self.count(pos + 1, next_diff, next_rem, on_lo and d == from, on_hi and d == to, now);
+        }
+        self.memo.insert(key, total);
+        total
+    }
+}
+
+fn map_number_of_beautiful_integers(low: i64, high: i64, k: i64) -> i64 {
+    let hi: Vec[i64] = high.to_string().bytes().iter().map(|c| (c - b'0') as i64).collect();
+    let shown = low.to_string();
+    let padded = f"{"0".repeat(hi.len() - shown.len())}{shown}";
+    let lo: Vec[i64] = padded.bytes().iter().map(|c| (c - b'0') as i64).collect();
+    let mut walk = Walk { lo, hi, k, memo: Map.new() };
+    walk.count(0, 0, 0, true, true, false)
+}
+
+
+// ---- solution (beautiful_solution.kara) -----------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn number_of_beautiful_integers(low: i32, high: i32, k: i32) -> i32 {
+        Solution.count(high, k) - Solution.count(low - 1, k)
+    }
+
+    fn count(n: i32, k: i32) -> i32 {
+        if n <= 0 {
+            return 0;
+        }
+        let s: Vec[u8] = n.to_string().bytes().iter().collect();
+        let len = s.len();
+        let mut memo = Vec.filled(len, Vec.filled(2 * len + 1, Vec.filled(k, -1i32)));
+        Solution.dfs(0, len, 0, true, true, s, k, mut memo)
+    }
+
+    fn dfs(i: i64, diff: i64, rem: i32, is_limit: bool, is_lead: bool, s: Slice[u8], k: i32, memo: mut ref Vec[Vec[Vec[i32]]]) -> i32 {
+        if i == s.len() {
+            return if not is_lead and rem == 0 and diff == s.len() { 1 } else { 0 };
+        }
+        if not is_limit and not is_lead and memo[i][diff][rem] >= 0 {
+            return memo[i][diff][rem];
+        }
+        let mut res: i32 = 0;
+        if is_lead {
+            res += Solution.dfs(i + 1, diff, rem, false, true, s, k, mut memo);
+        }
+        let lo = if is_lead { 1 } else { 0 };
+        let hi = if is_limit { (s[i] - b'0') as i32 } else { 9 };
+        for d in lo..=hi {
+            let nd = if d % 2 == 0 { diff + 1 } else { diff - 1 };
+            res += Solution.dfs(i + 1, nd, (rem * 10 + d) % k, is_limit and d == hi, false, s, k, mut memo);
+        }
+        if not is_limit and not is_lead {
+            memo[i][diff][rem] = res;
+        }
+        res
+    }
+}
+
+fn solution_number_of_beautiful_integers(low: i64, high: i64, k: i64) -> i64 {
+    Solution.number_of_beautiful_integers(low as i32, high as i32, k as i32)
+}
+
+
+// ---- the checks ------------------------------------------------------------
+
+fn answer(arm: i64, low: i64, high: i64, k: i64) -> i64 {
+    match arm {
+        0 => star_number_of_beautiful_integers(low, high, k),
+        1 => free_number_of_beautiful_integers(low, high, k),
+        2 => halves_number_of_beautiful_integers(low, high, k),
+        3 => map_number_of_beautiful_integers(low, high, k),
+        _ => solution_number_of_beautiful_integers(low, high, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "free", "halves", "map", "solution"];
+    let mut seed = 2827;
+    let mut cases: Vec[(i64, i64, i64, i64)] = Vec.new();
+    for c in 0..2050 {
+        let k = next_random(mut seed) % 20 + 1;
+        let (low, high) = if c < 2000 {
+            let magnitude = 10.pow((next_random(mut seed) % 9 + 1) as u32);
+            let low = wide(mut seed) % magnitude + 1;
+            (low, (low + next_random(mut seed) % 2000).min(1000000000))
+        } else {
+            let (a, b) = (wide(mut seed) % 1000000000 + 1, wide(mut seed) % 1000000000 + 1);
+            (a.min(b), a.max(b))
+        };
+        let cut = low + wide(mut seed) % (high - low + 1);
+        cases.push((low, high, k, cut));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (low, high, k, cut)) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(low, high, k) } else { 0 };
+        check = (check * 31 + want + 1) % 1000000007;
+        let multiples = high / k - (low - 1) / k;
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, low, high, k)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let parts = if cut < high { answer(arm, low, cut, k) + answer(arm, cut + 1, high, k) } else { value };
+            let from_one = if low > 1 { answer(arm, 1, high, k) - answer(arm, 1, low - 1, k) } else { answer(arm, 1, high, k) };
+            let verdicts = [
+                not small or value == want,
+                parts == value,
+                answer(arm, low, high, 1) >= value,
+                value >= 0 and value <= multiples,
+                from_one == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} [{low}, {high}] k {k}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

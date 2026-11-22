@@ -1,0 +1,64 @@
+// LeetCode #2730: Find the Longest Semi-Repetitive Substring -- the pairs
+// arm. The places of the pairs, found by `windows(2)` with `enumerate`
+// and `filter`, cut the string: the best substring runs from just past
+// one pair's first digit to the second digit of the pair after next,
+// holding one pair; the ends of the string stand in as pairs before the
+// first and after the last. O(n).
+
+fn longest_semi_repetitive_substring(s: String) -> i64 {
+    let n = s.len();
+    let mut cuts: Vec[i64] = [-1].to_vec();
+    for (i, w) in s.bytes().windows(2).into_iter().enumerate() {
+        if w[0] == w[1] {
+            cuts.push(i);
+        }
+    }
+    cuts.push(n - 1);
+    if cuts.len() <= 3 {
+        return n;
+    }
+    (0..cuts.len() - 2).map(|j| cuts[j + 2] - cuts[j]).max().unwrap()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n digits, each one of the first `digits` from 0
+fn random_digits(seed: mut ref i64, n: i64, digits: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push((b'0' + (next_random(mut seed) % digits) as u8) as char);
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's three examples; one digit; 50 ones, LeetCode's longest;
+    // 50 digits with no pair; pairs at both ends only; pairs every third
+    // place
+    println(f"{longest_semi_repetitive_substring("52233")}");
+    println(f"{longest_semi_repetitive_substring("5494")}");
+    println(f"{longest_semi_repetitive_substring("1111111")}");
+    println(f"{longest_semi_repetitive_substring("7")}");
+    println(f"{longest_semi_repetitive_substring("1".repeat(50))}");
+    println(f"{longest_semi_repetitive_substring("0123456789".repeat(5))}");
+    let ends = f"00{"12".repeat(23)}00";
+    println(f"{longest_semi_repetitive_substring(ends)}");
+    println(f"{longest_semi_repetitive_substring("112".repeat(16))}");
+    // 5000 random strings of 1 to 50 digits from the first 1 to 10
+    let mut seed = 2730;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..5000 {
+        let n = next_random(mut seed) % 50 + 1;
+        let digits = next_random(mut seed) % 10 + 1;
+        let length = longest_semi_repetitive_substring(random_digits(mut seed, n, digits));
+        sum += length;
+        check = (check * 31 + length) % 1000000007;
+    }
+    println(f"5000 strings: lengths sum to {sum}, checksum {check}");
+}

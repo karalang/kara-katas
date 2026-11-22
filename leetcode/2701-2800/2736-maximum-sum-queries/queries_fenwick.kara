@@ -1,0 +1,104 @@
+// LeetCode #2736: Maximum Sum Queries -- the Fenwick arm. Offline as the
+// ★ arm, pairs and queries by nums1 and x falling; the nums2 values are
+// ranked, highest first, and a Fenwick tree over the ranks keeps the
+// largest sum of a prefix, so "nums2 >= y" is a prefix of ranks, found by
+// binary search over the sorted values. O((n + q) log n).
+
+fn maximum_sum_queries(nums1: Vec[i64], nums2: Vec[i64], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let n = nums1.len();
+    // nums2's values, highest first, without repeats; rank r is 1 + index
+    let mut values = nums2.clone();
+    values.sort();
+    values.dedup();
+    values.reverse();
+    let m = values.len();
+    let mut tree: Vec[i64] = Vec.filled(m + 1, -1);
+    let mut pairs: Vec[(i64, i64)] = (0..n).map(|i| (nums1[i], nums2[i])).collect();
+    pairs.sort_by(|a, b| b.0.cmp(a.0));
+    let mut order: Vec[i64] = (0..queries.len()).collect();
+    order.sort_by(|a, b| queries[b][0].cmp(queries[a][0]));
+    let mut answer: Vec[i64] = Vec.filled(queries.len(), -1);
+    let mut j = 0;
+    for q in order.iter() {
+        while j < n and pairs[j].0 >= queries[q][0] {
+            let (a, b) = pairs[j];
+            j += 1;
+            // b's rank: the count of values above b, plus one
+            let mut low = 0;
+            let mut high = m;
+            while low < high {
+                let middle = (low + high) / 2;
+                if values[middle] > b {
+                    low = middle + 1;
+                } else {
+                    high = middle;
+                }
+            }
+            let mut r = low + 1;
+            while r <= m {
+                tree[r] = tree[r].max(a + b);
+                r += r & -r;
+            }
+        }
+        // the ranks of values >= y run from 1 to the count of them
+        let y = queries[q][1];
+        let mut low = 0;
+        let mut high = m;
+        while low < high {
+            let middle = (low + high) / 2;
+            if values[middle] >= y {
+                low = middle + 1;
+            } else {
+                high = middle;
+            }
+        }
+        let mut r = low;
+        let mut best = -1;
+        while r > 0 {
+            best = best.max(tree[r]);
+            r -= r & -r;
+        }
+        answer[q] = best;
+    }
+    answer
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a number from 1 to most, most up to 10^9
+fn random_up_to(seed: mut ref i64, most: i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{maximum_sum_queries([4, 3, 1, 2].to_vec(), [2, 4, 9, 5].to_vec(), [[4, 1].to_vec(), [1, 3].to_vec(), [2, 5].to_vec()].to_vec())}");
+    println(f"{maximum_sum_queries([3, 2, 5].to_vec(), [2, 3, 4].to_vec(), [[4, 4].to_vec(), [3, 2].to_vec(), [1, 1].to_vec()].to_vec())}");
+    println(f"{maximum_sum_queries([2, 1].to_vec(), [2, 3].to_vec(), [[3, 3].to_vec()].to_vec())}");
+    // 1000 random cases of 1 to 20 pairs and queries up to 30; then 10 of
+    // 2000 pairs and 2000 queries up to 10^9
+    let mut seed = 2736;
+    let mut sum = 0;
+    let mut check = 0;
+    for c in 0..1010 {
+        let (n, q, most) = if c < 1000 { (next_random(mut seed) % 20 + 1, next_random(mut seed) % 20 + 1, 30) } else { (2000, 2000, 1000000000) };
+        let nums1: Vec[i64] = (0..n).map(|_| random_up_to(mut seed, most)).collect();
+        let nums2: Vec[i64] = (0..n).map(|_| random_up_to(mut seed, most)).collect();
+        let queries: Vec[Vec[i64]] = (0..q).map(|_| [random_up_to(mut seed, most), random_up_to(mut seed, most)].to_vec()).collect();
+        for best in maximum_sum_queries(nums1, nums2, queries).iter() {
+            sum += best;
+            check = (check * 31 + best + 1) % 1000000007;
+        }
+        if c == 999 {
+            println(f"1000 small cases: answers sum to {sum}, checksum {check}");
+            sum = 0;
+            check = 0;
+        }
+    }
+    println(f"10 cases of 2000 pairs: answers sum to {sum}, checksum {check}");
+}

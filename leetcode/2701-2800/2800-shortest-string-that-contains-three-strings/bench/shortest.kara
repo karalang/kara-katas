@@ -1,0 +1,71 @@
+// LeetCode #2800: Shortest String That Contains Three Strings -- the
+// bench: the ★ arm over 2000 triples of up to 100 letters, LeetCode's
+// longest, from a and b, so that the words overlap, all drawn first,
+// then each answered 200 times.
+
+fn merge(s: String, t: String) -> String {
+    if s.contains(t) {
+        return s.clone();
+    }
+    for k in (1..=t.len().min(s.len())).rev() {
+        if s.ends_with(t[0..k]) {
+            return f"{s}{t[k..]}";
+        }
+    }
+    f"{s}{t}"
+}
+
+fn minimum_string(a: String, b: String, c: String) -> String {
+    let words = [a, b, c];
+    let orders = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+    let mut best = String.new();
+    for order in orders.iter() {
+        let s = merge(merge(words[order[0]], words[order[1]]), words[order[2]]);
+        if best.is_empty() or s.len() < best.len() or (s.len() == best.len() and s < best) {
+            best = s;
+        }
+    }
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn word(m: i64, seed: mut ref i64) -> String {
+    let letters = "ab";
+    let mut w = String.new();
+    for _ in 0..m {
+        let r = next_random(mut seed) % 2;
+        w.push_str(letters[r..r + 1]);
+    }
+    w
+}
+
+fn digest(s: String) -> i64 {
+    s.bytes().iter().fold(0, |h, b| (h * 131 + b as i64) % 1000000007)
+}
+
+fn main() {
+    let count = 2000;
+    let rounds = 200;
+    let mut seed = 2800;
+    let mut cases: Vec[(String, String, String)] = Vec.new();
+    for _ in 0..count {
+        let a = word(next_random(mut seed) % 100 + 1, mut seed);
+        let b = word(next_random(mut seed) % 100 + 1, mut seed);
+        let c = word(next_random(mut seed) % 100 + 1, mut seed);
+        cases.push((a, b, c));
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (a, b, c) in cases.iter() {
+            let s = minimum_string(a, b, c);
+            total += s.len();
+            check = (check * 31 + digest(s) + r) % 1000000007;
+        }
+    }
+    println(f"{count} triples of up to 100, {rounds} rounds: lengths sum to {total}, checksum {check}");
+}

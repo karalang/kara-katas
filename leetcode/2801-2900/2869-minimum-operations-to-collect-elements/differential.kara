@@ -1,0 +1,195 @@
+// LeetCode #2869: Minimum Operations to Collect Elements -- the
+// differential. The five arms, against the statement read literally:
+// the last value taken off and put in a collection, one operation at a
+// time, until the collection holds every value from 1 to k. 2000 random
+// arrays of 1 to 8 values from 1 to n, then 50 of 50, each holding 1,
+// k drawn from those whose 1..k all appear, all drawn before any arm
+// answers.
+//
+// P1  the answer is the literal reading's
+// P2  a value above k put at the end: one more
+// P3  a value from 1 to k put at the front: the same answer
+// P4  from k to n
+// P5  k one less: no more
+// P6  each arm agrees with at least three of the other four
+
+fn literal(nums: Vec[i64], k: i64) -> i64 {
+    let mut rest = nums.clone();
+    let mut collection: Vec[i64] = Vec.new();
+    let mut ops = 0;
+    while not (1..k + 1).all(|v| collection.contains(v)) {
+        collection.push(rest.pop().unwrap());
+        ops += 1;
+    }
+    ops
+}
+
+
+// ---- star (collect.kara) --------------------------------------------
+
+fn star_min_operations(nums: Vec[i64], k: i64) -> i64 {
+    let full = (1 << k) - 1;
+    let mut mask = 0;
+    let n = nums.len();
+    for i in (0..n).rev() {
+        if nums[i] <= k {
+            mask |= 1 << (nums[i] - 1);
+        }
+        if mask == full {
+            return n - i;
+        }
+    }
+    n
+}
+
+
+// ---- set (collect_set.kara) -----------------------------------------
+
+fn set_min_operations(nums: Vec[i64], k: i64) -> i64 {
+    let mut seen: Set[i64] = Set.new();
+    let mut ops = 0;
+    for v in nums.iter().rev() {
+        ops += 1;
+        if v <= k {
+            seen.insert(v);
+        }
+        if seen.len() == k {
+            break;
+        }
+    }
+    ops
+}
+
+
+// ---- last (collect_last.kara) ---------------------------------------
+
+fn last_min_operations(nums: Vec[i64], k: i64) -> i64 {
+    let n = nums.len();
+    let mut last: Vec[i64] = Vec.filled(k + 1, -1);
+    for (i, v) in nums.iter().enumerate() {
+        if v <= k {
+            last[v] = i;
+        }
+    }
+    n - last[1..].iter().min().unwrap()
+}
+
+
+// ---- search (collect_search.kara) -----------------------------------
+
+fn search_min_operations(nums: Vec[i64], k: i64) -> i64 {
+    let earliest = (1..k + 1).map(|v| nums.iter().rposition(|x| x == v).unwrap()).min().unwrap();
+    nums.len() - earliest
+}
+
+
+// ---- solution (collect_solution.kara) -------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_operations(nums: Vec[i32], k: i32) -> i32 {
+        let mut seen = Set.new();
+        for (i, x) in nums.iter().rev().enumerate() {
+            if x <= k {
+                seen.insert(x);
+            }
+            if seen.len() == k {
+                return i as i32 + 1;
+            }
+        }
+        nums.len() as i32
+    }
+}
+
+fn solution_min_operations(nums: Vec[i64], k: i64) -> i64 {
+    Solution.min_operations(nums.iter().map(|x| x as i32).collect(), k as i32)
+}
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64], k: i64) -> i64 {
+    match arm {
+        0 => star_min_operations(nums, k),
+        1 => set_min_operations(nums, k),
+        2 => last_min_operations(nums, k),
+        3 => search_min_operations(nums, k),
+        _ => solution_min_operations(nums, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "set", "last", "search", "solution"];
+    let mut seed = 2869;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..2050 {
+        let n = if c < 2000 { next_random(mut seed) % 8 + 1 } else { 50 };
+        let mut nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % n + 1).collect();
+        nums[next_random(mut seed) % n] = 1;
+        let mut reach = 1;
+        while nums.contains(reach + 1) {
+            reach += 1;
+        }
+        let k = next_random(mut seed) % reach + 1;
+        cases.push((nums, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut total = 0;
+    for (c, (nums, k)) in cases.iter().enumerate() {
+        let n = nums.len();
+        let want = literal(nums, k);
+        total += want;
+        check = (check * 31 + want) % 1000000007;
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums, k)).collect();
+        let mut ended = nums.clone();
+        ended.push(k + 1);
+        let mut fronted: Vec[i64] = [c % k + 1].to_vec();
+        fronted.extend(nums.iter().cloned());
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == want,
+                answer(arm, ended, k) == value + 1,
+                answer(arm, fronted, k) == value,
+                value >= k and value <= n,
+                k == 1 or answer(arm, nums, k - 1) <= value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums} k {k}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases, {total} operations: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

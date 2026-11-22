@@ -1,0 +1,126 @@
+// LeetCode #2858: Minimum Edge Reversals So Every Node Is Reachable --
+// signed paths: walking from node 0 breadth first, a node's answer is
+// node 0's plus the edges on its path that point away from 0, each of
+// which it must turn, less the ones that point toward 0, which it need
+// not; the walk carries that offset, and node 0's own answer is every
+// edge pointing toward it, counted from the edge list once the walk
+// has found which end is nearer.
+
+fn min_edge_reversals(n: i64, edges: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut adj: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push(e[1]);
+        adj[e[1]].push(e[0]);
+    }
+    let mut depth: Vec[i64] = Vec.filled(n, -1);
+    let mut offset: Vec[i64] = Vec.filled(n, 0);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    depth[0] = 0;
+    queue.push_back(0);
+    while let Some(u) = queue.pop_front() {
+        for v in adj[u].iter() {
+            if depth[v] == -1 {
+                depth[v] = depth[u] + 1;
+                queue.push_back(v);
+            }
+        }
+    }
+    // an edge from the nearer end to the farther points away from 0
+    let mut away: Vec[bool] = Vec.filled(n, false);
+    let mut root = 0;
+    for e in edges.iter() {
+        if depth[e[0]] < depth[e[1]] {
+            away[e[1]] = true;
+        } else {
+            root += 1;
+        }
+    }
+    let mut order: Vec[i64] = (0..n).collect();
+    order.sort_by_key(|v| depth[v]);
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    for u in order.iter() {
+        for v in adj[u].iter() {
+            if depth[v] == depth[u] + 1 {
+                parent[v] = u;
+                offset[v] = offset[u] + if away[v] { 1 } else { -1 };
+            }
+        }
+    }
+    offset.iter().map(|o| root + o).collect()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// a random tree on n nodes: node i hangs off one of the three before it
+// when deep, else off any before it; the labels shuffled, each edge
+// pointing either way
+fn tree(n: i64, deep: bool, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut label: Vec[i64] = (0..n).collect();
+    for i in (1..n).rev() {
+        let j = wide(mut seed) % (i + 1);
+        label.swap(i, j);
+    }
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for i in 1..n {
+        let p = if deep { i - 1 - next_random(mut seed) % i.min(3) } else { wide(mut seed) % i };
+        if next_random(mut seed) % 2 == 0 {
+            edges.push([label[p], label[i]].to_vec());
+        } else {
+            edges.push([label[i], label[p]].to_vec());
+        }
+    }
+    edges
+}
+
+fn fold(answer: Vec[i64]) -> (i64, i64) {
+    let mut check = 0;
+    for a in answer.iter() {
+        check = (check * 31 + a) % 1000000007;
+    }
+    (answer.iter().sum(), check)
+}
+
+fn main() {
+    // LeetCode's two examples; a path of 10^5 nodes, LeetCode's most,
+    // every edge pointing on; the same path pointing each way in turn;
+    // and a star of 10^5 with every edge pointing in
+    let first = [[2, 0].to_vec(), [2, 1].to_vec(), [1, 3].to_vec()].to_vec();
+    let second = [[1, 2].to_vec(), [2, 0].to_vec()].to_vec();
+    println(f"{min_edge_reversals(4, first)} {min_edge_reversals(3, second)}");
+    let n = 100000;
+    let on: Vec[Vec[i64]] = (1..n).map(|i| [i - 1, i].to_vec()).collect();
+    let turns: Vec[Vec[i64]] = (1..n).map(|i| if i % 2 == 0 { [i - 1, i].to_vec() } else { [i, i - 1].to_vec() }).collect();
+    let star: Vec[Vec[i64]] = (1..n).map(|i| [i, 0].to_vec()).collect();
+    let (a, b) = fold(min_edge_reversals(n, on));
+    let (c, d) = fold(min_edge_reversals(n, turns));
+    let (e, f) = fold(min_edge_reversals(n, star));
+    println(f"path {a} {b}, turns {c} {d}, star {e} {f}");
+    // 3000 random trees of 2 to 9 nodes; then 20 of 10^4 to 10^5, every
+    // other one deep
+    let mut seed = 2858;
+    let mut total = 0;
+    let mut check = 0;
+    for c in 0..3020 {
+        let small = c < 3000;
+        let n = if small { next_random(mut seed) % 8 + 2 } else { wide(mut seed) % 90001 + 10000 };
+        let edges = tree(n, c % 2 == 1, mut seed);
+        let (s, h) = fold(min_edge_reversals(n, edges));
+        total += s;
+        check = (check * 31 + h) % 1000000007;
+        if c == 2999 {
+            println(f"3000 small trees: answers sum to {total}, checksum {check}");
+            total = 0;
+            check = 0;
+        }
+    }
+    println(f"20 large trees: answers sum to {total}, checksum {check}");
+}

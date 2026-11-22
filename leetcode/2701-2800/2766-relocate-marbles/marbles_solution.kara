@@ -1,0 +1,112 @@
+// LeetCode #2766: Relocate Marbles -- a Rust solution as LeetCode's Rust
+// users write it, carried to Kāra by `karac fix`: a `HashSet<i32>` from
+// `nums.into_iter().collect()`, each move a `remove(&from)` and an
+// `insert(to)`, and the set drained into a `Vec<i32>` sorted by
+// `sort_unstable`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn relocate_marbles(nums: own Vec[i32], move_from: Vec[i32], move_to: Vec[i32]) -> Vec[i32] {
+        let mut set: Set[i32] = nums.into_iter().collect();
+        for i in 0..move_from.len() {
+            set.remove(move_from[i]);
+            set.insert(move_to[i]);
+        }
+        let mut ans: Vec[i32] = set.into_iter().collect();
+        ans.sort();
+        ans
+    }
+}
+
+fn relocate_marbles(nums: Vec[i64], move_from: Vec[i64], move_to: Vec[i64]) -> Vec[i64] {
+    let narrow: Fn(ref Vec[i64]) -> Vec[i32] = |v: ref Vec[i64]| { v.iter().map(|x| x as i32).collect() };
+    Solution.relocate_marbles(narrow(nums), narrow(move_from), narrow(move_to))
+        .into_iter()
+        .map(|x| x as i64)
+        .collect()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// n marbles at positions from 1 to top, then moves each from a place that
+// holds marbles at the time to any place from 1 to top
+fn case(n: i64, moves: i64, top: i64, seed: mut ref i64) -> (Vec[i64], Vec[i64], Vec[i64]) {
+    let nums: Vec[i64] = (0..n).map(|_| wide(mut seed) % top + 1).collect();
+    let mut places: Vec[i64] = Vec.new();
+    let mut slot: Map[i64, i64] = Map.new();
+    for x in nums.iter() {
+        if not slot.contains_key(x) {
+            slot[x] = places.len();
+            places.push(x);
+        }
+    }
+    let mut move_from: Vec[i64] = Vec.new();
+    let mut move_to: Vec[i64] = Vec.new();
+    for _ in 0..moves {
+        let a = places[wide(mut seed) % places.len()];
+        let b = wide(mut seed) % top + 1;
+        move_from.push(a);
+        move_to.push(b);
+        if a != b {
+            let k = slot.remove(a).unwrap();
+            let last = places.pop().unwrap();
+            if last != a {
+                places[k] = last;
+                slot[last] = k;
+            }
+            if not slot.contains_key(b) {
+                slot[b] = places.len();
+                places.push(b);
+            }
+        }
+    }
+    (nums, move_from, move_to)
+}
+
+fn fold(places: Vec[i64], count: mut ref i64, check: mut ref i64) {
+    *count += places.len();
+    for p in places.iter() {
+        *check = (*check * 31 + p) % 1000000007;
+    }
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{relocate_marbles([1, 6, 7, 8].to_vec(), [1, 7, 2].to_vec(), [2, 9, 5].to_vec())}");
+    println(f"{relocate_marbles([1, 1, 3, 3].to_vec(), [1, 3].to_vec(), [2, 2].to_vec())}");
+    // a move to the place itself; and marbles at both ends of LeetCode's
+    // range, moved on top of each other and away
+    println(f"{relocate_marbles([4, 4].to_vec(), [4, 4].to_vec(), [4, 9].to_vec())}");
+    println(f"{relocate_marbles([1000000000, 1].to_vec(), [1, 1000000000].to_vec(), [1000000000, 5].to_vec())}");
+    // 3000 random cases of 1 to 10 marbles and moves over places up to 15;
+    // then 5 of 10^5 marbles and moves, LeetCode's most, over places up to
+    // 10^9
+    let mut seed = 2766;
+    let mut count = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 10 + 1;
+        let moves = next_random(mut seed) % 10 + 1;
+        let top = next_random(mut seed) % 15 + 1;
+        let (nums, move_from, move_to) = case(n, moves, top, mut seed);
+        fold(relocate_marbles(nums, move_from, move_to), mut count, mut check);
+    }
+    println(f"3000 small cases: {count} places, checksum {check}");
+    let mut count = 0;
+    let mut check = 0;
+    for _ in 0..5 {
+        let (nums, move_from, move_to) = case(100000, 100000, 1000000000, mut seed);
+        fold(relocate_marbles(nums, move_from, move_to), mut count, mut check);
+    }
+    println(f"5 cases of 100000 marbles and moves: {count} places, checksum {check}");
+}

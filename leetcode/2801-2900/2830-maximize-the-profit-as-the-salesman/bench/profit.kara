@@ -1,0 +1,55 @@
+// LeetCode #2830: Maximize the Profit as the Salesman -- the bench: the
+// ★ arm over 20 streets of 10^5 houses with 10^5 offers of up to 100
+// houses, LeetCode's most, all drawn first, then each answered 10 times.
+
+fn maximize_the_profit(n: i64, offers: Vec[Vec[i64]]) -> i64 {
+    let mut ending: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for o in offers.iter() {
+        ending[o[1]].push((o[0], o[2]));
+    }
+    let mut best: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        best[i + 1] = best[i];
+        for (start, gold) in ending[i].iter() {
+            best[i + 1] = best[i + 1].max(best[start] + gold);
+        }
+    }
+    best[n]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let count = 20;
+    let rounds = 10;
+    let n = 100000;
+    let mut seed = 2830;
+    let mut streets: Vec[Vec[Vec[i64]]] = Vec.new();
+    for _ in 0..count {
+        let offers: Vec[Vec[i64]] = (0..n)
+            .map(|_| {
+                let start = wide(mut seed) % n;
+                let end = (start + next_random(mut seed) % 100).min(n - 1);
+                [start, end, next_random(mut seed) % 1000 + 1]
+            })
+            .collect();
+        streets.push(offers);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for offers in streets.iter() {
+            let a = maximize_the_profit(n, offers);
+            total += a;
+            check = (check * 31 + a + r) % 1000000007;
+        }
+    }
+    println(f"{count} streets of {n}, {rounds} rounds: gold totals {total}, checksum {check}");
+}

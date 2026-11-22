@@ -1,0 +1,339 @@
+// LeetCode #2741: Special Permutations -- the differential. The five
+// arms, against the statement read literally: every order of the
+// numbers, in turn by the next-permutation step over their places,
+// counted when each neighbouring pair has one dividing the other; no
+// table over masks. 1000 random arrays of 2 to 7 distinct numbers, by
+// turns of the form 2^a 3^b and up to 30; then 100 of 8 to 10. Every
+// case is drawn before any arm answers; the literal reading is asked
+// only of the first 1000.
+//
+// P1  up to 7 numbers, the answer is the literal reading's
+// P2  the numbers reversed: the same answer
+// P3  every number times 7: the same answer
+// P4  up to 7 numbers, the answer is even: each special order read
+//     backwards is another
+// P5  the numbers replaced by 2^k, k their rank, so every order is
+//     special: n! mod 10^9 + 7
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut order: Vec[i64] = (0..n).collect();
+    let mut count = 0;
+    loop {
+        let mut special = true;
+        for i in 0..n - 1 {
+            let a = nums[order[i]];
+            let b = nums[order[i + 1]];
+            if a % b != 0 and b % a != 0 {
+                special = false;
+            }
+        }
+        if special {
+            count += 1;
+        }
+        // the next order: the last place that can grow, the least larger
+        // after it swapped in, and the rest reversed
+        let mut i = n - 1;
+        while i > 0 and order[i - 1] > order[i] {
+            i -= 1;
+        }
+        if i == 0 {
+            break;
+        }
+        let mut j = n - 1;
+        while order[j] < order[i - 1] {
+            j -= 1;
+        }
+        order.swap(i - 1, j);
+        order[i..].reverse();
+    }
+    count
+}
+
+
+// ---- star (special.kara) --------------------------------------------
+
+const MOD: i64 = 1000000007;
+
+fn star_special_perm(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let full = (1 << n) - 1;
+    let mut ways: Vec[Vec[i64]] = Vec.filled(1 << n, Vec.filled(n, 0));
+    for i in 0..n {
+        ways[1 << i][i] = 1;
+    }
+    for mask in 1..full {
+        for last in 0..n {
+            let w = ways[mask][last];
+            if w == 0 {
+                continue;
+            }
+            for next in 0..n {
+                if (mask >> next) & 1 == 0 and (nums[next] % nums[last] == 0 or nums[last] % nums[next] == 0) {
+                    let to = mask | (1 << next);
+                    ways[to][next] = (ways[to][next] + w) % MOD;
+                }
+            }
+        }
+    }
+    let mut total = 0;
+    for last in 0..n {
+        total = (total + ways[full][last]) % MOD;
+    }
+    total
+}
+
+
+// ---- memo (special_memo.kara) ---------------------------------------
+
+struct Counter {
+    nums: Vec[i64],
+    memo: Vec[Vec[i64]],
+}
+
+impl Counter {
+    fn follow(mut ref self, used: i64, last: i64) -> i64 {
+        let n = self.nums.len();
+        if used == (1 << n) - 1 {
+            return 1;
+        }
+        if self.memo[used][last] >= 0 {
+            return self.memo[used][last];
+        }
+        let mut total = 0;
+        for next in 0..n {
+            let a = self.nums[last];
+            let b = self.nums[next];
+            if (used >> next) & 1 == 0 and (a % b == 0 or b % a == 0) {
+                total = (total + self.follow(used | (1 << next), next)) % MOD;
+            }
+        }
+        self.memo[used][last] = total;
+        total
+    }
+}
+
+fn memo_special_perm(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut counter = Counter { nums: nums.clone(), memo: Vec.filled(1 << n, Vec.filled(n, -1)) };
+    let mut total = 0;
+    for first in 0..n {
+        total = (total + counter.follow(1 << first, first)) % MOD;
+    }
+    total
+}
+
+
+// ---- masks (special_masks.kara) -------------------------------------
+
+fn masks_special_perm(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let partners: Vec[i64] = (0..n)
+        .map(|i| (0..n).filter(|j| j != i and (nums[i] % nums[j] == 0 or nums[j] % nums[i] == 0)).fold(0, |m, j| m | (1 << j)))
+        .collect();
+    let mut ways: Vec[Vec[i64]] = Vec.filled(1 << n, Vec.filled(n, 0));
+    for mask in 1..1 << n {
+        for last in 0..n {
+            if (mask >> last) & 1 == 0 {
+                continue;
+            }
+            let rest = mask & ~(1 << last);
+            if rest == 0 {
+                ways[mask][last] = 1;
+                continue;
+            }
+            let mut from = rest & partners[last];
+            let mut total = 0;
+            while from != 0 {
+                let before = from.trailing_zeros();
+                total = (total + ways[rest][before]) % MOD;
+                from &= from - 1;
+            }
+            ways[mask][last] = total;
+        }
+    }
+    ways[(1 << n) - 1].iter().fold(0, |s, w| (s + w) % MOD)
+}
+
+
+// ---- sieve (special_sieve.kara) -------------------------------------
+
+fn sieve_walks_inside(nums: Vec[i64], subset: i64) -> i64 {
+    let n = nums.len();
+    let inside: Vec[i64] = (0..n).filter(|i| (subset >> i) & 1 == 1).collect();
+    // ends[i]: the walks so far that end at inside[i]
+    let mut ends: Vec[i64] = Vec.filled(inside.len(), 1);
+    for _ in 1..n {
+        let mut next: Vec[i64] = Vec.filled(inside.len(), 0);
+        for (i, a) in inside.iter().enumerate() {
+            for (j, b) in inside.iter().enumerate() {
+                if i != j and (nums[a] % nums[b] == 0 or nums[b] % nums[a] == 0) {
+                    next[j] = (next[j] + ends[i]) % MOD;
+                }
+            }
+        }
+        ends = next;
+    }
+    ends.iter().fold(0, |s, w| (s + w) % MOD)
+}
+
+fn sieve_special_perm(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut total = 0;
+    for subset in 1..1 << n {
+        let walks = sieve_walks_inside(nums, subset);
+        if (n - subset.count_ones()) % 2 == 0 {
+            total = (total + walks) % MOD;
+        } else {
+            total = (total - walks + MOD) % MOD;
+        }
+    }
+    total
+}
+
+
+// ---- solution (special_solution.kara) -------------------------------
+
+fn solution_dfs(nums: ref Vec[i32], mask: i64, prev: i64, memo: mut ref Vec[Vec[i64]]) -> i64 {
+    let n = nums.len();
+    if mask == (1 << n) - 1 {
+        return 1;
+    }
+    if memo[mask][prev] != -1 {
+        return memo[mask][prev];
+    }
+    let mut res = 0;
+    for i in 0..n {
+        if mask & (1 << i) == 0 and (nums[i] % nums[prev] == 0 or nums[prev] % nums[i] == 0) {
+            res = (res + solution_dfs(nums, mask | (1 << i), i, mut memo)) % MOD;
+        }
+    }
+    memo[mask][prev] = res;
+    res
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn special_perm(nums: Vec[i32]) -> i32 {
+        let n = nums.len();
+        let mut memo = Vec.filled(1 << n, Vec.filled(n, -1));
+        let mut ans = 0;
+        for i in 0..n {
+            ans = (ans + solution_dfs(nums, 1 << i, i, mut memo)) % MOD;
+        }
+        ans as i32
+    }
+}
+
+fn solution_special_perm(nums: Vec[i64]) -> i64 {
+    Solution.special_perm(nums.iter().map(|x| x as i32).collect())
+}
+
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_special_perm(nums),
+        1 => memo_special_perm(nums),
+        2 => masks_special_perm(nums),
+        3 => sieve_special_perm(nums),
+        _ => solution_special_perm(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_smooth(seed: mut ref i64, n: i64) -> Vec[i64] {
+    let mut nums: Vec[i64] = Vec.new();
+    while nums.len() < n {
+        let x = (1 << (next_random(mut seed) % 6)) * [1, 3, 9, 27][next_random(mut seed) % 4];
+        if not nums.contains(x) {
+            nums.push(x);
+        }
+    }
+    nums
+}
+
+fn random_numbers(seed: mut ref i64, n: i64, most: i64) -> Vec[i64] {
+    let mut nums: Vec[i64] = Vec.new();
+    while nums.len() < n {
+        let x = next_random(mut seed) % most + 1;
+        if not nums.contains(x) {
+            nums.push(x);
+        }
+    }
+    nums
+}
+
+fn main() {
+    let names = ["star", "memo", "masks", "sieve", "solution"];
+    let mut seed = 2741;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..1100 {
+        let n = if c < 1000 { next_random(mut seed) % 6 + 2 } else { next_random(mut seed) % 3 + 8 };
+        if c % 2 == 0 {
+            cases.push(random_smooth(mut seed, n));
+        } else {
+            cases.push(random_numbers(mut seed, n, 30));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, nums) in cases.iter().enumerate() {
+        let small = c < 1000;
+        let want = if small { literal(nums) } else { -1 };
+        check = (check * 31 + want + 1) % 1000000007;
+        let n = nums.len();
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let times_seven: Vec[i64] = nums.iter().map(|x| 7 * x).collect();
+        let ranked: Vec[i64] = nums.iter().map(|x| 1 << nums.iter().filter(|y| y < x).count()).collect();
+        let factorial = (1..=n).fold(1, |f, k| f * k % 1000000007);
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == want,
+                answer(arm, reversed) == value,
+                answer(arm, times_seven) == value,
+                not small or value % 2 == 0,
+                answer(arm, ranked) == factorial,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

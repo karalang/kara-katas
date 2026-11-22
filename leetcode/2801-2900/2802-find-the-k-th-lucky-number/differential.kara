@@ -1,0 +1,209 @@
+// LeetCode #2802: Find The K-th Lucky Number -- the differential. The
+// five arms, against the statement read literally: the positive integers
+// in turn, each written out and kept when its digits are all 4 and 7,
+// until the k-th is kept; no bits and no blocks. 2000 random k from 1 to
+// 14, then 50 up to 10^9, LeetCode's largest. Every case is drawn before
+// any arm answers; the literal reading is asked only of the first 2000.
+//
+// P1  k up to 14, the answer is the literal reading's
+// P2  only 4 and 7, and L digits with 2^L - 1 <= k < 2^(L + 1) - 1
+// P3  the (k + 1)-th: longer, or as long and greater
+// P4  the (2k + 1)-th and the (2k + 2)-th: the k-th with a 4 and a 7 after
+// P5  4 and 7 swapped: the answer at the same place from its block's end
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(k: i64) -> String {
+    let mut kept = 0;
+    let mut v = 0;
+    loop {
+        v += 1;
+        let written = f"{v}";
+        if written.chars().all(|c| c == '4' or c == '7') {
+            kept += 1;
+            if kept == k {
+                return written;
+            }
+        }
+    }
+}
+
+
+// ---- star (lucky.kara) ----------------------------------------------
+
+fn star_kth_lucky_number(k: i64) -> String {
+    let n = k + 1;
+    let mut top = 1;
+    while top * 2 <= n {
+        top *= 2;
+    }
+    let mut lucky = String.new();
+    let mut bit = top / 2;
+    while bit > 0 {
+        lucky.push_str(if n & bit == 0 { "4" } else { "7" });
+        bit /= 2;
+    }
+    lucky
+}
+
+
+// ---- blocks (lucky_blocks.kara) -------------------------------------
+
+fn blocks_kth_lucky_number(k: i64) -> String {
+    let mut rest = k - 1;
+    let mut length = 1;
+    let mut block = 2;
+    while rest >= block {
+        rest -= block;
+        length += 1;
+        block *= 2;
+    }
+    let mut digits: Vec[String] = Vec.new();
+    for _ in 0..length {
+        digits.push(if rest % 2 == 0 { "4".to_string() } else { "7".to_string() });
+        rest /= 2;
+    }
+    digits.reverse();
+    digits.join("")
+}
+
+
+// ---- heap (lucky_heap.kara) -----------------------------------------
+
+fn heap_kth_lucky_number(k: i64) -> String {
+    if k == 0 {
+        return String.new();
+    }
+    let last = if k % 2 == 1 { "4" } else { "7" };
+    f"{heap_kth_lucky_number((k - 1) / 2)}{last}"
+}
+
+
+// ---- bytes (lucky_bytes.kara) ---------------------------------------
+
+fn bytes_kth_lucky_number(k: i64) -> String {
+    let mut n = k + 1;
+    let mut digits: Vec[u8] = Vec.new();
+    while n > 1 {
+        digits.push(if n % 2 == 0 { b'4' } else { b'7' });
+        n /= 2;
+    }
+    digits.reverse();
+    String.from_utf8(digits).unwrap()
+}
+
+
+// ---- solution (lucky_solution.kara) ---------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn kth_lucky_number(k: i32) -> String {
+        f"{k as i64 + 1:b}"
+            .chars()
+            .skip(1)
+            .map(|c| match c {
+                '0' => '4',
+                _ => '7',
+            })
+            .collect()
+    }
+}
+
+fn solution_kth_lucky_number(k: i64) -> String {
+    Solution.kth_lucky_number(k as i32)
+}
+
+
+fn answer(arm: i64, k: i64) -> String {
+    match arm {
+        0 => star_kth_lucky_number(k),
+        1 => blocks_kth_lucky_number(k),
+        2 => heap_kth_lucky_number(k),
+        3 => bytes_kth_lucky_number(k),
+        _ => solution_kth_lucky_number(k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn digest(s: String) -> i64 {
+    s.bytes().iter().fold(0, |h, b| (h * 131 + b as i64) % 1000000007)
+}
+
+fn swapped(s: String) -> String {
+    s.chars().map(|c| if c == '4' { '7' } else { '4' }).collect()
+}
+
+fn main() {
+    let names = ["star", "blocks", "heap", "bytes", "solution"];
+    let mut seed = 2802;
+    let mut cases: Vec[i64] = Vec.new();
+    for c in 0..2050 {
+        cases.push(if c < 2000 { next_random(mut seed) % 14 + 1 } else { wide(mut seed) % 1000000000 + 1 });
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, k) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(k) } else { String.new() };
+        check = (check * 31 + digest(want) + 1) % 1000000007;
+        let got: Vec[String] = (0..5).map(|arm| answer(arm, k)).collect();
+        for arm in 0..5 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let l = value.len();
+            let mut block = 1;
+            for _ in 0..l {
+                block *= 2;
+            }
+            let start = block - 1;
+            let next = answer(arm, k + 1);
+            let mirror = start + (block - 1) - (k - start);
+            let verdicts = [
+                not small or value == want,
+                value.chars().all(|c| c == '4' or c == '7') and start <= k and k < 2 * block - 1,
+                next.len() > l or (next.len() == l and next > value),
+                answer(arm, 2 * k + 1) == f"{value}4" and answer(arm, 2 * k + 2) == f"{value}7",
+                answer(arm, mirror) == swapped(value),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} k = {k}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

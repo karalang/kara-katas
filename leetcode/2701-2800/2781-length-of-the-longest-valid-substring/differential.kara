@@ -1,0 +1,293 @@
+// LeetCode #2781: Length of the Longest Valid Substring -- the
+// differential. The five arms, against the statement read literally:
+// every substring of the word, kept when no forbidden word is found in
+// it by `contains`, and the longest kept; no window and no set. 2000
+// random cases: words of 1 to 12 letters from a, b and c against 1 to 6
+// forbidden of 1 to 3, or every fourth one from a and b against 1 to 3
+// forbidden of 6 to 10; then 50 of up to 2000 letters from 2 to 4
+// against up to 200 forbidden of 1 to 10. Every case is drawn before any
+// arm answers; the literal reading is asked only of the first 2000.
+//
+// P1  up to 12 letters, the answer is the literal reading's
+// P2  the word and every forbidden word reversed: the same answer
+// P3  a forbidden "z", a letter no word holds: the same answer
+// P4  a "z" put after the word: the same answer or one more
+// P5  from 0 to n; n just when no forbidden word is in the word, and 0
+//     just when every letter of it is forbidden alone
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- star (valid.kara) ----------------------------------------------
+
+fn star_longest_valid_substring(word: String, forbidden: Vec[String]) -> i64 {
+    let banned: Set[String] = forbidden.iter().map(|w| w.clone()).collect();
+    let n = word.len();
+    let mut start = 0;
+    let mut best = 0;
+    for j in 0..n {
+        let mut i = j;
+        while i >= start and i + 10 > j {
+            if banned.contains(word[i..j + 1]) {
+                start = i + 1;
+                break;
+            }
+            i -= 1;
+        }
+        best = best.max(j + 1 - start);
+    }
+    best
+}
+
+
+// ---- trie (valid_trie.kara) -----------------------------------------
+
+fn trie_longest_valid_substring(word: String, forbidden: Vec[String]) -> i64 {
+    let mut next: Vec[Vec[i64]] = [Vec.filled(26, -1)].to_vec();
+    let mut ends: Vec[bool] = [false].to_vec();
+    for w in forbidden.iter() {
+        let mut node = 0;
+        for c in w.bytes().iter().rev() {
+            let k = (c - b'a') as i64;
+            if next[node][k] == -1 {
+                next[node][k] = next.len();
+                next.push(Vec.filled(26, -1));
+                ends.push(false);
+            }
+            node = next[node][k];
+        }
+        ends[node] = true;
+    }
+    let letters = word.bytes();
+    let n = letters.len();
+    let mut start = 0;
+    let mut best = 0;
+    for j in 0..n {
+        let mut node = 0;
+        let mut i = j;
+        while i >= start {
+            node = next[node][letters[i] - b'a'];
+            if node == -1 {
+                break;
+            }
+            if ends[node] {
+                start = i + 1;
+                break;
+            }
+            i -= 1;
+        }
+        best = best.max(j + 1 - start);
+    }
+    best
+}
+
+
+// ---- ends (valid_ends.kara) -----------------------------------------
+
+fn ends_longest_valid_substring(word: String, forbidden: Vec[String]) -> i64 {
+    let banned: Set[String] = forbidden.iter().map(|w| w.clone()).collect();
+    let n = word.len();
+    let mut blocked = n;
+    let mut best = 0;
+    for i in (0..n).rev() {
+        for len in 1..=10.min(n - i) {
+            if banned.contains(word[i..i + len]) {
+                blocked = blocked.min(i + len - 1);
+                break;
+            }
+        }
+        best = best.max(blocked - i);
+    }
+    best
+}
+
+
+// ---- codes (valid_codes.kara) ---------------------------------------
+
+fn codes_longest_valid_substring(word: String, forbidden: Vec[String]) -> i64 {
+    let code = |w: ref String| {
+        w.bytes().iter().rev().fold(0, |acc, c| acc * 27 + (c - b'a' + 1))
+    };
+    let banned: Set[i64] = forbidden.iter().map(|w| code(w)).collect();
+    let letters = word.bytes();
+    let n = letters.len();
+    let mut start = 0;
+    let mut best = 0;
+    for j in 0..n {
+        let mut value = 0;
+        let mut i = j;
+        while i >= start and i + 10 > j {
+            value = value * 27 + (letters[i] - b'a' + 1);
+            if banned.contains(value) {
+                start = i + 1;
+                break;
+            }
+            i -= 1;
+        }
+        best = best.max(j + 1 - start);
+    }
+    best
+}
+
+
+// ---- solution (valid_solution.kara) ---------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn longest_valid_substring(word: String, forbidden: Vec[String]) -> i32 {
+        let s: Set[String] = forbidden.clone().into_iter().collect();
+        let n = word.len();
+        let mut ans = 0;
+        let mut i = 0;
+        for j in 0..n {
+            for k in (i.max(j.saturating_sub(9))..=j).rev() {
+                if s.contains(word[k..=j]) {
+                    i = k + 1;
+                    break;
+                }
+            }
+            ans = ans.max(j + 1 - i);
+        }
+        ans as i32
+    }
+}
+
+fn solution_longest_valid_substring(word: String, forbidden: Vec[String]) -> i64 {
+    Solution.longest_valid_substring(word, forbidden)
+}
+
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(word: String, forbidden: Vec[String]) -> i64 {
+    let n = word.len();
+    let mut best = 0;
+    for a in 0..n {
+        for b in a + 1..=n {
+            let sub = word[a..b];
+            if forbidden.iter().all(|f| not sub.contains(f)) {
+                best = best.max(b - a);
+            }
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, word: String, forbidden: Vec[String]) -> i64 {
+    match arm {
+        0 => star_longest_valid_substring(word, forbidden),
+        1 => trie_longest_valid_substring(word, forbidden),
+        2 => ends_longest_valid_substring(word, forbidden),
+        3 => codes_longest_valid_substring(word, forbidden),
+        _ => solution_longest_valid_substring(word, forbidden),
+    }
+}
+
+fn reversed(w: ref String) -> String {
+    w.chars().rev().collect()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(seed: mut ref i64, n: i64, letters: i64) -> String {
+    let mut word = String.new();
+    for _ in 0..n {
+        word.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+    }
+    word
+}
+
+fn random_words(seed: mut ref i64, count: i64, shortest: i64, longest: i64, letters: i64) -> Vec[String] {
+    let mut words: Vec[String] = Vec.new();
+    for _ in 0..count {
+        let n = shortest + next_random(mut seed) % (longest - shortest + 1);
+        words.push(random_word(mut seed, n, letters));
+    }
+    words
+}
+
+fn main() {
+    let names = ["star", "trie", "ends", "codes", "solution"];
+    let mut seed = 2781;
+    let mut cases: Vec[(String, Vec[String])] = Vec.new();
+    for c in 0..2050 {
+        if c < 2000 {
+            let n = next_random(mut seed) % 12 + 1;
+            if c % 4 == 0 {
+                let word = random_word(mut seed, n, 2);
+                let count = next_random(mut seed) % 3 + 1;
+                cases.push((word, random_words(mut seed, count, 6, 10, 2)));
+            } else {
+                let word = random_word(mut seed, n, 3);
+                let count = next_random(mut seed) % 6 + 1;
+                cases.push((word, random_words(mut seed, count, 1, 3, 3)));
+            }
+        } else {
+            let n = next_random(mut seed) % 2000 + 1;
+            let letters = next_random(mut seed) % 3 + 2;
+            let word = random_word(mut seed, n, letters);
+            let count = next_random(mut seed) % 200 + 1;
+            cases.push((word, random_words(mut seed, count, 1, 10, letters)));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (word, forbidden)) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(word, forbidden) } else { 0 };
+        check = (check * 31 + want + 1) % 1000000007;
+        let n = word.len();
+        let back_word = reversed(word);
+        let back: Vec[String] = forbidden.iter().map(|f| reversed(f)).collect();
+        let mut with_z = forbidden.clone();
+        with_z.push("z".to_string());
+        let z_after = f"{word}z";
+        let clean = forbidden.iter().all(|f| not word.contains(f));
+        let blocked = word.chars().all(|ch| forbidden.iter().any(|f| f.len() == 1 and f.chars().next() == Some(ch)));
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, word, forbidden)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let after = answer(arm, z_after, forbidden);
+            let verdicts = [
+                not small or value == want,
+                answer(arm, back_word, back) == value,
+                answer(arm, word, with_z) == value,
+                after == value or after == value + 1,
+                value >= 0 and value <= n and (value == n) == clean and (value == 0) == blocked,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {word} {forbidden}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

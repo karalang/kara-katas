@@ -1,0 +1,242 @@
+// LeetCode #2744: Find Maximum Number of String Pairs -- the
+// differential. The five arms, against the statement read literally:
+// every way of pairing words, each word at most once, searched in full
+// for the most pairs where one word is the other reversed; nothing
+// assumed about pairs not competing. 1000 random lists of 1 to 10
+// distinct words from the first 1 to 26 letters; then 500 of up to 50.
+// Every case is drawn before any arm answers; the literal reading is
+// asked only of the first 1000.
+//
+// P1  up to 10 words, the answer is the literal reading's
+// P2  the list in reverse order: the same answer
+// P3  every word reversed: the same answer
+// P4  every letter moved on 5 places round the alphabet: the same answer
+// P5  at most half the words; and the reverse of an unpaired word that
+//     is no palindrome added: one pair more
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn reverse_of(w: Str) -> String {
+    w.chars().rev().collect()
+}
+
+// the most pairs among words[i..] with those in `used` taken
+fn most_pairs(words: Vec[String], i: i64, used: mut ref Vec[bool]) -> i64 {
+    if i == words.len() {
+        return 0;
+    }
+    if used[i] {
+        return most_pairs(words, i + 1, mut used);
+    }
+    // word i left alone
+    let mut best = most_pairs(words, i + 1, mut used);
+    // or paired with any later word that is its reverse
+    used[i] = true;
+    for j in i + 1..words.len() {
+        if not used[j] and words[j] == reverse_of(words[i]) {
+            used[j] = true;
+            best = best.max(1 + most_pairs(words, i + 1, mut used));
+            used[j] = false;
+        }
+    }
+    used[i] = false;
+    best
+}
+
+fn literal(words: Vec[String]) -> i64 {
+    let mut used: Vec[bool] = Vec.filled(words.len(), false);
+    most_pairs(words, 0, mut used)
+}
+
+
+// ---- star (pairs.kara) ----------------------------------------------
+
+fn star_maximum_number_of_string_pairs(words: Vec[String]) -> i64 {
+    let mut seen: Set[String] = Set.new();
+    let mut pairs = 0;
+    for w in words.iter() {
+        let reversed: String = w.chars().rev().collect();
+        if seen.contains(reversed) {
+            pairs += 1;
+        }
+        seen.insert(w.clone());
+    }
+    pairs
+}
+
+
+// ---- brute (pairs_brute.kara) ---------------------------------------
+
+fn brute_maximum_number_of_string_pairs(words: Vec[String]) -> i64 {
+    let mut pairs = 0;
+    for i in 0..words.len() {
+        for j in i + 1..words.len() {
+            let a = words[i].bytes();
+            let b = words[j].bytes();
+            if a[0] == b[1] and a[1] == b[0] {
+                pairs += 1;
+            }
+        }
+    }
+    pairs
+}
+
+
+// ---- grid (pairs_grid.kara) -----------------------------------------
+
+fn grid_maximum_number_of_string_pairs(words: Vec[String]) -> i64 {
+    let mut seen: Array[Array[bool, 26], 26] = [[false; 26]; 26];
+    let mut pairs = 0;
+    for w in words.iter() {
+        let letters: Vec[i64] = w.bytes().iter().map(|b| (b - b'a') as i64).collect();
+        if seen[letters[1]][letters[0]] {
+            pairs += 1;
+        }
+        seen[letters[0]][letters[1]] = true;
+    }
+    pairs
+}
+
+
+// ---- sort (pairs_sort.kara) -----------------------------------------
+
+fn sort_maximum_number_of_string_pairs(words: Vec[String]) -> i64 {
+    let mut keys: Vec[String] = words
+        .iter()
+        .map(|w| {
+            let reversed: String = w.chars().rev().collect();
+            if reversed < w { reversed } else { w.clone() }
+        })
+        .collect();
+    keys.sort();
+    keys.windows(2).iter().filter(|pair| pair[0] == pair[1]).count()
+}
+
+
+// ---- solution (pairs_solution.kara) ---------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn maximum_number_of_string_pairs(words: Vec[String]) -> i32 {
+        let mut seen = Set.new();
+        let mut ans = 0;
+        for w in words {
+            let r: String = w.chars().rev().collect();
+            if seen.contains(r) {
+                ans += 1;
+            }
+            seen.insert(w.clone());
+        }
+        ans
+    }
+}
+
+fn solution_maximum_number_of_string_pairs(words: Vec[String]) -> i64 {
+    Solution.maximum_number_of_string_pairs(words)
+}
+
+
+fn answer(arm: i64, words: Vec[String]) -> i64 {
+    match arm {
+        0 => star_maximum_number_of_string_pairs(words),
+        1 => brute_maximum_number_of_string_pairs(words),
+        2 => grid_maximum_number_of_string_pairs(words),
+        3 => sort_maximum_number_of_string_pairs(words),
+        _ => solution_maximum_number_of_string_pairs(words),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_words(seed: mut ref i64, n: i64, k: i64) -> Vec[String] {
+    let mut words: Vec[String] = Vec.new();
+    while words.len() < n {
+        let a = (b'a' + (next_random(mut seed) % k) as u8) as char;
+        let b = (b'a' + (next_random(mut seed) % k) as u8) as char;
+        let w = f"{a}{b}";
+        if not words.contains(w) {
+            words.push(w);
+        }
+    }
+    words
+}
+
+fn main() {
+    let names = ["star", "brute", "grid", "sort", "solution"];
+    let mut seed = 2744;
+    let mut cases: Vec[Vec[String]] = Vec.new();
+    for c in 0..1500 {
+        let k = next_random(mut seed) % 26 + 1;
+        let most = if c < 1000 { 10 } else { 50 };
+        let n = next_random(mut seed) % (k * k).min(most) + 1;
+        cases.push(random_words(mut seed, n, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, words) in cases.iter().enumerate() {
+        let small = c < 1000;
+        let want = if small { literal(words) } else { -1 };
+        check = (check * 31 + want + 1) % 1000000007;
+        let n = words.len();
+        let listed_back: Vec[String] = words.iter().rev().cloned().collect();
+        let each_reversed: Vec[String] = words.iter().map(|w| reverse_of(w)).collect();
+        let moved: Vec[String] = words.iter().map(|w| w.chars().map(|ch| (b'a' + ((ch as u32 - 'a' as u32 + 5) % 26) as u8) as char).collect()).collect();
+        // an unpaired word that is no palindrome, if any, and its reverse added
+        let lone = words.iter().find(|w| reverse_of(w) != w and not words.contains(reverse_of(w)));
+        let added: Option[Vec[String]] = lone.map(|w| {
+            let mut more = words.clone();
+            more.push(reverse_of(w));
+            more
+        });
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, words)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let one_more = match added {
+                Some(ref more) => answer(arm, more) == value + 1,
+                None => true,
+            };
+            let verdicts = [
+                not small or value == want,
+                answer(arm, listed_back) == value,
+                answer(arm, each_reversed) == value,
+                answer(arm, moved) == value,
+                2 * value <= n and one_more,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {words}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

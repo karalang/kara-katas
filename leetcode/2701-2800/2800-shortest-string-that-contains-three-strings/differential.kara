@@ -1,0 +1,338 @@
+// LeetCode #2800: Shortest String That Contains Three Strings -- the
+// differential. The five arms, against the statement read literally:
+// every string of the inputs' letters, shortest first and in letter
+// order within a length, until one holds all three words; no merging
+// and no overlap. 2000 random triples of 1 to 3 letters from a and b;
+// then 50 of up to 100 letters from a and b or from a to y. Every case
+// is drawn before any arm answers; the literal reading is asked only of
+// the first 2000.
+//
+// P1  up to 3 letters each, the answer is the literal reading's
+// P2  every word inside, and no longer than the three end to end
+// P3  the words given in the orders b, c, a and c, b, a: the same answer
+// P4  every letter one later in the alphabet: the answer so shifted
+// P5  the answer given back with a and b: the answer itself
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(a: String, b: String, c: String) -> String {
+    let mut letters: Vec[String] = Vec.new();
+    for ch in f"{a}{b}{c}".chars() {
+        let s = ch.to_string();
+        if not letters.contains(s) {
+            letters.push(s);
+        }
+    }
+    letters.sort();
+    let q = letters.len();
+    let mut length = 1;
+    loop {
+        let mut count = 1;
+        for _ in 0..length {
+            count *= q;
+        }
+        for code in 0..count {
+            let mut s = String.new();
+            let mut place = count / q;
+            for _ in 0..length {
+                s.push_str(letters[code / place % q]);
+                place /= q;
+            }
+            if s.contains(a) and s.contains(b) and s.contains(c) {
+                return s;
+            }
+        }
+        length += 1;
+    }
+}
+
+
+// ---- star (shortest.kara) -------------------------------------------
+
+fn star_merge(s: String, t: String) -> String {
+    if s.contains(t) {
+        return s.clone();
+    }
+    for k in (1..=t.len().min(s.len())).rev() {
+        if s.ends_with(t[0..k]) {
+            return f"{s}{t[k..]}";
+        }
+    }
+    f"{s}{t}"
+}
+
+fn star_minimum_string(a: String, b: String, c: String) -> String {
+    let words = [a, b, c];
+    let orders = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+    let mut best = String.new();
+    for order in orders.iter() {
+        let s = star_merge(star_merge(words[order[0]], words[order[1]]), words[order[2]]);
+        if best.is_empty() or s.len() < best.len() or (s.len() == best.len() and s < best) {
+            best = s;
+        }
+    }
+    best
+}
+
+
+// ---- prefix (shortest_prefix.kara) ----------------------------------
+
+fn prefix_overlap(s: String, t: String) -> i64 {
+    let text: Vec[u8] = t.bytes().iter().chain([b'#'].iter()).chain(s.bytes().iter()).collect();
+    let mut pi: Vec[i64] = Vec.filled(text.len(), 0);
+    for i in 1..text.len() {
+        let mut j = pi[i - 1];
+        while j > 0 and text[i] != text[j] {
+            j = pi[j - 1];
+        }
+        if text[i] == text[j] {
+            j += 1;
+        }
+        pi[i] = j;
+    }
+    pi[text.len() - 1]
+}
+
+fn prefix_merge(s: String, t: String) -> String {
+    if s.contains(t) {
+        s.clone()
+    } else {
+        f"{s}{t[prefix_overlap(s, t)..]}"
+    }
+}
+
+fn prefix_minimum_string(a: String, b: String, c: String) -> String {
+    let words = [a, b, c];
+    let orders = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+    let mut best = String.new();
+    for order in orders.iter() {
+        let s = prefix_merge(prefix_merge(words[order[0]], words[order[1]]), words[order[2]]);
+        if best.is_empty() or s.len() < best.len() or (s.len() == best.len() and s < best) {
+            best = s;
+        }
+    }
+    best
+}
+
+
+// ---- sorted (shortest_sorted.kara) ----------------------------------
+
+fn sorted_merge(s: String, t: String) -> String {
+    if s.contains(t) {
+        return s.clone();
+    }
+    for k in (1..=t.len().min(s.len())).rev() {
+        if s.ends_with(t[0..k]) {
+            return f"{s}{t[k..]}";
+        }
+    }
+    f"{s}{t}"
+}
+
+fn sorted_orders(words: mut ref Vec[String], at: i64, out: mut ref Vec[String]) {
+    if at == words.len() {
+        out.push(sorted_merge(sorted_merge(words[0], words[1]), words[2]));
+        return;
+    }
+    for i in at..words.len() {
+        words.swap(at, i);
+        sorted_orders(mut words, at + 1, mut out);
+        words.swap(at, i);
+    }
+}
+
+fn sorted_minimum_string(a: String, b: String, c: String) -> String {
+    let mut words = [a.clone(), b.clone(), c.clone()];
+    let mut all: Vec[String] = Vec.new();
+    sorted_orders(mut words, 0, mut all);
+    all.sort_by_key(|s| (s.len(), s.clone()));
+    all[0].clone()
+}
+
+
+// ---- bytes (shortest_bytes.kara) ------------------------------------
+
+fn bytes_inside(s: Vec[u8], t: Vec[u8]) -> bool {
+    let mut i = 0;
+    while i + t.len() <= s.len() {
+        let mut j = 0;
+        while j < t.len() and s[i + j] == t[j] {
+            j += 1;
+        }
+        if j == t.len() {
+            return true;
+        }
+        i += 1;
+    }
+    false
+}
+
+fn bytes_merge(s: String, t: String) -> String {
+    let (x, y) = (s.bytes(), t.bytes());
+    if bytes_inside(x.to_vec(), y.to_vec()) {
+        return s.clone();
+    }
+    let mut k = if x.len() < y.len() { x.len() } else { y.len() };
+    while k > 0 {
+        let mut j = 0;
+        while j < k and x[x.len() - k + j] == y[j] {
+            j += 1;
+        }
+        if j == k {
+            break;
+        }
+        k -= 1;
+    }
+    s + t[k..].to_string()
+}
+
+fn bytes_minimum_string(a: String, b: String, c: String) -> String {
+    let words = [a, b, c];
+    let mut best = String.new();
+    for i in 0..3 {
+        for j in 0..3 {
+            for k in 0..3 {
+                if i == j or j == k or i == k {
+                    continue;
+                }
+                let s = bytes_merge(bytes_merge(words[i], words[j]), words[k]);
+                if best.is_empty() or s.len() < best.len() or (s.len() == best.len() and s < best) {
+                    best = s;
+                }
+            }
+        }
+    }
+    best
+}
+
+
+// ---- solution (shortest_solution.kara) ------------------------------
+
+struct Solution {}
+
+impl Solution {
+    fn merge(s: Str, t: Str) -> String {
+        if s.contains(t) {
+            return s.to_string();
+        }
+        for i in (1..=s.len().min(t.len())).rev() {
+            if s[s.len() - i..] == t[..i] {
+                return f"{s}{t[i..]}";
+            }
+        }
+        f"{s}{t}"
+    }
+
+    pub fn minimum_string(a: String, b: String, c: String) -> String {
+        let v = [ref a, ref b, ref c];
+        let perms = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+        let mut ans = String.new();
+        for p in perms.iter() {
+            let s = Solution.merge(Solution.merge(v[p[0]], v[p[1]]), v[p[2]]);
+            if ans.is_empty() or s.len() < ans.len() or (s.len() == ans.len() and s < ans) {
+                ans = s;
+            }
+        }
+        ans
+    }
+}
+
+fn solution_minimum_string(a: String, b: String, c: String) -> String {
+    Solution.minimum_string(a, b, c)
+}
+
+
+fn answer(arm: i64, a: String, b: String, c: String) -> String {
+    match arm {
+        0 => star_minimum_string(a, b, c),
+        1 => prefix_minimum_string(a, b, c),
+        2 => sorted_minimum_string(a, b, c),
+        3 => bytes_minimum_string(a, b, c),
+        _ => solution_minimum_string(a, b, c),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// letters by their place in the alphabet, written out from `from` on
+fn render(codes: Vec[i64], from: i64) -> String {
+    let letters = "abcdefghijklmnopqrstuvwxyz";
+    let mut w = String.new();
+    for v in codes.iter() {
+        w.push_str(letters[v + from..v + from + 1]);
+    }
+    w
+}
+
+fn digest(s: String) -> i64 {
+    s.bytes().iter().fold(0, |h, b| (h * 131 + b as i64) % 1000000007)
+}
+
+fn main() {
+    let names = ["star", "prefix", "sorted", "bytes", "solution"];
+    let mut seed = 2800;
+    let mut cases: Vec[Vec[Vec[i64]]] = Vec.new();
+    for c in 0..2050 {
+        let (most, k) = if c < 2000 { (3, 2) } else if c % 2 == 0 { (100, 2) } else { (100, 25) };
+        let mut triple: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..3 {
+            let m = next_random(mut seed) % most + 1;
+            triple.push((0..m).map(|_| next_random(mut seed) % k).collect());
+        }
+        cases.push(triple);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, triple) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let (a, b, c3) = (render(triple[0], 0), render(triple[1], 0), render(triple[2], 0));
+        let (a1, b1, c1) = (render(triple[0], 1), render(triple[1], 1), render(triple[2], 1));
+        let want = if small { literal(a, b, c3) } else { String.new() };
+        check = (check * 31 + digest(want) + 1) % 1000000007;
+        let got: Vec[String] = (0..5).map(|arm| answer(arm, a, b, c3)).collect();
+        for arm in 0..5 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == want,
+                value.contains(a) and value.contains(b) and value.contains(c3) and value.len() <= a.len() + b.len() + c3.len(),
+                answer(arm, b, c3, a) == value and answer(arm, c3, b, a) == value,
+                answer(arm, a1, b1, c1) == render(value.bytes().iter().map(|x| x as i64 - 97).collect(), 1),
+                answer(arm, value, a, b) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {a} {b} {c3}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

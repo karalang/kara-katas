@@ -1,0 +1,270 @@
+// LeetCode #2809: Minimum Time to Make Array Sum At Most x -- the
+// differential. The five arms, against the statement read literally:
+// every sequence of choices for 0, 1, 2 and more seconds, the seconds
+// played out on a copy of nums1, each adding nums2 and then zeroing the
+// index chosen, until one ends with a sum at most x; no sorting and no
+// knapsack. The search stops at n + 1 seconds, a reset beyond n never
+// being needed. 2000 random cases of 1 to 4 pairs up to 10 with x up to
+// 40; then 50 of up to 300 pairs up to 1000 with x up to 10^6. Every
+// case is drawn before any arm answers; the literal reading is asked
+// only of the first 2000.
+//
+// P1  up to 4 pairs, the time is the literal reading's
+// P2  -1 or from 0 to n
+// P3  x 1000 more: a time, and no later one, when there was a time
+// P4  the pairs given in reverse: the same time
+// P5  x the sum of nums1: 0
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(nums1: Vec[i64], nums2: Vec[i64], x: i64) -> i64 {
+    let n = nums1.len();
+    for t in 0..=n + 1 {
+        let mut ways = 1;
+        for _ in 0..t {
+            ways *= n;
+        }
+        for code in 0..ways {
+            let mut now = nums1.clone();
+            let mut rest = code;
+            for _ in 0..t {
+                for i in 0..n {
+                    now[i] += nums2[i];
+                }
+                now[rest % n] = 0;
+                rest /= n;
+            }
+            if now.iter().sum() <= x {
+                return t;
+            }
+        }
+    }
+    -1
+}
+
+
+// ---- star (time.kara) -----------------------------------------------
+
+fn star_minimum_time(nums1: Vec[i64], nums2: Vec[i64], x: i64) -> i64 {
+    let n = nums1.len();
+    let mut pairs: Vec[(i64, i64)] = nums2.iter().zip(nums1.iter()).collect();
+    pairs.sort();
+    let mut best: Vec[i64] = Vec.filled(n + 1, 0);
+    for (i, (b, a)) in pairs.iter().enumerate() {
+        for j in (1..=i + 1).rev() {
+            best[j] = best[j].max(best[j - 1] + a + j * b);
+        }
+    }
+    let sum1: i64 = nums1.iter().sum();
+    let sum2: i64 = nums2.iter().sum();
+    for t in 0..=n {
+        if sum1 + t * sum2 - best[t] <= x {
+            return t;
+        }
+    }
+    -1
+}
+
+
+// ---- table (time_table.kara) ----------------------------------------
+
+fn table_minimum_time(nums1: Vec[i64], nums2: Vec[i64], x: i64) -> i64 {
+    let n = nums1.len();
+    let mut order: Vec[i64] = (0..n).collect();
+    order.sort_by_key(|i| nums2[i]);
+    let mut saved: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.filled(n + 1, 0));
+    for i in 1..=n {
+        let k = order[i - 1];
+        for j in 1..=i {
+            let left = if j < i { saved[i - 1][j] } else { 0 };
+            saved[i][j] = left.max(saved[i - 1][j - 1] + nums1[k] + j * nums2[k]);
+        }
+    }
+    let sum1: i64 = nums1.iter().sum();
+    let sum2: i64 = nums2.iter().sum();
+    (0..=n).find(|t| sum1 + t * sum2 - saved[n][t] <= x).unwrap_or(-1)
+}
+
+
+// ---- memo (time_memo.kara) ------------------------------------------
+
+fn memo_most(pairs: Vec[(i64, i64)], i: i64, j: i64, memo: mut ref Vec[Vec[i64]]) -> i64 {
+    if j == 0 {
+        return 0;
+    }
+    if i < j {
+        return i64.MIN / 2;
+    }
+    if memo[i][j] >= 0 {
+        return memo[i][j];
+    }
+    let (b, a) = pairs[i - 1];
+    let leave = memo_most(pairs, i - 1, j, mut memo);
+    let reset = memo_most(pairs, i - 1, j - 1, mut memo) + a + j * b;
+    let value = if leave > reset { leave } else { reset };
+    memo[i][j] = value;
+    value
+}
+
+fn memo_minimum_time(nums1: Vec[i64], nums2: Vec[i64], x: i64) -> i64 {
+    let n = nums1.len();
+    let mut pairs: Vec[(i64, i64)] = (0..n).map(|i| (nums2[i], nums1[i])).collect();
+    pairs.sort();
+    let mut memo: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.filled(n + 1, -1));
+    let sum1: i64 = nums1.iter().sum();
+    let sum2: i64 = nums2.iter().sum();
+    for t in 0..=n {
+        if sum1 + t * sum2 - memo_most(pairs, n, t, mut memo) <= x {
+            return t;
+        }
+    }
+    -1
+}
+
+
+// ---- rows (time_rows.kara) ------------------------------------------
+
+fn rows_minimum_time(nums1: Vec[i64], nums2: Vec[i64], x: i64) -> i64 {
+    let n = nums1.len();
+    let mut pairs: Vec[(i64, i64)] = (0..n).map(|i| (nums1[i], nums2[i])).collect();
+    pairs.sort_by(|p, q| p.1.cmp(q.1));
+    let unreachable = i64.MIN / 2;
+    let mut row: Vec[i64] = Vec.filled(n + 1, unreachable);
+    row[0] = 0;
+    for (a, b) in pairs.iter() {
+        let mut next = row.clone();
+        for j in 1..=n {
+            if row[j - 1] != unreachable {
+                next[j] = next[j].max(row[j - 1] + a + j * b);
+            }
+        }
+        row = next;
+    }
+    let sum1: i64 = nums1.iter().sum();
+    let sum2: i64 = nums2.iter().sum();
+    let mut t = 0;
+    while t <= n {
+        if sum1 + t * sum2 - row[t] <= x {
+            return t;
+        }
+        t += 1;
+    }
+    -1
+}
+
+
+// ---- solution (time_solution.kara) ----------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_time(nums1: Vec[i32], nums2: Vec[i32], x: i32) -> i32 {
+        let n = nums1.len();
+        let mut v: Vec[(i32, i32)] = nums1.iter().cloned().zip(nums2.iter().cloned()).collect();
+        v.sort_by_key(|(_, b)| b);
+        let mut f = Vec.filled(n + 1, 0);
+        for (i, (a, b)) in v.iter().enumerate() {
+            for j in (1..=i + 1).rev() {
+                f[j] = f[j].max(f[j - 1] + a + b * j);
+            }
+        }
+        let s1: i64 = nums1.iter().map(|a| a as i64).sum();
+        let s2: i64 = nums2.iter().map(|b| b as i64).sum();
+        for t in 0..=n {
+            if s1 + s2 * t - f[t] <= x {
+                return t as i32;
+            }
+        }
+        -1
+    }
+}
+
+fn solution_minimum_time(nums1: Vec[i64], nums2: Vec[i64], x: i64) -> i64 {
+    let a: Vec[i32] = nums1.iter().map(|v| v as i32).collect();
+    let b: Vec[i32] = nums2.iter().map(|v| v as i32).collect();
+    Solution.minimum_time(a, b, x as i32)
+}
+
+
+fn answer(arm: i64, nums1: Vec[i64], nums2: Vec[i64], x: i64) -> i64 {
+    match arm {
+        0 => star_minimum_time(nums1, nums2, x),
+        1 => table_minimum_time(nums1, nums2, x),
+        2 => memo_minimum_time(nums1, nums2, x),
+        3 => rows_minimum_time(nums1, nums2, x),
+        _ => solution_minimum_time(nums1, nums2, x),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "table", "memo", "rows", "solution"];
+    let mut seed = 2809;
+    let mut cases: Vec[(Vec[i64], Vec[i64], i64)] = Vec.new();
+    for c in 0..2050 {
+        let (most, top, far) = if c < 2000 { (4, 11, 41) } else { (300, 1001, 1000001) };
+        let n = next_random(mut seed) % most + 1;
+        let nums1: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top).collect();
+        let nums2: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top).collect();
+        let x = (next_random(mut seed) * 32768 + next_random(mut seed)) % far;
+        cases.push((nums1, nums2, x));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (nums1, nums2, x)) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(nums1, nums2, x) } else { 0 };
+        check = (check * 31 + want + 2) % 1000000007;
+        let n = nums1.len();
+        let back1: Vec[i64] = nums1.iter().rev().collect();
+        let back2: Vec[i64] = nums2.iter().rev().collect();
+        let sum1: i64 = nums1.iter().sum();
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums1, nums2, x)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let more = answer(arm, nums1, nums2, x + 1000);
+            let verdicts = [
+                not small or value == want,
+                value >= -1 and value <= n,
+                value == -1 or (more >= 0 and more <= value),
+                answer(arm, back1, back2, x) == value,
+                answer(arm, nums1, nums2, sum1) == 0,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums1} {nums2} x = {x}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

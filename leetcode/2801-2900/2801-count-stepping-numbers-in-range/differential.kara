@@ -1,0 +1,400 @@
+// LeetCode #2801: Count Stepping Numbers in Range -- the differential.
+// The five arms, against the statement read literally: every number from
+// low to high in turn, its digits written out and each next to the one
+// before checked to differ by exactly 1; no digit walk and no table. 2000
+// random triples of numbers from 1 to 1000, then 50 of up to 100 digits,
+// every other one made mostly of steps, each triple sorted into low, mid
+// and high. Every case is drawn before any arm answers; the literal
+// reading is asked only of the first 2000.
+//
+// P1  up to 1000, the count is the literal reading's
+// P2  low to mid and mid to high: the count, mid counted once
+// P3  from 1 to high less from 1 to low, and low when it steps: the count
+// P4  low to low: 1 when low steps, else 0
+// P5  from 0 to 10^9 + 6, and high to high as P4 for high
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal_steps(s: String) -> bool {
+    let digits: Vec[i64] = s.bytes().iter().map(|b| b as i64 - 48).collect();
+    for i in 1..digits.len() {
+        if digits[i] - digits[i - 1] != 1 and digits[i - 1] - digits[i] != 1 {
+            return false;
+        }
+    }
+    true
+}
+
+fn literal(low: i64, high: i64) -> i64 {
+    let mut count = 0;
+    for v in low..=high {
+        if literal_steps(f"{v}") {
+            count += 1;
+        }
+    }
+    count
+}
+
+
+// ---- star (stepping.kara) -------------------------------------------
+
+const STAR_MOD: i64 = 1000000007;
+
+fn star_walk(digits: Vec[i64], pos: i64, last: i64, tight: bool, started: bool, memo: mut ref Vec[Vec[i64]]) -> i64 {
+    if pos == digits.len() {
+        return if started { 1 } else { 0 };
+    }
+    let free = started and not tight;
+    if free and memo[pos][last] >= 0 {
+        return memo[pos][last];
+    }
+    let top = if tight { digits[pos] } else { 9 };
+    let mut ways = 0;
+    for d in 0..=top {
+        let next_tight = tight and d == top;
+        if not started {
+            ways += star_walk(digits, pos + 1, d, next_tight, d > 0, mut memo);
+        } else if (d - last).abs() == 1 {
+            ways += star_walk(digits, pos + 1, d, next_tight, true, mut memo);
+        }
+    }
+    ways %= STAR_MOD;
+    if free {
+        memo[pos][last] = ways;
+    }
+    ways
+}
+
+// stepping numbers from 1 to the number written s
+fn star_count_up_to(s: String) -> i64 {
+    let digits: Vec[i64] = s.bytes().iter().map(|b| b as i64 - 48).collect();
+    let mut memo: Vec[Vec[i64]] = Vec.filled(digits.len(), Vec.filled(10, -1));
+    star_walk(digits, 0, 0, true, false, mut memo)
+}
+
+fn star_steps(s: String) -> bool {
+    let b = s.bytes();
+    (1..b.len()).all(|i| (b[i] as i64 - b[i - 1] as i64).abs() == 1)
+}
+
+fn star_count_stepping_numbers(low: String, high: String) -> i64 {
+    let own = if star_steps(low) { 1 } else { 0 };
+    ((star_count_up_to(high) - star_count_up_to(low) + own) % STAR_MOD + STAR_MOD) % STAR_MOD
+}
+
+
+// ---- table (stepping_table.kara) ------------------------------------
+
+const TABLE_MOD: i64 = 1000000007;
+
+fn table_table(n: i64) -> Vec[Vec[i64]] {
+    let mut ways: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.filled(10, 0));
+    for d in 0..10 {
+        ways[1][d] = 1;
+    }
+    for l in 2..=n {
+        for d in 0..10 {
+            let down = if d > 0 { ways[l - 1][d - 1] } else { 0 };
+            let up = if d < 9 { ways[l - 1][d + 1] } else { 0 };
+            ways[l][d] = (down + up) % TABLE_MOD;
+        }
+    }
+    ways
+}
+
+fn table_count_up_to(s: String, ways: Vec[Vec[i64]]) -> i64 {
+    let digits: Vec[i64] = s.bytes().iter().map(|b| b as i64 - 48).collect();
+    let n = digits.len();
+    if n == 1 and digits[0] == 0 {
+        return 0;
+    }
+    let mut total = 0;
+    for l in 1..n {
+        for d in 1..10 {
+            total = (total + ways[l][d]) % TABLE_MOD;
+        }
+    }
+    for d in 1..digits[0] {
+        total = (total + ways[n][d]) % TABLE_MOD;
+    }
+    for i in 1..n {
+        let prev = digits[i - 1];
+        for d in 0..digits[i] {
+            if (d - prev).abs() == 1 {
+                total = (total + ways[n - i][d]) % TABLE_MOD;
+            }
+        }
+        if (digits[i] - prev).abs() != 1 {
+            return total;
+        }
+    }
+    (total + 1) % TABLE_MOD
+}
+
+// the number one less, written without a leading zero
+fn table_decrease(s: String) -> String {
+    let mut digits: Vec[u8] = s.bytes().to_vec();
+    let mut i = digits.len() - 1;
+    while digits[i] == b'0' {
+        digits[i] = b'9';
+        i -= 1;
+    }
+    digits[i] -= 1;
+    if digits[0] == b'0' and digits.len() > 1 {
+        digits.remove(0);
+    }
+    String.from_utf8(digits).unwrap()
+}
+
+fn table_count_stepping_numbers(low: String, high: String) -> i64 {
+    let ways = table_table(high.len());
+    (table_count_up_to(high, ways) - table_count_up_to(table_decrease(low), ways) + TABLE_MOD) % TABLE_MOD
+}
+
+
+// ---- layers (stepping_layers.kara) ----------------------------------
+
+const LAYERS_MOD: i64 = 1000000007;
+
+fn layers_count_up_to(s: String) -> i64 {
+    let digits: Vec[i64] = s.bytes().iter().map(|b| b as i64 - 48).collect();
+    let mut below: Vec[i64] = Vec.filled(10, 0);
+    for d in 1..digits[0] {
+        below[d] = 1;
+    }
+    let mut stepping = true;
+    for i in 1..digits.len() {
+        let mut next: Vec[i64] = Vec.filled(10, 0);
+        for d in 0..10 {
+            if d > 0 {
+                next[d] += below[d - 1];
+            }
+            if d < 9 {
+                next[d] += below[d + 1];
+            }
+            if d > 0 {
+                next[d] += 1;
+            }
+            if stepping and d < digits[i] and (d - digits[i - 1]).abs() == 1 {
+                next[d] += 1;
+            }
+            next[d] %= LAYERS_MOD;
+        }
+        stepping = stepping and (digits[i] - digits[i - 1]).abs() == 1;
+        below = next;
+    }
+    let all: i64 = below.iter().sum();
+    (all + if stepping { 1 } else { 0 }) % LAYERS_MOD
+}
+
+fn layers_count_stepping_numbers(low: String, high: String) -> i64 {
+    let b = low.bytes();
+    let own = if (1..b.len()).all(|i| (b[i] as i64 - b[i - 1] as i64).abs() == 1) { 1 } else { 0 };
+    ((layers_count_up_to(high) - layers_count_up_to(low) + own) % LAYERS_MOD + LAYERS_MOD) % LAYERS_MOD
+}
+
+
+// ---- pair (stepping_pair.kara) --------------------------------------
+
+const PAIR_MOD: i64 = 1000000007;
+
+struct Walk {
+    low: Vec[i64],
+    high: Vec[i64],
+    memo: Map[(i64, i64, bool, bool, bool), i64],
+}
+
+impl Walk {
+    fn count(mut ref self, pos: i64, last: i64, at_low: bool, at_high: bool, started: bool) -> i64 {
+        if pos == self.high.len() {
+            return if started { 1 } else { 0 };
+        }
+        let key = (pos, last, at_low, at_high, started);
+        if let Some(known) = self.memo.get(key) {
+            return known;
+        }
+        let from = if at_low { self.low[pos] } else { 0 };
+        let to = if at_high { self.high[pos] } else { 9 };
+        let mut ways = 0;
+        for d in from..=to {
+            if started and (d - last).abs() != 1 {
+                continue;
+            }
+            ways += self.count(pos + 1, d, at_low and d == from, at_high and d == to, started or d > 0);
+        }
+        ways %= PAIR_MOD;
+        self.memo.insert(key, ways);
+        ways
+    }
+}
+
+fn pair_count_stepping_numbers(low: String, high: String) -> i64 {
+    let high: Vec[i64] = high.bytes().iter().map(|b| b as i64 - 48).collect();
+    let mut lowered: Vec[i64] = Vec.filled(high.len() - low.len(), 0);
+    lowered.extend(low.bytes().iter().map(|b| b as i64 - 48));
+    let mut walk = Walk { low: lowered, high: high, memo: Map.new() };
+    walk.count(0, 0, true, true, false)
+}
+
+
+// ---- solution (stepping_solution.kara) ------------------------------
+
+const SOLUTION_MOD: i64 = 1_000_000_007;
+
+fn solution_dfs(i: i64, pre: i64, tight: bool, started: bool, d: ref Vec[i64], memo: mut ref Vec[Vec[i64]]) -> i64 {
+    if i == d.len() {
+        return if started { 1 } else { 0 };
+    }
+    if started and not tight and memo[i][pre] != -1 {
+        return memo[i][pre];
+    }
+    let up = if tight { d[i] } else { 9 };
+    let mut res = 0;
+    for j in 0..=up {
+        if not started {
+            res += solution_dfs(i + 1, j, tight and j == up, j > 0, d, mut memo);
+        } else if (j as i32 - pre as i32).abs() == 1 {
+            res += solution_dfs(i + 1, j, tight and j == up, true, d, mut memo);
+        }
+    }
+    res %= SOLUTION_MOD;
+    if started and not tight {
+        memo[i][pre] = res;
+    }
+    res
+}
+
+fn solution_calc(s: Str) -> i64 {
+    let d: Vec[i64] = s.bytes().iter().map(|b| (b - b'0') as i64).collect();
+    let mut memo = Vec.filled(d.len(), Vec.filled(10, -1));
+    solution_dfs(0, 0, true, false, d, mut memo)
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn count_stepping_numbers(low: String, high: String) -> i32 {
+        let ok = low.bytes().windows(2).into_iter().all(|w| (w[0] as i32 - w[1] as i32).abs() == 1);
+        ((solution_calc(high) - solution_calc(low) + if ok { 1 } else { 0 } + SOLUTION_MOD) % SOLUTION_MOD) as i32
+    }
+}
+
+fn solution_count_stepping_numbers(low: String, high: String) -> i64 {
+    Solution.count_stepping_numbers(low, high)
+}
+
+
+fn answer(arm: i64, low: String, high: String) -> i64 {
+    match arm {
+        0 => star_count_stepping_numbers(low, high),
+        1 => table_count_stepping_numbers(low, high),
+        2 => layers_count_stepping_numbers(low, high),
+        3 => pair_count_stepping_numbers(low, high),
+        _ => solution_count_stepping_numbers(low, high),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn number(m: i64, near: bool, seed: mut ref i64) -> String {
+    let digits = "0123456789";
+    let mut d = next_random(mut seed) % 9 + 1;
+    let mut s = digits[d..d + 1].to_string();
+    for _ in 1..m {
+        let r = next_random(mut seed) % 10;
+        d = if near and r < 8 {
+            if r % 2 == 0 and d > 0 or d == 9 { d - 1 } else { d + 1 }
+        } else {
+            r
+        };
+        s.push_str(digits[d..d + 1]);
+    }
+    s
+}
+
+fn less(a: String, b: String) -> bool {
+    a.len() < b.len() or (a.len() == b.len() and a < b)
+}
+
+fn main() {
+    let names = ["star", "table", "layers", "pair", "solution"];
+    let modulo = 1000000007;
+    let mut seed = 2801;
+    let mut cases: Vec[Vec[String]] = Vec.new();
+    for c in 0..2050 {
+        let mut three: Vec[String] = Vec.new();
+        for _ in 0..3 {
+            if c < 2000 {
+                three.push(f"{next_random(mut seed) % 1000 + 1}");
+            } else {
+                three.push(number(next_random(mut seed) % 100 + 1, c % 2 == 0, mut seed));
+            }
+        }
+        for i in 0..3 {
+            for j in 0..2 - i {
+                if less(three[j + 1], three[j]) {
+                    three.swap(j, j + 1);
+                }
+            }
+        }
+        cases.push(three);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, three) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let (low, mid, high) = (three[0].clone(), three[1].clone(), three[2].clone());
+        let want = if small { literal(i64.parse(low).unwrap(), i64.parse(high).unwrap()) } else { 0 };
+        check = (check * 31 + want + 1) % 1000000007;
+        let low_steps = if literal_steps(low) { 1 } else { 0 };
+        let mid_steps = if literal_steps(mid) { 1 } else { 0 };
+        let high_steps = if literal_steps(high) { 1 } else { 0 };
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, low, high)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let split = (answer(arm, low, mid) + answer(arm, mid, high) - mid_steps + modulo) % modulo;
+            let from_one = (answer(arm, "1", high) - answer(arm, "1", low) + low_steps + modulo) % modulo;
+            let verdicts = [
+                not small or value == want,
+                split == value,
+                from_one == value,
+                answer(arm, low, low) == low_steps,
+                value >= 0 and value < modulo and answer(arm, high, high) == high_steps,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {low} {mid} {high}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

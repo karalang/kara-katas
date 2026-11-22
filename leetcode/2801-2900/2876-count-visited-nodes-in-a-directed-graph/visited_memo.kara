@@ -1,0 +1,77 @@
+// LeetCode #2876: Count Visited Nodes in a Directed Graph -- recursive:
+// a node's count is one more than its edge's, memoised, except on a
+// cycle. The recursion keeps the depth it reached each node at; meeting
+// a node still open on the way down closes a cycle of the difference,
+// and every node from there back up to it takes that length.
+
+fn visit(u: i64, depth: i64, edges: Vec[i64], seen: mut ref Vec[i64], answer: mut ref Vec[i64]) -> i64 {
+    if answer[u] > 0 {
+        return -1;
+    }
+    if seen[u] >= 0 {
+        answer[u] = depth - seen[u];
+        return u;
+    }
+    seen[u] = depth;
+    let top = visit(edges[u], depth + 1, edges, mut seen, mut answer);
+    if top >= 0 {
+        if top == u {
+            return -1;
+        }
+        answer[u] = answer[top];
+        return top;
+    }
+    answer[u] = answer[edges[u]] + 1;
+    -1
+}
+
+fn count_visited_nodes(edges: Vec[i64]) -> Vec[i64] {
+    let n = edges.len();
+    let mut seen: Vec[i64] = Vec.filled(n, -1);
+    let mut answer: Vec[i64] = Vec.filled(n, 0);
+    for u in 0..n {
+        visit(u, 0, edges, mut seen, mut answer);
+    }
+    answer
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; 10^5 nodes, LeetCode's most, as one cycle,
+    // and as a path into a cycle of two at its end
+    println(f"{count_visited_nodes([1, 2, 0, 0].to_vec())} {count_visited_nodes([1, 2, 3, 4, 0].to_vec())}");
+    let n = 100000;
+    let ring: Vec[i64] = count_visited_nodes((0..n).map(|i| (i + 1) % n).collect());
+    let path: Vec[i64] = count_visited_nodes((0..n).map(|i| if i == n - 1 { n - 2 } else { i + 1 }).collect());
+    println(f"{ring.iter().sum()} {path.iter().sum()} {path[0]} {path[n - 1]}");
+    // 3000 random graphs of 2 to 8 nodes; then 100 of 1000 to 10^5,
+    // every other one with each edge a step of 1 to 5 forward
+    let mut seed = 2876;
+    let mut total = 0;
+    let mut check = 0;
+    for c in 0..3100 {
+        let small = c < 3000;
+        let n = if small { next_random(mut seed) % 7 + 2 } else { wide(mut seed) % 99001 + 1000 };
+        let edges: Vec[i64] = (0..n).map(|i| if not small and c % 2 == 1 { (i + next_random(mut seed) % 5 + 1) % n } else { (i + wide(mut seed) % (n - 1) + 1) % n }).collect();
+        for v in count_visited_nodes(edges).iter() {
+            total += v;
+            check = (check * 31 + v) % 1000000007;
+        }
+        if c == 2999 {
+            println(f"3000 small graphs: visits total {total}, checksum {check}");
+            total = 0;
+            check = 0;
+        }
+    }
+    println(f"100 large graphs: visits total {total}, checksum {check}");
+}

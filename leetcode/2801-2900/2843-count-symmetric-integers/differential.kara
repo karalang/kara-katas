@@ -1,0 +1,231 @@
+// LeetCode #2843: Count Symmetric Integers -- the differential. The
+// five arms, against the statement read literally: every number from
+// low to high, its digits listed by `format`, and counted when there
+// are 2n of them and the first n sum to the last n. 2000 random ranges
+// of up to 100 numbers inside 1 to 10^4, then 50 of any width, all
+// drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the range split at its middle: the two parts' answers add up to it
+// P3  low alone: 1 exactly when the literal reading keeps low
+// P4  the range one wider at each end that stays inside 1 to 10^4: no smaller
+// P5  no more than the numbers in the range
+// P6  each arm agrees with at least three of the other four
+
+fn literal(low: i64, high: i64) -> i64 {
+    let mut count = 0;
+    for x in low..high + 1 {
+        let digits: Vec[i64] = f"{x}".chars().map(|c| (c as i64) - ('0' as i64)).collect();
+        let n = digits.len() / 2;
+        if digits.len() == 2 * n {
+            let first: i64 = digits[..n].iter().sum();
+            let last: i64 = digits[n..].iter().sum();
+            if first == last {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+
+// ---- star (symmetric.kara) ------------------------------------------
+
+fn star_symmetric(x: i64) -> bool {
+    let text = x.to_string();
+    let digits = text.bytes();
+    let n = digits.len();
+    if n % 2 == 1 {
+        return false;
+    }
+    let half: Fn(ref Vec[u8]) -> i64 = |part: Vec[u8]| { part.iter().map(|d| (d - b'0') as i64).sum() };
+    half(digits[..n / 2].to_vec()) == half(digits[n / 2..].to_vec())
+}
+
+fn star_count_symmetric_integers(low: i64, high: i64) -> i64 {
+    (low..high + 1).filter(|x| star_symmetric(x)).count()
+}
+
+
+// ---- digits (symmetric_digits.kara) ---------------------------------
+
+fn digits_count_symmetric_integers(low: i64, high: i64) -> i64 {
+    let mut count = 0;
+    for x in low..high + 1 {
+        let mut length = 0;
+        let mut rest = x;
+        while rest > 0 {
+            length += 1;
+            rest /= 10;
+        }
+        if length % 2 == 1 {
+            continue;
+        }
+        rest = x;
+        let mut balance = 0;
+        for i in 0..length {
+            let digit = rest % 10;
+            rest /= 10;
+            if i < length / 2 {
+                balance -= digit;
+            } else {
+                balance += digit;
+            }
+        }
+        if balance == 0 {
+            count += 1;
+        }
+    }
+    count
+}
+
+
+// ---- prefix (symmetric_prefix.kara) ---------------------------------
+
+fn prefix_count_symmetric_integers(low: i64, high: i64) -> i64 {
+    let top = 10000;
+    let sums: Vec[i64] = (0..100).map(|h| h / 10 + h % 10).collect();
+    let mut up_to: Vec[i64] = Vec.filled(top + 1, 0);
+    for x in 1..top + 1 {
+        let even = (10 <= x and x < 100) or (1000 <= x and x < 10000);
+        let hit = if not even {
+            false
+        } else if x < 100 {
+            x / 10 == x % 10
+        } else {
+            sums[x / 100] == sums[x % 100]
+        };
+        up_to[x] = up_to[x - 1] + if hit { 1 } else { 0 };
+    }
+    up_to[high] - up_to[low - 1]
+}
+
+
+// ---- halves (symmetric_halves.kara) ---------------------------------
+
+fn halves_digit_sum(x: i64) -> i64 {
+    if x == 0 { 0 } else { x % 10 + halves_digit_sum(x / 10) }
+}
+
+fn halves_count_symmetric_integers(low: i64, high: i64) -> i64 {
+    let mut count = 0;
+    for n in 1..3 {
+        let base = 10.pow(n as u32);
+        let mut by_sum: SortedMap[i64, Vec[i64]] = SortedMap.new();
+        for tail in 0..base {
+            by_sum.entry(halves_digit_sum(tail)).or_insert(Vec.new()).push(tail);
+        }
+        for head in base / 10..base {
+            let tails = ref by_sum[halves_digit_sum(head)];
+            // the number is head * base + tail, so the tails it can take
+            // run from low - head * base to high - head * base
+            let from = low - head * base;
+            let to = high - head * base;
+            count += tails.partition_point(|t| t <= to) - tails.partition_point(|t| t < from);
+        }
+    }
+    count
+}
+
+
+// ---- solution (symmetric_solution.kara) -----------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn count_symmetric_integers(low: i32, high: i32) -> i32 {
+        (low..=high)
+            .filter(|x| {
+                let s = x.to_string();
+                let b = s.bytes();
+                let n = b.len();
+                n % 2 == 0
+                    and b[..n / 2].iter().map(|c| (c - b'0') as i32).sum()
+                        == b[n / 2..].iter().map(|c| (c - b'0') as i32).sum()
+            })
+            .count() as i32
+    }
+}
+
+fn solution_count_symmetric_integers(low: i64, high: i64) -> i64 {
+    Solution.count_symmetric_integers(low as i32, high as i32)
+}
+
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, low: i64, high: i64) -> i64 {
+    match arm {
+        0 => star_count_symmetric_integers(low, high),
+        1 => digits_count_symmetric_integers(low, high),
+        2 => prefix_count_symmetric_integers(low, high),
+        3 => halves_count_symmetric_integers(low, high),
+        _ => solution_count_symmetric_integers(low, high),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "digits", "prefix", "halves", "solution"];
+    let mut seed = 2843;
+    let mut cases: Vec[(i64, i64)] = Vec.new();
+    for c in 0..2050 {
+        let a = next_random(mut seed) % 10000 + 1;
+        let b = if c < 2000 { (a + next_random(mut seed) % 100).min(10000) } else { next_random(mut seed) % 10000 + 1 };
+        cases.push((a.min(b), a.max(b)));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (low, high)) in cases.iter().enumerate() {
+        let want = literal(low, high);
+        let alone = literal(low, low);
+        check = (check * 31 + want) % 1000000007;
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, low, high)).collect();
+        let middle = (low + high) / 2;
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let split = answer(arm, low, middle) + if middle < high { answer(arm, middle + 1, high) } else { 0 };
+            let verdicts = [
+                value == want,
+                split == value,
+                answer(arm, low, low) == alone,
+                answer(arm, (low - 1).max(1), (high + 1).min(10000)) >= value,
+                0 <= value and value <= high - low + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {low}..{high}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

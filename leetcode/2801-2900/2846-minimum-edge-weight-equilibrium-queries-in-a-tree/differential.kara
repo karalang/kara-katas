@@ -1,0 +1,480 @@
+// LeetCode #2846: Minimum Edge Weight Equilibrium Queries in a Tree --
+// the differential. The five arms, against the statement read
+// literally: each query's path found by a breadth-first search from a
+// that remembers how each node was reached, the weights along it from
+// b back to a counted, and every edge but those of the commonest weight
+// changed. 2000 random trees of 1 to 10 nodes with weights up to 3,
+// then 50 of up to 500 nodes with weights up to 26, 10 queries each,
+// all drawn before any arm answers.
+//
+// P1  the answers are the literal reading's
+// P2  every query's ends the other way round: the same answers
+// P3  every weight w made 27 - w: the same answers
+// P4  every node v renamed n - 1 - v, so that the root moves: the same answers
+// P5  each query's first end asked against itself: all 0
+// P6  each arm agrees with at least three of the other four
+
+fn literal(n: i64, edges: Vec[Vec[i64]], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut adj: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push((e[1], e[2]));
+        adj[e[1]].push((e[0], e[2]));
+    }
+    let mut answers: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let mut from: Vec[(i64, i64)] = Vec.filled(n, (-1, 0));
+        let mut reached: Vec[bool] = Vec.filled(n, false);
+        let mut queue: VecDeque[i64] = VecDeque.new();
+        reached[q[0]] = true;
+        queue.push_back(q[0]);
+        while let Some(v) = queue.pop_front() {
+            for (u, w) in adj[v].iter() {
+                if not reached[u] {
+                    reached[u] = true;
+                    from[u] = (v, w);
+                    queue.push_back(u);
+                }
+            }
+        }
+        let mut count: Vec[i64] = Vec.filled(27, 0);
+        let mut at = q[1];
+        let mut length = 0;
+        while at != q[0] {
+            let (back, w) = from[at];
+            count[w] += 1;
+            length += 1;
+            at = back;
+        }
+        answers.push(length - count.iter().max().unwrap());
+    }
+    answers
+}
+
+
+// ---- star (equilibrium.kara) ----------------------------------------
+
+fn star_min_operations_queries(n: i64, edges: Vec[Vec[i64]], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut adj: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push((e[1], e[2]));
+        adj[e[1]].push((e[0], e[2]));
+    }
+    // 2^14 = 16384 is more than LeetCode's 10^4 nodes
+    let levels = 15;
+    let mut up: Vec[Vec[i64]] = Vec.filled(levels, Vec.filled(n, 0));
+    let mut depth: Vec[i64] = Vec.filled(n, 0);
+    let mut count: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(27, 0));
+    let mut seen: Vec[bool] = Vec.filled(n, false);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    seen[0] = true;
+    queue.push_back(0);
+    while let Some(v) = queue.pop_front() {
+        for (u, w) in adj[v].iter() {
+            if not seen[u] {
+                seen[u] = true;
+                up[0][u] = v;
+                depth[u] = depth[v] + 1;
+                count[u] = count[v].clone();
+                count[u][w] += 1;
+                queue.push_back(u);
+            }
+        }
+    }
+    for j in 1..levels {
+        for v in 0..n {
+            up[j][v] = up[j - 1][up[j - 1][v]];
+        }
+    }
+    let lca = |a: i64, b: i64| {
+        let mut (x, y) = if depth[a] >= depth[b] { (a, b) } else { (b, a) };
+        for j in (0..levels).rev() {
+            if depth[x] - (1 << j) >= depth[y] {
+                x = up[j][x];
+            }
+        }
+        if x == y {
+            return x;
+        }
+        for j in (0..levels).rev() {
+            if up[j][x] != up[j][y] {
+                x = up[j][x];
+                y = up[j][y];
+            }
+        }
+        up[0][x]
+    };
+    queries
+        .iter()
+        .map(|q| {
+            let (a, b) = (q[0], q[1]);
+            let c = lca(a, b);
+            let on_path: Vec[i64] = (1..27).map(|w| count[a][w] + count[b][w] - 2 * count[c][w]).collect();
+            on_path.iter().sum() - on_path.iter().max().unwrap()
+        })
+        .collect()
+}
+
+
+// ---- walk (equilibrium_walk.kara) -----------------------------------
+
+fn walk_min_operations_queries(n: i64, edges: Vec[Vec[i64]], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut adj: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push((e[1], e[2]));
+        adj[e[1]].push((e[0], e[2]));
+    }
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    let mut above: Vec[i64] = Vec.filled(n, 0);
+    let mut depth: Vec[i64] = Vec.filled(n, 0);
+    let mut stack: Vec[i64] = [0];
+    while let Some(v) = stack.pop() {
+        for (u, w) in adj[v].iter() {
+            if u != parent[v] {
+                parent[u] = v;
+                above[u] = w;
+                depth[u] = depth[v] + 1;
+                stack.push(u);
+            }
+        }
+    }
+    let mut answers: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let mut count = [0; 27];
+        let mut a = q[0];
+        let mut b = q[1];
+        let mut edges_on = 0;
+        while a != b {
+            if depth[a] < depth[b] {
+                let t = a;
+                a = b;
+                b = t;
+            }
+            count[above[a]] += 1;
+            edges_on += 1;
+            a = parent[a];
+        }
+        answers.push(edges_on - count.iter().max().unwrap());
+    }
+    answers
+}
+
+
+// ---- euler (equilibrium_euler.kara) ---------------------------------
+
+fn euler_tour(v: i64, from: i64, adj: Vec[Vec[(i64, i64)]], depth: mut ref Vec[i64], first: mut ref Vec[i64],
+        order: mut ref Vec[i64], count: mut ref Vec[Vec[i64]]) {
+    first[v] = order.len();
+    order.push(v);
+    for (u, w) in adj[v].iter() {
+        if u != from {
+            depth[u] = depth[v] + 1;
+            count[u] = count[v].clone();
+            count[u][w] += 1;
+            euler_tour(u, v, adj, mut depth, mut first, mut order, mut count);
+            order.push(v);
+        }
+    }
+}
+
+fn euler_min_operations_queries(n: i64, edges: Vec[Vec[i64]], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut adj: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push((e[1], e[2]));
+        adj[e[1]].push((e[0], e[2]));
+    }
+    let mut depth: Vec[i64] = Vec.filled(n, 0);
+    let mut first: Vec[i64] = Vec.filled(n, 0);
+    let mut order: Vec[i64] = Vec.new();
+    let mut count: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(27, 0));
+    euler_tour(0, -1, adj, mut depth, mut first, mut order, mut count);
+    // table[j][i] is the shallowest node of order[i..i + 2^j]
+    let m = order.len();
+    let mut table: Vec[Vec[i64]] = [order.clone()];
+    let mut j = 1;
+    while (1 << j) <= m {
+        let below = table[j - 1].clone();
+        let half = 1 << (j - 1);
+        let row: Vec[i64] = (0..m - (1 << j) + 1)
+            .map(|i| if depth[below[i]] <= depth[below[i + half]] { below[i] } else { below[i + half] })
+            .collect();
+        table.push(row);
+        j += 1;
+    }
+    let mut answers: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let (a, b) = (q[0], q[1]);
+        let lo = first[a].min(first[b]);
+        let hi = first[a].max(first[b]) + 1;
+        let mut k = 0;
+        while (1 << (k + 1)) <= hi - lo {
+            k += 1;
+        }
+        let left = table[k][lo];
+        let right = table[k][hi - (1 << k)];
+        let c = if depth[left] <= depth[right] { left } else { right };
+        let mut total = 0;
+        let mut most = 0;
+        for w in 1..27 {
+            let here = count[a][w] + count[b][w] - 2 * count[c][w];
+            total += here;
+            most = most.max(here);
+        }
+        answers.push(total - most);
+    }
+    answers
+}
+
+
+// ---- tarjan (equilibrium_tarjan.kara) -------------------------------
+
+struct Sets {
+    parent: Vec[i64],
+}
+
+impl Sets {
+    fn find(mut ref self, x: i64) -> i64 {
+        let mut root = x;
+        while self.parent[root] != root {
+            root = self.parent[root];
+        }
+        let mut at = x;
+        while self.parent[at] != root {
+            let next = self.parent[at];
+            self.parent[at] = root;
+            at = next;
+        }
+        root
+    }
+}
+
+fn tarjan_min_operations_queries(n: i64, edges: Vec[Vec[i64]], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut adj: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push((e[1], e[2]));
+        adj[e[1]].push((e[0], e[2]));
+    }
+    let mut asked: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for (i, q) in queries.iter().enumerate() {
+        asked[q[0]].push((q[1], i));
+        asked[q[1]].push((q[0], i));
+    }
+    let mut sets = Sets { parent: (0..n).collect() };
+    let mut top: Vec[i64] = (0..n).collect();
+    let mut done: Vec[bool] = Vec.filled(n, false);
+    let mut count: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(27, 0));
+    let mut lca: Vec[i64] = Vec.filled(queries.len(), 0);
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    let mut stack: Vec[(i64, i64)] = [(0, 0)];
+    while let Some((v, next)) = stack.pop() {
+        if next < adj[v].len() {
+            stack.push((v, next + 1));
+            let (u, w) = adj[v][next];
+            if u != parent[v] {
+                parent[u] = v;
+                count[u] = count[v].clone();
+                count[u][w] += 1;
+                stack.push((u, 0));
+            }
+            continue;
+        }
+        // v is finished: answer its queries, then join its parent
+        done[v] = true;
+        for (other, i) in asked[v].iter() {
+            if done[other] {
+                lca[i] = top[sets.find(other)];
+            }
+        }
+        if parent[v] >= 0 {
+            let p = parent[v];
+            let (rv, rp) = (sets.find(v), sets.find(p));
+            sets.parent[rv] = rp;
+            top[rp] = p;
+        }
+    }
+    let mut answers: Vec[i64] = Vec.new();
+    for (i, q) in queries.iter().enumerate() {
+        let on_path: Vec[i64] = (1..27).map(|w| count[q[0]][w] + count[q[1]][w] - 2 * count[lca[i]][w]).collect();
+        answers.push(on_path.iter().sum() - on_path.iter().max().unwrap());
+    }
+    answers
+}
+
+
+// ---- solution (equilibrium_solution.kara) ---------------------------
+
+fn solution_dfs(
+    u: i64,
+    p: i64,
+    g: ref Vec[Vec[(i64, i64)]],
+    up: mut ref Vec[Vec[i64]],
+    depth: mut ref Vec[i64],
+    cnt: mut ref Vec[Array[i32, 27]],
+) {
+    for (v, w) in ref g[u] {
+        if v != p {
+            up[0][v] = u;
+            depth[v] = depth[u] + 1;
+            cnt[v] = cnt[u];
+            cnt[v][w] += 1;
+            solution_dfs(v, u, g, mut up, mut depth, mut cnt);
+        }
+    }
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_operations_queries(n: i32, edges: Vec[Vec[i32]], queries: Vec[Vec[i32]]) -> Vec[i32] {
+        let n = n as i64;
+        let mut g: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+        for e in ref edges {
+            let (u, v, w) = (e[0] as i64, e[1] as i64, e[2] as i64);
+            g[u].push((v, w));
+            g[v].push((u, w));
+        }
+        const LOG: i64 = 15;
+        let mut up = Vec.filled(LOG, Vec.filled(n, 0));
+        let mut depth = Vec.filled(n, 0);
+        let mut cnt = Vec.filled(n, [0i32; 27]);
+        solution_dfs(0, i64.MAX, g, mut up, mut depth, mut cnt);
+        for j in 1..LOG {
+            for v in 0..n {
+                up[j][v] = up[j - 1][up[j - 1][v]];
+            }
+        }
+        let lca = |a: i64, b: i64| {
+            let mut a = a;
+            let mut b = b;
+            if depth[a] < depth[b] {
+                swap(mut a, mut b);
+            }
+            let diff = depth[a] - depth[b];
+            for j in 0..LOG {
+                if diff >> j & 1 == 1 {
+                    a = up[j][a];
+                }
+            }
+            if a == b {
+                return a;
+            }
+            for j in (0..LOG).rev() {
+                if up[j][a] != up[j][b] {
+                    a = up[j][a];
+                    b = up[j][b];
+                }
+            }
+            up[0][a]
+        };
+        queries
+            .iter()
+            .map(|q| {
+                let (a, b) = (q[0] as i64, q[1] as i64);
+                let c = lca(a, b);
+                let len = (depth[a] + depth[b] - 2 * depth[c]) as i32;
+                let mut mx: i32 = 0;
+                for w in 1..27 {
+                    mx = mx.max(cnt[a][w] + cnt[b][w] - 2 * cnt[c][w]);
+                }
+                len - mx
+            })
+            .collect()
+    }
+}
+
+fn solution_min_operations_queries(n: i64, edges: Vec[Vec[i64]], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let to32: Fn(ref Vec[Vec[i64]]) -> Vec[Vec[i32]] = |v: ref Vec[Vec[i64]]| { v.iter().map(|r| r.iter().map(|x| x as i32).collect()).collect() };
+    Solution.min_operations_queries(n as i32, to32(edges), to32(queries)).iter().map(|x| x as i64).collect()
+}
+
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, n: i64, edges: Vec[Vec[i64]], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    match arm {
+        0 => star_min_operations_queries(n, edges, queries),
+        1 => walk_min_operations_queries(n, edges, queries),
+        2 => euler_min_operations_queries(n, edges, queries),
+        3 => tarjan_min_operations_queries(n, edges, queries),
+        _ => solution_min_operations_queries(n, edges, queries),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn tree(n: i64, kinds: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut label: Vec[i64] = (0..n).collect();
+    for i in (1..n).rev() {
+        label.swap(i, next_random(mut seed) % (i + 1));
+    }
+    (1..n).map(|i| [label[i], label[next_random(mut seed) % i], next_random(mut seed) % kinds + 1]).collect()
+}
+
+fn main() {
+    let names = ["star", "walk", "euler", "tarjan", "solution"];
+    let mut seed = 2846;
+    let mut cases: Vec[(i64, Vec[Vec[i64]], Vec[Vec[i64]])] = Vec.new();
+    for c in 0..2050 {
+        let short = c < 2000;
+        let n = if short { next_random(mut seed) % 10 + 1 } else { next_random(mut seed) % 500 + 1 };
+        let edges = tree(n, if short { 3 } else { 26 }, mut seed);
+        let queries: Vec[Vec[i64]] = (0..10).map(|_| [next_random(mut seed) % n, next_random(mut seed) % n]).collect();
+        cases.push((n, edges, queries));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (n, edges, queries)) in cases.iter().enumerate() {
+        let want = literal(n, edges, queries);
+        for x in want.iter() {
+            check = (check * 31 + x) % 1000000007;
+        }
+        let got: Vec[Vec[i64]] = (0..5).map(|arm| answer(arm, n, edges, queries)).collect();
+        let turned: Vec[Vec[i64]] = queries.iter().map(|q| [q[1], q[0]]).collect();
+        let flipped: Vec[Vec[i64]] = edges.iter().map(|e| [e[0], e[1], 27 - e[2]]).collect();
+        let renamed: Vec[Vec[i64]] = edges.iter().map(|e| [n - 1 - e[0], n - 1 - e[1], e[2]]).collect();
+        let renamed_queries: Vec[Vec[i64]] = queries.iter().map(|q| [n - 1 - q[0], n - 1 - q[1]]).collect();
+        let selves: Vec[Vec[i64]] = queries.iter().map(|q| [q[0], q[0]]).collect();
+        for arm in 0..5 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == want,
+                answer(arm, n, edges, turned) == value,
+                answer(arm, n, flipped, queries) == value,
+                answer(arm, n, renamed, renamed_queries) == value,
+                answer(arm, n, edges, selves).iter().all(|x| x == 0),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} n={n} {edges} {queries}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

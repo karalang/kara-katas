@@ -1,0 +1,239 @@
+// LeetCode #2845: Count of Interesting Subarrays -- the differential.
+// The five arms, against the statement read literally: every subarray
+// nums[l..=r], its places with nums[i] % modulo == k counted afresh, and
+// kept when that count % modulo == k. 2000 random arrays of 1 to 10
+// numbers up to 10 with modulo up to 5, then 50 of up to 300 numbers up
+// to 10^9 with modulo up to 10 or up to 10^9, all drawn before any arm
+// answers; the literal reading is asked only of the first 2000.
+//
+// P1  up to 10 numbers, the answer is the literal reading's
+// P2  the array reversed: the same answer
+// P3  every number replaced by its remainder plus modulo: the same answer
+// P4  the array written twice: at least twice the answer
+// P5  modulo 1 and k 0: every subarray, n(n + 1) / 2
+// P6  each arm agrees with at least three of the other four
+
+fn literal(nums: Vec[i64], modulo: i64, k: i64) -> i64 {
+    let n = nums.len();
+    let mut count = 0;
+    for l in 0..n {
+        for r in l..n {
+            let hits = nums[l..r + 1].iter().filter(|x| x % modulo == k).count();
+            if hits % modulo == k {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+
+// ---- star (interesting.kara) ----------------------------------------
+
+fn star_count_interesting_subarrays(nums: Vec[i64], modulo: i64, k: i64) -> i64 {
+    let mut seen: Map[i64, i64] = Map.new();
+    seen.insert(0, 1);
+    let mut prefix = 0;
+    let mut count = 0;
+    for x in nums.iter() {
+        if x % modulo == k {
+            prefix = (prefix + 1) % modulo;
+        }
+        let want = (prefix - k + modulo) % modulo;
+        count += seen.get(want) ?? 0;
+        *seen.entry(prefix).or_insert(0) += 1;
+    }
+    count
+}
+
+
+// ---- each (interesting_each.kara) -----------------------------------
+
+fn each_count_interesting_subarrays(nums: Vec[i64], modulo: i64, k: i64) -> i64 {
+    let n = nums.len();
+    let mut count = 0;
+    for i in 0..n {
+        let mut hits = 0;
+        for j in i..n {
+            if nums[j] % modulo == k {
+                hits += 1;
+            }
+            if hits % modulo == k {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+
+// ---- places (interesting_places.kara) -------------------------------
+
+fn places_count_interesting_subarrays(nums: Vec[i64], modulo: i64, k: i64) -> i64 {
+    let mut prefix: Vec[i64] = [0];
+    for x in nums.iter() {
+        let last = prefix[prefix.len() - 1];
+        prefix.push(if x % modulo == k { (last + 1) % modulo } else { last });
+    }
+    let mut places: Map[i64, Vec[i64]] = Map.new();
+    for (j, p) in prefix.iter().enumerate() {
+        places.entry(p).or_insert(Vec.new()).push(j);
+    }
+    let mut count = 0;
+    for (j, p) in prefix.iter().enumerate() {
+        let want = (p - k + modulo) % modulo;
+        if let Some(list) = places.get(want) {
+            count += list.partition_point(|i| i < j);
+        }
+    }
+    count
+}
+
+
+// ---- halves (interesting_halves.kara) -------------------------------
+
+fn halves_across(nums: Vec[i64], modulo: i64, k: i64, lo: i64, hi: i64) -> i64 {
+    if hi - lo == 1 {
+        return if (if nums[lo] % modulo == k { 1 } else { 0 }) % modulo == k { 1 } else { 0 };
+    }
+    let mid = (lo + hi) / 2;
+    let mut tally: SortedMap[i64, i64] = SortedMap.new();
+    let mut hits = 0;
+    for i in (lo..mid).rev() {
+        if nums[i] % modulo == k {
+            hits += 1;
+        }
+        *tally.entry(hits % modulo).or_insert(0) += 1;
+    }
+    let mut count = 0;
+    hits = 0;
+    for j in mid..hi {
+        if nums[j] % modulo == k {
+            hits += 1;
+        }
+        let want = ((k - hits) % modulo + modulo) % modulo;
+        count += tally.get(want) ?? 0;
+    }
+    count + halves_across(nums, modulo, k, lo, mid) + halves_across(nums, modulo, k, mid, hi)
+}
+
+fn halves_count_interesting_subarrays(nums: Vec[i64], modulo: i64, k: i64) -> i64 {
+    halves_across(nums, modulo, k, 0, nums.len())
+}
+
+
+// ---- solution (interesting_solution.kara) ---------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn count_interesting_subarrays(nums: Vec[i32], modulo: i32, k: i32) -> i64 {
+        let mut cnt: Map[i32, i64] = Map.new();
+        cnt.insert(0, 1);
+        let mut pre = 0i32;
+        let mut ans = 0;
+        for x in nums.iter() {
+            if x % modulo == k {
+                pre = (pre + 1) % modulo;
+            }
+            let key = (pre - k).rem_euclid(modulo);
+            ans += *cnt.get(key).unwrap_or(0);
+            *cnt.entry(pre).or_insert(0) += 1;
+        }
+        ans
+    }
+}
+
+fn solution_count_interesting_subarrays(nums: Vec[i64], modulo: i64, k: i64) -> i64 {
+    let v: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.count_interesting_subarrays(v, modulo as i32, k as i32)
+}
+
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64], modulo: i64, k: i64) -> i64 {
+    match arm {
+        0 => star_count_interesting_subarrays(nums, modulo, k),
+        1 => each_count_interesting_subarrays(nums, modulo, k),
+        2 => places_count_interesting_subarrays(nums, modulo, k),
+        3 => halves_count_interesting_subarrays(nums, modulo, k),
+        _ => solution_count_interesting_subarrays(nums, modulo, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn big(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "each", "places", "halves", "solution"];
+    let mut seed = 2845;
+    let mut cases: Vec[(Vec[i64], i64, i64)] = Vec.new();
+    for c in 0..2050 {
+        let short = c < 2000;
+        let n = if short { next_random(mut seed) % 10 + 1 } else { next_random(mut seed) % 300 + 1 };
+        let top = if short { 10 } else { 1000000000 };
+        let nums: Vec[i64] = (0..n).map(|_| big(mut seed) % top + 1).collect();
+        let modulo = if short or c % 2 == 0 { next_random(mut seed) % if short { 5 } else { 10 } + 1 } else { big(mut seed) % 1000000000 + 1 };
+        let k = big(mut seed) % modulo;
+        cases.push((nums, modulo, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (nums, modulo, k)) in cases.iter().enumerate() {
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums, modulo, k)).collect();
+        let want = if c < 2000 { literal(nums, modulo, k) } else { got[0] };
+        check = (check * 31 + want) % 1000000007;
+        let n = nums.len();
+        let back: Vec[i64] = nums.iter().rev().collect();
+        let lifted: Vec[i64] = nums.iter().map(|x| x % modulo + modulo).collect();
+        let mut twice = nums.clone();
+        twice.extend(nums.iter());
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                c >= 2000 or value == want,
+                answer(arm, back, modulo, k) == value,
+                answer(arm, lifted, modulo, k) == value,
+                answer(arm, twice, modulo, k) >= 2 * value,
+                answer(arm, nums, 1, 0) == n * (n + 1) / 2,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums} modulo={modulo} k={k}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

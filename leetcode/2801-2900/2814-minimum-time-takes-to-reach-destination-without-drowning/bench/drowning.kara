@@ -1,0 +1,95 @@
+// LeetCode #2814: Minimum Time Takes to Reach Destination Without
+// Drowning -- the bench: the ★ arm over 200 lands of 100 by 100,
+// LeetCode's largest, a cell in five stone and one in 5000 flooded, all
+// drawn first, then each answered 5 times.
+
+fn minimum_seconds(land: Vec[Vec[String]]) -> i64 {
+    let (n, m) = (land.len(), land[0].len());
+    let mut flood: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(m, i64.MAX));
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    for r in 0..n {
+        for c in 0..m {
+            if land[r][c] == "*" {
+                flood[r][c] = 0;
+                queue.push_back((r, c));
+            }
+        }
+    }
+    while let Some((r, c)) = queue.pop_front() {
+        for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr >= 0 and nr < n and nc >= 0 and nc < m and flood[nr][nc] == i64.MAX
+                and (land[nr][nc] == "." or land[nr][nc] == "S")
+            {
+                flood[nr][nc] = flood[r][c] + 1;
+                queue.push_back((nr, nc));
+            }
+        }
+    }
+    let mut time: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(m, -1));
+    for r in 0..n {
+        for c in 0..m {
+            if land[r][c] == "S" {
+                time[r][c] = 0;
+                queue.push_back((r, c));
+            }
+        }
+    }
+    while let Some((r, c)) = queue.pop_front() {
+        if land[r][c] == "D" {
+            return time[r][c];
+        }
+        for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr >= 0 and nr < n and nc >= 0 and nc < m and time[nr][nc] == -1 and land[nr][nc] != "X"
+                and flood[nr][nc] > time[r][c] + 1
+            {
+                time[nr][nc] = time[r][c] + 1;
+                queue.push_back((nr, nc));
+            }
+        }
+    }
+    -1
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 200;
+    let rounds = 5;
+    let n = 100;
+    let mut seed = 2814;
+    let mut lands: Vec[Vec[Vec[String]]] = Vec.new();
+    for _ in 0..count {
+        let mut land: Vec[Vec[String]] = Vec.new();
+        for _ in 0..n {
+            let mut row: Vec[String] = Vec.new();
+            for _ in 0..n {
+                let roll = next_random(mut seed) % 10000;
+                row.push(if roll < 2000 { "X" } else if roll < 2002 { "*" } else { "." });
+            }
+            land.push(row);
+        }
+        let start = next_random(mut seed) % (n * n);
+        let mut end = next_random(mut seed) % (n * n - 1);
+        if end >= start {
+            end += 1;
+        }
+        land[start / n][start % n] = "S";
+        land[end / n][end % n] = "D";
+        lands.push(land);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for land in lands.iter() {
+            let a = minimum_seconds(land);
+            total += a;
+            check = (check * 31 + a + 2 + r) % 1000000007;
+        }
+    }
+    println(f"{count} lands of {n} by {n}, {rounds} rounds: seconds sum to {total}, checksum {check}");
+}

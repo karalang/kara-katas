@@ -1,0 +1,69 @@
+// LeetCode #2897: Apply Operations on Array to Maximize Sum of Squares --
+// the bench: the ★ arm over 20 arrays of 10000 values, half of them up to
+// 10^9 and half holding two bits each, k anywhere from 1 to the length,
+// all drawn first, then each answered 20 times.
+
+fn max_sum(nums: Vec[i64], k: i64) -> i64 {
+    let modulus = 1000000007;
+    let mut holders: Vec[i64] = Vec.filled(31, 0);
+    for v in nums.iter() {
+        for b in 0..31 {
+            if (v >> b) & 1 == 1 {
+                holders[b] += 1;
+            }
+        }
+    }
+    let mut sum = 0;
+    for _ in 0..k {
+        let mut value = 0;
+        for b in 0..31 {
+            if holders[b] > 0 {
+                holders[b] -= 1;
+                value |= 1 << b;
+            }
+        }
+        sum = (sum + value * value) % modulus;
+    }
+    sum
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let count = 20;
+    let rounds = 20;
+    let n = 10000;
+    let mut seed = 2897;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..count {
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            if c % 2 == 0 {
+                nums.push(wide(mut seed) % 1000000000 + 1);
+            } else {
+                let a = next_random(mut seed) % 30;
+                let b = next_random(mut seed) % 30;
+                nums.push((1 << a) | (1 << b));
+            }
+        }
+        let k = wide(mut seed) % n + 1;
+        cases.push((nums, k));
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (nums, k) in cases.iter() {
+            let sum = max_sum(nums, k);
+            total += sum;
+            check = (check * 31 + sum + r) % 1000000007;
+        }
+    }
+    println(f"{count} arrays of {n}, {rounds} rounds: sums total {total}, checksum {check}");
+}

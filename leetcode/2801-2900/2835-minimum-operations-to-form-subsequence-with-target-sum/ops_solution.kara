@@ -1,0 +1,97 @@
+// LeetCode #2835: Minimum Operations to Form Subsequence With Target Sum
+// -- a Rust solution as LeetCode's Rust users write it, carried to Kāra
+// by `karac fix`: an `i64` sum checked first, a `[0i64; 32]` count by
+// `trailing_zeros() as usize`, and the low-to-high walk with a `while`
+// over the larger counts, the answer as `i32`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_operations(nums: Vec[i32], target: i32) -> i32 {
+        let total: i64 = nums.iter().map(|x| x as i64).sum();
+        if total < target {
+            return -1;
+        }
+        let mut cnt = [0; 32];
+        for x in ref nums {
+            cnt[x.trailing_zeros() as usize] += 1;
+        }
+        let mut ans: i32 = 0;
+        let mut i = 0;
+        while i < 31 {
+            if (target >> i) & 1 == 1 {
+                if cnt[i] > 0 {
+                    cnt[i] -= 1;
+                } else {
+                    let mut j = i + 1;
+                    while cnt[j] == 0 {
+                        j += 1;
+                    }
+                    ans += (j - i) as i32;
+                    cnt[j] -= 1;
+                    for k in i..j {
+                        cnt[k] += 1;
+                    }
+                }
+            }
+            cnt[i + 1] += cnt[i] / 2;
+            i += 1;
+        }
+        ans
+    }
+}
+
+fn min_operations(nums: Vec[i64], target: i64) -> i64 {
+    Solution.min_operations(nums.iter().map(|v| v as i32).collect(), target as i32)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// n powers of two, each 2^0 to 2^top
+fn powers(n: i64, top: i64, seed: mut ref i64) -> Vec[i64] {
+    (0..n).map(|_| 1 << (next_random(mut seed) % (top + 1))).collect()
+}
+
+fn main() {
+    // LeetCode's three examples; a target met as it stands; one 2^30
+    // split down to 1; and 1000 ones, LeetCode's most, short of 2^31 - 1
+    println(f"{min_operations([1, 2, 8], 7)} {min_operations([1, 32, 1, 2], 12)} {min_operations([1, 32, 1], 35)}");
+    println(f"{min_operations([4, 2, 1], 7)} {min_operations([1073741824], 1)}");
+    println(f"{min_operations(Vec.filled(1000, 1), 2147483647)} {min_operations(Vec.filled(1000, 1073741824), 2147483647)}");
+    // 3000 random arrays of 1 to 8 powers up to 2^5 with targets up to
+    // 64; then 300 of up to 1000 powers up to 2^30, targets below 2^31
+    let mut seed = 2835;
+    let mut check = 0;
+    let mut none = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 8 + 1;
+        let nums = powers(n, 5, mut seed);
+        let ops = min_operations(nums, next_random(mut seed) % 64 + 1);
+        if ops < 0 {
+            none += 1;
+        }
+        check = (check * 31 + ops + 1) % 1000000007;
+    }
+    println(f"3000 short arrays: {none} out of reach, checksum {check}");
+    check = 0;
+    none = 0;
+    for _ in 0..300 {
+        let n = next_random(mut seed) % 1000 + 1;
+        let nums = powers(n, 30, mut seed);
+        let ops = min_operations(nums, wide(mut seed) % 2147483647 + 1);
+        if ops < 0 {
+            none += 1;
+        }
+        check = (check * 31 + ops + 1) % 1000000007;
+    }
+    println(f"300 long arrays: {none} out of reach, checksum {check}");
+}

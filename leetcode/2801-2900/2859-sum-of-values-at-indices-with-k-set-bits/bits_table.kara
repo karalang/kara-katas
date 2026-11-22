@@ -1,0 +1,53 @@
+// LeetCode #2859: Sum of Values at Indices With K Set Bits -- a table
+// of bit counts built up from the front: i has the bits of i / 2 and
+// one more when it is odd.
+
+fn sum_indices_with_k_set_bits(nums: Vec[i64], k: i64) -> i64 {
+    let n = nums.len();
+    let mut bits: Vec[i64] = Vec.filled(n, 0);
+    for i in 1..n {
+        bits[i] = bits[i >> 1] + (i & 1);
+    }
+    (0..n).filter(|i| bits[i] == k).map(|i| nums[i]).sum()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; 1000 values of 10^5, LeetCode's most,
+    // for every k from 0 to 10
+    println(f"{sum_indices_with_k_set_bits([5, 10, 1, 5, 2].to_vec(), 1)} {sum_indices_with_k_set_bits([4, 3, 2, 1].to_vec(), 2)}");
+    let full: Vec[i64] = Vec.filled(1000, 100000);
+    let sums: Vec[i64] = (0..11).map(|k| sum_indices_with_k_set_bits(full, k)).collect();
+    println(f"{sums}");
+    // 3000 random arrays of 1 to 20 values up to 10 with k up to 5; then
+    // 300 of 1 to 1000 values up to 10^5 with k up to 10
+    let mut seed = 2859;
+    let mut total = 0;
+    let mut check = 0;
+    for c in 0..3300 {
+        let small = c < 3000;
+        let n = if small { next_random(mut seed) % 20 + 1 } else { next_random(mut seed) % 1000 + 1 };
+        let top = if small { 10 } else { 100000 };
+        let k = if small { next_random(mut seed) % 6 } else { next_random(mut seed) % 11 };
+        let nums: Vec[i64] = (0..n).map(|_| wide(mut seed) % top + 1).collect();
+        let sum = sum_indices_with_k_set_bits(nums, k);
+        total += sum;
+        check = (check * 31 + sum) % 1000000007;
+        if c == 2999 {
+            println(f"3000 short arrays: sums total {total}, checksum {check}");
+            total = 0;
+            check = 0;
+        }
+    }
+    println(f"300 long arrays: sums total {total}, checksum {check}");
+}

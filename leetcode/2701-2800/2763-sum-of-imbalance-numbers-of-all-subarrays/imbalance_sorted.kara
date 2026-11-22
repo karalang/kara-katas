@@ -1,0 +1,72 @@
+// LeetCode #2763: Sum of Imbalance Numbers of All Subarrays -- the sorted
+// arm. From each start the distinct numbers are kept in a sorted `Vec`,
+// each new one placed by `partition_point` and `insert`; its neighbours
+// in the list, read by `get` as `Option`s, say which gaps of more than 1
+// it closes and opens. O(n^3) in the worst case, the inserts' shifting.
+
+fn sum_imbalance_numbers(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut total = 0;
+    for i in 0..n {
+        let mut sorted: Vec[i64] = Vec.new();
+        let mut gaps = 0;
+        for j in i..n {
+            let x = nums[j];
+            let at = sorted.partition_point(|v| v < x);
+            if sorted.get(at).cloned() != Some(x) {
+                let below = if at > 0 { sorted.get(at - 1) } else { None };
+                let above = sorted.get(at);
+                match (below, above) {
+                    (Some(p), Some(s)) => gaps += (x - p > 1) as i64 + (s - x > 1) as i64 - (s - p > 1) as i64,
+                    (Some(p), None) => gaps += (x - p > 1) as i64,
+                    (None, Some(s)) => gaps += (s - x > 1) as i64,
+                    (None, None) => {}
+                }
+                sorted.insert(at, x);
+            }
+            total += gaps;
+        }
+    }
+    total
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{sum_imbalance_numbers([2, 3, 1, 4].to_vec())}");
+    println(f"{sum_imbalance_numbers([1, 3, 3, 3, 5].to_vec())}");
+    // one number; 1000 equal numbers and 1000 rising by 1, LeetCode's
+    // most, with no gap anywhere; and 1000 falling by 2 from 1000, twice
+    println(f"{sum_imbalance_numbers([1].to_vec())}");
+    println(f"{sum_imbalance_numbers(Vec.filled(1000, 1))}");
+    println(f"{sum_imbalance_numbers((1..=1000).collect())}");
+    println(f"{sum_imbalance_numbers((0..1000).map(|i| 1000 - 2 * (i % 500)).collect())}");
+    // 2000 random arrays of 1 to 20 numbers up to their length; then 5 of
+    // 1000 numbers up to 1000
+    let mut seed = 2763;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 20 + 1;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % n + 1).collect();
+        let a = sum_imbalance_numbers(nums);
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"2000 small arrays: imbalances sum to {total}, checksum {check}");
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..5 {
+        let nums: Vec[i64] = (0..1000).map(|_| next_random(mut seed) % 1000 + 1).collect();
+        let a = sum_imbalance_numbers(nums);
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"5 arrays of 1000: imbalances sum to {total}, checksum {check}");
+}

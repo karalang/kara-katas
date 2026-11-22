@@ -1,0 +1,275 @@
+// LeetCode #2761: Prime Pairs With Target Sum -- the differential. The
+// five arms, against the statement read literally: every x and y from 1
+// to n with x <= y and x + y == n, each kept when both have exactly two
+// divisors, counted one by one; no sieve. Every n from 1 to 200; then 30
+// random n up to 10^5. Every case is drawn before any arm answers; the
+// literal reading is asked only of n up to 200.
+//
+// P1  n up to 200, the pairs are the literal reading's
+// P2  each pair sums to n, its x at most its y, both prime by trial
+//     division, and the x strictly rising
+// P3  an odd n: at most one pair, and that one [2, n - 2]
+// P4  an even n from 4 on: at least one pair
+// P5  for the first and the last pair [x, y], the pairs of 2x hold [x, x]
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn divisors(m: i64) -> i64 {
+    (1..=m).filter(|d| m % d == 0).count()
+}
+
+fn literal(n: i64) -> Vec[Vec[i64]] {
+    let mut pairs: Vec[Vec[i64]] = Vec.new();
+    for x in 1..=n {
+        for y in x..=n {
+            if x + y == n and divisors(x) == 2 and divisors(y) == 2 {
+                pairs.push([x, y].to_vec());
+            }
+        }
+    }
+    pairs
+}
+
+
+// ---- star (primes.kara) ---------------------------------------------
+
+fn star_find_prime_pairs(n: i64) -> Vec[Vec[i64]] {
+    let mut prime: Vec[bool] = Vec.filled(n + 1, true);
+    prime[0] = false;
+    if n >= 1 {
+        prime[1] = false;
+    }
+    let mut p = 2;
+    while p * p <= n {
+        if prime[p] {
+            let mut m = p * p;
+            while m <= n {
+                prime[m] = false;
+                m += p;
+            }
+        }
+        p += 1;
+    }
+    let mut pairs: Vec[Vec[i64]] = Vec.new();
+    for x in 2..=n / 2 {
+        if prime[x] and prime[n - x] {
+            pairs.push([x, n - x].to_vec());
+        }
+    }
+    pairs
+}
+
+
+// ---- trial (primes_trial.kara) --------------------------------------
+
+fn trial_is_prime(m: i64) -> bool {
+    if m < 2 {
+        return false;
+    }
+    if m % 2 == 0 {
+        return m == 2;
+    }
+    let mut d = 3;
+    while d * d <= m {
+        if m % d == 0 {
+            return false;
+        }
+        d += 2;
+    }
+    true
+}
+
+fn trial_find_prime_pairs(n: i64) -> Vec[Vec[i64]] {
+    (2..=n / 2).filter(|x| trial_is_prime(x) and trial_is_prime(n - x)).map(|x| [x, n - x].to_vec()).collect()
+}
+
+
+// ---- linear (primes_linear.kara) ------------------------------------
+
+fn linear_find_prime_pairs(n: i64) -> Vec[Vec[i64]] {
+    let mut least: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut primes: Vec[i64] = Vec.new();
+    for i in 2..=n {
+        if least[i] == 0 {
+            least[i] = i;
+            primes.push(i);
+        }
+        for p in primes.iter() {
+            if p > least[i] or p * i > n {
+                break;
+            }
+            least[p * i] = p;
+        }
+    }
+    primes
+        .iter()
+        .take_while(|p| 2 * p <= n)
+        .filter(|p| least[n - p] == n - p)
+        .map(|p| [p, n - p].to_vec())
+        .collect()
+}
+
+
+// ---- odd (primes_odd.kara) ------------------------------------------
+
+fn odd_find_prime_pairs(n: i64) -> Vec[Vec[i64]] {
+    let words = n / 128 + 1;
+    let mut composite: Vec[u64] = Vec.filled(words, 0);
+    let odd_prime = |m: i64, composite: ref Vec[u64]| {
+        m >= 3 and m % 2 == 1 and (composite[m / 2 / 64] >> (m / 2 % 64)) & 1 == 0
+    };
+    let mut p = 3;
+    while p * p <= n {
+        if odd_prime(p, composite) {
+            let mut m = p * p;
+            while m <= n {
+                composite[m / 2 / 64] |= 1 << (m / 2 % 64);
+                m += 2 * p;
+            }
+        }
+        p += 2;
+    }
+    let mut pairs: Vec[Vec[i64]] = Vec.new();
+    if n % 2 == 1 {
+        if odd_prime(n - 2, composite) {
+            pairs.push([2, n - 2].to_vec());
+        }
+        return pairs;
+    }
+    if n == 4 {
+        pairs.push([2, 2].to_vec());
+    }
+    let mut x = 3;
+    while x <= n / 2 {
+        if odd_prime(x, composite) and odd_prime(n - x, composite) {
+            pairs.push([x, n - x].to_vec());
+        }
+        x += 2;
+    }
+    pairs
+}
+
+
+// ---- solution (primes_solution.kara) --------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn find_prime_pairs(n: i32) -> Vec[Vec[i32]] {
+        let n = n as i64;
+        let mut is_prime = Vec.filled(n + 1, true);
+        is_prime[0] = false;
+        if n >= 1 {
+            is_prime[1] = false;
+        }
+        let mut i = 2;
+        while i * i <= n {
+            if is_prime[i] {
+                for j in (i * i..=n).step_by(i) {
+                    is_prime[j] = false;
+                }
+            }
+            i += 1;
+        }
+        let mut res = Vec.new();
+        for x in 2..=n / 2 {
+            if is_prime[x] and is_prime[n - x] {
+                res.push([x as i32, (n - x) as i32]);
+            }
+        }
+        res
+    }
+}
+
+fn solution_find_prime_pairs(n: i64) -> Vec[Vec[i64]] {
+    Solution.find_prime_pairs(n as i32)
+        .into_iter()
+        .map(|pair| pair.into_iter().map(|v| v as i64).collect())
+        .collect()
+}
+
+
+fn answer(arm: i64, n: i64) -> Vec[Vec[i64]] {
+    match arm {
+        0 => star_find_prime_pairs(n),
+        1 => trial_find_prime_pairs(n),
+        2 => linear_find_prime_pairs(n),
+        3 => odd_find_prime_pairs(n),
+        _ => solution_find_prime_pairs(n),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn prime_by_trial(m: i64) -> bool {
+    m >= 2 and (2..m).take_while(|d| d * d <= m).all(|d| m % d != 0)
+}
+
+fn main() {
+    let names = ["star", "trial", "linear", "odd", "solution"];
+    let mut seed = 2761;
+    let mut cases: Vec[i64] = (1..=200).collect();
+    for _ in 0..30 {
+        cases.push((next_random(mut seed) * 32768 + next_random(mut seed)) % 100000 + 1);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, n) in cases.iter().enumerate() {
+        let small = n <= 200;
+        let want = if small { literal(n) } else { Vec.new() };
+        check = (check * 31 + want.len()) % 1000000007;
+        for pair in want.iter() {
+            check = (check * 31 + pair[0]) % 1000000007;
+        }
+        let got: Vec[Vec[Vec[i64]]] = (0..5).map(|arm| answer(arm, n)).collect();
+        for arm in 0..5 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let sound = value.iter().all(|p| p.len() == 2 and p[0] + p[1] == n and p[0] <= p[1] and prime_by_trial(p[0]) and prime_by_trial(p[1]))
+                and value.windows(2).iter().all(|w| w[0][0] < w[1][0]);
+            let odd_rule = n % 2 == 0 or value.is_empty() or (value.len() == 1 and value[0] == [2, n - 2].to_vec());
+            let doubled = |pair: ref Vec[i64]| answer(arm, 2 * pair[0]).contains([pair[0], pair[0]].to_vec());
+            let ends_double = value.is_empty() or (doubled(value[0]) and doubled(value[value.len() - 1]));
+            let verdicts = [
+                not small or value == want,
+                sound,
+                odd_rule,
+                n % 2 == 1 or n < 4 or not value.is_empty(),
+                ends_double,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} n {n}, arm {names[arm]}: P{q + 1} fails, gave {value.len()} pairs");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

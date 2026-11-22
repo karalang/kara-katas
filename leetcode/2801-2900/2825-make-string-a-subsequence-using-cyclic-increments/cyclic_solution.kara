@@ -1,0 +1,81 @@
+// LeetCode #2825: Make String a Subsequence Using Cyclic Increments -- a
+// Rust solution as LeetCode's Rust users write it, carried to Kāra by
+// `karac fix`: `as_bytes` on both `String`s, a `for &c in s1` over the
+// first, and the increment as `(c - b'a' + 1) % 26 + b'a'` in `u8`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn can_make_subsequence(str1: String, str2: String) -> bool {
+        let s1 = str1.bytes();
+        let s2 = str2.bytes();
+        let mut j = 0;
+        for c in s1 {
+            if j < s2.len() {
+                let d = s2[j];
+                if c == d or (c - b'a' + 1) % 26 + b'a' == d {
+                    j += 1;
+                }
+            }
+        }
+        j == s2.len()
+    }
+}
+
+fn can_make_subsequence(str1: Str, str2: Str) -> bool {
+    Solution.can_make_subsequence(str1.to_string(), str2.to_string())
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n letters drawn from the `width` letters starting at `from`, wrapping
+// past 'z'
+fn letters(n: i64, from: i64, width: i64, seed: mut ref i64) -> String {
+    let codes: Vec[u8] = (0..n).map(|_| ((from + next_random(mut seed) % width) % 26 + 97) as u8).collect();
+    String.from_utf8(codes).unwrap()
+}
+
+fn main() {
+    // LeetCode's three examples; str2 longer than str1; 'z' to 'a'; 10^5
+    // 'z's under 10^5 'a's; and the same 'a's under one 'b' fewer
+    println(f"{can_make_subsequence("abc", "ad")}");
+    println(f"{can_make_subsequence("zc", "ad")}");
+    println(f"{can_make_subsequence("ab", "d")}");
+    println(f"{can_make_subsequence("ab", "abc")}");
+    println(f"{can_make_subsequence("z", "a")}");
+    println(f"{can_make_subsequence("z".repeat(100000), "a".repeat(100000))}");
+    println(f"{can_make_subsequence("a".repeat(99999), "b".repeat(100000))}");
+    // 3000 random pairs: str1 of 1 to 10 letters and str2 of 1 to 5 from
+    // the four letters 'y' to 'b'; then 50 of 10^4 letters with str2 of
+    // up to 5000 from six letters
+    let mut seed = 2825;
+    let mut yes = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let s1 = letters(next_random(mut seed) % 10 + 1, 24, 4, mut seed);
+        let s2 = letters(next_random(mut seed) % 5 + 1, 24, 4, mut seed);
+        let a = can_make_subsequence(s1, s2);
+        if a {
+            yes += 1;
+        }
+        check = (check * 31 + if a { 1 } else { 0 }) % 1000000007;
+    }
+    println(f"3000 short pairs: {yes} true, checksum {check}");
+    yes = 0;
+    check = 0;
+    for _ in 0..50 {
+        let s1 = letters(10000, 23, 6, mut seed);
+        let s2 = letters(next_random(mut seed) % 5000 + 1, 23, 6, mut seed);
+        let a = can_make_subsequence(s1, s2);
+        if a {
+            yes += 1;
+        }
+        check = (check * 31 + if a { 1 } else { 0 } + s2.len()) % 1000000007;
+    }
+    println(f"50 long pairs: {yes} true, checksum {check}");
+}

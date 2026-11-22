@@ -1,0 +1,51 @@
+// LeetCode #2809: Minimum Time to Make Array Sum At Most x -- the bench:
+// the ★ arm over 20 cases of 1000 pairs, LeetCode's most, nums1 up to
+// 1000 and nums2 up to 2, with x from 3 * 10^5 to 5 * 10^5 so that most
+// answers fall inside n, all drawn first, then each answered 20 times.
+
+fn minimum_time(nums1: Vec[i64], nums2: Vec[i64], x: i64) -> i64 {
+    let n = nums1.len();
+    let mut pairs: Vec[(i64, i64)] = nums2.iter().zip(nums1.iter()).collect();
+    pairs.sort();
+    let mut best: Vec[i64] = Vec.filled(n + 1, 0);
+    for (i, (b, a)) in pairs.iter().enumerate() {
+        for j in (1..=i + 1).rev() {
+            best[j] = best[j].max(best[j - 1] + a + j * b);
+        }
+    }
+    let sum1: i64 = nums1.iter().sum();
+    let sum2: i64 = nums2.iter().sum();
+    for t in 0..=n {
+        if sum1 + t * sum2 - best[t] <= x {
+            return t;
+        }
+    }
+    -1
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 20;
+    let rounds = 20;
+    let mut seed = 2809;
+    let mut cases: Vec[(Vec[i64], Vec[i64], i64)] = Vec.new();
+    for _ in 0..count {
+        let nums1: Vec[i64] = (0..1000).map(|_| next_random(mut seed) % 1001).collect();
+        let nums2: Vec[i64] = (0..1000).map(|_| next_random(mut seed) % 3).collect();
+        cases.push((nums1, nums2, 300000 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 200000));
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (nums1, nums2, x) in cases.iter() {
+            let a = minimum_time(nums1, nums2, x);
+            total += a;
+            check = (check * 31 + a + 1 + r) % 1000000007;
+        }
+    }
+    println(f"{count} cases of 1000 pairs, {rounds} rounds: times sum to {total}, checksum {check}");
+}

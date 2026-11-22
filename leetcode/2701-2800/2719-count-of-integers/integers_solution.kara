@@ -1,0 +1,109 @@
+// LeetCode #2719: Count of Integers -- a Rust solution as LeetCode's Rust
+// users write it, carried to Kāra by `karac fix`: a `const MOD` and a
+// nested `fn dfs` inside a nested `fn calc`, a `vec![vec![-1i64; 401];
+// n]` memo passed as `&mut`, `usize` digits and `i32` sums.
+
+const MOD: i64 = 1_000_000_007;
+
+fn dfs(i: i64, sum: i32, tight: bool, d: ref Vec[i64], memo: mut ref Vec[Vec[i64]], min_sum: i32, max_sum: i32) -> i64 {
+    if sum > max_sum {
+        return 0;
+    }
+    if i == d.len() {
+        return if sum >= min_sum { 1 } else { 0 };
+    }
+    if not tight and memo[i][sum] != -1 {
+        return memo[i][sum];
+    }
+    let up = if tight { d[i] } else { 9 };
+    let mut res = 0;
+    for x in 0..=up {
+        res = (res + dfs(i + 1, sum + x as i32, tight and x == up, d, mut memo, min_sum, max_sum)) % MOD;
+    }
+    if not tight {
+        memo[i][sum] = res;
+    }
+    res
+}
+
+fn calc(s: Str, min_sum: i32, max_sum: i32) -> i64 {
+    let d: Vec[i64] = s.bytes().iter().map(|b| (b - b'0') as i64).collect();
+    let n = d.len();
+    let mut memo = Vec.filled(n, Vec.filled(401, -1));
+    dfs(0, 0, true, d, mut memo, min_sum, max_sum)
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn count(num1: String, num2: String, min_sum: i32, max_sum: i32) -> i32 {
+        let mut ans = calc(num2, min_sum, max_sum) - calc(num1, min_sum, max_sum);
+        let s1: i32 = num1.bytes().iter().map(|b| (b - b'0') as i32).sum();
+        if s1 >= min_sum and s1 <= max_sum {
+            ans += 1;
+        }
+        ((ans % MOD + MOD) % MOD) as i32
+    }
+}
+
+fn count(num1: Str, num2: Str, min_sum: i64, max_sum: i64) -> i64 {
+    Solution.count(num1.to_string(), num2.to_string(), min_sum as i32, max_sum as i32)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a number of 1 to `longest` digits, the first not zero
+fn random_number(seed: mut ref i64, longest: i64) -> String {
+    let n = next_random(mut seed) % longest + 1;
+    let mut digits = String.new();
+    digits.push((b'1' + (next_random(mut seed) % 9) as u8) as char);
+    for _ in 1..n {
+        digits.push((b'0' + (next_random(mut seed) % 10) as u8) as char);
+    }
+    digits
+}
+
+// a before b as numbers: the shorter first, then by digits
+fn at_most(a: Str, b: Str) -> bool {
+    a.len() < b.len() or (a.len() == b.len() and a <= b)
+}
+
+fn main() {
+    // LeetCode's two examples; 1 to 10^22, LeetCode's widest, with every
+    // sum allowed and with only 400; one number; the 22 nines
+    println(f"{count("1", "12", 1, 8)}");
+    println(f"{count("1", "5", 1, 5)}");
+    let top = f"1{"0".repeat(22)}";
+    println(f"{count("1", top, 1, 400)}");
+    println(f"{count("1", top, 400, 400)}");
+    println(f"{count("4179", "4179", 21, 21)}");
+    let nines = "9".repeat(22);
+    println(f"{count(nines, nines, 198, 400)}");
+    println(f"{count("1", nines, 99, 99)}");
+    // 2000 random ranges up to 10^4 with sums up to 40; then 300 of up to
+    // 22 digits with sums up to 200
+    let mut seed = 2719;
+    let mut sum = 0;
+    let mut check = 0;
+    for c in 0..2300 {
+        let (longest, most) = if c < 2000 { (4, 40) } else { (22, 200) };
+        let a = random_number(mut seed, longest);
+        let b = random_number(mut seed, longest);
+        let low = next_random(mut seed) % most + 1;
+        let high = low + next_random(mut seed) % (most - low + 1);
+        let found = if at_most(a, b) { count(a, b, low, high) } else { count(b, a, low, high) };
+        sum += found;
+        check = (check * 31 + found) % 1000000007;
+        if c == 1999 {
+            println(f"2000 ranges up to 10^4: counts sum to {sum}, checksum {check}");
+            sum = 0;
+            check = 0;
+        }
+    }
+    println(f"300 ranges up to 22 digits: counts mod p sum to {sum}, checksum {check}");
+}

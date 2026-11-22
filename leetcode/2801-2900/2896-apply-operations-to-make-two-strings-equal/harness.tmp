@@ -1,0 +1,59 @@
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn bits(n: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(if next_random(mut seed) % 2 == 0 { '0' } else { '1' });
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's two examples; 500 characters, LeetCode's most, every one
+    // different, with x 500 and with x 1, and different at every third
+    println(f"{min_operations("1100011000", "0101001010", 2)} {min_operations("10110", "00011", 4)}");
+    let zeros = "0".repeat(500);
+    let ones = "1".repeat(500);
+    let thirds: String = (0..500).map(|i| if i % 3 == 0 { '1' } else { '0' }).collect();
+    println(f"{min_operations(zeros, ones, 500)} {min_operations(zeros, ones, 1)} {min_operations(zeros, thirds, 5)}");
+    // 3000 random pairs of 1 to 10 characters, x 1 to 5; then 300 of 100
+    // to 500, x up to 500, every other one with s2 a few flips from s1
+    let mut seed = 2896;
+    let mut total = 0;
+    let mut check = 0;
+    let mut impossible = 0;
+    for c in 0..3300 {
+        let small = c < 3000;
+        let n = if small { next_random(mut seed) % 10 + 1 } else { next_random(mut seed) % 401 + 100 };
+        let x = if small { next_random(mut seed) % 5 + 1 } else { next_random(mut seed) % 500 + 1 };
+        let s1 = bits(n, mut seed);
+        let s2 = if small or c % 2 == 0 {
+            bits(n, mut seed)
+        } else {
+            let mut chars: Vec[char] = s1.chars().collect();
+            for _ in 0..next_random(mut seed) % 20 {
+                let at = next_random(mut seed) % n;
+                chars[at] = if chars[at] == '0' { '1' } else { '0' };
+            }
+            chars.iter().collect()
+        };
+        let cost = min_operations(s1, s2, x);
+        if cost < 0 {
+            impossible += 1;
+        } else {
+            total += cost;
+        }
+        check = (check * 31 + cost + 1) % 1000000007;
+        if c == 2999 or c == 3299 {
+            println(f"{if small { "3000 short" } else { "300 long" }} pairs: {impossible} impossible, costs total {total}, checksum {check}");
+            total = 0;
+            check = 0;
+            impossible = 0;
+        }
+    }
+}

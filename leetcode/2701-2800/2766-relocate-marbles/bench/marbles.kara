@@ -1,0 +1,83 @@
+// LeetCode #2766: Relocate Marbles -- the bench (marbles.kara): the
+// occupied positions in a `Set`, each move taking its from position out
+// and putting its to position in, sorted at the end.
+
+fn relocate_marbles(nums: Vec[i64], move_from: Vec[i64], move_to: Vec[i64]) -> Vec[i64] {
+    let mut occupied: Set[i64] = nums.iter().collect();
+    for (a, b) in move_from.iter().zip(move_to.iter()) {
+        occupied.remove(a);
+        occupied.insert(b);
+    }
+    let mut places: Vec[i64] = occupied.into_iter().collect();
+    places.sort();
+    places
+}
+
+// ---- the bench: 20 cases of 10^5 marbles and moves, each answered 5 times
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// n marbles at positions from 1 to top, then moves each from a place that
+// holds marbles at the time to any place from 1 to top; a place's slot in
+// the list of held places is kept by position
+fn case(n: i64, moves: i64, top: i64, seed: mut ref i64) -> (Vec[i64], Vec[i64], Vec[i64]) {
+    let nums: Vec[i64] = (0..n).map(|_| wide(mut seed) % top + 1).collect();
+    let mut places: Vec[i64] = Vec.new();
+    let mut slot: Vec[i64] = Vec.filled(top + 1, -1);
+    for x in nums.iter() {
+        if slot[x] < 0 {
+            slot[x] = places.len();
+            places.push(x);
+        }
+    }
+    let mut move_from: Vec[i64] = Vec.new();
+    let mut move_to: Vec[i64] = Vec.new();
+    for _ in 0..moves {
+        let a = places[wide(mut seed) % places.len()];
+        let b = wide(mut seed) % top + 1;
+        move_from.push(a);
+        move_to.push(b);
+        if a != b {
+            let k = slot[a];
+            slot[a] = -1;
+            let last = places.pop().unwrap();
+            if last != a {
+                places[k] = last;
+                slot[last] = k;
+            }
+            if slot[b] < 0 {
+                slot[b] = places.len();
+                places.push(b);
+            }
+        }
+    }
+    (nums, move_from, move_to)
+}
+
+fn main() {
+    let count = 20;
+    let rounds = 5;
+    let mut seed = 2766;
+    // 10^5 marbles and moves, LeetCode's most, over places up to 10^6
+    let cases: Vec[(Vec[i64], Vec[i64], Vec[i64])] = (0..count).map(|_| case(100000, 100000, 1000000, mut seed)).collect();
+    let mut sum = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (nums, move_from, move_to) in cases.iter() {
+            let places = relocate_marbles(nums, move_from, move_to);
+            sum += places.len();
+            check = (check * 31 + places.len() + r) % 1000000007;
+            for p in places.iter() {
+                check = (check * 31 + p) % 1000000007;
+            }
+        }
+    }
+    println(f"{count} cases of 100000 marbles and moves, {rounds} rounds: {sum} places, checksum {check}");
+}

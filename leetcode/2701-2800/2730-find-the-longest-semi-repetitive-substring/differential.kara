@@ -1,0 +1,252 @@
+// LeetCode #2730: Find the Longest Semi-Repetitive Substring -- the
+// differential. The five arms, against the statement read literally:
+// every substring, each with its adjacent equal pairs counted, and the
+// longest with at most one. No window. 1000 random strings of 1 to 12
+// digits from the first 1 to 4; then 500 of 1 to 50 from the first 1 to
+// 10. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the string reversed: the same answer
+// P3  every digit moved 1 to 9 places on round the ten: the same answer
+// P4  one digit more on the end: no smaller and at most one more
+// P5  the answer is between the shorter of the length and 2 and the
+//     length, and is the length when the string holds one pair or none
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- star (semi.kara) -----------------------------------------------
+
+fn star_longest_semi_repetitive_substring(s: String) -> i64 {
+    let b = s.bytes();
+    let mut left = 0;
+    let mut pairs = 0;
+    let mut best = 1;
+    for right in 1..b.len() {
+        if b[right] == b[right - 1] {
+            pairs += 1;
+        }
+        while pairs > 1 {
+            if b[left] == b[left + 1] {
+                pairs -= 1;
+            }
+            left += 1;
+        }
+        best = best.max(right - left + 1);
+    }
+    best
+}
+
+
+// ---- last (semi_last.kara) ------------------------------------------
+
+fn last_longest_semi_repetitive_substring(s: String) -> i64 {
+    let b = s.bytes();
+    let mut start = 0;
+    let mut pair: Option[i64] = None;
+    let mut best = 1;
+    for i in 1..b.len() {
+        if b[i] == b[i - 1] {
+            if let Some(p) = pair {
+                start = p + 1;
+            }
+            pair = Some(i - 1);
+        }
+        best = best.max(i - start + 1);
+    }
+    best
+}
+
+
+// ---- extend (semi_extend.kara) --------------------------------------
+
+fn extend_longest_semi_repetitive_substring(s: String) -> i64 {
+    let digits: Vec[char] = s.chars().collect();
+    let n = digits.len();
+    let mut best = 0;
+    for start in 0..n {
+        let mut pairs = 0;
+        let mut end = start + 1;
+        while end < n {
+            if digits[end] == digits[end - 1] {
+                if pairs == 1 {
+                    break;
+                }
+                pairs += 1;
+            }
+            end += 1;
+        }
+        best = best.max(end - start);
+    }
+    best
+}
+
+
+// ---- pairs (semi_pairs.kara) ----------------------------------------
+
+fn pairs_longest_semi_repetitive_substring(s: String) -> i64 {
+    let n = s.len();
+    let mut cuts: Vec[i64] = [-1].to_vec();
+    for (i, w) in s.bytes().windows(2).into_iter().enumerate() {
+        if w[0] == w[1] {
+            cuts.push(i);
+        }
+    }
+    cuts.push(n - 1);
+    if cuts.len() <= 3 {
+        return n;
+    }
+    (0..cuts.len() - 2).map(|j| cuts[j + 2] - cuts[j]).max().unwrap()
+}
+
+
+// ---- solution (semi_solution.kara) ----------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn longest_semi_repetitive_substring(s: String) -> i32 {
+        let s = s.bytes();
+        let n = s.len();
+        let mut ans = 1;
+        let mut j = 0;
+        let mut cnt = 0;
+        for i in 1..n {
+            if s[i] == s[i - 1] {
+                cnt += 1;
+            }
+            while cnt > 1 {
+                if s[j] == s[j + 1] {
+                    cnt -= 1;
+                }
+                j += 1;
+            }
+            ans = ans.max(i - j + 1);
+        }
+        ans as i32
+    }
+}
+
+fn solution_longest_semi_repetitive_substring(s: String) -> i64 {
+    Solution.longest_semi_repetitive_substring(s)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+// "a string t is called semi-repetitive if there is at most one
+// consecutive pair of the same digits inside t"; the longest substring
+// that is
+fn literal(s: String) -> i64 {
+    let digits: Vec[char] = s.chars().collect();
+    let n = digits.len();
+    let mut best = 0;
+    for i in 0..n {
+        for j in i + 1..=n {
+            let mut pairs = 0;
+            for k in i + 1..j {
+                if digits[k] == digits[k - 1] {
+                    pairs += 1;
+                }
+            }
+            if pairs <= 1 and j - i > best {
+                best = j - i;
+            }
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, s: String) -> i64 {
+    match arm {
+        0 => star_longest_semi_repetitive_substring(s),
+        1 => last_longest_semi_repetitive_substring(s),
+        2 => extend_longest_semi_repetitive_substring(s),
+        3 => pairs_longest_semi_repetitive_substring(s),
+        _ => solution_longest_semi_repetitive_substring(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_digits(seed: mut ref i64, n: i64, digits: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push((b'0' + (next_random(mut seed) % digits) as u8) as char);
+    }
+    s
+}
+
+fn main() {
+    let names = ["star", "last", "extend", "pairs", "solution"];
+    let mut seed = 2730;
+    // (the string, how far round to move its digits, a digit to add)
+    let mut cases: Vec[(String, i64, char)] = Vec.new();
+    for c in 0..1500 {
+        let (n, digits) = if c < 1000 {
+            (next_random(mut seed) % 12 + 1, next_random(mut seed) % 4 + 1)
+        } else {
+            (next_random(mut seed) % 50 + 1, next_random(mut seed) % 10 + 1)
+        };
+        let s = random_digits(mut seed, n, digits);
+        let turn = next_random(mut seed) % 9 + 1;
+        let more = (b'0' + (next_random(mut seed) % digits) as u8) as char;
+        cases.push((s, turn, more));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (s, turn, more)) in cases.iter().enumerate() {
+        let truth = literal(s);
+        check = (check * 31 + truth) % 1000000007;
+        let n = s.len();
+        let reversed: String = s.chars().rev().collect();
+        let moved: String = s.bytes().iter().map(|b| (b'0' + ((b - b'0') + turn) as u8 % 10) as char).collect();
+        let mut longer = s.clone();
+        longer.push(more);
+        let b = s.bytes();
+        let pairs = (1..n).filter(|i| b[i] == b[i - 1]).count();
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, s)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let grown = answer(arm, longer);
+            let verdicts = [
+                value == truth,
+                answer(arm, reversed) == value,
+                answer(arm, moved) == value,
+                value <= grown and grown <= value + 1,
+                n.min(2) <= value and value <= n and (pairs > 1 or value == n),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} ({s}), arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

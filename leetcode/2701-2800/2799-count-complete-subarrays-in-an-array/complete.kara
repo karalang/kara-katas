@@ -1,0 +1,77 @@
+// LeetCode #2799: Count Complete Subarrays in an Array -- the ★ arm. A
+// subarray is complete when it holds all d distinct numbers of the
+// array, and then so does every one that contains it. So a window is
+// slid: for each end, the start moved on while the window would stay
+// complete without its first number, and every start before the
+// window's is one more complete subarray ending here. The window's
+// counts in a `Map`. O(n).
+
+fn count_complete_subarrays(nums: Vec[i64]) -> i64 {
+    let d = Set[i64].from_iter(nums.iter().cloned()).len();
+    let mut counts: Map[i64, i64] = Map.new();
+    let mut start = 0;
+    let mut complete = 0;
+    for v in nums.iter() {
+        *counts.entry(v).or_insert(0) += 1;
+        while counts.len() == d {
+            let first = nums[start];
+            let held = counts.get(first).unwrap();
+            if held == 1 {
+                break;
+            }
+            counts.insert(first, held - 1);
+            start += 1;
+        }
+        if counts.len() == d {
+            complete += start + 1;
+        }
+    }
+    complete
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; 1000 numbers, LeetCode's most, all
+    // different, so only the whole is complete; 1000 numbers going round
+    // 1 to 2000's first ten
+    println(f"{count_complete_subarrays([1, 3, 1, 2, 2])}");
+    println(f"{count_complete_subarrays([5, 5, 5, 5])}");
+    let n = 1000;
+    let distinct: Vec[i64] = (0..n).map(|i| 2000 - i).collect();
+    println(f"{count_complete_subarrays(distinct)}");
+    let round: Vec[i64] = (0..n).map(|i| i % 10 + 1).collect();
+    println(f"{count_complete_subarrays(round)}");
+    // 3000 random arrays of 1 to 12 numbers from 1 to 4; then 50 of 1000
+    // numbers from 1 to 2000 or from 1 to 20
+    let mut seed = 2799;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let m = next_random(mut seed) % 12 + 1;
+        let nums: Vec[i64] = (0..m).map(|_| next_random(mut seed) % 4 + 1).collect();
+        let a = count_complete_subarrays(nums);
+        sum += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"3000 small arrays: complete sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for c in 0..50 {
+        let top = if c % 2 == 0 { 2000 } else { 20 };
+        let nums: Vec[i64] = (0..n).map(|_| wide(mut seed) % top + 1).collect();
+        let a = count_complete_subarrays(nums);
+        sum += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"50 arrays of 1000: complete sum to {sum}, checksum {check}");
+}

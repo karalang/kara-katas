@@ -1,0 +1,108 @@
+// LeetCode #2867: Count Valid Paths in a Tree -- one pass of dynamic
+// programming over the tree rooted at 1, children before parents in
+// reverse breadth-first order: for each node, the paths from it down
+// with no prime and with one, both counting the node alone. At a node,
+// each child's halves are paired with the halves gathered so far, one
+// side's prime with the other's none, before they are gathered in.
+
+fn count_paths(n: i64, edges: Vec[Vec[i64]]) -> i64 {
+    let mut prime: Vec[bool] = Vec.filled(n + 1, true);
+    prime[0] = false;
+    prime[1] = false;
+    let mut i = 2;
+    while i * i <= n {
+        if prime[i] {
+            let mut j = i * i;
+            while j <= n {
+                prime[j] = false;
+                j += i;
+            }
+        }
+        i += 1;
+    }
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.new());
+    for e in edges.iter() {
+        adjacent[e[0]].push(e[1]);
+        adjacent[e[1]].push(e[0]);
+    }
+    let mut parent: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut order: Vec[i64] = [1].to_vec();
+    let mut head = 0;
+    while head < order.len() {
+        let u = order[head];
+        head += 1;
+        for w in adjacent[u].iter() {
+            if w != parent[u] {
+                parent[w] = u;
+                order.push(w);
+            }
+        }
+    }
+    let mut none: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut one: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut count = 0;
+    for u in order.iter().rev() {
+        let mut gathered_none = if prime[u] { 0 } else { 1 };
+        let mut gathered_one = if prime[u] { 1 } else { 0 };
+        for w in adjacent[u].iter() {
+            if w == parent[u] {
+                continue;
+            }
+            count += gathered_none * one[w] + gathered_one * none[w];
+            if prime[u] {
+                gathered_one += none[w];
+            } else {
+                gathered_none += none[w];
+                gathered_one += one[w];
+            }
+        }
+        none[u] = gathered_none;
+        one[u] = gathered_one;
+    }
+    count
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; 10^5 nodes, LeetCode's most, as a path
+    // and as a star around node 2
+    println(f"{count_paths(5, [[1, 2], [1, 3], [2, 4], [2, 5]].to_vec())} {count_paths(6, [[1, 2], [1, 3], [2, 4], [3, 5], [3, 6]].to_vec())}");
+    let n = 100000;
+    let path: Vec[Vec[i64]] = (1..n).map(|i| [i, i + 1].to_vec()).collect();
+    let star: Vec[Vec[i64]] = (1..n + 1).filter(|i| i != 2).map(|i| [2, i].to_vec()).collect();
+    println(f"{count_paths(n, path)} {count_paths(n, star)}");
+    // 3000 random trees of 1 to 10 nodes; then 30 of 10^4 to 10^5, every
+    // other one deep, each node's parent among the five before it
+    let mut seed = 2867;
+    let mut total = 0;
+    let mut check = 0;
+    for c in 0..3030 {
+        let small = c < 3000;
+        let n = if small { next_random(mut seed) % 10 + 1 } else { wide(mut seed) % 90001 + 10000 };
+        let mut edges: Vec[Vec[i64]] = Vec.new();
+        for v in 2..n + 1 {
+            let reach = if not small and c % 2 == 1 { (v - 1).min(5) } else { v - 1 };
+            let parent = v - 1 - wide(mut seed) % reach;
+            edges.push([parent, v].to_vec());
+        }
+        let paths = count_paths(n, edges);
+        total += paths;
+        check = (check * 31 + paths) % 1000000007;
+        if c == 2999 {
+            println(f"3000 small trees: {total} paths, checksum {check}");
+            total = 0;
+            check = 0;
+        }
+    }
+    println(f"30 large trees: {total} paths, checksum {check}");
+}

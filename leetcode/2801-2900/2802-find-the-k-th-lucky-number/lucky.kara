@@ -1,0 +1,64 @@
+// LeetCode #2802: Find The K-th Lucky Number -- ★: by the bits of k + 1.
+// The lucky numbers of L digits are the 2^L strings of 4 and 7 in order,
+// and the k-th is L digits long when 2^L <= k + 1 < 2^(L + 1); below k +
+// 1's leading bit, each bit read from the top is a digit, 0 a 4 and 1 a 7.
+
+fn kth_lucky_number(k: i64) -> String {
+    let n = k + 1;
+    let mut top = 1;
+    while top * 2 <= n {
+        top *= 2;
+    }
+    let mut lucky = String.new();
+    let mut bit = top / 2;
+    while bit > 0 {
+        lucky.push_str(if n & bit == 0 { "4" } else { "7" });
+        bit /= 2;
+    }
+    lucky
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// the answer folded to a number, its digits in order
+fn digest(s: String) -> i64 {
+    s.bytes().iter().fold(0, |h, b| (h * 131 + b as i64) % 1000000007)
+}
+
+fn main() {
+    // LeetCode's three examples; the first; 10^9, LeetCode's largest; the
+    // last of 29 digits
+    println(kth_lucky_number(4));
+    println(kth_lucky_number(10));
+    println(kth_lucky_number(1000));
+    println(kth_lucky_number(1));
+    println(kth_lucky_number(1000000000));
+    println(kth_lucky_number(1073741822));
+    // 3000 random k from 1 to 1000; then 50 up to 10^9
+    let mut seed = 2802;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let s = kth_lucky_number(next_random(mut seed) % 1000 + 1);
+        sum += s.len();
+        check = (check * 31 + digest(s)) % 1000000007;
+    }
+    println(f"3000 k up to 1000: lengths sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for _ in 0..50 {
+        let s = kth_lucky_number(wide(mut seed) % 1000000000 + 1);
+        sum += s.len();
+        check = (check * 31 + digest(s)) % 1000000007;
+    }
+    println(f"50 k up to 10^9: lengths sum to {sum}, checksum {check}");
+}

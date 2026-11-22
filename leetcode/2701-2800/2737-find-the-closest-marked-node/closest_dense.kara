@@ -1,0 +1,99 @@
+// LeetCode #2737: Find the Closest Marked Node -- the dense arm. The
+// edges folded into an n by n matrix of the lightest weight between each
+// two nodes, and Dijkstra without a queue: n times, the nearest unsettled
+// node is found by a scan, settled, and its row relaxed. O(n^2 + m).
+
+fn minimum_distance(n: i64, edges: Vec[Vec[i64]], s: i64, marked: Vec[i64]) -> i64 {
+    let far = i64.MAX;
+    let mut weight: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, far));
+    for e in edges.iter() {
+        weight[e[0]][e[1]] = weight[e[0]][e[1]].min(e[2]);
+    }
+    let mut dist: Vec[i64] = Vec.filled(n, far);
+    let mut settled: Vec[bool] = Vec.filled(n, false);
+    dist[s] = 0;
+    for _ in 0..n {
+        let mut u = -1;
+        for v in 0..n {
+            if not settled[v] and dist[v] != far and (u == -1 or dist[v] < dist[u]) {
+                u = v;
+            }
+        }
+        if u == -1 {
+            break;
+        }
+        settled[u] = true;
+        for v in 0..n {
+            if weight[u][v] != far and dist[u] + weight[u][v] < dist[v] {
+                dist[v] = dist[u] + weight[u][v];
+            }
+        }
+    }
+    let best = marked.iter().map(|v| dist[v]).min().unwrap();
+    if best == far { -1 } else { best }
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// m directed edges between distinct nodes of 0..n, weights 1 to most
+fn random_edges(seed: mut ref i64, n: i64, m: i64, most: i64) -> Vec[Vec[i64]] {
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..m {
+        let u = next_random(mut seed) % n;
+        let v = (u + 1 + next_random(mut seed) % (n - 1)) % n;
+        let w = (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1;
+        edges.push([u, v, w].to_vec());
+    }
+    edges
+}
+
+// 1 to k distinct marked nodes, none of them s
+fn random_marked(seed: mut ref i64, n: i64, s: i64, k: i64) -> Vec[i64] {
+    let mut marked: Vec[i64] = Vec.new();
+    let want = next_random(mut seed) % k + 1;
+    while marked.len() < want {
+        let v = next_random(mut seed) % n;
+        if v != s and not marked.contains(v) {
+            marked.push(v);
+        }
+    }
+    marked
+}
+
+fn main() {
+    // LeetCode's three examples; a chain of 500 nodes, LeetCode's most,
+    // with the only marked node at its end
+    let one = [[0, 1, 1].to_vec(), [1, 2, 3].to_vec(), [2, 3, 2].to_vec(), [0, 3, 4].to_vec()].to_vec();
+    println(f"{minimum_distance(4, one, 0, [2, 3].to_vec())}");
+    let two = [[0, 1, 2].to_vec(), [0, 2, 4].to_vec(), [1, 3, 1].to_vec(), [2, 3, 3].to_vec(), [3, 4, 2].to_vec()].to_vec();
+    println(f"{minimum_distance(5, two, 1, [0, 4].to_vec())}");
+    let three = [[0, 1, 1].to_vec(), [1, 2, 3].to_vec(), [2, 3, 2].to_vec()].to_vec();
+    println(f"{minimum_distance(4, three, 3, [0, 1].to_vec())}");
+    let chain: Vec[Vec[i64]] = (0..499).map(|i| [i, i + 1, 1000000].to_vec()).collect();
+    println(f"{minimum_distance(500, chain, 0, [499].to_vec())}");
+    // 2000 random graphs of 2 to 10 nodes and up to 20 edges weighing up
+    // to 20; then 20 of 500 nodes and 10^4 edges weighing up to 10^6
+    let mut seed = 2737;
+    let mut sum = 0;
+    let mut check = 0;
+    for c in 0..2020 {
+        let (n, m, most) = if c < 2000 { (next_random(mut seed) % 9 + 2, next_random(mut seed) % 21, 20) } else { (500, 10000, 1000000) };
+        let edges = random_edges(mut seed, n, m, most);
+        let s = next_random(mut seed) % n;
+        let marked = random_marked(mut seed, n, s, n - 1);
+        let distance = minimum_distance(n, edges, s, marked);
+        sum += distance;
+        check = (check * 31 + distance + 1) % 1000000007;
+        if c == 1999 {
+            println(f"2000 small graphs: distances sum to {sum}, checksum {check}");
+            sum = 0;
+            check = 0;
+        }
+    }
+    println(f"20 graphs of 500 nodes: distances sum to {sum}, checksum {check}");
+}

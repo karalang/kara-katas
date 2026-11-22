@@ -1,0 +1,84 @@
+// LeetCode #2850: Minimum Moves to Spread Stones Over Grid -- a Rust
+// solution as LeetCode's Rust users write it: the spare stones and the
+// empty cells as `Vec<(i32, i32)>` from `i as i32`, and a nested
+// `fn dfs` over `&Vec` and `&mut Vec<bool>` that tries every empty cell
+// for each stone, `i32::MAX` the start of its minimum.
+
+fn dfs(k: i64, from: ref Vec[(i32, i32)], to: ref Vec[(i32, i32)], used: mut ref Vec[bool]) -> i32 {
+    if k == from.len() {
+        return 0;
+    }
+    let mut best = i32.MAX;
+    for j in 0..to.len() {
+        if not used[j] {
+            used[j] = true;
+            let d = (from[k].0 - to[j].0).abs() + (from[k].1 - to[j].1).abs();
+            best = best.min(d + dfs(k + 1, from, to, mut used));
+            used[j] = false;
+        }
+    }
+    best
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_moves(grid: Vec[Vec[i32]]) -> i32 {
+        let mut from = Vec.new();
+        let mut to = Vec.new();
+        for i in 0..3 {
+            for j in 0..3 {
+                if grid[i][j] == 0 {
+                    to.push((i as i32, j as i32));
+                } else {
+                    for _ in 1..grid[i][j] {
+                        from.push((i as i32, j as i32));
+                    }
+                }
+            }
+        }
+        let mut used = Vec.filled(to.len(), false);
+        dfs(0, from, to, mut used)
+    }
+}
+
+fn minimum_moves(grid: Vec[Vec[i64]]) -> i64 {
+    let g: Vec[Vec[i32]] = grid.iter().map(|r| r.iter().map(|x| x as i32).collect()).collect();
+    Solution.minimum_moves(g)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn every(cell: i64, left: i64, counts: mut ref Vec[i64], out: mut ref Vec[Vec[Vec[i64]]]) {
+    if cell == 8 {
+        counts[8] = left;
+        let grid: Vec[Vec[i64]] = (0..3).map(|r| (0..3).map(|c| counts[r * 3 + c]).collect()).collect();
+        out.push(grid);
+        return;
+    }
+    for k in 0..left + 1 {
+        counts[cell] = k;
+        every(cell + 1, left - k, mut counts, mut out);
+    }
+}
+
+fn main() {
+    // LeetCode's two examples; a grid already spread, and all nine
+    // stones in a corner and in the middle
+    println(f"{minimum_moves([[1, 1, 0], [1, 1, 1], [1, 2, 1]])} {minimum_moves([[1, 3, 0], [1, 0, 0], [1, 0, 3]])}");
+    println(f"{minimum_moves([[1, 1, 1], [1, 1, 1], [1, 1, 1]])} {minimum_moves([[9, 0, 0], [0, 0, 0], [0, 0, 0]])} {minimum_moves([[0, 0, 0], [0, 9, 0], [0, 0, 0]])}");
+    // every grid of nine stones, in order of the cells' counts
+    let mut counts: Vec[i64] = Vec.filled(9, 0);
+    let mut grids: Vec[Vec[Vec[i64]]] = Vec.new();
+    every(0, 9, mut counts, mut grids);
+    let mut total = 0;
+    let mut most = 0;
+    let mut check = 0;
+    for grid in grids.iter() {
+        let moves = minimum_moves(grid);
+        total += moves;
+        most = most.max(moves);
+        check = (check * 31 + moves) % 1000000007;
+    }
+    println(f"{grids.len()} grids: {total} moves in all, at most {most}, checksum {check}");
+}

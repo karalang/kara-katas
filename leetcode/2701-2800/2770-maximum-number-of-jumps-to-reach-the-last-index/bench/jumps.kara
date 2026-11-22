@@ -1,0 +1,52 @@
+// LeetCode #2770: Maximum Number of Jumps to Reach the Last Index -- the
+// bench. The ★ arm (jumps.kara) over 40 arrays of 1000 numbers from
+// -10^9 to 10^9, LeetCode's most, with targets up to 2 * 10^9. All the
+// arrays drawn first, then each answered 5 times.
+
+fn maximum_jumps(nums: Vec[i64], target: i64) -> i64 {
+    let n = nums.len();
+    let mut most: Vec[i64] = Vec.filled(n, -1);
+    most[0] = 0;
+    for j in 1..n {
+        for i in 0..j {
+            if most[i] >= 0 and (nums[j] - nums[i]).abs() <= target {
+                most[j] = most[j].max(most[i] + 1);
+            }
+        }
+    }
+    most[n - 1]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let count = 40;
+    let rounds = 5;
+    let mut seed = 2770;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for _ in 0..count {
+        let nums: Vec[i64] = (0..1000).map(|_| wide(mut seed) % 2000000001 - 1000000000).collect();
+        cases.push((nums, wide(mut seed) % 2000000001));
+    }
+    let mut reached = 0;
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (nums, target) in cases.iter() {
+            let a = maximum_jumps(nums, target);
+            if a >= 0 {
+                reached += 1;
+                total += a;
+            }
+            check = (check * 31 + a + 1 + r) % 1000000007;
+        }
+    }
+    println(f"{count} arrays of 1000, {rounds} rounds: {reached} reached, jumps sum to {total}, checksum {check}");
+}

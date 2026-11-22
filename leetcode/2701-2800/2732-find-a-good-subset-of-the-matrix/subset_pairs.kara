@@ -1,0 +1,97 @@
+// LeetCode #2732: Find a Good Subset of the Matrix -- the pairs arm. No
+// masks: each row is first looked at alone, all zeros, and then beside
+// every later row, cell by cell, for two rows with no 1 in the same
+// column. O(m^2 n).
+
+fn good_subsetof_binary_matrix(grid: Vec[Vec[i64]]) -> Vec[i64] {
+    let m = grid.len();
+    for i in 0..m {
+        if grid[i].iter().all(|x| x == 0) {
+            return [i].to_vec();
+        }
+    }
+    for i in 0..m {
+        for j in i + 1..m {
+            let apart = (0..grid[i].len()).all(|c| grid[i][c] + grid[j][c] < 2);
+            if apart {
+                return [i, j].to_vec();
+            }
+        }
+    }
+    Vec.new()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// m rows of n random bits; kind 1 sets one column in every row, so no
+// subset is good; kind 2 does too but leaves one row free
+fn random_grid(seed: mut ref i64, m: i64, n: i64, kind: i64) -> Vec[Vec[i64]] {
+    let column = next_random(mut seed) % n;
+    let free = next_random(mut seed) % m;
+    let mut grid: Vec[Vec[i64]] = Vec.new();
+    for r in 0..m {
+        let mut row: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            row.push(next_random(mut seed) % 2);
+        }
+        if kind == 1 or (kind == 2 and r != free) {
+            row[column] = 1;
+        }
+        grid.push(row);
+    }
+    grid
+}
+
+// the answer names rows in ascending order, and each column of them sums
+// to at most half their number; an empty answer is checked elsewhere
+fn is_good(grid: Vec[Vec[i64]], rows: Vec[i64]) -> bool {
+    for k in 0..rows.len() {
+        if rows[k] < 0 or rows[k] >= grid.len() or (k > 0 and rows[k] <= rows[k - 1]) {
+            return false;
+        }
+    }
+    for j in 0..grid[0].len() {
+        let sum: i64 = rows.iter().map(|r| grid[r][j]).sum();
+        if 2 * sum > rows.len() {
+            return false;
+        }
+    }
+    true
+}
+
+fn main() {
+    // LeetCode's three examples, each with one answer only
+    println(f"{good_subsetof_binary_matrix([[0, 1, 1, 0].to_vec(), [0, 0, 0, 1].to_vec(), [1, 1, 1, 1].to_vec()].to_vec())}");
+    println(f"{good_subsetof_binary_matrix([[0].to_vec()].to_vec())}");
+    println(f"{good_subsetof_binary_matrix([[1, 1, 1].to_vec(), [1, 1, 1].to_vec()].to_vec())}");
+    // 3000 random grids of 1 to 10 rows and 1 to 5 columns; then 30 of
+    // 1000 rows and 5 columns. Which subset an arm names may differ, so
+    // only whether one was found is counted, and each one named is checked
+    let mut seed = 2732;
+    let mut found = 0;
+    let mut bad = 0;
+    let mut check = 0;
+    for c in 0..3030 {
+        let (m, n) = if c < 3000 { (next_random(mut seed) % 10 + 1, next_random(mut seed) % 5 + 1) } else { (1000, 5) };
+        let grid = random_grid(mut seed, m, n, c % 3);
+        let rows = good_subsetof_binary_matrix(grid);
+        let exists = if rows.len() > 0 { 1 } else { 0 };
+        if exists == 1 and not is_good(grid, rows) {
+            bad += 1;
+        }
+        found += exists;
+        check = (check * 31 + exists) % 1000000007;
+        if c == 2999 or c == 3029 {
+            let count = if c == 2999 { "3000 small grids" } else { "30 grids of 1000 rows" };
+            println(f"{count}: {found} with a good subset, {bad} named not good, checksum {check}");
+            found = 0;
+            bad = 0;
+            check = 0;
+        }
+    }
+}

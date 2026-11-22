@@ -1,0 +1,248 @@
+// LeetCode #2790: Maximum Number of Groups With Increasing Length -- the
+// differential. The five arms, against the statement read literally:
+// groups chosen one after another, each a set of distinct numbers by the
+// bits of a mask, longer than the group before it, and no number used
+// more times than its limit; every such run of groups searched and the
+// longest kept; no sorting and no sums. 2000 random arrays of 1 to 5
+// limits from 1 to 6; then 50 of up to 2000 limits up to 10^9. Every
+// case is drawn before any arm answers; the literal reading is asked
+// only of the first 2000.
+//
+// P1  up to 5 numbers, the answer is the literal reading's
+// P2  the limits reversed: the same answer
+// P3  a number allowed 10^9 times added: the answer or one more
+// P4  every limit cut to n: the same answer
+// P5  from 1 to n, and k groups' k(k + 1) / 2 places no more than the
+//     limits' sum
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn longest_run(limits: ref Vec[i64], used: mut ref Vec[i64], size: i64) -> i64 {
+    let n = limits.len();
+    let mut best = 0;
+    for mask in 1..(1 << n) {
+        let members: Vec[i64] = (0..n).filter(|i| (mask >> i) & 1 == 1).collect();
+        if members.len() <= size or members.iter().any(|i| used[i] == limits[i]) {
+            continue;
+        }
+        for i in members.iter() {
+            used[i] += 1;
+        }
+        best = best.max(1 + longest_run(limits, mut used, members.len()));
+        for i in members.iter() {
+            used[i] -= 1;
+        }
+    }
+    best
+}
+
+fn literal(limits: Vec[i64]) -> i64 {
+    let mut used: Vec[i64] = Vec.filled(limits.len(), 0);
+    longest_run(limits, mut used, 0)
+}
+
+
+// ---- star (groups.kara) ---------------------------------------------
+
+fn star_max_increasing_groups(usage_limits: Vec[i64]) -> i64 {
+    let mut limits = usage_limits.clone();
+    limits.sort();
+    let mut groups = 0;
+    let mut places = 0;
+    for u in limits.iter() {
+        places += u;
+        if places >= (groups + 1) * (groups + 2) / 2 {
+            groups += 1;
+        }
+    }
+    groups
+}
+
+
+// ---- cut (groups_cut.kara) ------------------------------------------
+
+fn cut_max_increasing_groups(usage_limits: Vec[i64]) -> i64 {
+    let n = usage_limits.len();
+    let mut limits = usage_limits.clone();
+    limits.sort();
+    // given[t]: the sum of min(u, t), the limits below t in full and t
+    // from each of the rest
+    let mut given: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut below = 0;
+    let mut full = 0;
+    for t in 1..=n {
+        while below < n and limits[below] < t {
+            full += limits[below];
+            below += 1;
+        }
+        given[t] = full + (n - below) * t;
+    }
+    let fits = |k: i64| {
+        for t in 1..=k {
+            if given[t] < t * k - t * (t - 1) / 2 {
+                return false;
+            }
+        }
+        true
+    };
+    let mut (low, high) = (0, n);
+    while low < high {
+        let mid = (low + high + 1) / 2;
+        if fits(mid) {
+            low = mid;
+        } else {
+            high = mid - 1;
+        }
+    }
+    low
+}
+
+
+// ---- counts (groups_counts.kara) ------------------------------------
+
+fn counts_max_increasing_groups(usage_limits: Vec[i64]) -> i64 {
+    let mut counts: SortedMap[i64, i64] = SortedMap.new();
+    for u in usage_limits.iter() {
+        *counts.entry(u).or_insert(0) += 1;
+    }
+    let mut groups = 0;
+    let mut places = 0;
+    for (u, c) in counts.iter() {
+        for _ in 0..c {
+            places += u;
+            if places >= (groups + 1) * (groups + 2) / 2 {
+                groups += 1;
+            }
+        }
+    }
+    groups
+}
+
+
+// ---- fold (groups_fold.kara) ----------------------------------------
+
+fn fold_max_increasing_groups(usage_limits: Vec[i64]) -> i64 {
+    let mut limits = usage_limits.clone();
+    limits.sort();
+    let (groups, _) = limits.iter().fold((0, 0), |(groups, places), u| {
+        let places = places + u;
+        if places >= (groups + 1) * (groups + 2) / 2 { (groups + 1, places) } else { (groups, places) }
+    });
+    groups
+}
+
+
+// ---- solution (groups_solution.kara) --------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_increasing_groups(usage_limits: own Vec[i32]) -> i32 {
+        let mut usage_limits = usage_limits;
+        usage_limits.sort();
+        let mut sum: i64 = 0;
+        let mut ans: i64 = 0;
+        for x in usage_limits.iter() {
+            sum += x as i64;
+            if sum >= (ans + 1) * (ans + 2) / 2 {
+                ans += 1;
+            }
+        }
+        ans as i32
+    }
+}
+
+fn solution_max_increasing_groups(usage_limits: Vec[i64]) -> i64 {
+    Solution.max_increasing_groups(usage_limits.iter().map(|v| v as i32).collect())
+}
+
+
+fn answer(arm: i64, limits: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_max_increasing_groups(limits),
+        1 => cut_max_increasing_groups(limits),
+        2 => counts_max_increasing_groups(limits),
+        3 => fold_max_increasing_groups(limits),
+        _ => solution_max_increasing_groups(limits),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "cut", "counts", "fold", "solution"];
+    let mut seed = 2790;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..2050 {
+        if c < 2000 {
+            let n = next_random(mut seed) % 5 + 1;
+            cases.push((0..n).map(|_| next_random(mut seed) % 6 + 1).collect());
+        } else {
+            let n = wide(mut seed) % 2000 + 1;
+            cases.push((0..n).map(|_| wide(mut seed) % 1000000000 + 1).collect());
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, limits) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(limits) } else { 0 };
+        check = (check * 31 + want + 1) % 1000000007;
+        let n = limits.len();
+        let total: i64 = limits.iter().sum();
+        let reversed: Vec[i64] = limits.iter().rev().collect();
+        let mut added = limits.clone();
+        added.push(1000000000);
+        let cut: Vec[i64] = limits.iter().map(|u| u.min(n)).collect();
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, limits)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let more = answer(arm, added);
+            let verdicts = [
+                not small or value == want,
+                answer(arm, reversed) == value,
+                more == value or more == value + 1,
+                answer(arm, cut) == value,
+                value >= 1 and value <= n and value * (value + 1) / 2 <= total,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {limits}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

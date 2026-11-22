@@ -1,0 +1,62 @@
+// LeetCode #2735: Collecting Chocolates -- the ★ arm. After k turns the
+// chocolate of type t can have been bought at any of the k + 1 prices
+// nums[t], nums[t - 1], ..., nums[t - k] (round the circle), so the cost
+// with k turns is k x plus the sum of each type's cheapest so far. The
+// cheapest per type is kept and narrowed one turn at a time, and the
+// best over k = 0 to n - 1 is the answer, since a full circle of turns
+// can only add cost. O(n^2).
+
+fn min_cost(nums: Vec[i64], x: i64) -> i64 {
+    let n = nums.len();
+    let mut cheapest = nums.clone();
+    let mut best: i64 = nums.iter().sum();
+    for k in 1..n {
+        for t in 0..n {
+            cheapest[t] = cheapest[t].min(nums[(t - k + n) % n]);
+        }
+        let total: i64 = cheapest.iter().sum();
+        best = best.min(k * x + total);
+    }
+    best
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a number from 1 to most, most up to 10^9
+fn random_up_to(seed: mut ref i64, most: i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1
+}
+
+fn main() {
+    // LeetCode's two examples; one chocolate; turns too dear to take;
+    // turns so cheap that every chocolate is bought at the cheapest price
+    println(f"{min_cost([20, 1, 15].to_vec(), 5)}");
+    println(f"{min_cost([1, 2, 3].to_vec(), 4)}");
+    println(f"{min_cost([7].to_vec(), 3)}");
+    println(f"{min_cost([5, 9, 2, 8].to_vec(), 1000)}");
+    println(f"{min_cost([5, 9, 2, 8].to_vec(), 1)}");
+    // 2000 random cases of 1 to 20 chocolates priced up to 100, turns up
+    // to 100; then 20 of 1000, LeetCode's most, priced up to 10^9
+    let mut seed = 2735;
+    let mut sum = 0;
+    let mut check = 0;
+    for c in 0..2020 {
+        let (n, most) = if c < 2000 { (next_random(mut seed) % 20 + 1, 100) } else { (1000, 1000000000) };
+        let nums: Vec[i64] = (0..n).map(|_| random_up_to(mut seed, most)).collect();
+        let x = random_up_to(mut seed, most);
+        let cost = min_cost(nums, x);
+        sum += cost;
+        check = (check * 31 + cost) % 1000000007;
+        if c == 1999 {
+            println(f"2000 small cases: costs sum to {sum}, checksum {check}");
+            sum = 0;
+            check = 0;
+        }
+    }
+    println(f"20 cases of 1000 chocolates: costs sum to {sum}, checksum {check}");
+}

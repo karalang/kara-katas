@@ -1,0 +1,124 @@
+// LeetCode #2714: Find Shortest Path with K Hops -- the dense arm. The
+// edges in an n by n matrix of weights, 0 for none, and k + 1 layers as
+// in the layers arm, each settled by Dijkstra's search without a heap:
+// every step scans the nodes for the nearest one not yet settled and
+// relaxes along its row of the matrix. O((k + 1) V^2).
+
+fn shortest_path_with_hops(n: i64, edges: Vec[Vec[i64]], s: i64, d: i64, k: i64) -> i64 {
+    let mut weight: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, 0));
+    for e in edges.iter() {
+        weight[e[0]][e[1]] = e[2];
+        weight[e[1]][e[0]] = e[2];
+    }
+    let far = i64.MAX;
+    let mut layer: Vec[i64] = Vec.filled(n, far);
+    layer[s] = 0;
+    for round in 0..=k {
+        let mut dist = layer.clone();
+        if round > 0 {
+            for u in 0..n {
+                for v in 0..n {
+                    if weight[u][v] > 0 and layer[u] < dist[v] {
+                        dist[v] = layer[u];
+                    }
+                }
+            }
+        }
+        let mut done: Vec[bool] = Vec.filled(n, false);
+        loop {
+            let mut best = -1;
+            for v in 0..n {
+                if not done[v] and dist[v] < far and (best < 0 or dist[v] < dist[best]) {
+                    best = v;
+                }
+            }
+            if best < 0 {
+                break;
+            }
+            done[best] = true;
+            for v in 0..n {
+                let w = weight[best][v];
+                if w > 0 and dist[best] + w < dist[v] {
+                    dist[v] = dist[best] + w;
+                }
+            }
+        }
+        layer = dist;
+    }
+    layer[d]
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// a connected graph of n nodes: a random tree, each node after the
+// first joined to one before it, then up to `extra` more edges between
+// pairs not yet joined; weights from 1 to `heaviest`
+fn random_graph(seed: mut ref i64, n: i64, extra: i64, heaviest: i64) -> Vec[Vec[i64]] {
+    let mut joined: Set[(i64, i64)] = Set.new();
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for v in 1..n {
+        let u = next_random(mut seed) % v;
+        joined.insert((u, v));
+        edges.push([u, v, wide(mut seed) % heaviest + 1].to_vec());
+    }
+    for _ in 0..extra {
+        let a = next_random(mut seed) % n;
+        let b = next_random(mut seed) % n;
+        let (u, v) = (a.min(b), a.max(b));
+        if u != v and joined.insert((u, v)) {
+            edges.push([v, u, wide(mut seed) % heaviest + 1].to_vec());
+        }
+    }
+    edges
+}
+
+fn main() {
+    // LeetCode's three examples; a path of 500 nodes, LeetCode's most,
+    // each edge 10^6, end to end with no hops and 10; a path of 50 end to
+    // end with 49, every edge hopped; then 500
+    // nodes and about 10^4 edges, near LeetCode's most, with 1 hop
+    println(f"{shortest_path_with_hops(4, [[0, 1, 4].to_vec(), [0, 2, 2].to_vec(), [2, 3, 6].to_vec()].to_vec(), 1, 3, 2)}");
+    println(f"{shortest_path_with_hops(7, [[3, 1, 9].to_vec(), [3, 2, 4].to_vec(), [4, 0, 9].to_vec(), [0, 5, 6].to_vec(), [3, 6, 2].to_vec(), [6, 0, 4].to_vec(), [1, 2, 4].to_vec()].to_vec(), 4, 1, 2)}");
+    println(f"{shortest_path_with_hops(5, [[0, 4, 2].to_vec(), [0, 1, 3].to_vec(), [0, 2, 1].to_vec(), [2, 1, 4].to_vec(), [1, 3, 4].to_vec(), [3, 4, 7].to_vec()].to_vec(), 2, 3, 1)}");
+    let path: Vec[Vec[i64]] = (0..499).map(|i| [i, i + 1, 1000000].to_vec()).collect();
+    println(f"{shortest_path_with_hops(500, path, 0, 499, 0)}");
+    println(f"{shortest_path_with_hops(500, path, 0, 499, 10)}");
+    println(f"{shortest_path_with_hops(50, path[0..49].to_vec(), 49, 0, 49)}");
+    let mut seed = 2714;
+    let dense = random_graph(mut seed, 500, 9501, 1000000);
+    println(f"{dense.len()} edges: {shortest_path_with_hops(500, dense, 0, 499, 1)}");
+    // 1000 random graphs of 2 to 10 nodes with weights up to 20; then 20
+    // of up to 100 nodes and 1000 edges with weights up to 10^6
+    let mut sum = 0;
+    let mut check = 0;
+    for c in 0..1020 {
+        let (n, extra, heaviest) = if c < 1000 {
+            let n = next_random(mut seed) % 9 + 2;
+            (n, next_random(mut seed) % (n * 2), 20)
+        } else {
+            (next_random(mut seed) % 99 + 2, next_random(mut seed) % 900, 1000000)
+        };
+        let edges = random_graph(mut seed, n, extra, heaviest);
+        let s = next_random(mut seed) % n;
+        let d = (s + 1 + next_random(mut seed) % (n - 1)) % n;
+        let k = next_random(mut seed) % n.min(12);
+        let length = shortest_path_with_hops(n, edges, s, d, k);
+        sum += length;
+        check = (check * 31 + length) % 1000000007;
+        if c == 999 {
+            println(f"1000 small graphs: lengths sum to {sum}, checksum {check}");
+            sum = 0;
+            check = 0;
+        }
+    }
+    println(f"20 graphs up to 100 nodes: lengths sum to {sum}, checksum {check}");
+}

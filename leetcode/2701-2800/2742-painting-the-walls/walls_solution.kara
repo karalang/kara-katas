@@ -1,0 +1,63 @@
+// LeetCode #2742: Painting the Walls -- a Rust solution as LeetCode's
+// Rust users write it, carried to Kāra by `karac fix`: `i32` costs into
+// a `vec![i32::MAX / 2; n + 1]` knapsack, `zip` over the two arrays and
+// `.max(0) as usize` for the walls left.
+
+struct Solution {}
+
+impl Solution {
+    pub fn paint_walls(cost: Vec[i32], time: Vec[i32]) -> i32 {
+        let n = cost.len();
+        let mut dp = Vec.filled(n + 1, i32.MAX / 2);
+        dp[0] = 0;
+        for (c, t) in cost.iter().zip(time.iter()) {
+            for j in (1..=n).rev() {
+                let k = (j as i32 - t - 1).max(0) as usize;
+                dp[j] = dp[j].min(dp[k] + c);
+            }
+        }
+        dp[n]
+    }
+}
+
+fn paint_walls(cost: Vec[i64], time: Vec[i64]) -> i64 {
+    Solution.paint_walls(cost.iter().map(|x| x as i32).collect(), time.iter().map(|x| x as i32).collect())
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{paint_walls([1, 2, 3, 2].to_vec(), [1, 2, 3, 2].to_vec())}");
+    println(f"{paint_walls([2, 3, 4, 2].to_vec(), [1, 1, 1, 1].to_vec())}");
+    // one wall; one slow cheap wall that frees all the others; and walls
+    // that each take one unit, so half of them are paid for
+    println(f"{paint_walls([7].to_vec(), [3].to_vec())}");
+    println(f"{paint_walls([50, 60, 1, 70].to_vec(), [1, 1, 3, 1].to_vec())}");
+    println(f"{paint_walls((1..=10).collect(), [1; 10].to_vec())}");
+    // 2000 random sets of 1 to 10 walls costing up to 100 and taking up
+    // to 10; then 20 of 500 walls, LeetCode's most, costing up to 10^6
+    // and taking up to 500
+    let mut seed = 2742;
+    let mut sum = 0;
+    let mut check = 0;
+    for c in 0..2020 {
+        let (n, most_cost, most_time) = if c < 2000 { (next_random(mut seed) % 10 + 1, 100, 10) } else { (500, 1000000, 20) };
+        let cost: Vec[i64] = (0..n).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % most_cost + 1).collect();
+        let time: Vec[i64] = (0..n).map(|_| next_random(mut seed) % most_time + 1).collect();
+        let least = paint_walls(cost, time);
+        sum += least;
+        check = (check * 31 + least) % 1000000007;
+        if c == 1999 {
+            println(f"2000 small cases: costs sum to {sum}, checksum {check}");
+            sum = 0;
+            check = 0;
+        }
+    }
+    println(f"20 cases of 500 walls: costs sum to {sum}, checksum {check}");
+}

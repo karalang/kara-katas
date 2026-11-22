@@ -1,0 +1,71 @@
+// LeetCode #2780: Minimum Index of a Valid Split -- the bench: the ★ arm
+// over 20 arrays of 10^5 numbers up to 10^9, each with a dominant number,
+// all drawn first, then each answered 100 times.
+
+fn minimum_index(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut x = 0;
+    let mut votes = 0;
+    for v in nums.iter() {
+        if votes == 0 {
+            x = v;
+        }
+        votes += if v == x { 1 } else { -1 };
+    }
+    let total = nums.iter().filter(|v| v == x).count();
+    let mut left = 0;
+    for i in 0..n - 1 {
+        if nums[i] == x {
+            left += 1;
+        }
+        if 2 * left > i + 1 and 2 * (total - left) > n - i - 1 {
+            return i;
+        }
+    }
+    -1
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// n numbers with a dominant one: more than half of them x, the rest
+// drawn from `others` values, shuffled
+fn dominated(n: i64, others: i64, top: i64, seed: mut ref i64) -> Vec[i64] {
+    let x = wide(mut seed) % top + 1;
+    let many = n / 2 + 1 + wide(mut seed) % (n - n / 2);
+    let mut nums: Vec[i64] = Vec.filled(many, x);
+    while nums.len() < n {
+        let v = wide(mut seed) % others + 1;
+        if v != x {
+            nums.push(v);
+        }
+    }
+    for i in (1..n).rev() {
+        let j = wide(mut seed) % (i + 1);
+        nums.swap(i, j);
+    }
+    nums
+}
+
+fn main() {
+    let count = 20;
+    let rounds = 100;
+    let mut seed = 2780;
+    let cases: Vec[Vec[i64]] = (0..count).map(|_| dominated(100000, 1000000000, 1000000000, mut seed)).collect();
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for nums in cases.iter() {
+            let a = minimum_index(nums);
+            total += a;
+            check = (check * 31 + a + 1 + r) % 1000000007;
+        }
+    }
+    println(f"{count} arrays of 10^5, {rounds} rounds: indices sum to {total}, checksum {check}");
+}

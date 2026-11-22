@@ -1,0 +1,56 @@
+// LeetCode #2899: Last Visited Integers -- the bench: the ★ arm over 10000 arrays
+// of 100 entries, LeetCode's most, -1 one time in three and otherwise 1
+// to 100, all drawn first, then each answered 20 times.
+
+fn last_visited_integers(nums: Vec[i64]) -> Vec[i64] {
+    let mut seen: Vec[i64] = Vec.new();
+    let mut ans: Vec[i64] = Vec.new();
+    let mut k = 0;
+    for v in nums.iter() {
+        if v == -1 {
+            k += 1;
+            ans.push(if k <= seen.len() { seen[seen.len() - k] } else { -1 });
+        } else {
+            seen.push(v);
+            k = 0;
+        }
+    }
+    ans
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 10000;
+    let rounds = 20;
+    let n = 100;
+    let mut seed = 2899;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..count {
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            if next_random(mut seed) % 3 == 0 {
+                nums.push(-1);
+            } else {
+                nums.push(next_random(mut seed) % 100 + 1);
+            }
+        }
+        cases.push(nums);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for nums in cases.iter() {
+            let ans = last_visited_integers(nums);
+            check = (check * 31 + ans.len() + r) % 1000000007;
+            for v in ans.iter() {
+                total += v;
+                check = (check * 31 + v + 2) % 1000000007;
+            }
+        }
+    }
+    println(f"{count} arrays of {n}, {rounds} rounds: answers total {total}, checksum {check}");
+}

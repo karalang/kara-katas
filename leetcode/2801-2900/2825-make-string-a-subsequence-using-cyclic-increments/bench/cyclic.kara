@@ -1,0 +1,52 @@
+// LeetCode #2825: Make String a Subsequence Using Cyclic Increments --
+// the bench: the ★ arm over 100 pairs of str1 of 10^5 letters,
+// LeetCode's most, and str2 of up to 50000, from six letters round 'z',
+// all drawn first, then each answered 50 times.
+
+fn can_make_subsequence(str1: Str, str2: Str) -> bool {
+    let (a, b) = (str1.bytes(), str2.bytes());
+    let mut j = 0;
+    for c in a.iter() {
+        if j == b.len() {
+            break;
+        }
+        let next = if c == b'z' { b'a' } else { c + 1 };
+        if c == b[j] or next == b[j] {
+            j += 1;
+        }
+    }
+    j == b.len()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letters(n: i64, from: i64, width: i64, seed: mut ref i64) -> String {
+    let codes: Vec[u8] = (0..n).map(|_| ((from + next_random(mut seed) % width) % 26 + 97) as u8).collect();
+    String.from_utf8(codes).unwrap()
+}
+
+fn main() {
+    let count = 100;
+    let rounds = 50;
+    let mut seed = 2825;
+    let mut pairs: Vec[(String, String)] = Vec.new();
+    for _ in 0..count {
+        let s1 = letters(100000, 23, 6, mut seed);
+        pairs.push((s1, letters((next_random(mut seed) * 32768 + next_random(mut seed)) % 50000 + 1, 23, 6, mut seed)));
+    }
+    let mut yes = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (s1, s2) in pairs.iter() {
+            let a = can_make_subsequence(s1, s2);
+            if a {
+                yes += 1;
+            }
+            check = (check * 31 + if a { 1 } else { 0 } + r) % 1000000007;
+        }
+    }
+    println(f"{count} pairs of 100000, {rounds} rounds: {yes} true, checksum {check}");
+}

@@ -1,0 +1,225 @@
+// LeetCode #2856: Minimum Array Length After Pair Removals -- the
+// differential. The five arms, against the statement read literally:
+// every pair i < j with nums[i] < nums[j] tried as the next removal, a
+// search over the arrays that can be left, each seen once, kept in a
+// `Map[String, i64]` by its values written out, to the shortest that
+// is reachable. 2000 random sorted arrays of 1 to 8 values up to 4, then
+// 50 of up to 3000 values up to k for k up to 1000, one time in four
+// with a run of one value making up to three quarters, all drawn before
+// any arm answers; the literal reading is asked only of the first 2000.
+//
+// P1  up to 8 values, the answer is the literal reading's
+// P2  every value doubled: the same answer
+// P3  a value below all and one above all added: max(a - 2, n % 2)
+// P4  every value v made 10^9 + 1 - v, the array reversed: the same answer
+// P5  from 0 to n, and as even as n
+// P6  each arm agrees with at least three of the other four
+
+fn shortest(nums: Vec[i64], memo: mut ref Map[String, i64]) -> i64 {
+    let key = f"{nums}";
+    if let Some(known) = memo.get(key) {
+        return known;
+    }
+    let n = nums.len();
+    let mut best = n;
+    for i in 0..n {
+        for j in i + 1..n {
+            if nums[i] < nums[j] {
+                let rest: Vec[i64] = (0..n).filter(|k| k != i and k != j).map(|k| nums[k]).collect();
+                best = best.min(shortest(rest, mut memo));
+            }
+        }
+    }
+    memo.insert(key, best);
+    best
+}
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let mut memo: Map[String, i64] = Map.new();
+    shortest(nums, mut memo)
+}
+
+
+// ---- star (length.kara) ---------------------------------------------
+
+fn star_min_length_after_removals(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut most = 0;
+    let mut run = 0;
+    for i in 0..n {
+        run = if i > 0 and nums[i] == nums[i - 1] { run + 1 } else { 1 };
+        most = most.max(run);
+    }
+    if 2 * most > n { 2 * most - n } else { n % 2 }
+}
+
+
+// ---- pointers (length_pointers.kara) --------------------------------
+
+fn pointers_min_length_after_removals(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut pairs = 0;
+    let mut j = (n + 1) / 2;
+    for i in 0..n / 2 {
+        while j < n and nums[j] <= nums[i] {
+            j += 1;
+        }
+        if j == n {
+            break;
+        }
+        pairs += 1;
+        j += 1;
+    }
+    n - 2 * pairs
+}
+
+
+// ---- heap (length_heap.kara) ----------------------------------------
+
+fn heap_min_length_after_removals(nums: Vec[i64]) -> i64 {
+    let mut counts: Map[i64, i64] = Map.new();
+    for x in nums.iter() {
+        *counts.entry(x).or_insert(0) += 1;
+    }
+    let mut heap: PriorityQueue[i64] = PriorityQueue.max_first();
+    for c in counts.values() {
+        heap.push(c);
+    }
+    while heap.len() >= 2 {
+        let a = heap.pop().unwrap();
+        let b = heap.pop().unwrap();
+        if a > 1 {
+            heap.push(a - 1);
+        }
+        if b > 1 {
+            heap.push(b - 1);
+        }
+    }
+    heap.pop().unwrap_or(0)
+}
+
+
+// ---- middle (length_middle.kara) ------------------------------------
+
+fn middle_min_length_after_removals(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mid = nums[n / 2];
+    let lo = nums.partition_point(|x| x < mid);
+    let hi = nums.partition_point(|x| x <= mid);
+    let m = hi - lo;
+    if 2 * m > n { 2 * m - n } else { n % 2 }
+}
+
+
+// ---- solution (length_solution.kara) --------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_length_after_removals(nums: Vec[i32]) -> i32 {
+        let n = nums.len();
+        let mut cnt: Map[i32, i64] = Map.new();
+        for x in ref nums {
+            *cnt.entry(x).or_insert(0) += 1;
+        }
+        let mx = *cnt.values().max().unwrap();
+        if 2 * mx > n {
+            (2 * mx - n) as i32
+        } else {
+            (n % 2) as i32
+        }
+    }
+}
+
+fn solution_min_length_after_removals(nums: Vec[i64]) -> i64 {
+    Solution.min_length_after_removals(nums.iter().map(|x| x as i32).collect())
+}
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_min_length_after_removals(nums),
+        1 => pointers_min_length_after_removals(nums),
+        2 => heap_min_length_after_removals(nums),
+        3 => middle_min_length_after_removals(nums),
+        _ => solution_min_length_after_removals(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "pointers", "heap", "middle", "solution"];
+    let mut seed = 2856;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..2050 {
+        let small = c < 2000;
+        let n = if small { next_random(mut seed) % 8 + 1 } else { next_random(mut seed) % 3000 + 1 };
+        let k = if small { 4 } else { next_random(mut seed) % 1000 + 1 };
+        let mut nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % k + 1).collect();
+        if not small and next_random(mut seed) % 4 == 0 {
+            let run = next_random(mut seed) % (3 * n / 4 + 1);
+            let v = next_random(mut seed) % 1000 + 1;
+            for i in 0..run {
+                nums[i] = v;
+            }
+        }
+        nums.sort();
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, nums) in cases.iter().enumerate() {
+        let n = nums.len();
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums)).collect();
+        let want = if c < 2000 { literal(nums) } else { got[0] };
+        check = (check * 31 + want) % 1000000007;
+        let doubled: Vec[i64] = nums.iter().map(|x| 2 * x).collect();
+        let widened: Vec[i64] = [0].iter().cloned().chain(nums.iter().cloned()).chain([1001].iter().cloned()).collect();
+        let mirrored: Vec[i64] = nums.iter().rev().map(|x| 1000000001 - x).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                c >= 2000 or value == want,
+                answer(arm, doubled) == value,
+                answer(arm, widened) == (value - 2).max(n % 2),
+                answer(arm, mirrored) == value,
+                value >= 0 and value <= n and value % 2 == n % 2,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

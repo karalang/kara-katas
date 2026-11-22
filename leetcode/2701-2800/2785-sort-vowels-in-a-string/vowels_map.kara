@@ -1,0 +1,78 @@
+// LeetCode #2785: Sort Vowels in a String -- each vowel's count in a
+// `SortedMap[char, i64]` through `entry`; the map's first key is the
+// least vowel left, taken by `first_key_value` at each vowel's place
+// and removed when its count runs out. O(n log v), v at most 10.
+
+fn sort_vowels(s: Str) -> String {
+    let mut counts: SortedMap[char, i64] = SortedMap.new();
+    for c in s.chars() {
+        if "aeiouAEIOU".contains(c.to_string()) {
+            *counts.entry(c).or_insert(0) += 1;
+        }
+    }
+    let mut out = String.new();
+    for c in s.chars() {
+        if "aeiouAEIOU".contains(c.to_string()) {
+            let (v, n) = counts.first().unwrap();
+            out.push(v);
+            if n == 1 {
+                counts.remove(v);
+            } else {
+                counts.insert(v, n - 1);
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n letters drawn from `from`
+fn random_text(n: i64, from: Str, seed: mut ref i64) -> String {
+    let letters: Vec[char] = from.chars().collect();
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(letters[next_random(mut seed) % letters.len()]);
+    }
+    s
+}
+
+fn fold(s: ref String, check: i64) -> i64 {
+    s.bytes().iter().fold(check, |c, b| (c * 31 + b) % 1000000007)
+}
+
+fn main() {
+    // LeetCode's two examples; every vowel in falling order; no vowel;
+    // one letter
+    println(sort_vowels("lEetcOde"));
+    println(sort_vowels("lYmpH"));
+    println(sort_vowels("uoieaUOIEA"));
+    println(sort_vowels("bcdfgXYZ"));
+    println(sort_vowels("a"));
+    // 3000 random strings of 1 to 20 letters, half of them vowels; then
+    // 3 of 10^5 letters, LeetCode's longest, from all 52
+    let mut seed = 2785;
+    let mut check = 0;
+    let mut letters = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 20 + 1;
+        let t = sort_vowels(random_text(n, "aeiouAEIOUbcxyZB", mut seed));
+        letters += t.len();
+        check = fold(t, check);
+    }
+    println(f"3000 small strings: {letters} letters, checksum {check}");
+    check = 0;
+    let all = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    for _ in 0..3 {
+        let t = sort_vowels(random_text(100000, all, mut seed));
+        check = fold(t, check);
+    }
+    println(f"3 strings of 10^5: checksum {check}");
+}

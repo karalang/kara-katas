@@ -1,0 +1,81 @@
+// LeetCode #2712: Minimum Cost to Make All Characters Equal -- the halves
+// arm. A boundary in the left half is cheapest crossed by a prefix flip,
+// one in the right half by a suffix flip, so two loops, one per half,
+// each count the boundaries at their own price, with no `min` per
+// boundary. The `chars` of the string are collected first. O(n).
+
+fn minimum_cost(s: String) -> i64 {
+    let bits: Vec[char] = s.chars().collect();
+    let n = bits.len();
+    let half = n / 2;
+    let mut cost = 0;
+    for i in 1..half + 1 {
+        if bits[i] != bits[i - 1] {
+            cost += i;
+        }
+    }
+    for i in half + 1..n {
+        if bits[i] != bits[i - 1] {
+            cost += n - i;
+        }
+    }
+    cost
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n bits, each after the first changed from the one before `change_in_8`
+// times in 8
+fn random_bits(seed: mut ref i64, n: i64, change_in_8: i64) -> String {
+    let mut bits = String.new();
+    let mut last = if next_random(mut seed) % 2 == 0 { '0' } else { '1' };
+    bits.push(last);
+    for _ in 0..n - 1 {
+        if next_random(mut seed) % 8 < change_in_8 {
+            last = if last == '0' { '1' } else { '0' };
+        }
+        bits.push(last);
+    }
+    bits
+}
+
+fn main() {
+    // LeetCode's two examples; one bit; two that differ; 10^5 zeros,
+    // LeetCode's longest; 10^5 alternating; and one change in the middle
+    println(f"{minimum_cost("0011")}");
+    println(f"{minimum_cost("010101")}");
+    println(f"{minimum_cost("1")}");
+    println(f"{minimum_cost("10")}");
+    println(f"{minimum_cost("0".repeat(100000))}");
+    println(f"{minimum_cost("01".repeat(50000))}");
+    let halves = f"{"0".repeat(50000)}{"1".repeat(50000)}";
+    println(f"{minimum_cost(halves)}");
+    // 2000 random strings of up to 20 bits and 50 of up to 10^5, each
+    // changing 0 to 8 times in 8
+    let mut seed = 2712;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 20 + 1;
+        let change = next_random(mut seed) % 9;
+        let cost = minimum_cost(random_bits(mut seed, n, change));
+        sum += cost;
+        check = (check * 31 + cost) % 1000000007;
+    }
+    println(f"2000 strings up to 20: costs sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for _ in 0..50 {
+        let n = (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000 + 1;
+        let change = next_random(mut seed) % 9;
+        let cost = minimum_cost(random_bits(mut seed, n, change));
+        sum += cost;
+        check = (check * 31 + cost) % 1000000007;
+    }
+    println(f"50 strings up to 100000: costs sum to {sum}, checksum {check}");
+}

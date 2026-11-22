@@ -1,0 +1,78 @@
+// LeetCode #2847: Smallest Number With Given Digit Product -- a Rust
+// solution as LeetCode's Rust users write it, carried to Kāra by `karac
+// fix`: a `mut n: i64` parameter divided by 9 down to 2 over
+// `(2..=9).rev()`, the digits pushed as `(b'0' + d as u8) as char` and
+// the string reversed with `chars().rev().collect()`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn smallest_number(n: i64) -> String {
+        let mut n = n;
+        if n == 1 {
+            return "1".to_string();
+        }
+        let mut s = String.new();
+        for d in (2..=9).rev() {
+            while n % d == 0 {
+                s.push((b'0' + d as u8) as char);
+                n /= d;
+            }
+        }
+        if n != 1 {
+            return "-1".to_string();
+        }
+        s.chars().rev().collect()
+    }
+}
+
+fn smallest_number(n: i64) -> String {
+    Solution.smallest_number(n)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples; 1; 10^18, LeetCode's most; the largest
+    // power of 2 and of 3 in range; and a prime above 9
+    println(f"{smallest_number(105)} {smallest_number(7)} {smallest_number(44)} {smallest_number(1)}");
+    println(f"{smallest_number(1000000000000000000)}");
+    println(f"{smallest_number(1 << 59)} {smallest_number(450283905890997363)} {smallest_number(1000000007)}");
+    // 3000 random products of up to 12 of 2, 3, 5 and 7, a fifth of them
+    // then times 11 or 13; then 300 of up to 40, as many as stay within
+    // 10^18
+    let mut seed = 2847;
+    let mut check = 0;
+    let mut none = 0;
+    for c in 0..3300 {
+        let mut n = 1;
+        let factors = next_random(mut seed) % if c < 3000 { 13 } else { 41 };
+        for _ in 0..factors {
+            let p = [2, 3, 5, 7][next_random(mut seed) % 4];
+            if n <= 1000000000000000000 / p {
+                n *= p;
+            }
+        }
+        if c < 3000 and next_random(mut seed) % 5 == 0 {
+            n *= [11, 13][next_random(mut seed) % 2];
+        }
+        let s = smallest_number(n);
+        if s == "-1" {
+            none += 1;
+        }
+        for b in s.bytes() {
+            check = (check * 31 + b) % 1000000007;
+        }
+        if c == 2999 {
+            println(f"3000 short products: {none} with none, checksum {check}");
+            none = 0;
+            check = 0;
+        }
+    }
+    println(f"300 long products: {none} with none, checksum {check}");
+}

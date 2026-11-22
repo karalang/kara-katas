@@ -1,0 +1,244 @@
+// LeetCode #2717: Semi-Ordered Permutation -- the differential. The five
+// arms, against the statement read literally: from the permutation
+// given, every swap of two adjacent numbers tried, breadth first, until
+// a permutation is reached that begins with 1 and ends with n. No
+// positions. 1000 random permutations of 2 to 6; then 500 of 2 to 50.
+// Every case is drawn before any arm answers.
+//
+// P1  up to 6 numbers, the answer is the literal reading's
+// P2  the permutation reversed and every v made n + 1 - v: the same
+//     answer
+// P3  the numbers other than 1 and n rotated among their places: the
+//     same answer
+// P4  the answer is between 0 and 2 n - 3
+// P5  1 swapped a place toward the front, where it is not there: one
+//     less
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- star (semi.kara) -----------------------------------------------
+
+fn star_semi_ordered_permutation(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let first = nums.iter().position(|v| v == 1).unwrap();
+    let last = nums.iter().position(|v| v == n).unwrap();
+    let swaps = first + (n - 1 - last);
+    if first > last { swaps - 1 } else { swaps }
+}
+
+
+// ---- bubble (semi_bubble.kara) --------------------------------------
+
+fn bubble_semi_ordered_permutation(nums: Vec[i64]) -> i64 {
+    let mut a = nums.clone();
+    let n = a.len();
+    let mut swaps = 0;
+    let mut i = 0;
+    while a[i] != 1 {
+        i += 1;
+    }
+    while i > 0 {
+        a.swap(i, i - 1);
+        i -= 1;
+        swaps += 1;
+    }
+    let mut j = 0;
+    while a[j] != n {
+        j += 1;
+    }
+    while j < n - 1 {
+        a.swap(j, j + 1);
+        j += 1;
+        swaps += 1;
+    }
+    swaps
+}
+
+
+// ---- pass (semi_pass.kara) ------------------------------------------
+
+fn pass_semi_ordered_permutation(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut first = 0;
+    let mut last = 0;
+    for (i, v) in nums.iter().enumerate() {
+        if v == 1 {
+            first = i;
+        } else if v == n {
+            last = i;
+        }
+    }
+    match first < last {
+        true => first + n - 1 - last,
+        false => first + n - 2 - last,
+    }
+}
+
+
+// ---- count (semi_count.kara) ----------------------------------------
+
+fn count_semi_ordered_permutation(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let first = nums.iter().enumerate().filter(|(_, v)| v == 1).map(|(i, _)| i).next().unwrap();
+    let before = nums.iter().take(first).count();
+    let last = nums.iter().enumerate().filter(|(_, v)| v == n).map(|(i, _)| i).next().unwrap();
+    let after = nums.iter().skip(last + 1).count();
+    let shared = if last < first { 1 } else { 0 };
+    before + after - shared
+}
+
+
+// ---- solution (semi_solution.kara) ----------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn semi_ordered_permutation(nums: Vec[i32]) -> i32 {
+        let n = nums.len();
+        let i = nums.iter().position(|x| x == 1).unwrap();
+        let j = nums.iter().position(|x| x == n as i32).unwrap();
+        let mut ans = i + (n - 1 - j);
+        if i > j {
+            ans -= 1;
+        }
+        ans as i32
+    }
+}
+
+fn solution_semi_ordered_permutation(nums: Vec[i64]) -> i64 {
+    let narrow: Vec[i32] = nums.iter().map(|v| v as i32).collect();
+    Solution.semi_ordered_permutation(narrow)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+// breadth first over the permutations reached by adjacent swaps, the
+// first round that reaches one beginning with 1 and ending with n
+fn literal(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut seen: Set[Vec[i64]] = Set.new();
+    seen.insert(nums.clone());
+    let mut layer: Vec[Vec[i64]] = [nums.clone()].to_vec();
+    let mut rounds = 0;
+    loop {
+        for p in layer.iter() {
+            if p[0] == 1 and p[n - 1] == n {
+                return rounds;
+            }
+        }
+        let mut next: Vec[Vec[i64]] = Vec.new();
+        for p in layer.iter() {
+            for i in 0..n - 1 {
+                let mut q = p.clone();
+                q.swap(i, i + 1);
+                if not seen.contains(q) {
+                    seen.insert(q.clone());
+                    next.push(q);
+                }
+            }
+        }
+        layer = next;
+        rounds += 1;
+    }
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_semi_ordered_permutation(nums),
+        1 => bubble_semi_ordered_permutation(nums),
+        2 => pass_semi_ordered_permutation(nums),
+        3 => count_semi_ordered_permutation(nums),
+        _ => solution_semi_ordered_permutation(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_permutation(seed: mut ref i64, n: i64) -> Vec[i64] {
+    let mut nums: Vec[i64] = (1..=n).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        nums.swap(i, j);
+    }
+    nums
+}
+
+fn main() {
+    let names = ["star", "bubble", "pass", "count", "solution"];
+    let mut seed = 2717;
+    // (the permutation, how far to rotate the numbers between 1 and n)
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..1500 {
+        let n = if c < 1000 { next_random(mut seed) % 5 + 2 } else { next_random(mut seed) % 49 + 2 };
+        let nums = random_permutation(mut seed, n);
+        let turn = next_random(mut seed) % n;
+        cases.push((nums, turn));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (nums, turn)) in cases.iter().enumerate() {
+        let small = c < 1000;
+        let truth = if small { literal(nums) } else { -1 };
+        if small {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let n = nums.len();
+        let mirrored: Vec[i64] = nums.iter().rev().map(|v| n + 1 - v).collect();
+        // the places of the numbers other than 1 and n, their numbers
+        // rotated by `turn` among them
+        let places: Vec[i64] = (0..n).filter(|i| nums[i] != 1 and nums[i] != n).collect();
+        let mut rotated = nums.clone();
+        for k in 0..places.len() {
+            rotated[places[k]] = nums[places[(k + turn) % places.len()]];
+        }
+        let at = nums.iter().position(|v| v == 1).unwrap();
+        let mut forward = nums.clone();
+        if at > 0 {
+            forward.swap(at, at - 1);
+        }
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                answer(arm, mirrored) == value,
+                answer(arm, rotated) == value,
+                0 <= value and value <= 2 * n - 3,
+                at == 0 or answer(arm, forward) == value - 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

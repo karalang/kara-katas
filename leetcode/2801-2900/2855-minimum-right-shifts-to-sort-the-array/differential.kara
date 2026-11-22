@@ -1,0 +1,222 @@
+// LeetCode #2855: Minimum Right Shifts to Sort the Array -- the
+// differential. The five arms, against the statement read literally:
+// the array shifted right one place at a time, every element to the
+// next index and the last to the front, up to n - 1 times, and the first
+// count at which it is sorted, else -1. 2000 random arrays of 1 to 8
+// distinct values up to 20, then 50 of up to 100 up to 100, each half
+// the time sorted and shifted, all drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  every value made 3x + 1: the same answer
+// P3  the array shifted right once more: a sortable one one shift less, mod n
+// P4  the values negated and the array reversed: n - a shifts, mod n
+// P5  -1, or from 0 to n - 1 and that many right shifts sort it
+// P6  each arm agrees with at least three of the other four
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut now = nums.clone();
+    for k in 0..n {
+        let mut sorted = true;
+        for i in 1..n {
+            if now[i - 1] > now[i] {
+                sorted = false;
+            }
+        }
+        if sorted {
+            return k;
+        }
+        let mut next = Vec.filled(n, 0);
+        for i in 0..n {
+            next[(i + 1) % n] = now[i];
+        }
+        now = next;
+    }
+    -1
+}
+
+
+// ---- star (shifts.kara) ---------------------------------------------
+
+fn star_minimum_right_shifts(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut drop = -1;
+    for i in 0..n - 1 {
+        if nums[i] > nums[i + 1] {
+            if drop >= 0 {
+                return -1;
+            }
+            drop = i;
+        }
+    }
+    if drop < 0 {
+        return 0;
+    }
+    if nums[n - 1] > nums[0] {
+        return -1;
+    }
+    n - 1 - drop
+}
+
+
+// ---- each (shifts_each.kara) ----------------------------------------
+
+fn each_minimum_right_shifts(nums: Vec[i64]) -> i64 {
+    let mut turned = nums.clone();
+    for k in 0..nums.len() {
+        if turned.windows(2).into_iter().all(|w| w[0] < w[1]) {
+            return k;
+        }
+        turned.rotate_right(1);
+    }
+    -1
+}
+
+
+// ---- min (shifts_min.kara) ------------------------------------------
+
+fn min_minimum_right_shifts(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let m = (0..n).min_by_key(|i| nums[i]).unwrap();
+    let rises = (1..n).all(|k| nums[(m + k - 1) % n] < nums[(m + k) % n]);
+    if rises { (n - m) % n } else { -1 }
+}
+
+
+// ---- cycle (shifts_cycle.kara) --------------------------------------
+
+fn cycle_minimum_right_shifts(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let drops: Vec[i64] = (0..n).filter(|i| nums[i] > nums[(i + 1) % n]).collect();
+    match drops.len() {
+        0 => 0,
+        1 => n - 1 - drops[0],
+        _ => -1,
+    }
+}
+
+
+// ---- solution (shifts_solution.kara) --------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_right_shifts(nums: Vec[i32]) -> i32 {
+        let n = nums.len();
+        match (1..n).find(|i| nums[i] < nums[i - 1]) {
+            None => 0,
+            Some(i) => {
+                if nums[i..].windows(2).into_iter().all(|w| w[0] < w[1]) and nums[n - 1] < nums[0] {
+                    (n - i) as i32
+                } else {
+                    -1
+                }
+            }
+        }
+    }
+}
+
+fn solution_minimum_right_shifts(nums: Vec[i64]) -> i64 {
+    Solution.minimum_right_shifts(nums.iter().map(|x| x as i32).collect())
+}
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_minimum_right_shifts(nums),
+        1 => each_minimum_right_shifts(nums),
+        2 => min_minimum_right_shifts(nums),
+        3 => cycle_minimum_right_shifts(nums),
+        _ => solution_minimum_right_shifts(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "each", "min", "cycle", "solution"];
+    let mut seed = 2855;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..2050 {
+        let (most, top) = if c < 2000 { (8, 20) } else { (100, 100) };
+        let n = next_random(mut seed) % most + 1;
+        let mut pool: Vec[i64] = (1..top + 1).collect();
+        for i in 0..top {
+            let j = i + next_random(mut seed) % (top - i);
+            pool.swap(i, j);
+        }
+        let mut nums: Vec[i64] = pool[..n].to_vec();
+        if next_random(mut seed) % 2 == 0 {
+            nums.sort();
+            nums.rotate_right(next_random(mut seed) % n);
+        }
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut sortable = 0;
+    for (c, nums) in cases.iter().enumerate() {
+        let n = nums.len();
+        let want = literal(nums);
+        if want >= 0 {
+            sortable += 1;
+        }
+        check = (check * 31 + want + 1) % 1000000007;
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums)).collect();
+        let scaled: Vec[i64] = nums.iter().map(|x| 3 * x + 1).collect();
+        let mut later = nums.clone();
+        later.rotate_right(1);
+        let flipped: Vec[i64] = nums.iter().rev().map(|x| -x).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let undone = if value >= 0 and value < n {
+                let mut back = nums.clone();
+                back.rotate_right(value);
+                back.windows(2).into_iter().all(|w| w[0] < w[1])
+            } else {
+                false
+            };
+            let verdicts = [
+                value == want,
+                answer(arm, scaled) == value,
+                answer(arm, later) == if value < 0 { -1 } else { (value + n - 1) % n },
+                answer(arm, flipped) == if value < 0 { -1 } else { (n - value) % n },
+                value == -1 or undone,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases, {sortable} sortable: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

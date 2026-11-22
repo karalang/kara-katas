@@ -1,0 +1,55 @@
+// LeetCode #2782: Number of Unique Categories -- the bench: the ★ arm
+// over 1000 sets of 100 elements, LeetCode's most, from up to 100
+// categories, all drawn first, then each answered 100 times through the
+// judge's handler, whose questions are counted.
+
+struct CategoryHandler {
+    categories: Vec[i64],
+    asked: i64,
+}
+
+impl CategoryHandler {
+    fn have_same_category(mut ref self, a: i64, b: i64) -> bool {
+        self.asked += 1;
+        let n = self.categories.len();
+        a >= 0 and b >= 0 and a < n and b < n and self.categories[a] == self.categories[b]
+    }
+}
+
+fn number_of_categories(n: i64, handler: mut ref CategoryHandler) -> i64 {
+    let mut representatives: Vec[i64] = Vec.new();
+    for i in 0..n {
+        if not representatives.iter().any(|r| handler.have_same_category(r, i)) {
+            representatives.push(i);
+        }
+    }
+    representatives.len()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 1000;
+    let rounds = 100;
+    let mut seed = 2782;
+    let mut handlers: Vec[CategoryHandler] = Vec.new();
+    for _ in 0..count {
+        let k = next_random(mut seed) % 100 + 1;
+        let categories: Vec[i64] = (0..100).map(|_| next_random(mut seed) % k).collect();
+        handlers.push(CategoryHandler { categories: categories, asked: 0 });
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for handler in handlers.iter_mut() {
+            let a = number_of_categories(100, mut handler);
+            total += a;
+            check = (check * 31 + a + r) % 1000000007;
+        }
+    }
+    let asked: i64 = handlers.iter().map(|h| h.asked).sum();
+    println(f"{count} sets of 100, {rounds} rounds: categories sum to {total} after {asked} questions, checksum {check}");
+}

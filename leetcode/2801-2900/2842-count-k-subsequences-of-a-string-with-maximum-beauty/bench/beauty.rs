@@ -1,0 +1,81 @@
+// LeetCode #2842: Count K-Subsequences of a String With Maximum Beauty
+// -- the bench, mirrored from beauty.kara: the counts sorted, most
+// first, the letters above the k-th all taken and the rest chosen
+// among those tied with it.
+
+const MOD: i64 = 1000000007;
+
+fn power(base: i64, exp: i64) -> i64 {
+    let mut result = 1;
+    let mut b = base % MOD;
+    let mut e = exp;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % MOD;
+        }
+        b = b * b % MOD;
+        e /= 2;
+    }
+    result
+}
+
+fn choose(n: i64, r: i64) -> i64 {
+    let mut top = 1;
+    let mut bottom = 1;
+    for i in 0..r {
+        top = top * (n - i) % MOD;
+        bottom = bottom * (i + 1) % MOD;
+    }
+    top * power(bottom, MOD - 2) % MOD
+}
+
+fn count_k_subsequences_with_max_beauty(s: &str, k: i64) -> i64 {
+    let mut count: Vec<i64> = vec![0; 26];
+    for b in s.bytes() {
+        count[(b - b'a') as usize] += 1;
+    }
+    let mut freq: Vec<i64> = count.iter().copied().filter(|&c| c > 0).collect();
+    if k > freq.len() as i64 {
+        return 0;
+    }
+    freq.sort_by(|a, b| b.cmp(a));
+    let last = freq[k as usize - 1];
+    let above = freq.iter().filter(|&&f| f > last).count();
+    let tied = freq.iter().filter(|&&f| f == last).count() as i64;
+    let mut ways = choose(tied, k - above as i64) * power(last, k - above as i64) % MOD;
+    for f in freq[..above].iter() {
+        ways = ways * f % MOD;
+    }
+    ways
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 100;
+    let n = 200000;
+    let rounds = 40;
+    let mut seed = 2842;
+    let mut cases: Vec<(String, i64)> = Vec::new();
+    for _ in 0..count {
+        let kinds = next_random(&mut seed) % 24 + 3;
+        let codes: Vec<u8> = (0..n).map(|_| (97 + next_random(&mut seed) % kinds) as u8).collect();
+        let k = next_random(&mut seed) % 26 + 1;
+        cases.push((String::from_utf8(codes).unwrap(), k));
+    }
+    let mut zero = 0;
+    let mut check: i64 = 0;
+    for r in 0..rounds {
+        for (s, k) in cases.iter() {
+            let ways = count_k_subsequences_with_max_beauty(s, *k);
+            if ways == 0 {
+                zero += 1;
+            }
+            check = (check * 31 + ways + r) % 1000000007;
+        }
+    }
+    println!("{count} strings of {n}, {rounds} rounds: {zero} with none, checksum {check}");
+}

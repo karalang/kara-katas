@@ -1,0 +1,50 @@
+// LeetCode #2790: Maximum Number of Groups With Increasing Length -- the
+// bench: the ★ arm over 20 arrays of 10^5 limits up to 10^9, LeetCode's
+// most, all drawn first, then each answered 10 times, each answer
+// sorting its own copy.
+
+fn max_increasing_groups(usage_limits: Vec[i64]) -> i64 {
+    let mut limits = usage_limits.clone();
+    limits.sort();
+    let mut groups = 0;
+    let mut places = 0;
+    for u in limits.iter() {
+        places += u;
+        if places >= (groups + 1) * (groups + 2) / 2 {
+            groups += 1;
+        }
+    }
+    groups
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let count = 20;
+    let rounds = 10;
+    let mut seed = 2790;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..count {
+        // every other array's limits kept below 10^5, so that the groups
+        // run out before the numbers do
+        let top = if c % 2 == 0 { 1000000000 } else { 100000 };
+        cases.push((0..100000).map(|_| wide(mut seed) % top + 1).collect());
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for limits in cases.iter() {
+            let a = max_increasing_groups(limits);
+            total += a;
+            check = (check * 31 + a + r) % 1000000007;
+        }
+    }
+    println(f"{count} arrays of 10^5, {rounds} rounds: groups sum to {total}, checksum {check}");
+}

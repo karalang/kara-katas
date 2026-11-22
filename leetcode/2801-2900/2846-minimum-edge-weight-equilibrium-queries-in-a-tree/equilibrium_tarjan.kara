@@ -1,0 +1,128 @@
+// LeetCode #2846: Minimum Edge Weight Equilibrium Queries in a Tree --
+// every query's lowest common ancestor offline by Tarjan's method: a
+// depth-first walk with an explicit stack of (node, next edge) frames;
+// when a node is finished it joins its parent's set in a union-find,
+// and a query whose other end is already finished has as its ancestor
+// that end's set's current top. Counts from the root as in the ★ arm.
+
+struct Sets {
+    parent: Vec[i64],
+}
+
+impl Sets {
+    fn find(mut ref self, x: i64) -> i64 {
+        let mut root = x;
+        while self.parent[root] != root {
+            root = self.parent[root];
+        }
+        let mut at = x;
+        while self.parent[at] != root {
+            let next = self.parent[at];
+            self.parent[at] = root;
+            at = next;
+        }
+        root
+    }
+}
+
+fn min_operations_queries(n: i64, edges: Vec[Vec[i64]], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut adj: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push((e[1], e[2]));
+        adj[e[1]].push((e[0], e[2]));
+    }
+    let mut asked: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for (i, q) in queries.iter().enumerate() {
+        asked[q[0]].push((q[1], i));
+        asked[q[1]].push((q[0], i));
+    }
+    let mut sets = Sets { parent: (0..n).collect() };
+    let mut top: Vec[i64] = (0..n).collect();
+    let mut done: Vec[bool] = Vec.filled(n, false);
+    let mut count: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(27, 0));
+    let mut lca: Vec[i64] = Vec.filled(queries.len(), 0);
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    let mut stack: Vec[(i64, i64)] = [(0, 0)];
+    while let Some((v, next)) = stack.pop() {
+        if next < adj[v].len() {
+            stack.push((v, next + 1));
+            let (u, w) = adj[v][next];
+            if u != parent[v] {
+                parent[u] = v;
+                count[u] = count[v].clone();
+                count[u][w] += 1;
+                stack.push((u, 0));
+            }
+            continue;
+        }
+        // v is finished: answer its queries, then join its parent
+        done[v] = true;
+        for (other, i) in asked[v].iter() {
+            if done[other] {
+                lca[i] = top[sets.find(other)];
+            }
+        }
+        if parent[v] >= 0 {
+            let p = parent[v];
+            let (rv, rp) = (sets.find(v), sets.find(p));
+            sets.parent[rv] = rp;
+            top[rp] = p;
+        }
+    }
+    let mut answers: Vec[i64] = Vec.new();
+    for (i, q) in queries.iter().enumerate() {
+        let on_path: Vec[i64] = (1..27).map(|w| count[q[0]][w] + count[q[1]][w] - 2 * count[lca[i]][w]).collect();
+        answers.push(on_path.iter().sum() - on_path.iter().max().unwrap());
+    }
+    answers
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random tree on n nodes: node i joins one of the nodes before it,
+// shuffled so that 0 is not always the root, weights from 1 to `kinds`
+fn tree(n: i64, kinds: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut label: Vec[i64] = (0..n).collect();
+    for i in (1..n).rev() {
+        label.swap(i, next_random(mut seed) % (i + 1));
+    }
+    (1..n).map(|i| [label[i], label[next_random(mut seed) % i], next_random(mut seed) % kinds + 1]).collect()
+}
+
+fn main() {
+    // LeetCode's two examples; one node; and a path of 2000 nodes, its
+    // weights in runs, asked end to end and from the middle
+    println(f"{min_operations_queries(7, [[0, 1, 1], [1, 2, 1], [2, 3, 1], [3, 4, 2], [4, 5, 2], [5, 6, 2]], [[0, 3], [3, 6], [2, 6], [0, 6]])}");
+    println(f"{min_operations_queries(8, [[1, 2, 6], [1, 3, 4], [2, 4, 6], [2, 5, 3], [3, 6, 6], [3, 0, 8], [7, 0, 2]], [[4, 6], [0, 4], [6, 5], [7, 4]])}");
+    println(f"{min_operations_queries(1, [], [[0, 0]])}");
+    let path: Vec[Vec[i64]] = (1..2000).map(|i| [i - 1, i, i / 300 % 26 + 1]).collect();
+    println(f"{min_operations_queries(2000, path, [[0, 1999], [1999, 0], [1000, 1000], [999, 1300]])}");
+    // 2000 random trees of 1 to 10 nodes with weights up to 3, 5 queries
+    // each; then 20 of up to 2000 nodes with weights up to 26, 500
+    // queries each
+    let mut seed = 2846;
+    let mut check = 0;
+    let mut total = 0;
+    for c in 0..2020 {
+        let short = c < 2000;
+        let n = if short { next_random(mut seed) % 10 + 1 } else { next_random(mut seed) % 2000 + 1 };
+        let edges = tree(n, if short { 3 } else { 26 }, mut seed);
+        let asked = if short { 5 } else { 500 };
+        let queries: Vec[Vec[i64]] = (0..asked).map(|_| [next_random(mut seed) % n, next_random(mut seed) % n]).collect();
+        for ops in min_operations_queries(n, edges, queries).iter() {
+            total += ops;
+            check = (check * 31 + ops) % 1000000007;
+        }
+        if c == 1999 {
+            println(f"2000 small trees: {total} operations, checksum {check}");
+            total = 0;
+            check = 0;
+        }
+    }
+    println(f"20 large trees: {total} operations, checksum {check}");
+}

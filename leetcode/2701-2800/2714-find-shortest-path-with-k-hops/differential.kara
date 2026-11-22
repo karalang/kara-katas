@@ -1,0 +1,381 @@
+// LeetCode #2714: Find Shortest Path with K Hops -- the differential. The
+// five arms, against the statement read literally: every simple path
+// from s to d walked, and each priced at its weights with the k
+// heaviest hopped over for nothing; the cheapest path wins. No search
+// over states. 1000 random connected graphs of 2 to 6 nodes with weights
+// up to 9; then 20 of up to 60 nodes with weights up to 10^6. Every case
+// is drawn before any arm answers.
+//
+// P1  up to 6 nodes, the answer is the literal reading's
+// P2  s and d swapped: the same answer
+// P3  n - 1 hops: 0
+// P4  every weight doubled: the answer doubled
+// P5  one hop more: no larger; and no hops at all: no smaller
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- star (hops.kara) -----------------------------------------------
+
+fn star_shortest_path_with_hops(n: i64, edges: Vec[Vec[i64]], s: i64, d: i64, k: i64) -> i64 {
+    let mut adjacent: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adjacent[e[0]].push((e[1], e[2]));
+        adjacent[e[1]].push((e[0], e[2]));
+    }
+    let far = i64.MAX;
+    let mut dist: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(k + 1, far));
+    let mut queue: PriorityQueue[(i64, i64, i64)] = PriorityQueue.new();
+    dist[s][0] = 0;
+    queue.push((0, s, 0));
+    while let Some((here, u, hops)) = queue.pop() {
+        if here > dist[u][hops] {
+            continue;
+        }
+        if u == d {
+            return here;
+        }
+        for (v, w) in adjacent[u].iter() {
+            if here + w < dist[v][hops] {
+                dist[v][hops] = here + w;
+                queue.push((here + w, v, hops));
+            }
+            if hops < k and here < dist[v][hops + 1] {
+                dist[v][hops + 1] = here;
+                queue.push((here, v, hops + 1));
+            }
+        }
+    }
+    -1
+}
+
+
+// ---- layers (hops_layers.kara) --------------------------------------
+
+fn layers_shortest_path_with_hops(n: i64, edges: Vec[Vec[i64]], s: i64, d: i64, k: i64) -> i64 {
+    let mut adjacent: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adjacent[e[0]].push((e[1], e[2]));
+        adjacent[e[1]].push((e[0], e[2]));
+    }
+    let far = i64.MAX;
+    let mut layer: Vec[i64] = Vec.filled(n, far);
+    layer[s] = 0;
+    for round in 0..=k {
+        let mut start = layer.clone();
+        if round > 0 {
+            for u in 0..n {
+                for (v, _) in adjacent[u].iter() {
+                    start[v] = start[v].min(layer[u]);
+                }
+            }
+        }
+        layer = layers_settle(adjacent, start);
+    }
+    layer[d]
+}
+
+// Dijkstra's search from every node at once, each from its start
+fn layers_settle(adjacent: Vec[Vec[(i64, i64)]], start: Vec[i64]) -> Vec[i64] {
+    let mut dist = start.clone();
+    let mut queue: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    for v in 0..dist.len() {
+        if dist[v] < i64.MAX {
+            queue.push((dist[v], v));
+        }
+    }
+    while let Some((here, u)) = queue.pop() {
+        if here > dist[u] {
+            continue;
+        }
+        for (v, w) in adjacent[u].iter() {
+            if here + w < dist[v] {
+                dist[v] = here + w;
+                queue.push((here + w, v));
+            }
+        }
+    }
+    dist
+}
+
+
+// ---- dense (hops_dense.kara) ----------------------------------------
+
+fn dense_shortest_path_with_hops(n: i64, edges: Vec[Vec[i64]], s: i64, d: i64, k: i64) -> i64 {
+    let mut weight: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, 0));
+    for e in edges.iter() {
+        weight[e[0]][e[1]] = e[2];
+        weight[e[1]][e[0]] = e[2];
+    }
+    let far = i64.MAX;
+    let mut layer: Vec[i64] = Vec.filled(n, far);
+    layer[s] = 0;
+    for round in 0..=k {
+        let mut dist = layer.clone();
+        if round > 0 {
+            for u in 0..n {
+                for v in 0..n {
+                    if weight[u][v] > 0 and layer[u] < dist[v] {
+                        dist[v] = layer[u];
+                    }
+                }
+            }
+        }
+        let mut done: Vec[bool] = Vec.filled(n, false);
+        loop {
+            let mut best = -1;
+            for v in 0..n {
+                if not done[v] and dist[v] < far and (best < 0 or dist[v] < dist[best]) {
+                    best = v;
+                }
+            }
+            if best < 0 {
+                break;
+            }
+            done[best] = true;
+            for v in 0..n {
+                let w = weight[best][v];
+                if w > 0 and dist[best] + w < dist[v] {
+                    dist[v] = dist[best] + w;
+                }
+            }
+        }
+        layer = dist;
+    }
+    layer[d]
+}
+
+
+// ---- queue (hops_queue.kara) ----------------------------------------
+
+fn queue_shortest_path_with_hops(n: i64, edges: Vec[Vec[i64]], s: i64, d: i64, k: i64) -> i64 {
+    let mut adjacent: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adjacent[e[0]].push((e[1], e[2]));
+        adjacent[e[1]].push((e[0], e[2]));
+    }
+    let far = i64.MAX;
+    let mut dist: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(k + 1, far));
+    let mut waiting: Vec[Vec[bool]] = Vec.filled(n, Vec.filled(k + 1, false));
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    dist[s][0] = 0;
+    queue.push_back((s, 0));
+    waiting[s][0] = true;
+    while let Some((u, hops)) = queue.pop_front() {
+        waiting[u][hops] = false;
+        let here = dist[u][hops];
+        for (v, w) in adjacent[u].iter() {
+            let mut moves: Vec[(i64, i64)] = [(hops, here + w)].to_vec();
+            if hops < k {
+                moves.push((hops + 1, here));
+            }
+            for (h, length) in moves.iter() {
+                if length < dist[v][h] {
+                    dist[v][h] = length;
+                    if not waiting[v][h] {
+                        waiting[v][h] = true;
+                        queue.push_back((v, h));
+                    }
+                }
+            }
+        }
+    }
+    dist[d].iter().min().unwrap()
+}
+
+
+// ---- solution (hops_solution.kara) ----------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn shortest_path_with_hops(n: i32, edges: Vec[Vec[i32]], s: i32, d: i32, k: i32) -> i32 {
+        let n = n as i64;
+        let k = k as i64;
+        let mut g: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+        for e in edges.iter() {
+            let (u, v, w) = (e[0] as i64, e[1] as i64, e[2] as i64);
+            g[u].push((v, w));
+            g[v].push((u, w));
+        }
+        let mut dist = Vec.filled(n, Vec.filled(k + 1, i64.MAX));
+        let mut pq = PriorityQueue.new();
+        dist[s][0] = 0;
+        pq.push((0, s as i64, 0));
+        while let Some((dd, u, t)) = pq.pop() {
+            if dd > dist[u][t] {
+                continue;
+            }
+            if u == d {
+                return dd as i32;
+            }
+            for (v, w) in g[u].iter() {
+                if dd + w < dist[v][t] {
+                    dist[v][t] = dd + w;
+                    pq.push((dd + w, v, t));
+                }
+                if t < k and dd < dist[v][t + 1] {
+                    dist[v][t + 1] = dd;
+                    pq.push((dd, v, t + 1));
+                }
+            }
+        }
+        -1
+    }
+}
+
+fn solution_shortest_path_with_hops(n: i64, edges: Vec[Vec[i64]], s: i64, d: i64, k: i64) -> i64 {
+    let narrow: Vec[Vec[i32]] = edges.iter().map(|e| e.iter().map(|v| v as i32).collect()).collect();
+    Solution.shortest_path_with_hops(n as i32, narrow, s as i32, d as i32, k as i32)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+// every simple path from u to d, its weights so far in `taken`; at d the
+// path is priced with its k heaviest edges hopped over
+fn paths(adjacent: Vec[Vec[(i64, i64)]], u: i64, d: i64, k: i64, seen: mut ref Vec[bool], taken: mut ref Vec[i64], best: mut ref i64) {
+    if u == d {
+        let mut weights = taken.clone();
+        weights.sort();
+        let paid = weights.len() - k;
+        let mut cost = 0;
+        for i in 0..paid {
+            cost += weights[i];
+        }
+        if *best < 0 or cost < *best {
+            *best = cost;
+        }
+        return;
+    }
+    for (v, w) in adjacent[u].iter() {
+        if not seen[v] {
+            seen[v] = true;
+            taken.push(w);
+            paths(adjacent, v, d, k, mut seen, mut taken, mut best);
+            taken.pop();
+            seen[v] = false;
+        }
+    }
+}
+
+fn literal(n: i64, edges: Vec[Vec[i64]], s: i64, d: i64, k: i64) -> i64 {
+    let mut adjacent: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adjacent[e[0]].push((e[1], e[2]));
+        adjacent[e[1]].push((e[0], e[2]));
+    }
+    let mut seen: Vec[bool] = Vec.filled(n, false);
+    seen[s] = true;
+    let mut taken: Vec[i64] = Vec.new();
+    let mut best = -1;
+    paths(adjacent, s, d, k, mut seen, mut taken, mut best);
+    best
+}
+
+fn answer(arm: i64, n: i64, edges: Vec[Vec[i64]], s: i64, d: i64, k: i64) -> i64 {
+    match arm {
+        0 => star_shortest_path_with_hops(n, edges, s, d, k),
+        1 => layers_shortest_path_with_hops(n, edges, s, d, k),
+        2 => dense_shortest_path_with_hops(n, edges, s, d, k),
+        3 => queue_shortest_path_with_hops(n, edges, s, d, k),
+        _ => solution_shortest_path_with_hops(n, edges, s, d, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn random_graph(seed: mut ref i64, n: i64, extra: i64, heaviest: i64) -> Vec[Vec[i64]] {
+    let mut joined: Set[(i64, i64)] = Set.new();
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for v in 1..n {
+        let u = next_random(mut seed) % v;
+        joined.insert((u, v));
+        edges.push([u, v, wide(mut seed) % heaviest + 1].to_vec());
+    }
+    for _ in 0..extra {
+        let a = next_random(mut seed) % n;
+        let b = next_random(mut seed) % n;
+        let (u, v) = (a.min(b), a.max(b));
+        if u != v and joined.insert((u, v)) {
+            edges.push([v, u, wide(mut seed) % heaviest + 1].to_vec());
+        }
+    }
+    edges
+}
+
+fn main() {
+    let names = ["star", "layers", "dense", "queue", "solution"];
+    let mut seed = 2714;
+    // (n, the edges, s, d, k)
+    let mut cases: Vec[(i64, Vec[Vec[i64]], i64, i64, i64)] = Vec.new();
+    for c in 0..1020 {
+        let (n, extra, heaviest, most_hops) = if c < 1000 {
+            let n = next_random(mut seed) % 5 + 2;
+            (n, next_random(mut seed) % (2 * n), 9, n)
+        } else {
+            (next_random(mut seed) % 59 + 2, next_random(mut seed) % 300, 1000000, 9)
+        };
+        let edges = random_graph(mut seed, n, extra, heaviest);
+        let s = next_random(mut seed) % n;
+        let d = (s + 1 + next_random(mut seed) % (n - 1)) % n;
+        let k = next_random(mut seed) % n.min(most_hops);
+        cases.push((n, edges, s, d, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (n, edges, s, d, k)) in cases.iter().enumerate() {
+        let small = c < 1000;
+        let truth = if small { literal(n, edges, s, d, k) } else { -1 };
+        if small {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let doubled: Vec[Vec[i64]] = edges.iter().map(|e| [e[0], e[1], 2 * e[2]].to_vec()).collect();
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, n, edges, s, d, k)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                answer(arm, n, edges, d, s, k) == value,
+                answer(arm, n, edges, s, d, n - 1) == 0,
+                answer(arm, n, doubled, s, d, k) == 2 * value,
+                (k == n - 1 or answer(arm, n, edges, s, d, k + 1) <= value) and answer(arm, n, edges, s, d, 0) >= value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,97 @@
+// LeetCode #2753: Count Houses in a Circular Street II -- by the steps
+// written down: from the first open door, the k houses on walked and
+// every step that meets an open door, closed then, kept in a list; the
+// count the last of them. At most 2k moves.
+
+fn house_count(street: mut ref Street, k: i64) -> i64 {
+    while not street.is_door_open() {
+        street.move_right();
+    }
+    let mut met: Vec[i64] = Vec.new();
+    for step in 1..=k {
+        street.move_right();
+        if street.is_door_open() {
+            street.close_door();
+            met.push(step);
+        }
+    }
+    met.last().unwrap()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+// LeetCode's interactive judge: a circular street of houses, at least
+// one door open, and the solution standing at one of them, able only to
+// close doors; its moves are counted
+struct Street {
+    doors: Vec[bool],
+    at: i64,
+    moves: i64,
+}
+
+impl Street {
+    fn new(doors: own Vec[bool], at: i64) -> Street {
+        Street { doors: doors, at: at, moves: 0 }
+    }
+
+    fn close_door(mut ref self) {
+        self.doors[self.at] = false;
+    }
+
+    fn is_door_open(ref self) -> bool {
+        self.doors[self.at]
+    }
+
+    fn move_right(mut ref self) {
+        self.at = (self.at + 1) % self.doors.len();
+        self.moves += 1;
+    }
+
+    fn move_left(mut ref self) {
+        self.at = (self.at + self.doors.len() - 1) % self.doors.len();
+        self.moves += 1;
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n doors, each open by a coin, and one of them open for sure
+fn doors(n: i64, seed: mut ref i64) -> Vec[bool] {
+    let mut d: Vec[bool] = (0..n).map(|_| next_random(mut seed) % 2 == 0).collect();
+    d[next_random(mut seed) % n] = true;
+    d
+}
+
+fn main() {
+    // LeetCode's two examples; one house; 10^5 houses, LeetCode's most,
+    // all open, and one open among them, with k = 10^5
+    println(f"{house_count(mut Street.new([true, true, true, true, true], 0), 5)}");
+    println(f"{house_count(mut Street.new([true, false, true, false], 1), 7)}");
+    println(f"{house_count(mut Street.new([true], 0), 1)}");
+    let n = 100000;
+    println(f"{house_count(mut Street.new(Vec.filled(n, true), 777), n)}");
+    let mut one: Vec[bool] = Vec.filled(n, false);
+    one[n - 1] = true;
+    println(f"{house_count(mut Street.new(one, 0), n)}");
+    // 3000 random streets of 1 to 12 houses with k up to 15; then 30 of
+    // up to 10^5 with k up to 10^5
+    let mut seed = 2753;
+    for (count, most) in [(3000, 12), (30, 100000)].iter() {
+        let mut sum = 0;
+        let mut check = 0;
+        for _ in 0..count {
+            let m = next_random(mut seed) % most + 1;
+            let top = if most == 12 { 15 } else { most };
+            let k = m + next_random(mut seed) % (top + 1 - m);
+            let d = doors(m, mut seed);
+            let at = next_random(mut seed) % m;
+            let a = house_count(mut Street.new(d, at), k);
+            sum += a;
+            check = (check * 31 + a) % 1000000007;
+        }
+        println(f"{count} streets of up to {most}: houses sum to {sum}, checksum {check}");
+    }
+}

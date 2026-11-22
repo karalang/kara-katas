@@ -1,0 +1,66 @@
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn build(values: Vec[i64]) -> Option[ListNode] {
+    let mut head: Option[ListNode] = None;
+    for v in values.iter().rev() {
+        head = Some(ListNode { val: v, next: head });
+    }
+    head
+}
+
+fn values_of(head: Option[ListNode]) -> Vec[i64] {
+    let mut out = Vec.new();
+    let mut cur = head;
+    while let Some(node) = cur {
+        out.push(node.val);
+        cur = node.next;
+    }
+    out
+}
+
+fn inserted(values: Vec[i64]) -> Vec[i64] {
+    values_of(insert_greatest_common_divisors(build(values)))
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn digest(xs: Vec[i64]) -> i64 {
+    xs.iter().fold(0, |h, x| (h * 131 + x) % 1000000007)
+}
+
+fn main() {
+    // LeetCode's two examples; 5000 nodes, LeetCode's most, all 1000;
+    // 5000 counting up, each next to a coprime neighbour
+    println(f"{inserted([18, 6, 10, 3])}");
+    println(f"{inserted([7])}");
+    let same = inserted(Vec.filled(5000, 1000));
+    println(f"{same.len()} {digest(same)}");
+    let counting = inserted((1..=5000).map(|v| v % 1000 + 1).collect());
+    println(f"{counting.len()} {digest(counting)}");
+    // 3000 random lists of 1 to 12 values up to 30; then 50 of up to 5000
+    // values up to 1000, every other one of multiples of 12
+    let mut seed = 2807;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let out = inserted((0..n).map(|_| next_random(mut seed) % 30 + 1).collect());
+        sum += out.iter().sum();
+        check = (check * 31 + digest(out)) % 1000000007;
+    }
+    println(f"3000 short lists: values sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for t in 0..50 {
+        let n = next_random(mut seed) % 5000 + 1;
+        let step = if t % 2 == 0 { 12 } else { 1 };
+        let out = inserted((0..n).map(|_| (next_random(mut seed) % (1000 / step) + 1) * step).collect());
+        sum += out.iter().sum();
+        check = (check * 31 + digest(out)) % 1000000007;
+    }
+    println(f"50 long lists: values sum to {sum}, checksum {check}");
+}

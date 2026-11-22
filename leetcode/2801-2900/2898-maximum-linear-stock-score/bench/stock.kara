@@ -1,0 +1,49 @@
+// LeetCode #2898: Maximum Linear Stock Score -- the bench: the ★ arm over 20
+// arrays of 10^5 prices, LeetCode's most, half up to 10^9 and half a few
+// steps off a rise by one, all drawn first, then each answered 20 times.
+
+fn max_score(prices: Vec[i64]) -> i64 {
+    let mut sums: Map[i64, i64] = Map.new();
+    for (i, p) in prices.iter().enumerate() {
+        *sums.entry(p - i).or_insert(0) += p;
+    }
+    sums.values().max().unwrap()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let count = 20;
+    let rounds = 20;
+    let n = 100000;
+    let mut seed = 2898;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..count {
+        let mut prices: Vec[i64] = Vec.new();
+        for i in 0..n {
+            if c % 2 == 0 {
+                prices.push(wide(mut seed) % 1000000000 + 1);
+            } else {
+                prices.push(1000000 + i - next_random(mut seed) % 50);
+            }
+        }
+        cases.push(prices);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for prices in cases.iter() {
+            let score = max_score(prices);
+            total += score;
+            check = (check * 31 + score % 1000000007 + r) % 1000000007;
+        }
+    }
+    println(f"{count} arrays of {n}, {rounds} rounds: scores total {total}, checksum {check}");
+}

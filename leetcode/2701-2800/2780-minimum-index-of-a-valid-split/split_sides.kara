@@ -1,0 +1,104 @@
+// LeetCode #2780: Minimum Index of a Valid Split -- nothing known of the
+// whole array first: two `Map`s of counts, the right side's filled
+// first, and each number moved from right to left in turn. The left
+// side's counts only grow, so its most common number is kept as each
+// count passes it; a split is valid when that number is more than half
+// of the left and of the right. O(n).
+
+fn minimum_index(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut left: Map[i64, i64] = Map.new();
+    let mut right: Map[i64, i64] = Map.new();
+    for v in nums.iter() {
+        *right.entry(v).or_insert(0) += 1;
+    }
+    let mut leader = nums[0];
+    for i in 0..n - 1 {
+        let v = nums[i];
+        let held = left.entry(v).or_insert(0);
+        *held += 1;
+        let now = *held;
+        *right.entry(v).or_insert(0) -= 1;
+        if now > (left.get(leader) ?? 0) {
+            leader = v;
+        }
+        let on_left = left.get(leader) ?? 0;
+        let on_right = right.get(leader) ?? 0;
+        if 2 * on_left > i + 1 and 2 * on_right > n - i - 1 {
+            return i;
+        }
+    }
+    -1
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// n numbers with a dominant one: more than half of them x, the rest
+// drawn from `others` values, shuffled
+fn dominated(n: i64, others: i64, top: i64, seed: mut ref i64) -> Vec[i64] {
+    let x = wide(mut seed) % top + 1;
+    let many = n / 2 + 1 + wide(mut seed) % (n - n / 2);
+    let mut nums: Vec[i64] = Vec.filled(many, x);
+    while nums.len() < n {
+        let v = wide(mut seed) % others + 1;
+        if v != x {
+            nums.push(v);
+        }
+    }
+    for i in (1..n).rev() {
+        let j = wide(mut seed) % (i + 1);
+        nums.swap(i, j);
+    }
+    nums
+}
+
+fn main() {
+    // LeetCode's three examples; one number
+    println(f"{minimum_index([1, 2, 2, 2].to_vec())}");
+    println(f"{minimum_index([2, 1, 3, 1, 1, 1, 7, 1, 2, 1].to_vec())}");
+    println(f"{minimum_index([3, 3, 3, 3, 7, 2, 2].to_vec())}");
+    println(f"{minimum_index([5].to_vec())}");
+    // 10^5 numbers, LeetCode's most: all 10^9; and 49999 different ones
+    // before 50001 of the dominant
+    let n = 100000;
+    println(f"{minimum_index(Vec.filled(n, 1000000000))}");
+    let late: Vec[i64] = (0..n).map(|i| if i < 49999 { i + 2 } else { 1 }).collect();
+    println(f"{minimum_index(late)}");
+    // 3000 random arrays of 1 to 12 numbers from 1 to 4; 20 of 10^5 up to
+    // 10^9
+    let mut seed = 2780;
+    let mut found = 0;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let m = next_random(mut seed) % 12 + 1;
+        let a = minimum_index(dominated(m, 4, 4, mut seed));
+        if a >= 0 {
+            found += 1;
+            total += a;
+        }
+        check = (check * 31 + a + 1) % 1000000007;
+    }
+    println(f"3000 small arrays: {found} split, indices sum to {total}, checksum {check}");
+    let mut found = 0;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..20 {
+        let a = minimum_index(dominated(n, 1000000000, 1000000000, mut seed));
+        if a >= 0 {
+            found += 1;
+            total += a;
+        }
+        check = (check * 31 + a + 1) % 1000000007;
+    }
+    println(f"20 arrays of 10^5: {found} split, indices sum to {total}, checksum {check}");
+}

@@ -1,0 +1,85 @@
+// LeetCode #2731: Movement of Robots -- the gaps arm. Robots pass through
+// each other in effect, so the places after d seconds are the starts
+// moved d each way. Sorted, the gap between the k-th place and the next
+// lies between every pair with one end among the first k + 1 and the
+// other among the rest, so it counts (k + 1) (n - k - 1) times; each
+// factor taken mod 10^9 + 7 first, since a gap of 6 * 10^9 times 2.5 *
+// 10^9 pairs overflows. O(n log n).
+
+const MOD: i64 = 1000000007;
+
+fn sum_distance(nums: Vec[i64], s: String, d: i64) -> i64 {
+    let ways = s.bytes();
+    let mut places: Vec[i64] = Vec.new();
+    for (i, x) in nums.iter().enumerate() {
+        let step = if ways[i] == b'L' { -d } else { d };
+        places.push(x + step);
+    }
+    places.sort();
+    let n = places.len();
+    let mut total = 0;
+    for k in 0..n - 1 {
+        let gap = (places[k + 1] - places[k]) % MOD;
+        let pairs = (k + 1) * (n - k - 1) % MOD;
+        total = (total + gap * pairs) % MOD;
+    }
+    total
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n robots at distinct places, neighbours 1 to `spread` apart around 0,
+// shuffled, each facing left or right
+fn random_robots(seed: mut ref i64, n: i64, spread: i64) -> (Vec[i64], String) {
+    let mut nums: Vec[i64] = Vec.new();
+    let mut at = -(n * spread / 2);
+    for _ in 0..n {
+        nums.push(at);
+        at += next_random(mut seed) % spread + 1;
+    }
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        nums.swap(i, j);
+    }
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(if next_random(mut seed) % 2 == 0 { 'L' } else { 'R' });
+    }
+    (nums, s)
+}
+
+fn main() {
+    // LeetCode's two examples; one robot; two at the ends of the range
+    // moving apart for the longest time
+    println(f"{sum_distance([-2, 0, 2].to_vec(), "RLL", 3)}");
+    println(f"{sum_distance([1, 0].to_vec(), "RL", 2)}");
+    println(f"{sum_distance([5].to_vec(), "L", 1000000000)}");
+    println(f"{sum_distance([-2000000000, 2000000000].to_vec(), "LR", 1000000000)}");
+    // 2000 random cases of 1 to 30 robots up to 10 apart for 0 to 50
+    // seconds; then 20 of 1000 robots up to 10^6 apart for up to 10^9
+    let mut seed = 2731;
+    let mut sum = 0;
+    let mut check = 0;
+    for c in 0..2020 {
+        let (n, spread, longest) = if c < 2000 { (next_random(mut seed) % 30 + 1, 10, 51) } else { (1000, 1000000, 1000000001) };
+        let (nums, s) = random_robots(mut seed, n, spread);
+        let d = (next_random(mut seed) * 32768 + next_random(mut seed)) % longest;
+        let total = sum_distance(nums, s, d);
+        sum += total;
+        check = (check * 31 + total) % 1000000007;
+        if c == 1999 {
+            println(f"2000 small cases: sums sum to {sum}, checksum {check}");
+            sum = 0;
+            check = 0;
+        }
+    }
+    println(f"20 cases of 1000 robots: sums sum to {sum}, checksum {check}");
+    // 10^5 robots, LeetCode's most, from -2 * 10^9 up, for 10^9 seconds
+    let (nums, s) = random_robots(mut seed, 100000, 40000);
+    println(f"{sum_distance(nums, s, 1000000000)}");
+}

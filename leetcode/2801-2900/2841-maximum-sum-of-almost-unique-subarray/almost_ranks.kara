@@ -1,0 +1,76 @@
+// LeetCode #2841: Maximum Sum of Almost Unique Subarray -- the values
+// ranked first, sorted and deduplicated, each found by `binary_search`,
+// so the window's counts are a plain `Vec` indexed by rank and a count
+// of the ranks above zero; the sum from prefix sums.
+
+fn max_sum(nums: Vec[i64], m: i64, k: i64) -> i64 {
+    let mut values = nums.clone();
+    values.sort();
+    values.dedup();
+    let rank: Vec[i64] = nums.iter().map(|x| values.binary_search(x).unwrap()).collect();
+    let mut prefix: Vec[i64] = [0];
+    for x in nums.iter() {
+        prefix.push(prefix[prefix.len() - 1] + x);
+    }
+    let mut count: Vec[i64] = Vec.filled(values.len(), 0);
+    let mut distinct = 0;
+    let mut best = 0;
+    for i in 0..nums.len() {
+        if count[rank[i]] == 0 {
+            distinct += 1;
+        }
+        count[rank[i]] += 1;
+        if i >= k {
+            count[rank[i - k]] -= 1;
+            if count[rank[i - k]] == 0 {
+                distinct -= 1;
+            }
+        }
+        if i + 1 >= k and distinct >= m {
+            best = best.max(prefix[i + 1] - prefix[i + 1 - k]);
+        }
+    }
+    best
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples; one number; and 2 x 10^4 numbers,
+    // LeetCode's most, all distinct and near 10^9, the whole array one
+    // window, then the same with m one more than k allows
+    println(f"{max_sum([2, 6, 7, 3, 1, 7], 3, 4)} {max_sum([5, 9, 9, 2, 4, 5, 4], 1, 3)} {max_sum([1, 2, 1, 2, 1, 2, 1], 3, 3)}");
+    println(f"{max_sum([7], 1, 1)}");
+    let big: Vec[i64] = (0..20000).map(|i| 1000000000 - i).collect();
+    println(f"{max_sum(big, 20000, 20000)} {max_sum(big, 21, 20)}");
+    // 3000 random arrays of 1 to 8 numbers from 1 to 4, with k and m up
+    // to the length; then 50 of up to 2000 numbers from 1 to 10^9 or
+    // from 1 to 50, k up to 100
+    let mut seed = 2841;
+    let mut check = 0;
+    let mut zero = 0;
+    for c in 0..3050 {
+        let short = c < 3000;
+        let n = if short { next_random(mut seed) % 8 + 1 } else { next_random(mut seed) % 2000 + 1 };
+        let top = if short { 4 } else if c % 2 == 0 { 1000000000 } else { 50 };
+        let nums: Vec[i64] = (0..n).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % top + 1).collect();
+        let k = next_random(mut seed) % n.min(if short { 8 } else { 100 }) + 1;
+        let m = next_random(mut seed) % k + 1;
+        let best = max_sum(nums, m, k);
+        if best == 0 {
+            zero += 1;
+        }
+        check = (check * 31 + best) % 1000000007;
+        if c == 2999 {
+            println(f"3000 short arrays: {zero} with none, checksum {check}");
+            check = 0;
+            zero = 0;
+        }
+    }
+    println(f"50 long arrays: {zero} with none, checksum {check}");
+}

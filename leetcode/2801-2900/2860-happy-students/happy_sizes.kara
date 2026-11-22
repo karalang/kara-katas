@@ -1,0 +1,81 @@
+// LeetCode #2860: Happy Students -- the distinct values in a
+// `SortedMap` with their counts, walked in order: between one value v
+// and the next value w, with c values at most v, the only group size
+// that can work is c itself, and it does when v < c < w; before the
+// smallest value, the empty group works when it is above 0.
+
+fn count_ways(nums: Vec[i64]) -> i64 {
+    let mut counts: SortedMap[i64, i64] = SortedMap.new();
+    for x in nums.iter() {
+        *counts.entry(x).or_insert(0) += 1;
+    }
+    let values: Vec[(i64, i64)] = counts.iter().collect();
+    let mut ways = if values[0].0 > 0 { 1 } else { 0 };
+    let mut at_most = 0;
+    for i in 0..values.len() {
+        let (v, c) = values[i];
+        at_most += c;
+        let next = if i + 1 < values.len() { values[i + 1].0 } else { i64.MAX };
+        if v < at_most and at_most < next {
+            ways += 1;
+        }
+    }
+    ways
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// n values below n: half the time random, half the time around a group
+// size g, g of them below it and the rest above, one in four of those
+// with one value set to g itself
+fn class(n: i64, seed: mut ref i64) -> Vec[i64] {
+    if next_random(mut seed) % 2 == 0 {
+        return (0..n).map(|_| wide(mut seed) % n).collect();
+    }
+    let g = wide(mut seed) % (n + 1);
+    let mut nums: Vec[i64] = (0..n).map(|i| if i < g { wide(mut seed) % g.max(1) } else { g + 1 + wide(mut seed) % (n - g).max(1) }).collect();
+    for x in nums.iter_mut() {
+        *x = (*x).min(n - 1);
+    }
+    if next_random(mut seed) % 4 == 0 {
+        nums[wide(mut seed) % n] = g.min(n - 1);
+    }
+    for i in (1..n).rev() {
+        let j = wide(mut seed) % (i + 1);
+        nums.swap(i, j);
+    }
+    nums
+}
+
+fn main() {
+    // LeetCode's two examples; 10^5 zeros, LeetCode's most, and 10^5
+    // values of 10^5 - 1, and 0 to 10^5 - 1 once each
+    println(f"{count_ways([1, 1].to_vec())} {count_ways([6, 0, 3, 3, 6, 7, 2, 7].to_vec())}");
+    let n = 100000;
+    println(f"{count_ways(Vec.filled(n, 0))} {count_ways(Vec.filled(n, n - 1))} {count_ways((0..n).collect())}");
+    // 3000 random classes of 1 to 8; then 30 of 10^4 to 10^5
+    let mut seed = 2860;
+    let mut total = 0;
+    let mut check = 0;
+    for c in 0..3030 {
+        let n = if c < 3000 { next_random(mut seed) % 8 + 1 } else { wide(mut seed) % 90001 + 10000 };
+        let ways = count_ways(class(n, mut seed));
+        total += ways;
+        check = (check * 31 + ways) % 1000000007;
+        if c == 2999 {
+            println(f"3000 small classes: {total} ways, checksum {check}");
+            total = 0;
+            check = 0;
+        }
+    }
+    println(f"30 large classes: {total} ways, checksum {check}");
+}

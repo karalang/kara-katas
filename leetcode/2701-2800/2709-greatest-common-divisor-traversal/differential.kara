@@ -1,0 +1,405 @@
+// LeetCode #2709: Greatest Common Divisor Traversal -- the differential.
+// The four arms, against the statement read literally: a step from i to
+// j wherever gcd(nums[i], nums[j]) > 1, every sequence of steps closed
+// over by Floyd and Warshall's rule, and every pair i < j asked whether
+// it can be traversed. No primes. 1000 random cases of 1 to 8 numbers up
+// to 30 or up to 12; then 10 of up to 1000 numbers up to 20000 or up
+// to 2000. Every case is drawn before any arm answers.
+//
+// P1  up to 8 numbers, the answer is the literal reading's
+// P2  the numbers reversed: the same answer
+// P3  one of the numbers added again: the same answer, but for a lone 1
+// P4  every number doubled: true; and the next prime above the largest
+//     added: false
+// P5  each arm agrees with at least two of the other three
+
+
+// ---- star (traversal.kara) ------------------------------------------
+
+fn star_find(parent: mut ref Vec[i64], a: i64) -> i64 {
+    let mut a = a;
+    while parent[a] != a {
+        parent[a] = parent[parent[a]];
+        a = parent[a];
+    }
+    a
+}
+
+fn star_can_traverse_all_pairs(nums: Vec[i64]) -> bool {
+    let n = nums.len();
+    if n == 1 {
+        return true;
+    }
+    let top = nums.iter().max().unwrap();
+    let mut spf: Vec[i64] = (0..top + 1).collect();
+    let mut p = 2;
+    while p * p <= top {
+        if spf[p] == p {
+            let mut m = p * p;
+            while m <= top {
+                if spf[m] == m {
+                    spf[m] = p;
+                }
+                m += p;
+            }
+        }
+        p += 1;
+    }
+    let mut parent: Vec[i64] = (0..n).collect();
+    let mut first: Vec[i64] = (0..top + 1).map(|_| -1).collect();
+    let mut sets = n;
+    for (i, v) in nums.iter().enumerate() {
+        if v == 1 {
+            return false;
+        }
+        let mut rest = v;
+        while rest > 1 {
+            let q = spf[rest];
+            while rest % q == 0 {
+                rest /= q;
+            }
+            if first[q] < 0 {
+                first[q] = i;
+            } else {
+                let a = star_find(mut parent, i);
+                let b = star_find(mut parent, first[q]);
+                if a != b {
+                    parent[a] = b;
+                    sets -= 1;
+                }
+            }
+        }
+    }
+    sets == 1
+}
+
+
+// ---- search (traversal_search.kara) ---------------------------------
+
+fn search_can_traverse_all_pairs(nums: Vec[i64]) -> bool {
+    let n = nums.len();
+    let top = nums.iter().max().unwrap();
+    let mut holders: Vec[Vec[i64]] = (0..top + 1).map(|_| Vec.new()).collect();
+    let mut primes: Vec[Vec[i64]] = Vec.new();
+    for (i, v) in nums.iter().enumerate() {
+        let mut own: Vec[i64] = Vec.new();
+        let mut rest = v;
+        let mut d = 2;
+        while d * d <= rest {
+            if rest % d == 0 {
+                own.push(d);
+                while rest % d == 0 {
+                    rest /= d;
+                }
+            }
+            d += 1;
+        }
+        if rest > 1 {
+            own.push(rest);
+        }
+        for q in own.iter() {
+            holders[q].push(i);
+        }
+        primes.push(own);
+    }
+    let mut reached: Vec[bool] = (0..n).map(|_| false).collect();
+    let mut crossed: Vec[bool] = (0..top + 1).map(|_| false).collect();
+    let mut queue: Vec[i64] = [0].to_vec();
+    reached[0] = true;
+    let mut head = 0;
+    while head < queue.len() {
+        let i = queue[head];
+        head += 1;
+        for q in primes[i].iter() {
+            if not crossed[q] {
+                crossed[q] = true;
+                for j in holders[q].iter() {
+                    if not reached[j] {
+                        reached[j] = true;
+                        queue.push(j);
+                    }
+                }
+            }
+        }
+    }
+    queue.len() == n
+}
+
+
+// ---- primes (traversal_primes.kara) ---------------------------------
+
+fn primes_root(parent: mut ref Vec[i64], a: i64) -> i64 {
+    if parent[a] == a {
+        return a;
+    }
+    let r = primes_root(mut parent, parent[a]);
+    parent[a] = r;
+    r
+}
+
+fn primes_join(parent: mut ref Vec[i64], size: mut ref Vec[i64], a: i64, b: i64) {
+    let mut ra = primes_root(mut parent, a);
+    let mut rb = primes_root(mut parent, b);
+    if ra == rb {
+        return;
+    }
+    if size[ra] < size[rb] {
+        let t = ra;
+        ra = rb;
+        rb = t;
+    }
+    parent[rb] = ra;
+    size[ra] += size[rb];
+}
+
+fn primes_can_traverse_all_pairs(nums: Vec[i64]) -> bool {
+    if nums.len() == 1 {
+        return true;
+    }
+    let top = nums.iter().max().unwrap();
+    let mut spf: Vec[i64] = (0..top + 1).map(|_| 0).collect();
+    for p in 2..top + 1 {
+        if spf[p] == 0 {
+            let mut m = p;
+            while m <= top {
+                if spf[m] == 0 {
+                    spf[m] = p;
+                }
+                m += p;
+            }
+        }
+    }
+    let mut parent: Vec[i64] = (0..top + 1).collect();
+    let mut size: Vec[i64] = (0..top + 1).map(|_| 1).collect();
+    for v in nums.iter() {
+        if v == 1 {
+            return false;
+        }
+        let lead = spf[v];
+        let mut rest = v;
+        while rest > 1 {
+            let q = spf[rest];
+            primes_join(mut parent, mut size, lead, q);
+            rest /= q;
+        }
+    }
+    let anchor = primes_root(mut parent, spf[nums[0]]);
+    nums.iter().all(|v| primes_root(mut parent, spf[v]) == anchor)
+}
+
+
+// ---- solution (traversal_solution.kara) -----------------------------
+
+struct Dsu {
+    parent: Vec[i64],
+    count: i64,
+}
+
+impl Dsu {
+    fn new(n: i64) -> Self {
+        Dsu { parent: (0..n).collect(), count: n }
+    }
+
+    fn find(mut ref self, x: i64) -> i64 {
+        if self.parent[x] != x {
+            let r = self.find(self.parent[x]);
+            self.parent[x] = r;
+        }
+        self.parent[x]
+    }
+
+    fn union(mut ref self, a: i64, b: i64) {
+        let (ra, rb) = (self.find(a), self.find(b));
+        if ra != rb {
+            self.parent[ra] = rb;
+            self.count -= 1;
+        }
+    }
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn can_traverse_all_pairs(nums: Vec[i32]) -> bool {
+        let n = nums.len();
+        if n == 1 {
+            return true;
+        }
+        let m = *nums.iter().max().unwrap() as i64;
+        let mut spf = Vec.filled(m + 1, 0);
+        for i in 2..=m {
+            if spf[i] == 0 {
+                let mut j = i;
+                while j <= m {
+                    if spf[j] == 0 {
+                        spf[j] = i;
+                    }
+                    j += i;
+                }
+            }
+        }
+        let mut dsu = Dsu.new(n);
+        let mut seen: Map[i64, i64] = Map.new();
+        for i in 0..n {
+            let mut x = nums[i] as i64;
+            if x == 1 {
+                return false;
+            }
+            while x > 1 {
+                let p = spf[x];
+                if let Some(j) = seen.get(p).cloned() {
+                    dsu.union(i, j);
+                } else {
+                    seen.insert(p, i);
+                }
+                while x % p == 0 {
+                    x /= p;
+                }
+            }
+        }
+        dsu.count == 1
+    }
+}
+
+fn solution_can_traverse_all_pairs(nums: Vec[i64]) -> bool {
+    let narrow: Vec[i32] = nums.iter().map(|v| v as i32).collect();
+    Solution.can_traverse_all_pairs(narrow)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+fn gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+// a step from i to j wherever gcd(nums[i], nums[j]) > 1; every sequence
+// of steps closed over by Floyd and Warshall's rule, and then every pair
+// i < j asked whether it can be traversed
+fn literal(nums: Vec[i64]) -> bool {
+    let n = nums.len();
+    let mut path: Vec[Vec[bool]] = (0..n).map(|i| (0..n).map(|j| i == j or gcd(nums[i], nums[j]) > 1).collect()).collect();
+    for k in 0..n {
+        for i in 0..n {
+            for j in 0..n {
+                if path[i][k] and path[k][j] {
+                    path[i][j] = true;
+                }
+            }
+        }
+    }
+    for i in 0..n {
+        for j in i + 1..n {
+            if not path[i][j] {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+// the smallest prime above `v`, which shares no factor with anything
+// up to `v`
+fn prime_above(v: i64) -> i64 {
+    let mut p = v + 1;
+    loop {
+        let mut d = 2;
+        while d * d <= p and p % d != 0 {
+            d += 1;
+        }
+        if d * d > p and p > 1 {
+            return p;
+        }
+        p += 1;
+    }
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> bool {
+    match arm {
+        0 => star_can_traverse_all_pairs(nums),
+        1 => search_can_traverse_all_pairs(nums),
+        2 => primes_can_traverse_all_pairs(nums),
+        _ => solution_can_traverse_all_pairs(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "search", "primes", "solution"];
+    let mut seed = 2709;
+    // (numbers, which one to copy)
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..1010 {
+        let (n, most) = if c < 1000 {
+            (next_random(mut seed) % 8 + 1, if c % 2 == 0 { 30 } else { 12 })
+        } else {
+            (next_random(mut seed) % 1000 + 1, if c % 2 == 0 { 20000 } else { 2000 })
+        };
+        let nums: Vec[i64] = (0..n).map(|_| wide(mut seed) % most + 1).collect();
+        let copy = next_random(mut seed) % n;
+        cases.push((nums, copy));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (nums, copy)) in cases.iter().enumerate() {
+        let small = c < 1000;
+        let truth = small and literal(nums);
+        if small {
+            check = (check * 31 + if truth { 2 } else { 1 }) % 1000000007;
+        }
+        let n = nums.len();
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let mut copied = nums.clone();
+        copied.push(nums[copy]);
+        let doubled: Vec[i64] = nums.iter().map(|v| 2 * v).collect();
+        let mut stranded = nums.clone();
+        stranded.push(prime_above(nums.iter().max().unwrap()));
+        let got: Vec[bool] = (0..4).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..4 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..4 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                answer(arm, reversed) == value,
+                (n == 1 and nums[0] == 1) or answer(arm, copied) == value,
+                answer(arm, doubled) and not answer(arm, stranded),
+                same >= 2,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 4 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..5 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

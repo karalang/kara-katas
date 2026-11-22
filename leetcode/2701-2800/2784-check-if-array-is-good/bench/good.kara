@@ -1,0 +1,61 @@
+// LeetCode #2784: Check if Array is Good -- the bench: the ★ arm over
+// 50000 arrays of 100 numbers, LeetCode's longest, base[99] shuffled and
+// two in three with one number changed to one up to 200, all drawn
+// first, then each answered 40 times.
+
+fn is_good(nums: Vec[i64]) -> bool {
+    let n = nums.len() - 1;
+    if n < 1 {
+        return false;
+    }
+    let mut counts: Vec[i64] = Vec.filled(n + 1, 0);
+    for v in nums.iter() {
+        if v < 1 or v > n {
+            return false;
+        }
+        counts[v] += 1;
+    }
+    (1..n).all(|v| counts[v] == 1) and counts[n] == 2
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn shuffled_base(n: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut nums: Vec[i64] = (1..=n).collect();
+    nums.push(n);
+    for i in (1..n + 1).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        nums.swap(i, j);
+    }
+    nums
+}
+
+fn main() {
+    let count = 50000;
+    let rounds = 40;
+    let mut seed = 2784;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..count {
+        let mut nums = shuffled_base(99, mut seed);
+        if next_random(mut seed) % 3 != 0 {
+            let at = next_random(mut seed) % 100;
+            nums[at] = next_random(mut seed) % 200 + 1;
+        }
+        cases.push(nums);
+    }
+    let mut good = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for nums in cases.iter() {
+            let g = is_good(nums);
+            if g {
+                good += 1;
+            }
+            check = (check * 31 + if g { 2 } else { 1 } + r) % 1000000007;
+        }
+    }
+    println(f"{count} arrays of 100, {rounds} rounds: {good} good, checksum {check}");
+}

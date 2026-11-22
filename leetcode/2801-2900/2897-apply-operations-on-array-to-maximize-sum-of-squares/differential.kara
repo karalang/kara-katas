@@ -1,0 +1,253 @@
+// LeetCode #2897: Apply Operations on Array to Maximize Sum of Squares
+// -- the differential. The five arms, against the statement read
+// literally: every array the operation can reach searched, each kept
+// once in a `Set[String]` by its values sorted and written out, and the
+// k largest squares of each summed, the best kept. 2000 random arrays of
+// 1 to 4 values from 1 to 15, then 50 of up to 3000 values up to 10^9,
+// every other one with few bits in each, all drawn before any arm
+// answers; the literal reading is asked only of the first 2000.
+//
+// P1  up to 4 values, the answer is the literal reading's
+// P2  the array reversed: the same answer
+// P3  every value doubled: four times the answer, modulo 10^9 + 7
+// P4  the array twice over with k doubled: twice the answer
+// P5  k made 1: the square of every value's bits together
+// P6  each arm agrees with at least three of the other four
+
+fn literal(nums: Vec[i64], k: i64) -> i64 {
+    let mut start = nums.clone();
+    start.sort();
+    let mut seen: Set[String] = Set.new();
+    seen.insert(f"{start}");
+    let mut stack: Vec[Vec[i64]] = [start].to_vec();
+    let mut best = 0;
+    while let Some(now) = stack.pop() {
+        let mut largest = now.clone();
+        largest.reverse();
+        let sum: i64 = largest.iter().take(k).map(|v| v * v).sum();
+        best = best.max(sum);
+        for i in 0..now.len() {
+            for j in 0..now.len() {
+                if i != j {
+                    let mut next = now.clone();
+                    next[i] = now[i] & now[j];
+                    next[j] = now[i] | now[j];
+                    next.sort();
+                    if seen.insert(f"{next}") {
+                        stack.push(next);
+                    }
+                }
+            }
+        }
+    }
+    best % 1000000007
+}
+
+
+// ---- star (squares.kara) --------------------------------------------
+
+fn star_max_sum(nums: Vec[i64], k: i64) -> i64 {
+    let modulus = 1000000007;
+    let mut holders: Vec[i64] = Vec.filled(31, 0);
+    for v in nums.iter() {
+        for b in 0..31 {
+            if (v >> b) & 1 == 1 {
+                holders[b] += 1;
+            }
+        }
+    }
+    let mut sum = 0;
+    for _ in 0..k {
+        let mut value = 0;
+        for b in 0..31 {
+            if holders[b] > 0 {
+                holders[b] -= 1;
+                value |= 1 << b;
+            }
+        }
+        sum = (sum + value * value) % modulus;
+    }
+    sum
+}
+
+
+// ---- levels (squares_levels.kara) -----------------------------------
+
+fn levels_max_sum(nums: Vec[i64], k: i64) -> i64 {
+    let modulus = 1000000007;
+    let holders: Vec[i64] = (0..31).map(|b| nums.iter().filter(|v| (v >> b) & 1 == 1).count()).collect();
+    (0..k).map(|t| (0..31).filter(|b| holders[b] > t).map(|b| 1 << b).sum()).fold(0, |sum, value: i64| (sum + value * value) % modulus)
+}
+
+
+// ---- runs (squares_runs.kara) ---------------------------------------
+
+fn runs_max_sum(nums: Vec[i64], k: i64) -> i64 {
+    let modulus = 1000000007;
+    let mut bits: Vec[(i64, i64)] = Vec.new();
+    for b in 0..31 {
+        let count = nums.iter().filter(|v| (v >> b) & 1 == 1).count();
+        if count > 0 {
+            bits.push((count, b));
+        }
+    }
+    bits.sort();
+    let mut value = bits.iter().fold(0, |acc, (_, b)| acc | (1 << b));
+    let mut sum = 0;
+    let mut done = 0;
+    for (count, b) in bits.iter() {
+        let upto = count.min(k);
+        if upto > done {
+            let square = (value % modulus) * (value % modulus) % modulus;
+            sum = (sum + square * (upto - done)) % modulus;
+            done = upto;
+        }
+        value ^= 1 << b;
+    }
+    sum
+}
+
+
+// ---- sorted (squares_sorted.kara) -----------------------------------
+
+fn sorted_max_sum(nums: Vec[i64], k: i64) -> i64 {
+    let modulus = 1000000007;
+    let n = nums.len();
+    let mut stacked: Vec[i64] = Vec.filled(n, 0);
+    for b in 0..31 {
+        let count = nums.iter().filter(|v| (v >> b) & 1 == 1).count();
+        for t in 0..count {
+            stacked[t] |= 1 << b;
+        }
+    }
+    let mut sum = 0;
+    for v in stacked.iter().take(k) {
+        sum = (sum + v * v) % modulus;
+    }
+    sum
+}
+
+
+// ---- solution (squares_solution.kara) -------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_sum(nums: Vec[i32], k: i32) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let mut cnt = [0; 31];
+        for x in ref nums {
+            for i in 0..31 {
+                if (x >> i) & 1 == 1 {
+                    cnt[i] += 1;
+                }
+            }
+        }
+        let mut ans: i64 = 0;
+        for _ in 0..k {
+            let mut x: i64 = 0;
+            for i in 0..31 {
+                if cnt[i] > 0 {
+                    cnt[i] -= 1;
+                    x |= 1 << i;
+                }
+            }
+            ans = (ans + x * x % MOD) % MOD;
+        }
+        ans as i32
+    }
+}
+
+fn solution_max_sum(nums: Vec[i64], k: i64) -> i64 {
+    Solution.max_sum(nums.iter().map(|x| x as i32).collect(), k as i32)
+}
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64], k: i64) -> i64 {
+    match arm {
+        0 => star_max_sum(nums, k),
+        1 => levels_max_sum(nums, k),
+        2 => runs_max_sum(nums, k),
+        3 => sorted_max_sum(nums, k),
+        _ => solution_max_sum(nums, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "levels", "runs", "sorted", "solution"];
+    let modulus = 1000000007;
+    let mut seed = 2897;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..2050 {
+        let small = c < 2000;
+        let n = if small { next_random(mut seed) % 4 + 1 } else { wide(mut seed) % 3000 + 1 };
+        let nums: Vec[i64] = (0..n).map(|_| if small { next_random(mut seed) % 15 + 1 } else if c % 2 == 1 { (1 << (next_random(mut seed) % 30)) | (1 << (next_random(mut seed) % 30)) } else { wide(mut seed) % 1000000000 + 1 }).collect();
+        let k = wide(mut seed) % n + 1;
+        cases.push((nums, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut total = 0;
+    for (c, (nums, k)) in cases.iter().enumerate() {
+        let n = nums.len();
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums, k)).collect();
+        let want = if c < 2000 { literal(nums, k) } else { got[0] };
+        total += want;
+        check = (check * 31 + want) % 1000000007;
+        let reversed: Vec[i64] = nums.iter().rev().cloned().collect();
+        let doubled: Vec[i64] = nums.iter().map(|v| 2 * v).collect();
+        let mut twice = nums.clone();
+        twice.extend(nums.iter().cloned());
+        let all_bits = nums.iter().fold(0, |acc, v| acc | v) % modulus;
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                c >= 2000 or value == want,
+                answer(arm, reversed, k) == value,
+                answer(arm, doubled, k) == 4 * value % modulus,
+                answer(arm, twice, 2 * k) == 2 * value % modulus,
+                answer(arm, nums, 1) == all_bits * all_bits % modulus,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} n {n} k {k}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases, sums total {total}: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

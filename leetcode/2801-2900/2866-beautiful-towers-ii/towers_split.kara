@@ -1,0 +1,95 @@
+// LeetCode #2866: Beautiful Towers II -- divide at the lowest tower: in
+// any mountain the side of the lowest tower away from the peak can be
+// no taller than it all the way out, and it is the least there, so that
+// side is its height at every place; the best over lo..hi is then the
+// best over the other side plus that height times the rest. The lowest
+// tower of a range comes from a sparse table, and the ranges are worked
+// from a list, children before parents, rather than by recursion.
+
+fn lowest(table: Vec[Vec[i64]], heights: Vec[i64], lo: i64, hi: i64) -> i64 {
+    let mut k = 0;
+    while 2 << k <= hi - lo + 1 {
+        k += 1;
+    }
+    let a = table[k][lo];
+    let b = table[k][hi - (1 << k) + 1];
+    if heights[b] < heights[a] { b } else { a }
+}
+
+fn maximum_sum_of_heights(max_heights: Vec[i64]) -> i64 {
+    let n = max_heights.len();
+    let mut table: Vec[Vec[i64]] = Vec.new();
+    table.push((0..n).collect());
+    let mut k = 0;
+    while 2 << k <= n {
+        let last = ref table[k];
+        let half = 1 << k;
+        let next: Vec[i64] = (0..n - 2 * half + 1)
+            .map(|i| if max_heights[last[i + half]] < max_heights[last[i]] { last[i + half] } else { last[i] })
+            .collect();
+        table.push(next);
+        k += 1;
+    }
+    // each range's lowest tower, with its range and its two children's
+    let mut order: Vec[(i64, i64, i64, i64, i64)] = Vec.new();
+    let mut pending: Vec[(i64, i64)] = [(0, n - 1)].to_vec();
+    while let Some((lo, hi)) = pending.pop() {
+        let m = lowest(table, max_heights, lo, hi);
+        let left = if lo < m { lowest(table, max_heights, lo, m - 1) } else { -1 };
+        let right = if m < hi { lowest(table, max_heights, m + 1, hi) } else { -1 };
+        order.push((m, lo, hi, left, right));
+        if left >= 0 {
+            pending.push((lo, m - 1));
+        }
+        if right >= 0 {
+            pending.push((m + 1, hi));
+        }
+    }
+    let mut best: Vec[i64] = Vec.filled(n, 0);
+    for (m, lo, hi, left, right) in order.iter().rev() {
+        let low = max_heights[m];
+        let from_left = if left >= 0 { best[left] } else { 0 };
+        let from_right = if right >= 0 { best[right] } else { 0 };
+        best[m] = (from_left + low * (hi - m + 1)).max(from_right + low * (m - lo + 1));
+    }
+    best[order[0].0]
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's three examples; 10^5 towers, LeetCode's most, all 10^9,
+    // rising, and a valley
+    println(f"{maximum_sum_of_heights([5, 3, 4, 1, 1].to_vec())} {maximum_sum_of_heights([6, 5, 3, 9, 2, 7].to_vec())} {maximum_sum_of_heights([3, 2, 5, 5, 2, 3].to_vec())}");
+    let n = 100000;
+    println(f"{maximum_sum_of_heights(Vec.filled(n, 1000000000))} {maximum_sum_of_heights((1..n + 1).collect())} {maximum_sum_of_heights((0..n).map(|i| (i - 50000).abs() + 1).collect())}");
+    // 3000 random arrays of 1 to 8 heights from 1 to 6; then 30 of 10^4 to
+    // 10^5, every other one up to 10^9 and the rest up to 50
+    let mut seed = 2866;
+    let mut total = 0;
+    let mut check = 0;
+    for c in 0..3030 {
+        let small = c < 3000;
+        let n = if small { next_random(mut seed) % 8 + 1 } else { wide(mut seed) % 90001 + 10000 };
+        let top = if small { 6 } else if c % 2 == 0 { 1000000000 } else { 50 };
+        let heights: Vec[i64] = (0..n).map(|_| wide(mut seed) % top + 1).collect();
+        let best = maximum_sum_of_heights(heights);
+        total += best;
+        check = (check * 31 + best) % 1000000007;
+        if c == 2999 {
+            println(f"3000 short arrays: sums total {total}, checksum {check}");
+            total = 0;
+            check = 0;
+        }
+    }
+    println(f"30 long arrays: sums total {total}, checksum {check}");
+}

@@ -1,0 +1,71 @@
+// LeetCode #2734: Lexicographically Smallest String After Substring
+// Operation -- the ★ arm. Moving a letter back makes the string smaller
+// only where it is not an 'a', and earlier places weigh more: the
+// substring starts at the first letter that is not an 'a' and runs on
+// until the next 'a' or the end. A string of only 'a's must still change,
+// and the least harm is its last letter made 'z'. The bytes are edited in
+// a `Vec[u8]`. O(n).
+
+fn smallest_string(s: String) -> String {
+    let mut b: Vec[u8] = s.bytes().to_vec();
+    let n = b.len();
+    let mut i = 0;
+    while i < n and b[i] == b'a' {
+        i += 1;
+    }
+    if i == n {
+        b[n - 1] = b'z';
+    } else {
+        while i < n and b[i] != b'a' {
+            b[i] -= 1;
+            i += 1;
+        }
+    }
+    String.from_utf8(b).unwrap()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n letters, an 'a' with chance 1 in `rare`, otherwise one of b to z
+fn random_word(seed: mut ref i64, n: i64, rare: i64) -> String {
+    let mut word = String.new();
+    for _ in 0..n {
+        let letter = if next_random(mut seed) % rare == 0 { b'a' } else { b'b' + (next_random(mut seed) % 25) as u8 };
+        word.push(letter as char);
+    }
+    word
+}
+
+fn main() {
+    // LeetCode's three examples; one 'a'; all 'a's; one 'b'; an 'a' after
+    // a run to the end; a run cut by an 'a'
+    println(smallest_string("cbabc"));
+    println(smallest_string("acbbc"));
+    println(smallest_string("leetcode"));
+    println(smallest_string("a"));
+    println(smallest_string("aaaa"));
+    println(smallest_string("b"));
+    println(smallest_string("aazzz"));
+    println(smallest_string("abcadef"));
+    // 5000 random words of 1 to 30 letters, an 'a' 1 time in 1 to 4; the
+    // answers' letters summed and a checksum over them
+    let mut seed = 2734;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..5000 {
+        let n = next_random(mut seed) % 30 + 1;
+        let rare = next_random(mut seed) % 4 + 1;
+        let answer = smallest_string(random_word(mut seed, n, rare));
+        for b in answer.bytes() {
+            sum += b - b'a';
+            check = (check * 31 + (b - b'a')) % 1000000007;
+        }
+        check = (check * 31 + 26) % 1000000007;
+    }
+    println(f"5000 words: letters sum to {sum}, checksum {check}");
+}

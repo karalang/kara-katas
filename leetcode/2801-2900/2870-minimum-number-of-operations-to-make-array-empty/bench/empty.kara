@@ -1,0 +1,65 @@
+// LeetCode #2870: Minimum Number of Operations to Make Array Empty --
+// the bench: the ★ arm over 50 arrays of 10^5 values, LeetCode's most,
+// every value each holds 2 to 8 times, up to 10^6, all drawn and
+// shuffled first, then each answered 10 times.
+
+fn min_operations(nums: Vec[i64]) -> i64 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut ops = 0;
+    let mut i = 0;
+    while i < sorted.len() {
+        let mut j = i;
+        while j < sorted.len() and sorted[j] == sorted[i] {
+            j += 1;
+        }
+        let f = j - i;
+        if f == 1 {
+            return -1;
+        }
+        ops += (f + 2) / 3;
+        i = j;
+    }
+    ops
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let count = 50;
+    let rounds = 10;
+    let n = 100000;
+    let mut seed = 2870;
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..count {
+        let mut nums: Vec[i64] = Vec.new();
+        while nums.len() < n {
+            let v = wide(mut seed) % 1000000 + 1;
+            let copies = (next_random(mut seed) % 7 + 2).min(n - nums.len());
+            for _ in 0..copies {
+                nums.push(v);
+            }
+        }
+        for i in (1..n).rev() {
+            nums.swap(i, wide(mut seed) % (i + 1));
+        }
+        arrays.push(nums);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for nums in arrays.iter() {
+            let ops = min_operations(nums);
+            total += ops;
+            check = (check * 31 + ops + 1 + r) % 1000000007;
+        }
+    }
+    println(f"{count} arrays of {n}, {rounds} rounds: {total} operations, checksum {check}");
+}

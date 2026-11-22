@@ -1,0 +1,56 @@
+// LeetCode #2745: Construct the Longest New String -- the bench
+// (longest.kara in Rust): the table arm, bottom up over the pieces left
+// and the last piece placed, flat in one `Vec`.
+
+fn longest_string(x: i64, y: i64, z: i64) -> i64 {
+    let at = |a: i64, b: i64, c: i64, last: i64| (((a * (y + 1) + b) * (z + 1) + c) * 4 + last) as usize;
+    let mut more: Vec<i64> = vec![0; ((x + 1) * (y + 1) * (z + 1) * 4) as usize];
+    for a in 0..=x {
+        for b in 0..=y {
+            for c in 0..=z {
+                for last in 0..4 {
+                    let mut best = 0;
+                    if a > 0 && last != 0 {
+                        best = best.max(2 + more[at(a - 1, b, c, 0)]);
+                    }
+                    if b > 0 && (last == 0 || last == 3) {
+                        best = best.max(2 + more[at(a, b - 1, c, 1)]);
+                    }
+                    if c > 0 && last != 0 {
+                        best = best.max(2 + more[at(a, b, c - 1, 2)]);
+                    }
+                    more[at(a, b, c, last)] = best;
+                }
+            }
+        }
+    }
+    more[at(x, y, z, 3)]
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 1000;
+    let rounds = 3;
+    let mut seed = 2745;
+    let mut cases: Vec<(i64, i64, i64)> = Vec::new();
+    for _ in 0..count {
+        let x = next_random(&mut seed) % 50 + 1;
+        let y = next_random(&mut seed) % 50 + 1;
+        let z = next_random(&mut seed) % 50 + 1;
+        cases.push((x, y, z));
+    }
+    let mut sum: i64 = 0;
+    let mut check: i64 = 0;
+    for r in 0..rounds {
+        for &(x, y, z) in cases.iter() {
+            let length = longest_string(x, y, z);
+            sum += length;
+            check = (check * 31 + length + r) % 1000000007;
+        }
+    }
+    println!("{count} counts, {rounds} rounds: lengths sum to {sum}, checksum {check}");
+}

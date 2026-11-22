@@ -1,0 +1,105 @@
+// LeetCode #2868: The Wording Game -- a Rust solution as LeetCode's Rust
+// users write it: two indices, the hand and its index picked each turn
+// as `(&b, &mut j)` or `(&a, &mut i)`, the first letters compared as
+// `as_bytes()[0]`, and the first playable word taken.
+
+struct Solution {}
+
+impl Solution {
+    pub fn can_alice_win(a: Vec[String], b: Vec[String]) -> bool {
+        let mut (i, j) = (1, 0);
+        let mut w = a[0].clone();
+        let mut bob = true;
+        loop {
+            let (words, k) = if bob { (ref b, mut ref j) } else { (ref a, mut ref i) };
+            if *k == words.len() {
+                return bob;
+            }
+            let x = ref words[*k];
+            let (c, d) = (x.bytes()[0], w.bytes()[0]);
+            if (c == d and *x > w) or c == d + 1 {
+                w = x.clone();
+                bob = not bob;
+            }
+            *k += 1;
+        }
+    }
+}
+
+fn can_alice_win(a: Vec[String], b: Vec[String]) -> bool {
+    Solution.can_alice_win(a, b)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// n random words of 1 to `longest` letters from the first `letters`,
+// sorted with repeats dropped, then each dealt to Alice or Bob, both
+// given at least one
+fn deal(seed: mut ref i64, n: i64, letters: i64, longest: i64) -> (Vec[String], Vec[String]) {
+    let mut words: Vec[String] = Vec.new();
+    for _ in 0..n {
+        let len = next_random(mut seed) % longest + 1;
+        let word: String = (0..len).map(|_| (b'a' + (next_random(mut seed) % letters) as u8) as char).collect();
+        words.push(word);
+    }
+    words.sort();
+    words.dedup();
+    while words.len() < 2 {
+        let len = next_random(mut seed) % longest + 1;
+        words.push((0..len).map(|_| (b'a' + (next_random(mut seed) % letters) as u8) as char).collect());
+        words.sort();
+        words.dedup();
+    }
+    let mut a: Vec[String] = Vec.new();
+    let mut b: Vec[String] = Vec.new();
+    let first = next_random(mut seed) % words.len();
+    for (i, w) in words.iter().enumerate() {
+        if i == first or (next_random(mut seed) % 2 == 0 and i != (first + 1) % words.len()) {
+            a.push(w.clone());
+        } else {
+            b.push(w.clone());
+        }
+    }
+    (a, b)
+}
+
+fn main() {
+    // LeetCode's three examples; a game played through all 26 letters
+    println(f"{can_alice_win(["avokado", "dabar"].iter().map(|w| w.to_string()).collect(), ["brazil"].iter().map(|w| w.to_string()).collect())} {can_alice_win(["ananas", "atlas", "banana"].iter().map(|w| w.to_string()).collect(), ["albatros", "cikla", "nogomet"].iter().map(|w| w.to_string()).collect())} {can_alice_win(["hrvatska", "zastava"].iter().map(|w| w.to_string()).collect(), ["bijeli", "galeb"].iter().map(|w| w.to_string()).collect())}");
+    let alice: Vec[String] = (0..13).map(|i| ((b'a' + 2 * i as u8) as char).to_string()).collect();
+    let bob: Vec[String] = (0..13).map(|i| ((b'a' + 2 * i as u8 + 1) as char).to_string()).collect();
+    println(f"{can_alice_win(alice, bob)}");
+    // 3000 small deals of up to 8 words of 1 to 3 letters from a to d;
+    // then 30 of 10^4 to 10^5 words, every other one from a to e only
+    let mut seed = 2868;
+    let mut wins = 0;
+    let mut check = 0;
+    for c in 0..3030 {
+        let small = c < 3000;
+        let (a, b) = if small {
+            deal(mut seed, next_random(mut seed) % 7 + 2, 4, 3)
+        } else {
+            deal(mut seed, wide(mut seed) % 90001 + 10000, if c % 2 == 0 { 26 } else { 5 }, 8)
+        };
+        let win = can_alice_win(a, b);
+        if win {
+            wins += 1;
+        }
+        check = (check * 2 + if win { 1 } else { 0 }) % 1000000007;
+        if c == 2999 {
+            println(f"3000 small deals: Alice wins {wins}, checksum {check}");
+            wins = 0;
+            check = 0;
+        }
+    }
+    println(f"30 large deals: Alice wins {wins}, checksum {check}");
+}

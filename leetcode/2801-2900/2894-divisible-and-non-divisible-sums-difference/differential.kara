@@ -1,0 +1,159 @@
+// LeetCode #2894: Divisible and Non-divisible Sums Difference -- the
+// differential. The five arms, against the statement read literally:
+// the integers 1 to n listed, split into those m does not divide and
+// those it does, and the two lists summed. Every n and m from 1 to 60,
+// then 50 random pairs up to 1000, LeetCode's most.
+//
+// P1  the answer is the literal reading's
+// P2  m made 1: minus the sum of 1 to n
+// P3  m made n + 1: the sum of 1 to n
+// P4  n raised by one: n + 1 more, or n + 1 less when m divides it
+// P5  as odd as the sum of 1 to n, and no further from 0
+// P6  each arm agrees with at least three of the other four
+
+fn literal(n: i64, m: i64) -> i64 {
+    let all: Vec[i64] = (1..n + 1).collect();
+    let (divided, rest): (Vec[i64], Vec[i64]) = all.iter().cloned().partition(|x| x % m == 0);
+    let num1: i64 = rest.iter().sum();
+    let num2: i64 = divided.iter().sum();
+    num1 - num2
+}
+
+
+// ---- star (sums.kara) -----------------------------------------------
+
+fn star_difference_of_sums(n: i64, m: i64) -> i64 {
+    let k = n / m;
+    n * (n + 1) / 2 - m * k * (k + 1)
+}
+
+
+// ---- loop (sums_loop.kara) ------------------------------------------
+
+fn loop_difference_of_sums(n: i64, m: i64) -> i64 {
+    let mut num1 = 0;
+    let mut num2 = 0;
+    for i in 1..n + 1 {
+        if i % m == 0 {
+            num2 += i;
+        } else {
+            num1 += i;
+        }
+    }
+    num1 - num2
+}
+
+
+// ---- filter (sums_filter.kara) --------------------------------------
+
+fn filter_difference_of_sums(n: i64, m: i64) -> i64 {
+    let num1: i64 = (1..n + 1).filter(|i| i % m != 0).sum();
+    let num2: i64 = (m..n + 1).step_by(m).sum();
+    num1 - num2
+}
+
+
+// ---- fold (sums_fold.kara) ------------------------------------------
+
+fn fold_difference_of_sums(n: i64, m: i64) -> i64 {
+    (1..n + 1).fold(0, |d, i| if i % m == 0 { d - i } else { d + i })
+}
+
+
+// ---- solution (sums_solution.kara) ----------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn difference_of_sums(n: i32, m: i32) -> i32 {
+        (1..=n).map(|x| if x % m == 0 { -x } else { x }).sum()
+    }
+}
+
+fn solution_difference_of_sums(n: i64, m: i64) -> i64 {
+    Solution.difference_of_sums(n as i32, m as i32)
+}
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, n: i64, m: i64) -> i64 {
+    match arm {
+        0 => star_difference_of_sums(n, m),
+        1 => loop_difference_of_sums(n, m),
+        2 => filter_difference_of_sums(n, m),
+        3 => fold_difference_of_sums(n, m),
+        _ => solution_difference_of_sums(n, m),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "loop", "filter", "fold", "solution"];
+    let mut seed = 2894;
+    let mut cases: Vec[(i64, i64)] = Vec.new();
+    for n in 1..61 {
+        for m in 1..61 {
+            cases.push((n, m));
+        }
+    }
+    for _ in 0..50 {
+        let n = next_random(mut seed) % 1000 + 1;
+        let m = next_random(mut seed) % 1000 + 1;
+        cases.push((n, m));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut total = 0;
+    for (n, m) in cases.iter() {
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, n, m)).collect();
+        let want = literal(n, m);
+        total += want;
+        check = ((check * 31 + want) % 1000000007 + 1000000007) % 1000000007;
+        let whole = n * (n + 1) / 2;
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let step = if (n + 1) % m == 0 { -(n + 1) } else { n + 1 };
+            let verdicts = [
+                value == want,
+                answer(arm, n, 1) == -whole,
+                answer(arm, n, n + 1) == whole,
+                answer(arm, n + 1, m) == value + step,
+                (value - whole) % 2 == 0 and value.abs() <= whole,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"n {n} m {m}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases, differences total {total}: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,296 @@
+// LeetCode #2718: Sum of Matrix After Queries -- the differential. The
+// five arms, against the statement read literally: an n by n matrix of
+// zeros, each query written into every cell of its row or column in
+// turn, and the cells summed at the end. No reading backwards. 1000
+// random cases of 1 to 6 rows and up to 15 queries of values up to 5;
+// then 30 of up to 300 rows and 2000 queries of values up to 10^5. Every
+// case is drawn before any arm answers.
+//
+// P1  up to 6 rows, the answer is the literal reading's
+// P2  every query's kind flipped, rows for columns: the same answer
+// P3  each query written twice in a row: the same answer
+// P4  every value doubled: the answer doubled
+// P5  every row set to v by n queries appended: n * n * v
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- star (matrix.kara) ---------------------------------------------
+
+fn star_matrix_sum_queries(n: i64, queries: Vec[Vec[i64]]) -> i64 {
+    let mut row_taken: Vec[bool] = Vec.filled(n, false);
+    let mut col_taken: Vec[bool] = Vec.filled(n, false);
+    let mut rows_left = n;
+    let mut cols_left = n;
+    let mut sum = 0;
+    for query in queries.iter().rev() {
+        let (kind, index, value) = (query[0], query[1], query[2]);
+        if kind == 0 {
+            if not row_taken[index] {
+                row_taken[index] = true;
+                rows_left -= 1;
+                sum += value * cols_left;
+            }
+        } else if not col_taken[index] {
+            col_taken[index] = true;
+            cols_left -= 1;
+            sum += value * rows_left;
+        }
+    }
+    sum
+}
+
+
+// ---- times (matrix_times.kara) --------------------------------------
+
+fn times_matrix_sum_queries(n: i64, queries: Vec[Vec[i64]]) -> i64 {
+    // time 0 is "never set", which leaves a zero
+    let mut row_time: Vec[i64] = Vec.filled(n, 0);
+    let mut row_value: Vec[i64] = Vec.filled(n, 0);
+    let mut col_time: Vec[i64] = Vec.filled(n, 0);
+    let mut col_value: Vec[i64] = Vec.filled(n, 0);
+    for (t, query) in queries.iter().enumerate() {
+        if query[0] == 0 {
+            row_time[query[1]] = t + 1;
+            row_value[query[1]] = query[2];
+        } else {
+            col_time[query[1]] = t + 1;
+            col_value[query[1]] = query[2];
+        }
+    }
+    let mut cols: Vec[(i64, i64)] = (0..n).map(|c| (col_time[c], col_value[c])).collect();
+    cols.sort();
+    // later[k]: the values of the columns from the k-th in time order on
+    let mut later: Vec[i64] = Vec.filled(n + 1, 0);
+    for k in (0..n).rev() {
+        later[k] = later[k + 1] + cols[k].1;
+    }
+    let mut sum = 0;
+    for r in 0..n {
+        // the first column set after the row
+        let mut low = 0;
+        let mut high = n;
+        while low < high {
+            let mid = (low + high) / 2;
+            if cols[mid].0 > row_time[r] {
+                high = mid;
+            } else {
+                low = mid + 1;
+            }
+        }
+        sum += row_value[r] * low + later[low];
+    }
+    sum
+}
+
+
+// ---- set (matrix_set.kara) ------------------------------------------
+
+fn set_matrix_sum_queries(n: i64, queries: Vec[Vec[i64]]) -> i64 {
+    let mut seen: Set[(i64, i64)] = Set.new();
+    let mut taken = [0, 0];
+    let mut sum = 0;
+    for query in queries.iter().rev() {
+        let kind = query[0];
+        if seen.insert((kind, query[1])) {
+            sum += query[2] * (n - taken[1 - kind]);
+            taken[kind] += 1;
+        }
+    }
+    sum
+}
+
+
+// ---- fold (matrix_fold.kara) ----------------------------------------
+
+struct Taken {
+    rows: Vec[bool],
+    cols: Vec[bool],
+    rows_left: i64,
+    cols_left: i64,
+    sum: i64,
+}
+
+fn fold_matrix_sum_queries(n: i64, queries: Vec[Vec[i64]]) -> i64 {
+    let start = Taken {
+        rows: Vec.filled(n, false),
+        cols: Vec.filled(n, false),
+        rows_left: n,
+        cols_left: n,
+        sum: 0,
+    };
+    let done = queries.iter().rev().fold(start, |state, query| {
+        let mut state = state;
+        let index = query[1];
+        if query[0] == 0 and not state.rows[index] {
+            state.rows[index] = true;
+            state.rows_left -= 1;
+            state.sum += query[2] * state.cols_left;
+        } else if query[0] == 1 and not state.cols[index] {
+            state.cols[index] = true;
+            state.cols_left -= 1;
+            state.sum += query[2] * state.rows_left;
+        }
+        state
+    });
+    done.sum
+}
+
+
+// ---- solution (matrix_solution.kara) --------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn matrix_sum_queries(n: i32, queries: Vec[Vec[i32]]) -> i64 {
+        let mut rows: Set[i32] = Set.new();
+        let mut cols: Set[i32] = Set.new();
+        let mut ans: i64 = 0;
+        for q in queries.iter().rev() {
+            let (t, i, v) = (q[0], q[1], q[2]);
+            if t == 0 {
+                if rows.insert(i) {
+                    ans += v * (n - cols.len());
+                }
+            } else if cols.insert(i) {
+                ans += v * (n - rows.len());
+            }
+        }
+        ans
+    }
+}
+
+fn solution_matrix_sum_queries(n: i64, queries: Vec[Vec[i64]]) -> i64 {
+    let narrow: Vec[Vec[i32]] = queries.iter().map(|q| q.iter().map(|v| v as i32).collect()).collect();
+    Solution.matrix_sum_queries(n as i32, narrow)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+// every query written into the cells of its row or column, in order
+fn literal(n: i64, queries: Vec[Vec[i64]]) -> i64 {
+    let mut cells: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, 0));
+    for query in queries.iter() {
+        for k in 0..n {
+            if query[0] == 0 {
+                cells[query[1]][k] = query[2];
+            } else {
+                cells[k][query[1]] = query[2];
+            }
+        }
+    }
+    let mut sum = 0;
+    for row in cells.iter() {
+        for v in row.iter() {
+            sum += v;
+        }
+    }
+    sum
+}
+
+fn answer(arm: i64, n: i64, queries: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_matrix_sum_queries(n, queries),
+        1 => times_matrix_sum_queries(n, queries),
+        2 => set_matrix_sum_queries(n, queries),
+        3 => fold_matrix_sum_queries(n, queries),
+        _ => solution_matrix_sum_queries(n, queries),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn random_queries(seed: mut ref i64, n: i64, q: i64, most: i64) -> Vec[Vec[i64]] {
+    let mut queries: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..q {
+        let kind = next_random(mut seed) % 2;
+        let index = wide(mut seed) % n;
+        let value = wide(mut seed) % (most + 1);
+        queries.push([kind, index, value].to_vec());
+    }
+    queries
+}
+
+fn main() {
+    let names = ["star", "times", "set", "fold", "solution"];
+    let mut seed = 2718;
+    // (n, the queries, the value every row is set to at the end)
+    let mut cases: Vec[(i64, Vec[Vec[i64]], i64)] = Vec.new();
+    for c in 0..1030 {
+        let (n, q, most) = if c < 1000 {
+            (next_random(mut seed) % 6 + 1, next_random(mut seed) % 16, 5)
+        } else {
+            (next_random(mut seed) % 300 + 1, next_random(mut seed) % 2000 + 1, 100000)
+        };
+        let queries = random_queries(mut seed, n, q, most);
+        let v = next_random(mut seed) % (most + 1);
+        cases.push((n, queries, v));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (n, queries, v)) in cases.iter().enumerate() {
+        let small = c < 1000;
+        let truth = if small { literal(n, queries) } else { -1 };
+        if small {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let flipped: Vec[Vec[i64]] = queries.iter().map(|q| [1 - q[0], q[1], q[2]].to_vec()).collect();
+        let mut twice: Vec[Vec[i64]] = Vec.new();
+        for q in queries.iter() {
+            twice.push(q.clone());
+            twice.push(q.clone());
+        }
+        let doubled: Vec[Vec[i64]] = queries.iter().map(|q| [q[0], q[1], 2 * q[2]].to_vec()).collect();
+        let mut covered = queries.clone();
+        for r in 0..n {
+            covered.push([0, r, v].to_vec());
+        }
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, n, queries)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                answer(arm, n, flipped) == value,
+                answer(arm, n, twice) == value,
+                answer(arm, n, doubled) == 2 * value,
+                answer(arm, n, covered) == n * n * v,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

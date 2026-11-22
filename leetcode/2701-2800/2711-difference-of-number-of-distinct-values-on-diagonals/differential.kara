@@ -1,0 +1,286 @@
+// LeetCode #2711: Difference of Number of Distinct Values on Diagonals --
+// the differential. The four arms, against the statement read literally:
+// for each cell, every cell of the grid asked whether it lies on the
+// same diagonal, r - c the same, and whether above or below, the
+// distinct values of each side kept in a list free of repeats. 600
+// random grids of up to 8 by 8 with values up to a cap of 1 to 6; then
+// 40 of up to 50 by 50 with values up to 50. Every case is drawn before
+// any arm answers.
+//
+// P1  up to 8 by 8, the answer is the literal reading's
+// P2  the grid transposed: the answer transposed
+// P3  the grid turned half round: the answer turned half round
+// P4  every value v made 51 - v: the same answer
+// P5  every cell's answer is between 0 and the longer of its two
+//     diagonal halves
+// P6  each arm agrees with at least two of the other three
+
+
+// ---- star (diagonals.kara) ------------------------------------------
+
+fn star_difference_of_distinct_values(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut answer: Vec[Vec[i64]] = (0..m).map(|_| (0..n).map(|_| 0).collect()).collect();
+    let mut starts: Vec[(i64, i64)] = (0..n).map(|c| (0, c)).collect();
+    for r in 1..m {
+        starts.push((r, 0));
+    }
+    for (r0, c0) in starts.iter() {
+        let length = (m - r0).min(n - c0);
+        let mut seen = [false; 51];
+        let mut distinct = 0;
+        for k in 0..length {
+            answer[r0 + k][c0 + k] = distinct;
+            let v = grid[r0 + k][c0 + k];
+            if not seen[v] {
+                seen[v] = true;
+                distinct += 1;
+            }
+        }
+        seen = [false; 51];
+        distinct = 0;
+        for k in (0..length).rev() {
+            answer[r0 + k][c0 + k] = (answer[r0 + k][c0 + k] - distinct).abs();
+            let v = grid[r0 + k][c0 + k];
+            if not seen[v] {
+                seen[v] = true;
+                distinct += 1;
+            }
+        }
+    }
+    answer
+}
+
+
+// ---- walk (diagonals_walk.kara) -------------------------------------
+
+fn walk_difference_of_distinct_values(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut answer: Vec[Vec[i64]] = Vec.new();
+    for r in 0..m {
+        let mut row: Vec[i64] = Vec.new();
+        for c in 0..n {
+            let mut above: Set[i64] = Set.new();
+            let mut i = r - 1;
+            let mut j = c - 1;
+            while i >= 0 and j >= 0 {
+                above.insert(grid[i][j]);
+                i -= 1;
+                j -= 1;
+            }
+            let mut below: Set[i64] = Set.new();
+            i = r + 1;
+            j = c + 1;
+            while i < m and j < n {
+                below.insert(grid[i][j]);
+                i += 1;
+                j += 1;
+            }
+            row.push((above.len() - below.len()).abs());
+        }
+        answer.push(row);
+    }
+    answer
+}
+
+
+// ---- bits (diagonals_bits.kara) -------------------------------------
+
+fn bits_difference_of_distinct_values(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut above: Vec[Vec[u64]] = (0..m).map(|_| (0..n).map(|_| 0u64).collect()).collect();
+    let mut below: Vec[Vec[u64]] = (0..m).map(|_| (0..n).map(|_| 0u64).collect()).collect();
+    for r in 1..m {
+        for c in 1..n {
+            above[r][c] = above[r - 1][c - 1] | (1u64 << grid[r - 1][c - 1]);
+        }
+    }
+    for r in (0..m - 1).rev() {
+        for c in (0..n - 1).rev() {
+            below[r][c] = below[r + 1][c + 1] | (1u64 << grid[r + 1][c + 1]);
+        }
+    }
+    (0..m).map(|r| (0..n).map(|c| (above[r][c].count_ones() - below[r][c].count_ones()).abs()).collect()).collect()
+}
+
+
+// ---- solution (diagonals_solution.kara) -----------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn difference_of_distinct_values(grid: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+        let (m, n) = (grid.len(), grid[0].len());
+        let mut ans = Vec.filled(m, Vec.filled(n, 0));
+        for i in 0..m {
+            for j in 0..n {
+                let mut tl = Set.new();
+                let mut (x, y) = (i, j);
+                while x > 0 and y > 0 {
+                    x -= 1;
+                    y -= 1;
+                    tl.insert(grid[x][y]);
+                }
+                let mut br = Set.new();
+                let mut (x, y) = (i + 1, j + 1);
+                while x < m and y < n {
+                    br.insert(grid[x][y]);
+                    x += 1;
+                    y += 1;
+                }
+                ans[i][j] = tl.len().abs_diff(br.len()) as i32;
+            }
+        }
+        ans
+    }
+}
+
+fn solution_difference_of_distinct_values(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let narrow: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|v| v as i32).collect()).collect();
+    Solution.difference_of_distinct_values(narrow).iter().map(|row| row.iter().map(|v| v as i64).collect()).collect()
+}
+
+// ---- the statement read literally ------------------------------------------
+
+// for each cell, every cell of the grid asked whether it lies on the
+// same diagonal, r - c the same, and whether above or below; the
+// distinct values of each side counted in a list kept free of repeats
+fn literal(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut answer: Vec[Vec[i64]] = Vec.new();
+    for r in 0..m {
+        let mut row: Vec[i64] = Vec.new();
+        for c in 0..n {
+            let mut left_above: Vec[i64] = Vec.new();
+            let mut right_below: Vec[i64] = Vec.new();
+            for i in 0..m {
+                for j in 0..n {
+                    if i - j == r - c {
+                        let v = grid[i][j];
+                        if i < r and not left_above.contains(v) {
+                            left_above.push(v);
+                        }
+                        if i > r and not right_below.contains(v) {
+                            right_below.push(v);
+                        }
+                    }
+                }
+            }
+            let a = left_above.len();
+            let b = right_below.len();
+            row.push(if a > b { a - b } else { b - a });
+        }
+        answer.push(row);
+    }
+    answer
+}
+
+fn answer(arm: i64, grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    match arm {
+        0 => star_difference_of_distinct_values(grid),
+        1 => walk_difference_of_distinct_values(grid),
+        2 => bits_difference_of_distinct_values(grid),
+        _ => solution_difference_of_distinct_values(grid),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn fold(check: i64, grid: Vec[Vec[i64]]) -> i64 {
+    let mut check = check;
+    for row in grid.iter() {
+        for v in row.iter() {
+            check = (check * 31 + v) % 1000000007;
+        }
+    }
+    (check * 31 + grid.len() * 100 + grid[0].len()) % 1000000007
+}
+
+fn transposed(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    (0..grid[0].len()).map(|c| (0..grid.len()).map(|r| grid[r][c]).collect()).collect()
+}
+
+fn turned(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    grid.iter().rev().map(|row| row.iter().rev().collect()).collect()
+}
+
+fn main() {
+    let names = ["star", "walk", "bits", "solution"];
+    let mut seed = 2711;
+    let mut cases: Vec[Vec[Vec[i64]]] = Vec.new();
+    for c in 0..640 {
+        let (side, most) = if c < 600 { (8, 6) } else { (50, 50) };
+        let m = next_random(mut seed) % side + 1;
+        let n = next_random(mut seed) % side + 1;
+        let cap = next_random(mut seed) % most + 1;
+        cases.push((0..m).map(|_| (0..n).map(|_| next_random(mut seed) % cap + 1).collect()).collect());
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, grid) in cases.iter().enumerate() {
+        let small = c < 600;
+        let m = grid.len();
+        let n = grid[0].len();
+        let truth = if small { literal(grid) } else { grid.clone() };
+        if small {
+            check = fold(check, truth);
+        }
+        let relabelled: Vec[Vec[i64]] = grid.iter().map(|row| row.iter().map(|v| 51 - v).collect()).collect();
+        let got: Vec[Vec[Vec[i64]]] = (0..4).map(|arm| answer(arm, grid)).collect();
+        for arm in 0..4 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..4 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut bounded = true;
+            for r in 0..m {
+                for k in 0..n {
+                    if value[r][k] < 0 or value[r][k] > r.min(k).max((m - 1 - r).min(n - 1 - k)) {
+                        bounded = false;
+                    }
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                answer(arm, transposed(grid)) == transposed(value),
+                answer(arm, turned(grid)) == turned(value),
+                answer(arm, relabelled) == value,
+                bounded,
+                same >= 2,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, {m} by {n}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 4 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

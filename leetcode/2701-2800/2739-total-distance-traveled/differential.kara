@@ -1,0 +1,217 @@
+// LeetCode #2739: Total Distance Traveled -- the differential. The five
+// arms, against the statement read literally: the truck driven one
+// kilometre at a time, a tenth of a liter each, and the moment the main
+// tank's fuel burnt reaches another 5 liters, a liter moved over if the
+// additional tank has one; no liters counted whole, no formula. Every
+// pair of tanks LeetCode allows, 1 to 100 liters each; then 300 random
+// pairs of up to 2000 liters. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  one liter more in the main tank: 10 or 20 km more
+// P3  one liter more in the additional tank: the same distance or 10 km
+//     more
+// P4  the distance is at least 10 km a liter of the main tank and at most
+//     10 km a liter of both
+// P5  an additional tank holding at least as much as the main tank: the
+//     same distance as one holding exactly as much
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(main_tank: i64, additional_tank: i64) -> i64 {
+    // fuel in tenths of a liter
+    let mut main_fuel = main_tank * 10;
+    let mut extra_fuel = additional_tank * 10;
+    let mut burnt = 0;
+    let mut km = 0;
+    while main_fuel > 0 {
+        main_fuel -= 1;
+        burnt += 1;
+        km += 1;
+        if burnt % 50 == 0 and extra_fuel >= 10 {
+            extra_fuel -= 10;
+            main_fuel += 10;
+        }
+    }
+    km
+}
+
+
+// ---- star (distance.kara) -------------------------------------------
+
+fn star_distance_traveled(main_tank: i64, additional_tank: i64) -> i64 {
+    let transfers = ((main_tank - 1) / 4).min(additional_tank);
+    (main_tank + transfers) * 10
+}
+
+
+// ---- liters (distance_liters.kara) ----------------------------------
+
+fn liters_distance_traveled(main_tank: i64, additional_tank: i64) -> i64 {
+    let mut fuel = main_tank;
+    let mut spare = additional_tank;
+    let mut burnt = 0;
+    let mut km = 0;
+    while fuel > 0 {
+        fuel -= 1;
+        burnt += 1;
+        km += 10;
+        if burnt % 5 == 0 and spare > 0 {
+            spare -= 1;
+            fuel += 1;
+        }
+    }
+    km
+}
+
+
+// ---- truck (distance_truck.kara) ------------------------------------
+
+struct Truck {
+    main_tank: i64,
+    additional_tank: i64,
+    km: i64,
+}
+
+impl Truck {
+    fn drive_five(mut ref self) {
+        self.main_tank -= 5;
+        self.km += 50;
+        if self.additional_tank > 0 {
+            self.additional_tank -= 1;
+            self.main_tank += 1;
+        }
+    }
+
+    fn drive_rest(mut ref self) {
+        self.km += self.main_tank * 10;
+        self.main_tank = 0;
+    }
+}
+
+fn truck_distance_traveled(main_tank: i64, additional_tank: i64) -> i64 {
+    let mut truck = Truck { main_tank, additional_tank, km: 0 };
+    while truck.main_tank >= 5 {
+        truck.drive_five();
+    }
+    truck.drive_rest();
+    truck.km
+}
+
+
+// ---- recursive (distance_recursive.kara) ----------------------------
+
+fn recursive_distance_traveled(main_tank: i64, additional_tank: i64) -> i64 {
+    match (main_tank >= 5, additional_tank > 0) {
+        (false, _) => main_tank * 10,
+        (true, true) => 50 + recursive_distance_traveled(main_tank - 4, additional_tank - 1),
+        (true, false) => 50 + recursive_distance_traveled(main_tank - 5, 0),
+    }
+}
+
+
+// ---- solution (distance_solution.kara) ------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn distance_traveled(main_tank: i32, additional_tank: i32) -> i32 {
+        let mut main_tank = main_tank;
+        let mut additional_tank = additional_tank;
+        let mut ans: i32 = 0;
+        while main_tank >= 5 {
+            main_tank -= 5;
+            ans += 50;
+            if additional_tank > 0 {
+                additional_tank -= 1;
+                main_tank += 1;
+            }
+        }
+        ans + main_tank * 10
+    }
+}
+
+fn solution_distance_traveled(main_tank: i64, additional_tank: i64) -> i64 {
+    Solution.distance_traveled(main_tank as i32, additional_tank as i32)
+}
+
+
+fn answer(arm: i64, main_tank: i64, additional_tank: i64) -> i64 {
+    match arm {
+        0 => star_distance_traveled(main_tank, additional_tank),
+        1 => liters_distance_traveled(main_tank, additional_tank),
+        2 => truck_distance_traveled(main_tank, additional_tank),
+        3 => recursive_distance_traveled(main_tank, additional_tank),
+        _ => solution_distance_traveled(main_tank, additional_tank),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "liters", "truck", "recursive", "solution"];
+    let mut seed = 2739;
+    let mut cases: Vec[(i64, i64)] = Vec.new();
+    for m in 1..=100 {
+        for a in 1..=100 {
+            cases.push((m, a));
+        }
+    }
+    for _ in 0..300 {
+        let m = next_random(mut seed) % 2000 + 1;
+        let a = next_random(mut seed) % 2000 + 1;
+        cases.push((m, a));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (m, a)) in cases.iter().enumerate() {
+        let want = literal(m, a);
+        check = (check * 31 + want) % 1000000007;
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, m, a)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let more_main = answer(arm, m + 1, a) - value;
+            let more_extra = answer(arm, m, a + 1) - value;
+            let verdicts = [
+                value == want,
+                more_main == 10 or more_main == 20,
+                more_extra == 0 or more_extra == 10,
+                value >= 10 * m and value <= 10 * (m + a),
+                a < m or value == answer(arm, m, m),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} ({m}, {a}), arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

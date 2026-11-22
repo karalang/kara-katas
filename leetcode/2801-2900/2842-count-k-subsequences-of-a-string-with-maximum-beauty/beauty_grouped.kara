@@ -1,0 +1,83 @@
+// LeetCode #2842: Count K-Subsequences of a String With Maximum Beauty
+// -- the letters grouped by count in a `SortedMap` from each count to
+// how many letters have it, walked from the largest by `iter().rev()`;
+// the binomial by multiplying and dividing in turn, exact in `i64`
+// since a tie holds at most 26 letters.
+
+fn count_k_subsequences_with_max_beauty(s: Str, k: i64) -> i64 {
+    let modulus = 1000000007;
+    let mut count: Map[char, i64] = Map.new();
+    for c in s.chars() {
+        *count.entry(c).or_insert(0) += 1;
+    }
+    if k > count.len() {
+        return 0;
+    }
+    let mut groups: SortedMap[i64, i64] = SortedMap.new();
+    for (_, f) in count.iter() {
+        *groups.entry(f).or_insert(0) += 1;
+    }
+    let mut left = k;
+    let mut ways = 1;
+    for (f, letters) in groups.iter().rev() {
+        if left == 0 {
+            break;
+        }
+        let take = letters.min(left);
+        let mut pick = 1;
+        for i in 0..take {
+            pick = pick * (letters - i) / (i + 1);
+        }
+        ways = ways * pick % modulus;
+        for _ in 0..take {
+            ways = ways * f % modulus;
+        }
+        left -= take;
+    }
+    ways
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letters(n: i64, kinds: i64, seed: mut ref i64) -> String {
+    let codes: Vec[u8] = (0..n).map(|_| (97 + next_random(mut seed) % kinds) as u8).collect();
+    String.from_utf8(codes).unwrap()
+}
+
+fn main() {
+    // LeetCode's two examples; k above the distinct letters; one letter;
+    // and 2 x 10^5 letters, LeetCode's most, over all 26, with k = 26
+    // and k = 13
+    let best = |s: Str, k: i64| count_k_subsequences_with_max_beauty(s, k);
+    println(f"{best("bcca", 2)} {best("abbcd", 4)} {best("aabb", 3)} {best("z", 1)}");
+    let mut seed = 2842;
+    let long = letters(200000, 26, mut seed);
+    println(f"{best(long, 26)} {best(long, 13)}");
+    // 3000 random strings of 1 to 10 letters over a to e, k up to 6;
+    // then 100 of up to 20000 letters over the first 3 to 26, k up to 26
+    let mut check = 0;
+    let mut zero = 0;
+    for c in 0..3100 {
+        let short = c < 3000;
+        let n = if short { next_random(mut seed) % 10 + 1 } else { next_random(mut seed) % 20000 + 1 };
+        let kinds = if short { 5 } else { next_random(mut seed) % 24 + 3 };
+        let s = letters(n, kinds, mut seed);
+        let k = if short { next_random(mut seed) % 6 + 1 } else { next_random(mut seed) % 26 + 1 };
+        let ways = best(s, k);
+        if ways == 0 {
+            zero += 1;
+        }
+        check = (check * 31 + ways) % 1000000007;
+        if c == 2999 {
+            println(f"3000 short strings: {zero} with none, checksum {check}");
+            check = 0;
+            zero = 0;
+        }
+    }
+    println(f"100 long strings: {zero} with none, checksum {check}");
+}

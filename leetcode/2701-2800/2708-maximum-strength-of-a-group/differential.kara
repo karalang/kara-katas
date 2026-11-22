@@ -1,0 +1,226 @@
+// LeetCode #2708: Maximum Strength of a Group -- the differential. The
+// five arms, against the statement read literally: every group, built
+// by deciding for each number in turn to take it or not, its strength
+// the product of what it took, the largest over the groups that took
+// something. 800 random groups of 1 to 6 numbers from -3 to 1, where
+// zeros and lone negatives are common; 300 of 1 to 10 from -9 to 9; 100
+// of 13, LeetCode's most. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the numbers reversed: the same answer
+// P3  a 1 added: the answer, or 1 if that is larger
+// P4  a 0 added: the answer, or 0 if that is larger
+// P5  the answer is at least every number and the product of all
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- star (strength.kara) -------------------------------------------
+
+fn star_max_strength(nums: Vec[i64]) -> i64 {
+    if nums.len() == 1 {
+        return nums[0];
+    }
+    let mut product = 1;
+    let mut taken = 0;
+    let mut negatives = 0;
+    let mut nearest = -10;
+    for v in nums.iter() {
+        if v != 0 {
+            product *= v;
+            taken += 1;
+        }
+        if v < 0 {
+            negatives += 1;
+            nearest = nearest.max(v);
+        }
+    }
+    if negatives % 2 == 1 {
+        product /= nearest;
+        taken -= 1;
+    }
+    if taken > 0 { product } else { 0 }
+}
+
+
+// ---- extremes (strength_extremes.kara) ------------------------------
+
+fn extremes_max_strength(nums: Vec[i64]) -> i64 {
+    let mut high = nums[0];
+    let mut low = nums[0];
+    for v in nums[1..].iter() {
+        let a = high * v;
+        let b = low * v;
+        high = high.max(v).max(a).max(b);
+        low = low.min(v).min(a).min(b);
+    }
+    high
+}
+
+
+// ---- sorted (strength_sorted.kara) ----------------------------------
+
+fn sorted_max_strength(nums: Vec[i64]) -> i64 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let n = sorted.len();
+    let mut product = 1;
+    let mut any = false;
+    let mut i = 0;
+    while i + 1 < n and sorted[i + 1] < 0 {
+        product *= sorted[i] * sorted[i + 1];
+        any = true;
+        i += 2;
+    }
+    for v in sorted.iter() {
+        if v > 0 {
+            product *= v;
+            any = true;
+        }
+    }
+    if any { product } else { sorted[n - 1] }
+}
+
+
+// ---- subsets (strength_subsets.kara) --------------------------------
+
+fn subsets_max_strength(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    (1..(1 << n))
+        .map(|mask| (0..n).filter(|i| (mask >> i) & 1 == 1).fold(1, |p, i| p * nums[i]))
+        .max()
+        .unwrap()
+}
+
+
+// ---- solution (strength_solution.kara) ------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_strength(nums: Vec[i32]) -> i64 {
+        let mut (hi, lo) = (nums[0] as i64, nums[0] as i64);
+        for i in 1..nums.len() {
+            let x = nums[i] as i64;
+            let (a, b) = (hi * x, lo * x);
+            hi = hi.max(x).max(a.max(b));
+            lo = lo.min(x).min(a.min(b));
+        }
+        hi
+    }
+}
+
+fn solution_max_strength(nums: Vec[i64]) -> i64 {
+    let narrow: Vec[i32] = nums.iter().map(|v| v as i32).collect();
+    Solution.max_strength(narrow)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+// every group, built by deciding for each number in turn to take it or
+// not; a group's strength is the product of what it took, and only
+// groups that took something count
+fn groups(nums: Vec[i64], at: i64, product: i64, took: bool, best: mut ref Option[i64]) {
+    if at == nums.len() {
+        if took {
+            *best = match *best {
+                Some(b) if b >= product => Some(b),
+                _ => Some(product),
+            };
+        }
+        return;
+    }
+    groups(nums, at + 1, product * nums[at], true, mut best);
+    groups(nums, at + 1, product, took, mut best);
+}
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let mut best: Option[i64] = None;
+    groups(nums, 0, 1, false, mut best);
+    best.unwrap()
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_max_strength(nums),
+        1 => extremes_max_strength(nums),
+        2 => sorted_max_strength(nums),
+        3 => subsets_max_strength(nums),
+        _ => solution_max_strength(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "extremes", "sorted", "subsets", "solution"];
+    let mut seed = 2708;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..1200 {
+        let (n, low, span) = if c < 800 {
+            (next_random(mut seed) % 6 + 1, -3, 5)
+        } else if c < 1100 {
+            (next_random(mut seed) % 10 + 1, -9, 19)
+        } else {
+            (13, -9, 19)
+        };
+        cases.push((0..n).map(|_| next_random(mut seed) % span + low).collect());
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, nums) in cases.iter().enumerate() {
+        let truth = literal(nums);
+        check = (check * 31 + (truth % 1000000007 + 1000000007) % 1000000007) % 1000000007;
+        let n = nums.len();
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let mut with_one = nums.clone();
+        with_one.push(1);
+        let mut with_zero = nums.clone();
+        with_zero.push(0);
+        let top = nums.iter().max().unwrap();
+        let all = nums.iter().fold(1, |p, v| p * v);
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, reversed) == value,
+                n == 13 or answer(arm, with_one) == value.max(1),
+                n == 13 or answer(arm, with_zero) == value.max(0),
+                value >= top and value >= all,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

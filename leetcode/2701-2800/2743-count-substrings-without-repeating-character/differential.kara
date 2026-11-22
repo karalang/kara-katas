@@ -1,0 +1,230 @@
+// LeetCode #2743: Count Substrings Without Repeating Character -- the
+// differential. The five arms, against the statement read literally:
+// every substring, from every start to every end, looked at letter by
+// letter against every other letter in it, and counted when no two are
+// the same; no window. 1000 random words of 1 to 20 letters from the
+// first 1 to 26 of the alphabet; then 200 of up to 2000 letters. Every
+// case is drawn before any arm answers; the literal reading is asked
+// only of the first 1000.
+//
+// P1  up to 20 letters, the answer is the literal reading's
+// P2  the word reversed: the same answer
+// P3  every letter moved on 7 places round the alphabet: the same answer
+// P4  at least the word's length, at most 26 for each of its letters
+// P5  two words joined: at least the two answers added
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(s: Str) -> i64 {
+    let letters: Vec[char] = s.chars().collect();
+    let n = letters.len();
+    let mut count = 0;
+    for i in 0..n {
+        for j in i..n {
+            let mut special = true;
+            for a in i..=j {
+                for b in a + 1..=j {
+                    if letters[a] == letters[b] {
+                        special = false;
+                    }
+                }
+            }
+            if special {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+
+// ---- star (substrings.kara) -----------------------------------------
+
+fn star_number_of_special_substrings(s: Str) -> i64 {
+    let bytes = s.bytes();
+    let mut last: Array[i64, 26] = [-1; 26];
+    let mut start = 0;
+    let mut count = 0;
+    for i in 0..bytes.len() {
+        let letter = (bytes[i] - b'a') as i64;
+        start = start.max(last[letter] + 1);
+        last[letter] = i;
+        count += i - start + 1;
+    }
+    count
+}
+
+
+// ---- counts (substrings_counts.kara) --------------------------------
+
+fn counts_number_of_special_substrings(s: Str) -> i64 {
+    let letters: Vec[char] = s.chars().collect();
+    let mut inside: Vec[i64] = Vec.filled(26, 0);
+    let mut left = 0;
+    let mut count = 0;
+    for (right, c) in letters.iter().enumerate() {
+        let k = (c as u32 - 'a' as u32) as i64;
+        inside[k] += 1;
+        while inside[k] > 1 {
+            inside[letters[left] as u32 - 'a' as u32] -= 1;
+            left += 1;
+        }
+        count += right - left + 1;
+    }
+    count
+}
+
+
+// ---- set (substrings_set.kara) --------------------------------------
+
+fn set_number_of_special_substrings(s: Str) -> i64 {
+    let letters: Vec[char] = s.chars().collect();
+    let mut window: Set[char] = Set.new();
+    let mut left = 0;
+    let mut count = 0;
+    for right in 0..letters.len() {
+        while window.contains(letters[right]) {
+            window.remove(letters[left]);
+            left += 1;
+        }
+        window.insert(letters[right]);
+        count += window.len();
+    }
+    count
+}
+
+
+// ---- runs (substrings_runs.kara) ------------------------------------
+
+fn runs_number_of_special_substrings(s: Str) -> i64 {
+    let bytes = s.bytes();
+    let n = bytes.len();
+    let mut count = 0;
+    for start in 0..n {
+        let mut seen = 0;
+        let mut end = start;
+        while end < n {
+            let bit = 1 << (bytes[end] - b'a') as i64;
+            if seen & bit != 0 {
+                break;
+            }
+            seen |= bit;
+            end += 1;
+        }
+        count += end - start;
+    }
+    count
+}
+
+
+// ---- solution (substrings_solution.kara) ----------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn number_of_special_substrings(s: String) -> i32 {
+        let mut last: Map[char, i64] = Map.new();
+        let mut left = 0;
+        let mut ans: i32 = 0;
+        for (i, c) in s.chars().enumerate() {
+            if let Some(j) = last.get(c).cloned() {
+                if j >= left {
+                    left = j + 1;
+                }
+            }
+            last.insert(c, i);
+            ans += (i - left + 1) as i32;
+        }
+        ans
+    }
+}
+
+fn solution_number_of_special_substrings(s: Str) -> i64 {
+    Solution.number_of_special_substrings(s.to_string())
+}
+
+
+fn answer(arm: i64, s: Str) -> i64 {
+    match arm {
+        0 => star_number_of_special_substrings(s),
+        1 => counts_number_of_special_substrings(s),
+        2 => set_number_of_special_substrings(s),
+        3 => runs_number_of_special_substrings(s),
+        _ => solution_number_of_special_substrings(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(seed: mut ref i64, n: i64, k: i64) -> String {
+    let bytes: Vec[u8] = (0..n).map(|_| b'a' + (next_random(mut seed) % k) as u8).collect();
+    String.from_utf8(bytes).unwrap()
+}
+
+fn main() {
+    let names = ["star", "counts", "set", "runs", "solution"];
+    let mut seed = 2743;
+    let mut cases: Vec[String] = Vec.new();
+    for c in 0..1200 {
+        let n = if c < 1000 { next_random(mut seed) % 20 + 1 } else { next_random(mut seed) % 2000 + 1 };
+        let k = next_random(mut seed) % 26 + 1;
+        cases.push(random_word(mut seed, n, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, s) in cases.iter().enumerate() {
+        let small = c < 1000;
+        let want = if small { literal(s) } else { -1 };
+        check = (check * 31 + want + 1) % 1000000007;
+        let n = s.len();
+        let reversed: String = s.chars().rev().collect();
+        let moved: String = s.chars().map(|ch| (b'a' + ((ch as u32 - 'a' as u32 + 7) % 26) as u8) as char).collect();
+        let other = cases[(c * 7 + 3) % cases.len()].clone();
+        let joined = f"{s}{other}";
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, s)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == want,
+                answer(arm, reversed) == value,
+                answer(arm, moved) == value,
+                value >= n and value <= 26 * n,
+                answer(arm, joined) >= value + answer(arm, other),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {s}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

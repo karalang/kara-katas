@@ -1,0 +1,121 @@
+// LeetCode #2814: Minimum Time Takes to Reach Destination Without
+// Drowning -- ★: the second each cell floods by one breadth-first search
+// from every flooded cell at once, spreading over empty cells and the
+// start; then a breadth-first search from the start that steps onto a
+// cell only if it is not stone and is still dry the second after the
+// step.
+
+fn minimum_seconds(land: Vec[Vec[String]]) -> i64 {
+    let (n, m) = (land.len(), land[0].len());
+    let mut flood: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(m, i64.MAX));
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    for r in 0..n {
+        for c in 0..m {
+            if land[r][c] == "*" {
+                flood[r][c] = 0;
+                queue.push_back((r, c));
+            }
+        }
+    }
+    while let Some((r, c)) = queue.pop_front() {
+        for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr >= 0 and nr < n and nc >= 0 and nc < m and flood[nr][nc] == i64.MAX
+                and (land[nr][nc] == "." or land[nr][nc] == "S")
+            {
+                flood[nr][nc] = flood[r][c] + 1;
+                queue.push_back((nr, nc));
+            }
+        }
+    }
+    let mut time: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(m, -1));
+    for r in 0..n {
+        for c in 0..m {
+            if land[r][c] == "S" {
+                time[r][c] = 0;
+                queue.push_back((r, c));
+            }
+        }
+    }
+    while let Some((r, c)) = queue.pop_front() {
+        if land[r][c] == "D" {
+            return time[r][c];
+        }
+        for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr >= 0 and nr < n and nc >= 0 and nc < m and time[nr][nc] == -1 and land[nr][nc] != "X"
+                and flood[nr][nc] > time[r][c] + 1
+            {
+                time[nr][nc] = time[r][c] + 1;
+                queue.push_back((nr, nc));
+            }
+        }
+    }
+    -1
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// an n by m land, about one cell in five stone and `flooded` in a
+// thousand flooded, with "S" and "D" on two different cells
+fn random_land(n: i64, m: i64, flooded: i64, seed: mut ref i64) -> Vec[Vec[String]] {
+    let mut land: Vec[Vec[String]] = Vec.new();
+    for _ in 0..n {
+        let mut row: Vec[String] = Vec.new();
+        for _ in 0..m {
+            let roll = next_random(mut seed) % 1000;
+            row.push(if roll < 200 { "X" } else if roll < 200 + flooded { "*" } else { "." });
+        }
+        land.push(row);
+    }
+    let start = next_random(mut seed) % (n * m);
+    let mut end = next_random(mut seed) % (n * m - 1);
+    if end >= start {
+        end += 1;
+    }
+    land[start / m][start % m] = "S";
+    land[end / m][end % m] = "D";
+    land
+}
+
+fn main() {
+    // LeetCode's three examples; 100 by 100 of open land, corner to
+    // corner; the same with a flood beside the start
+    println(f"{minimum_seconds([["D", ".", "*"], [".", ".", "."], [".", "S", "."]])}");
+    println(f"{minimum_seconds([["D", "X", "*"], [".", ".", "."], [".", ".", "S"]])}");
+    println(f"{minimum_seconds([["D", ".", ".", ".", "*", "."], [".", "X", ".", "X", ".", "."], [".", ".", ".", ".", "S", "."]])}");
+    let mut open: Vec[Vec[String]] = Vec.filled(100, Vec.filled(100, "."));
+    open[0][0] = "S";
+    open[99][99] = "D";
+    println(f"{minimum_seconds(open)}");
+    open[0][2] = "*";
+    println(f"{minimum_seconds(open)}");
+    // 3000 random lands of 2 to 5 by 2 to 5, one cell in eight flooded;
+    // then 50 of up to 60 by 60, one in 500
+    let mut seed = 2814;
+    let mut reached = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 4 + 2;
+        let m = next_random(mut seed) % 4 + 2;
+        let a = minimum_seconds(random_land(n, m, 125, mut seed));
+        reached += if a >= 0 { 1 } else { 0 };
+        check = (check * 31 + a + 2) % 1000000007;
+    }
+    println(f"3000 small lands: {reached} reached, checksum {check}");
+    reached = 0;
+    check = 0;
+    for _ in 0..50 {
+        let n = next_random(mut seed) % 59 + 2;
+        let m = next_random(mut seed) % 59 + 2;
+        let a = minimum_seconds(random_land(n, m, 2, mut seed));
+        reached += if a >= 0 { 1 } else { 0 };
+        check = (check * 31 + a + 2) % 1000000007;
+    }
+    println(f"50 large lands: {reached} reached, checksum {check}");
+}

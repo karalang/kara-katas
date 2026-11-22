@@ -1,0 +1,124 @@
+// LeetCode #2816: Double a Number Represented as a Linked List -- a Rust
+// solution as LeetCode's Rust users write it, carried to Kāra by `karac
+// fix`: LeetCode's `Option<Box<ListNode>>` with `i32` values, a nested
+// recursive `fn carry` over `&mut Option<Box<ListNode>>` that doubles
+// each node on the way back and returns the carry, and a boxed node for
+// a carry left over at the front. The harness converts its `i64` values
+// at `build` and `values_of`.
+
+// Definition for singly-linked list.
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct ListNode {
+    pub val: i32,
+    pub next: Option[ListNode],
+}
+
+impl ListNode {
+    #[inline]
+    fn new(val: i32) -> Self {
+        ListNode { next: None, val }
+    }
+}
+
+fn carry(node: mut ref Option[ListNode]) -> i32 {
+    match node {
+        None => 0,
+        Some(n) => {
+            let v = n.val * 2 + carry(mut n.next);
+            n.val = v % 10;
+            v / 10
+        }
+    }
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn double_it(head: own Option[ListNode]) -> Option[ListNode] {
+        let mut head = head;
+        let c = carry(mut head);
+        if c > 0 {
+            Some(ListNode { val: c, next: head })
+        } else {
+            head
+        }
+    }
+}
+
+fn double_it(head: own Option[ListNode]) -> Option[ListNode] {
+    Solution.double_it(head)
+}
+
+// ---- the harness: the same in every arm, but for i32 values --------------
+
+fn build(values: Vec[i64]) -> Option[ListNode] {
+    let mut head: Option[ListNode] = None;
+    for v in values.iter().rev() {
+        head = Some(ListNode { val: v as i32, next: head });
+    }
+    head
+}
+
+fn values_of(head: Option[ListNode]) -> Vec[i64] {
+    let mut out = Vec.new();
+    let mut cur = ref head;
+    while let Some(node) = cur {
+        out.push(node.val as i64);
+        cur = ref node.next;
+    }
+    out
+}
+
+fn doubled(values: Vec[i64]) -> Vec[i64] {
+    values_of(double_it(build(values)))
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn digest(xs: Vec[i64]) -> i64 {
+    xs.iter().fold(0, |h, x| (h * 131 + x) % 1000000007)
+}
+
+// n random digits, the first not 0 unless the number is 0
+fn random_digits(n: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut digits: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 10).collect();
+    if n > 1 and digits[0] == 0 {
+        digits[0] = next_random(mut seed) % 9 + 1;
+    }
+    digits
+}
+
+fn main() {
+    // LeetCode's two examples; zero; 10^4 nodes, LeetCode's most, all 9,
+    // and all 4, which carries nothing
+    println(f"{doubled([1, 8, 9])}");
+    println(f"{doubled([9, 9, 9])}");
+    println(f"{doubled([0])}");
+    let nines = doubled(Vec.filled(10000, 9));
+    println(f"{nines.len()} {digest(nines)}");
+    let fours = doubled(Vec.filled(10000, 4));
+    println(f"{fours.len()} {digest(fours)}");
+    // 3000 random numbers of 1 to 12 digits; then 50 of up to 10^4
+    let mut seed = 2816;
+    let mut check = 0;
+    let mut longer = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let out = doubled(random_digits(n, mut seed));
+        longer += out.len() - n;
+        check = (check * 31 + digest(out)) % 1000000007;
+    }
+    println(f"3000 short numbers: {longer} grew a digit, checksum {check}");
+    check = 0;
+    longer = 0;
+    for _ in 0..50 {
+        let n = (next_random(mut seed) * 32768 + next_random(mut seed)) % 10000 + 1;
+        let out = doubled(random_digits(n, mut seed));
+        longer += out.len() - n;
+        check = (check * 31 + digest(out)) % 1000000007;
+    }
+    println(f"50 long numbers: {longer} grew a digit, checksum {check}");
+}

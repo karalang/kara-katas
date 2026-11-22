@@ -1,0 +1,49 @@
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random tree on n nodes: node i joins one of the nodes before it,
+// shuffled so that 0 is not always the root, weights from 1 to `kinds`
+fn tree(n: i64, kinds: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut label: Vec[i64] = (0..n).collect();
+    for i in (1..n).rev() {
+        label.swap(i, next_random(mut seed) % (i + 1));
+    }
+    (1..n).map(|i| [label[i], label[next_random(mut seed) % i], next_random(mut seed) % kinds + 1]).collect()
+}
+
+fn main() {
+    // LeetCode's two examples; one node; and a path of 2000 nodes, its
+    // weights in runs, asked end to end and from the middle
+    println(f"{min_operations_queries(7, [[0, 1, 1], [1, 2, 1], [2, 3, 1], [3, 4, 2], [4, 5, 2], [5, 6, 2]], [[0, 3], [3, 6], [2, 6], [0, 6]])}");
+    println(f"{min_operations_queries(8, [[1, 2, 6], [1, 3, 4], [2, 4, 6], [2, 5, 3], [3, 6, 6], [3, 0, 8], [7, 0, 2]], [[4, 6], [0, 4], [6, 5], [7, 4]])}");
+    println(f"{min_operations_queries(1, [], [[0, 0]])}");
+    let path: Vec[Vec[i64]] = (1..2000).map(|i| [i - 1, i, i / 300 % 26 + 1]).collect();
+    println(f"{min_operations_queries(2000, path, [[0, 1999], [1999, 0], [1000, 1000], [999, 1300]])}");
+    // 2000 random trees of 1 to 10 nodes with weights up to 3, 5 queries
+    // each; then 20 of up to 2000 nodes with weights up to 26, 500
+    // queries each
+    let mut seed = 2846;
+    let mut check = 0;
+    let mut total = 0;
+    for c in 0..2020 {
+        let short = c < 2000;
+        let n = if short { next_random(mut seed) % 10 + 1 } else { next_random(mut seed) % 2000 + 1 };
+        let edges = tree(n, if short { 3 } else { 26 }, mut seed);
+        let asked = if short { 5 } else { 500 };
+        let queries: Vec[Vec[i64]] = (0..asked).map(|_| [next_random(mut seed) % n, next_random(mut seed) % n]).collect();
+        for ops in min_operations_queries(n, edges, queries).iter() {
+            total += ops;
+            check = (check * 31 + ops) % 1000000007;
+        }
+        if c == 1999 {
+            println(f"2000 small trees: {total} operations, checksum {check}");
+            total = 0;
+            check = 0;
+        }
+    }
+    println(f"20 large trees: {total} operations, checksum {check}");
+}

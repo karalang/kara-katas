@@ -1,0 +1,99 @@
+// LeetCode #2846: Minimum Edge Weight Equilibrium Queries in a Tree --
+// the bench: the ★ arm over 10 random trees of 10^4 nodes with 2 x
+// 10^4 queries each, LeetCode's most, all drawn first, then each
+// answered 5 times, the tables built afresh each time.
+
+fn min_operations_queries(n: i64, edges: Vec[Vec[i64]], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut adj: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push((e[1], e[2]));
+        adj[e[1]].push((e[0], e[2]));
+    }
+    // 2^14 = 16384 is more than LeetCode's 10^4 nodes
+    let levels = 15;
+    let mut up: Vec[Vec[i64]] = Vec.filled(levels, Vec.filled(n, 0));
+    let mut depth: Vec[i64] = Vec.filled(n, 0);
+    let mut count: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(27, 0));
+    let mut seen: Vec[bool] = Vec.filled(n, false);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    seen[0] = true;
+    queue.push_back(0);
+    while let Some(v) = queue.pop_front() {
+        for (u, w) in adj[v].iter() {
+            if not seen[u] {
+                seen[u] = true;
+                up[0][u] = v;
+                depth[u] = depth[v] + 1;
+                count[u] = count[v].clone();
+                count[u][w] += 1;
+                queue.push_back(u);
+            }
+        }
+    }
+    for j in 1..levels {
+        for v in 0..n {
+            up[j][v] = up[j - 1][up[j - 1][v]];
+        }
+    }
+    let lca = |a: i64, b: i64| {
+        let mut (x, y) = if depth[a] >= depth[b] { (a, b) } else { (b, a) };
+        for j in (0..levels).rev() {
+            if depth[x] - (1 << j) >= depth[y] {
+                x = up[j][x];
+            }
+        }
+        if x == y {
+            return x;
+        }
+        for j in (0..levels).rev() {
+            if up[j][x] != up[j][y] {
+                x = up[j][x];
+                y = up[j][y];
+            }
+        }
+        up[0][x]
+    };
+    queries
+        .iter()
+        .map(|q| {
+            let (a, b) = (q[0], q[1]);
+            let c = lca(a, b);
+            let on_path: Vec[i64] = (1..27).map(|w| count[a][w] + count[b][w] - 2 * count[c][w]).collect();
+            on_path.iter().sum() - on_path.iter().max().unwrap()
+        })
+        .collect()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 10;
+    let n = 10000;
+    let asked = 20000;
+    let rounds = 5;
+    let mut seed = 2846;
+    let mut cases: Vec[(Vec[Vec[i64]], Vec[Vec[i64]])] = Vec.new();
+    for _ in 0..count {
+        let mut label: Vec[i64] = (0..n).collect();
+        for i in (1..n).rev() {
+            label.swap(i, next_random(mut seed) % (i + 1));
+        }
+        let edges: Vec[Vec[i64]] = (1..n).map(|i| [label[i], label[next_random(mut seed) % i], next_random(mut seed) % 26 + 1]).collect();
+        let queries: Vec[Vec[i64]] = (0..asked).map(|_| [next_random(mut seed) % n, next_random(mut seed) % n]).collect();
+        cases.push((edges, queries));
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (edges, queries) in cases.iter() {
+            for ops in min_operations_queries(n, edges, queries).iter() {
+                total += ops;
+                check = (check * 31 + ops + r) % 1000000007;
+            }
+        }
+    }
+    println(f"{count} trees of {n}, {asked} queries, {rounds} rounds: {total} operations, checksum {check}");
+}

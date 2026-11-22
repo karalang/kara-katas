@@ -1,0 +1,69 @@
+// LeetCode #2832: Maximal Range That Each Element Is Maximum in It --
+// the bench: the ★ arm over 20 arrays of 1 to 10^5 shuffled, LeetCode's
+// most, all drawn first, then each answered 20 times.
+
+fn maximum_length_of_ranges(nums: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut left: Vec[i64] = Vec.filled(n, -1);
+    let mut right: Vec[i64] = Vec.filled(n, n);
+    let mut stack: Vec[i64] = Vec.new();
+    for i in 0..n {
+        while let Some(top) = stack.last() {
+            if nums[top] > nums[i] {
+                break;
+            }
+            stack.pop();
+        }
+        if let Some(top) = stack.last() {
+            left[i] = top;
+        }
+        stack.push(i);
+    }
+    stack.clear();
+    for i in (0..n).rev() {
+        while let Some(top) = stack.last() {
+            if nums[top] > nums[i] {
+                break;
+            }
+            stack.pop();
+        }
+        if let Some(top) = stack.last() {
+            right[i] = top;
+        }
+        stack.push(i);
+    }
+    (0..n).map(|i| right[i] - left[i] - 1).collect()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 20;
+    let rounds = 20;
+    let n = 100000;
+    let mut seed = 2832;
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..count {
+        let mut nums: Vec[i64] = (1..=n).collect();
+        for i in (1..n).rev() {
+            let j = (next_random(mut seed) * 32768 + next_random(mut seed)) % (i + 1);
+            nums.swap(i, j);
+        }
+        arrays.push(nums);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for nums in arrays.iter() {
+            let ans = maximum_length_of_ranges(nums);
+            for x in ans.iter() {
+                total += x;
+                check = (check * 31 + x + r) % 1000000007;
+            }
+        }
+    }
+    println(f"{count} arrays of {n}, {rounds} rounds: ranges total {total}, checksum {check}");
+}

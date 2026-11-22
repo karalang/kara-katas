@@ -1,0 +1,299 @@
+// LeetCode #2746: Decremental String Concatenation -- the differential.
+// The five arms, against the statement read literally: every choice of
+// each word joined after or before, the strings themselves built by the
+// join, a letter dropped where the two ends meet on the same one; the
+// shortest kept, nothing assumed about first and last letters. 1000
+// random lists of 1 to 10 words of 1 to 4 letters from the first 1 to 3;
+// then 100 of up to 200 words of up to 20 letters from the first 1 to 5.
+// Every case is drawn before any arm answers; the literal reading is
+// asked only of the first 1000.
+//
+// P1  up to 10 words, the answer is the literal reading's
+// P2  every word reversed: the same answer
+// P3  every letter moved on 5 places round the alphabet: the same answer
+// P4  at most all the letters, and at least all of them less one a join
+// P5  a word "z" put at the end: 1 longer
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn join(x: Str, y: Str) -> String {
+    if x.chars().last() == y.chars().next() {
+        let rest: String = y.chars().skip(1).collect();
+        f"{x}{rest}"
+    } else {
+        f"{x}{y}"
+    }
+}
+
+fn shortest_from(words: Vec[String], i: i64, built: String) -> i64 {
+    if i == words.len() {
+        return built.len();
+    }
+    let after = shortest_from(words, i + 1, join(built, words[i]));
+    let before = shortest_from(words, i + 1, join(words[i], built));
+    after.min(before)
+}
+
+fn literal(words: Vec[String]) -> i64 {
+    shortest_from(words, 1, words[0].clone())
+}
+
+
+// ---- star (decremental.kara) ----------------------------------------
+
+const NONE: i64 = 1000000000;
+
+fn star_minimize_concatenated_length(words: Vec[String]) -> i64 {
+    let first_of = |w: Str| (w.bytes()[0] - b'a') as i64;
+    let last_of = |w: Str| (w.bytes()[w.len() - 1] - b'a') as i64;
+    let mut best: Array[Array[i64, 26], 26] = [[NONE; 26]; 26];
+    best[first_of(words[0])][last_of(words[0])] = words[0].len();
+    for w in words.iter().skip(1) {
+        let (a, b) = (first_of(w), last_of(w));
+        let mut next: Array[Array[i64, 26], 26] = [[NONE; 26]; 26];
+        for f in 0..26 {
+            for l in 0..26 {
+                let length = best[f][l];
+                if length == NONE {
+                    continue;
+                }
+                // the word after: it loses its first letter if that is l
+                let after = length + w.len() - if l == a { 1 } else { 0 };
+                next[f][b] = next[f][b].min(after);
+                // the word before: it loses its last letter if that is f
+                let before = length + w.len() - if b == f { 1 } else { 0 };
+                next[a][l] = next[a][l].min(before);
+            }
+        }
+        best = next;
+    }
+    let mut shortest = NONE;
+    for f in 0..26 {
+        for l in 0..26 {
+            shortest = shortest.min(best[f][l]);
+        }
+    }
+    shortest
+}
+
+
+// ---- backward (decremental_backward.kara) ---------------------------
+
+fn backward_minimize_concatenated_length(words: Vec[String]) -> i64 {
+    let ends = |w: Str| {
+        let bytes = w.bytes();
+        ((bytes[0] - b'a') as i64, (bytes[bytes.len() - 1] - b'a') as i64)
+    };
+    let mut rest: Vec[i64] = Vec.filled(26 * 26, 0);
+    for i in (1..words.len()).rev() {
+        let w = ref words[i];
+        let (a, b) = ends(w);
+        let mut earlier: Vec[i64] = Vec.filled(26 * 26, 0);
+        for f in 0..26 {
+            for l in 0..26 {
+                let after = w.len() - if l == a { 1 } else { 0 } + rest[f * 26 + b];
+                let before = w.len() - if b == f { 1 } else { 0 } + rest[a * 26 + l];
+                earlier[f * 26 + l] = after.min(before);
+            }
+        }
+        rest = earlier;
+    }
+    let (f, l) = ends(words[0]);
+    words[0].len() + rest[f * 26 + l]
+}
+
+
+// ---- memo (decremental_memo.kara) -----------------------------------
+
+struct Joiner {
+    words: Vec[String],
+    memo: Map[(i64, i64, i64), i64],
+}
+
+impl Joiner {
+    fn rest(mut ref self, i: i64, f: char, l: char) -> i64 {
+        if i == self.words.len() {
+            return 0;
+        }
+        let key = (i, f as i64, l as i64);
+        if let Some(known) = self.memo.get(key) {
+            return known;
+        }
+        let w = self.words[i].clone();
+        let a = w.chars().next().unwrap();
+        let b = w.chars().last().unwrap();
+        let after = w.len() - if l == a { 1 } else { 0 } + self.rest(i + 1, f, b);
+        let before = w.len() - if b == f { 1 } else { 0 } + self.rest(i + 1, a, l);
+        let best = after.min(before);
+        self.memo.insert(key, best);
+        best
+    }
+}
+
+fn memo_minimize_concatenated_length(words: Vec[String]) -> i64 {
+    let first = words[0].chars().next().unwrap();
+    let last = words[0].chars().last().unwrap();
+    let length = words[0].len();
+    let mut joiner = Joiner { words: words.clone(), memo: Map.new() };
+    length + joiner.rest(1, first, last)
+}
+
+
+// ---- reachable (decremental_reachable.kara) -------------------------
+
+fn reachable_minimize_concatenated_length(words: Vec[String]) -> i64 {
+    let ends = |w: Str| (w.chars().next().unwrap(), w.chars().last().unwrap());
+    let mut reached: SortedMap[(char, char), i64] = SortedMap.new();
+    reached.insert(ends(words[0]), words[0].len());
+    for w in words.iter().skip(1) {
+        let (a, b) = ends(w);
+        let mut next: SortedMap[(char, char), i64] = SortedMap.new();
+        for ((f, l), length) in reached.iter() {
+            let after = length + w.len() - if l == a { 1 } else { 0 };
+            let before = length + w.len() - if b == f { 1 } else { 0 };
+            for (key, value) in [((f, b), after), ((a, l), before)] {
+                let kept = next.get(key).unwrap_or(value);
+                next.insert(key, kept.min(value));
+            }
+        }
+        reached = next;
+    }
+    reached.values().min().unwrap()
+}
+
+
+// ---- solution (decremental_solution.kara) ---------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimize_concatenated_length(words: Vec[String]) -> i32 {
+        let n = words.len();
+        let mut memo = Vec.filled(n, Vec.filled(26, Vec.filled(26, -1)));
+        let w0 = words[0].bytes();
+        let first = (w0[0] - b'a') as i64;
+        let last = (w0[w0.len() - 1] - b'a') as i64;
+        w0.len() as i32 + Solution.dfs(words, 1, first, last, mut memo)
+    }
+
+    fn dfs(words: ref Vec[String], i: i64, a: i64, b: i64, memo: mut ref Vec[Vec[Vec[i32]]]) -> i32 {
+        if i == words.len() {
+            return 0;
+        }
+        if memo[i][a][b] != -1 {
+            return memo[i][a][b];
+        }
+        let w = words[i].bytes();
+        let c = (w[0] - b'a') as i64;
+        let d = (w[w.len() - 1] - b'a') as i64;
+        let len = w.len() as i32;
+        let x = len - if b == c { 1 } else { 0 } + Solution.dfs(words, i + 1, a, d, mut memo);
+        let y = len - if d == a { 1 } else { 0 } + Solution.dfs(words, i + 1, c, b, mut memo);
+        memo[i][a][b] = x.min(y);
+        memo[i][a][b]
+    }
+}
+
+fn solution_minimize_concatenated_length(words: Vec[String]) -> i64 {
+    Solution.minimize_concatenated_length(words)
+}
+
+
+fn answer(arm: i64, words: Vec[String]) -> i64 {
+    match arm {
+        0 => star_minimize_concatenated_length(words),
+        1 => backward_minimize_concatenated_length(words),
+        2 => memo_minimize_concatenated_length(words),
+        3 => reachable_minimize_concatenated_length(words),
+        _ => solution_minimize_concatenated_length(words),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_words(seed: mut ref i64, n: i64, longest: i64, k: i64) -> Vec[String] {
+    let mut words: Vec[String] = Vec.new();
+    for _ in 0..n {
+        let len = next_random(mut seed) % longest + 1;
+        let mut w = String.new();
+        for _ in 0..len {
+            w.push((b'a' + (next_random(mut seed) % k) as u8) as char);
+        }
+        words.push(w);
+    }
+    words
+}
+
+fn main() {
+    let names = ["star", "backward", "memo", "reachable", "solution"];
+    let mut seed = 2746;
+    let mut cases: Vec[Vec[String]] = Vec.new();
+    for c in 0..1100 {
+        if c < 1000 {
+            let k = next_random(mut seed) % 3 + 1;
+            let n = next_random(mut seed) % 10 + 1;
+            cases.push(random_words(mut seed, n, 4, k));
+        } else {
+            let k = next_random(mut seed) % 5 + 1;
+            let n = next_random(mut seed) % 200 + 1;
+            cases.push(random_words(mut seed, n, 20, k));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, words) in cases.iter().enumerate() {
+        let small = c < 1000;
+        let want = if small { literal(words) } else { -1 };
+        check = (check * 31 + want + 1) % 1000000007;
+        let letters: i64 = words.iter().map(|w| w.len()).sum();
+        let each_reversed: Vec[String] = words.iter().map(|w| w.chars().rev().collect()).collect();
+        let moved: Vec[String] = words.iter().map(|w| w.chars().map(|ch| (b'a' + ((ch as u32 - 'a' as u32 + 5) % 26) as u8) as char).collect()).collect();
+        let mut z_last = words.clone();
+        z_last.push("z".to_string());
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, words)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == want,
+                answer(arm, each_reversed) == value,
+                answer(arm, moved) == value,
+                value <= letters and value >= letters - (words.len() - 1),
+                answer(arm, z_last) == value + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {words}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,260 @@
+// LeetCode #2785: Sort Vowels in a String -- the differential. The five
+// arms, against the statement read literally: the consonants kept in
+// their places, and each vowel's place in turn given the least vowel of
+// the string not yet placed, found by looking over them all; no sort, no
+// table and no queue. 2000 random strings of 1 to 20 letters, half of
+// them vowels; then 50 of up to 2000 letters from all 52, or every other
+// one of vowels only. Every case is drawn before any arm answers; the
+// literal reading is asked only of the first 2000.
+//
+// P1  up to 20 letters, the string is the literal reading's
+// P2  the answer sorted again: the same string
+// P3  the letters reversed: the same vowels in the same order
+// P4  the same length, every consonant in its place
+// P5  the vowels read in order never fall, and each of the ten is there
+//     as often as in the string
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- star (vowels.kara) ---------------------------------------------
+
+fn star_is_vowel(c: char) -> bool {
+    match c {
+        'a' | 'e' | 'i' | 'o' | 'u' | 'A' | 'E' | 'I' | 'O' | 'U' => true,
+        _ => false,
+    }
+}
+
+fn star_sort_vowels(s: Str) -> String {
+    let mut vowels: Vec[char] = s.chars().filter(|c| star_is_vowel(c)).collect();
+    vowels.sort();
+    let mut next = 0;
+    let mut out = String.new();
+    for c in s.chars() {
+        if star_is_vowel(c) {
+            out.push(vowels[next]);
+            next += 1;
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+
+// ---- counts (vowels_counts.kara) ------------------------------------
+
+fn counts_sort_vowels(s: Str) -> String {
+    let order: Vec[char] = "AEIOUaeiou".chars().collect();
+    let mut counts: Vec[i64] = Vec.filled(10, 0);
+    for c in s.chars() {
+        if let Some(k) = order.iter().position(|v| v == c) {
+            counts[k] += 1;
+        }
+    }
+    let mut k = 0;
+    let mut out = String.new();
+    for c in s.chars() {
+        if order.contains(c) {
+            while counts[k] == 0 {
+                k += 1;
+            }
+            out.push(order[k]);
+            counts[k] -= 1;
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+
+// ---- queue (vowels_queue.kara) --------------------------------------
+
+fn queue_sort_vowels(s: Str) -> String {
+    let is_vowel = |c: char| "AEIOUaeiou".chars().any(|v| v == c);
+    let mut queue: PriorityQueue[char] = PriorityQueue.new();
+    for c in s.chars() {
+        if is_vowel(c) {
+            queue.push(c);
+        }
+    }
+    s.chars().map(|c| if is_vowel(c) { queue.pop().unwrap() } else { c }).collect()
+}
+
+
+// ---- map (vowels_map.kara) ------------------------------------------
+
+fn map_sort_vowels(s: Str) -> String {
+    let mut counts: SortedMap[char, i64] = SortedMap.new();
+    for c in s.chars() {
+        if "aeiouAEIOU".contains(c.to_string()) {
+            *counts.entry(c).or_insert(0) += 1;
+        }
+    }
+    let mut out = String.new();
+    for c in s.chars() {
+        if "aeiouAEIOU".contains(c.to_string()) {
+            let (v, n) = counts.first().unwrap();
+            out.push(v);
+            if n == 1 {
+                counts.remove(v);
+            } else {
+                counts.insert(v, n - 1);
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+
+// ---- solution (vowels_solution.kara) --------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn sort_vowels(s: String) -> String {
+        let is_vowel = |c: char| "aeiouAEIOU".contains(c.to_string());
+        let mut v: Vec[char] = s.chars().filter(|c| is_vowel(c)).collect();
+        v.sort();
+        let mut it = v.into_iter();
+        s.chars().map(|c| if is_vowel(c) { it.next().unwrap() } else { c }).collect()
+    }
+}
+
+fn solution_sort_vowels(s: Str) -> String {
+    Solution.sort_vowels(s.to_string())
+}
+
+
+// ---- the statement read literally ------------------------------------------
+
+fn vowel(c: char) -> bool {
+    "aeiouAEIOU".contains(c.to_string())
+}
+
+fn literal(s: Str) -> String {
+    let letters: Vec[char] = s.chars().collect();
+    let mut placed: Vec[bool] = Vec.filled(letters.len(), false);
+    let mut out = String.new();
+    for c in letters.iter() {
+        if not vowel(c) {
+            out.push(c);
+            continue;
+        }
+        let mut least = -1;
+        for k in 0..letters.len() {
+            if vowel(letters[k]) and not placed[k] and (least == -1 or letters[k] < letters[least]) {
+                least = k;
+            }
+        }
+        placed[least] = true;
+        out.push(letters[least]);
+    }
+    out
+}
+
+fn answer(arm: i64, s: Str) -> String {
+    match arm {
+        0 => star_sort_vowels(s),
+        1 => counts_sort_vowels(s),
+        2 => queue_sort_vowels(s),
+        3 => map_sort_vowels(s),
+        _ => solution_sort_vowels(s),
+    }
+}
+
+fn vowels_of(s: ref String) -> String {
+    s.chars().filter(|c| vowel(c)).collect()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_text(n: i64, from: Str, seed: mut ref i64) -> String {
+    let letters: Vec[char] = from.chars().collect();
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(letters[next_random(mut seed) % letters.len()]);
+    }
+    s
+}
+
+fn main() {
+    let names = ["star", "counts", "queue", "map", "solution"];
+    let mut seed = 2785;
+    let mut cases: Vec[String] = Vec.new();
+    for c in 0..2050 {
+        if c < 2000 {
+            let n = next_random(mut seed) % 20 + 1;
+            cases.push(random_text(n, "aeiouAEIOUbcxyZB", mut seed));
+        } else {
+            let n = next_random(mut seed) % 2000 + 1;
+            let from = if c % 2 == 0 { "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ" } else { "aeiouAEIOU" };
+            cases.push(random_text(n, from, mut seed));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, s) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(s) } else { String.new() };
+        check = want.bytes().iter().fold(check, |h, b| (h * 31 + b) % 1000000007);
+        check = (check * 31 + 1) % 1000000007;
+        let letters: Vec[char] = s.chars().collect();
+        let reversed: String = s.chars().rev().collect();
+        let got: Vec[String] = (0..5).map(|arm| answer(arm, s)).collect();
+        for arm in 0..5 {
+            let value = ref got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let out: Vec[char] = value.chars().collect();
+            let kept = out.len() == letters.len()
+                and (0..letters.len()).all(|k| vowel(letters[k]) or out[k] == letters[k]);
+            let vs: Vec[char] = vowels_of(value).chars().collect();
+            let rising = (1..vs.len()).all(|k| vs[k - 1] <= vs[k]);
+            let alike = "aeiouAEIOU".chars().all(|v| {
+                vs.iter().filter(|x| x == v).count() == letters.iter().filter(|x| x == v).count()
+            });
+            let verdicts = [
+                not small or value == want,
+                answer(arm, value) == value,
+                vowels_of(answer(arm, reversed)) == vowels_of(value),
+                kept,
+                rising and alike,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {s}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

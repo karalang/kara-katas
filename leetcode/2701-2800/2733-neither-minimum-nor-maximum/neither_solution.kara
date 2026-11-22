@@ -1,0 +1,80 @@
+// LeetCode #2733: Neither Minimum nor Maximum -- a Rust solution as
+// LeetCode's Rust users write it, carried to Kāra by `karac fix`: the
+// first three numbers sliced off with `nums[..3].to_vec()`, sorted, and
+// the middle one returned.
+
+struct Solution {}
+
+impl Solution {
+    pub fn find_non_min_or_max(nums: Vec[i32]) -> i32 {
+        if nums.len() < 3 {
+            return -1;
+        }
+        let mut v = nums[..3].to_vec();
+        v.sort();
+        v[1]
+    }
+}
+
+fn find_non_min_or_max(nums: Vec[i64]) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.find_non_min_or_max(nums)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n distinct numbers from 1 to 100, in random order: the first n of a
+// shuffle of 1 to 100
+fn random_numbers(seed: mut ref i64, n: i64) -> Vec[i64] {
+    let mut all: Vec[i64] = (1..=100).collect();
+    for i in (1..100).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        all.swap(i, j);
+    }
+    all.truncate(n);
+    all
+}
+
+// an answer is a number of nums that is neither its least nor its
+// greatest, or -1 exactly when there is none
+fn is_right(nums: Vec[i64], answer: i64) -> bool {
+    let low = nums.iter().min().unwrap();
+    let high = nums.iter().max().unwrap();
+    let some = nums.iter().any(|x| x != low and x != high);
+    if answer == -1 {
+        return not some;
+    }
+    nums.contains(answer) and answer != low and answer != high
+}
+
+fn main() {
+    // LeetCode's three examples; the first has two answers, so it is
+    // checked rather than printed
+    println(f"{is_right([3, 2, 1, 4].to_vec(), find_non_min_or_max([3, 2, 1, 4].to_vec()))}");
+    println(f"{find_non_min_or_max([1, 2].to_vec())}");
+    println(f"{find_non_min_or_max([2, 1, 3].to_vec())}");
+    // 5000 random arrays of 1 to 100 distinct numbers; which number an arm
+    // names may differ, so only whether one is named is counted, and each
+    // answer is checked
+    let mut seed = 2733;
+    let mut found = 0;
+    let mut wrong = 0;
+    let mut check = 0;
+    for _ in 0..5000 {
+        let n = if next_random(mut seed) % 4 == 0 { next_random(mut seed) % 3 + 1 } else { next_random(mut seed) % 100 + 1 };
+        let nums = random_numbers(mut seed, n);
+        let answer = find_non_min_or_max(nums);
+        let named = if answer == -1 { 0 } else { 1 };
+        if not is_right(nums, answer) {
+            wrong += 1;
+        }
+        found += named;
+        check = (check * 31 + named) % 1000000007;
+    }
+    println(f"5000 arrays: {found} with an answer, {wrong} wrong, checksum {check}");
+}

@@ -1,0 +1,244 @@
+// LeetCode #2844: Minimum Operations to Make a Special Number -- the
+// differential. The five arms, against the statement read literally:
+// every set of digits to keep, by a bitmask, the kept digits read as a
+// number (none kept reading as 0), and the fewest deletions that leave
+// a multiple of 25. 2000 random numbers of 1 to 10 digits mostly from
+// 0, 5, 2 and 7, then 50 of up to 100 from all ten, all drawn before
+// any arm answers; the literal reading is asked only of the first 2000.
+//
+// P1  up to 10 digits, the answer is the literal reading's
+// P2  1 and 3, 4 and 6, 8 and 9 swapped, digits no ending uses: the same answer
+// P3  25 written after the number: no operation
+// P4  a 1 written before it: the same answer or one more
+// P5  at most the count of digits, and that only with no 0
+// P6  each arm agrees with at least three of the other four
+
+fn literal(num: Str) -> i64 {
+    let digits: Vec[i64] = num.bytes().iter().map(|b| (b - b'0') as i64).collect();
+    let n = digits.len();
+    let mut fewest = n;
+    for mask in 0..(1 << n) {
+        let mut value = 0;
+        for i in 0..n {
+            if mask >> i & 1 == 1 {
+                value = (value * 10 + digits[i]) % 25;
+            }
+        }
+        if value == 0 {
+            fewest = fewest.min(n - mask.count_ones());
+        }
+    }
+    fewest
+}
+
+
+// ---- star (special.kara) --------------------------------------------
+
+fn star_minimum_operations(num: Str) -> i64 {
+    let digits = num.bytes();
+    let n = digits.len();
+    let mut zero = false;
+    let mut five = false;
+    for i in (0..n).rev() {
+        let d = digits[i];
+        if (zero and (d == b'0' or d == b'5')) or (five and (d == b'2' or d == b'7')) {
+            return n - i - 2;
+        }
+        if d == b'0' {
+            zero = true;
+        }
+        if d == b'5' {
+            five = true;
+        }
+    }
+    if zero { n - 1 } else { n }
+}
+
+
+// ---- endings (special_endings.kara) ---------------------------------
+
+fn endings_minimum_operations(num: Str) -> i64 {
+    let digits: Vec[char] = num.chars().collect();
+    let n = digits.len();
+    let mut best = if digits.contains('0') { n - 1 } else { n };
+    for (a, b) in [('0', '0'), ('2', '5'), ('5', '0'), ('7', '5')] {
+        if let Some(j) = digits.iter().rposition(|c| c == b) {
+            if let Some(i) = digits[..j].iter().rposition(|c| c == a) {
+                best = best.min(n - i - 2);
+            }
+        }
+    }
+    best
+}
+
+
+// ---- remainder (special_remainder.kara) -----------------------------
+
+fn remainder_minimum_operations(num: Str) -> i64 {
+    let none = -1;
+    let mut kept: Vec[i64] = Vec.filled(25, none);
+    kept[0] = 0;
+    for c in num.chars() {
+        let d = c.to_digit(10).unwrap() as i64;
+        let mut next = kept.clone();
+        for r in 0..25 {
+            if kept[r] != none {
+                let to = (10 * r + d) % 25;
+                next[to] = next[to].max(kept[r] + 1);
+            }
+        }
+        kept = next;
+    }
+    num.len() - kept[0]
+}
+
+
+// ---- pairs (special_pairs.kara) -------------------------------------
+
+fn pairs_minimum_operations(num: Str) -> i64 {
+    let digits: Vec[i64] = num.bytes().iter().map(|b| (b - b'0') as i64).collect();
+    let n = digits.len();
+    let fallback = if digits.iter().any(|d| d == 0) { n - 1 } else { n };
+    (0..n)
+        .flat_map(|i| (i + 1..n).map(|j| (i, j)))
+        .filter(|(i, j)| (10 * digits[i] + digits[j]) % 25 == 0)
+        .map(|(i, j)| (n - j - 1) + (j - i - 1))
+        .min()
+        .unwrap_or(fallback)
+        .min(fallback)
+}
+
+
+// ---- solution (special_solution.kara) -------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_operations(num: String) -> i32 {
+        let s = num.bytes();
+        let n = s.len() as i32;
+        let mut ans = n;
+        if s.contains(b'0') {
+            ans = n - 1;
+        }
+        for (a, b) in [(b'0', b'0'), (b'2', b'5'), (b'5', b'0'), (b'7', b'5')] {
+            if let Some(j) = s.iter().rposition(|c| c == b) {
+                if let Some(i) = s[..j].iter().rposition(|c| c == a) {
+                    ans = ans.min(n - i as i32 - 2);
+                }
+            }
+        }
+        ans
+    }
+}
+
+fn solution_minimum_operations(num: Str) -> i64 {
+    Solution.minimum_operations(num.to_string())
+}
+
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, num: Str) -> i64 {
+    match arm {
+        0 => star_minimum_operations(num),
+        1 => endings_minimum_operations(num),
+        2 => remainder_minimum_operations(num),
+        3 => pairs_minimum_operations(num),
+        _ => solution_minimum_operations(num),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn number(n: i64, kinds: i64, seed: mut ref i64) -> String {
+    let order = "0527134689".bytes();
+    let mut digits: Vec[u8] = Vec.new();
+    for i in 0..n {
+        let mut d = order[next_random(mut seed) % kinds];
+        while i == 0 and n > 1 and d == b'0' {
+            d = order[next_random(mut seed) % kinds];
+        }
+        digits.push(d);
+    }
+    String.from_utf8(digits).unwrap()
+}
+
+fn swapped(num: Str) -> String {
+    num.chars()
+        .map(|c| match c {
+            '1' => '3',
+            '3' => '1',
+            '4' => '6',
+            '6' => '4',
+            '8' => '9',
+            '9' => '8',
+            _ => c,
+        })
+        .collect()
+}
+
+fn main() {
+    let names = ["star", "endings", "remainder", "pairs", "solution"];
+    let mut seed = 2844;
+    let mut cases: Vec[String] = Vec.new();
+    for c in 0..2050 {
+        let short = c < 2000;
+        let n = if short { next_random(mut seed) % 10 + 1 } else { next_random(mut seed) % 100 + 1 };
+        let kinds = if short { 4 + next_random(mut seed) % 3 } else { 10 };
+        cases.push(number(n, kinds, mut seed));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, num) in cases.iter().enumerate() {
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, num)).collect();
+        let want = if c < 2000 { literal(num) } else { got[0] };
+        check = (check * 31 + want) % 1000000007;
+        let n = num.len();
+        let has_zero = num.contains("0");
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let front = answer(arm, f"1{num}");
+            let verdicts = [
+                c >= 2000 or value == want,
+                answer(arm, swapped(num)) == value,
+                answer(arm, f"{num}25") == 0,
+                front == value or front == value + 1,
+                value <= n and (value < n or not has_zero),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {num}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,394 @@
+// LeetCode #2858: Minimum Edge Reversals So Every Node Is Reachable --
+// the differential. The five arms, against the statement read
+// literally: for trees of up to 8 nodes, every set of edges to reverse
+// tried, from each node a walk along the edges as they then point, and
+// the fewest reversals that reach every node; for the larger trees,
+// from each node a walk of the tree counting the edges it meets
+// pointing the wrong way. 2000 random trees of 2 to 8 nodes, then 50 of
+// up to 300, every other one deep, all drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  every edge reversed: n - 1 less each answer
+// P3  the nodes relabelled: each answer moves with its node
+// P4  the edges listed the other way round: the same answer
+// P5  across every edge u -> v, v's answer is one more than u's
+// P6  each arm agrees with at least three of the other four
+
+fn reaches_all(n: i64, edges: Vec[Vec[i64]], flips: i64, from: i64) -> bool {
+    let mut out: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (i, e) in edges.iter().enumerate() {
+        if flips >> i & 1 == 1 {
+            out[e[1]].push(e[0]);
+        } else {
+            out[e[0]].push(e[1]);
+        }
+    }
+    let mut seen: Vec[bool] = Vec.filled(n, false);
+    seen[from] = true;
+    let mut stack = [from].to_vec();
+    let mut count = 1;
+    while let Some(u) = stack.pop() {
+        for v in out[u].iter() {
+            if not seen[v] {
+                seen[v] = true;
+                count += 1;
+                stack.push(v);
+            }
+        }
+    }
+    count == n
+}
+
+fn literal(n: i64, edges: Vec[Vec[i64]]) -> Vec[i64] {
+    if n <= 8 {
+        let m = edges.len();
+        return (0..n)
+            .map(|from| (0..1 << m).filter(|flips| reaches_all(n, edges, flips, from)).map(|flips| flips.count_ones()).min().unwrap())
+            .collect();
+    }
+    let mut adj: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push((e[1], 0));
+        adj[e[1]].push((e[0], 1));
+    }
+    let mut answer: Vec[i64] = Vec.new();
+    for from in 0..n {
+        let mut seen: Vec[bool] = Vec.filled(n, false);
+        seen[from] = true;
+        let mut stack = [from].to_vec();
+        let mut wrong = 0;
+        while let Some(u) = stack.pop() {
+            for (v, w) in adj[u].iter() {
+                if not seen[v] {
+                    seen[v] = true;
+                    wrong += w;
+                    stack.push(v);
+                }
+            }
+        }
+        answer.push(wrong);
+    }
+    answer
+}
+
+
+// ---- star (reversals.kara) ------------------------------------------
+
+fn star_min_edge_reversals(n: i64, edges: Vec[Vec[i64]]) -> Vec[i64] {
+    // each neighbour with 0 for an edge pointing to it, 1 against
+    let mut adj: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push((e[1], 0));
+        adj[e[1]].push((e[0], 1));
+    }
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    let mut cost: Vec[i64] = Vec.filled(n, 0);
+    let mut order: Vec[i64] = Vec.new();
+    let mut stack = [0].to_vec();
+    parent[0] = 0;
+    let mut root = 0;
+    while let Some(u) = stack.pop() {
+        order.push(u);
+        for (v, w) in adj[u].iter() {
+            if parent[v] == -1 {
+                parent[v] = u;
+                cost[v] = w;
+                root += w;
+                stack.push(v);
+            }
+        }
+    }
+    let mut answer: Vec[i64] = Vec.filled(n, 0);
+    answer[0] = root;
+    for u in order.iter().skip(1) {
+        answer[u] = answer[parent[u]] + if cost[u] == 0 { 1 } else { -1 };
+    }
+    answer
+}
+
+
+// ---- path (reversals_path.kara) -------------------------------------
+
+fn path_min_edge_reversals(n: i64, edges: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut adj: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push(e[1]);
+        adj[e[1]].push(e[0]);
+    }
+    let mut depth: Vec[i64] = Vec.filled(n, -1);
+    let mut offset: Vec[i64] = Vec.filled(n, 0);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    depth[0] = 0;
+    queue.push_back(0);
+    while let Some(u) = queue.pop_front() {
+        for v in adj[u].iter() {
+            if depth[v] == -1 {
+                depth[v] = depth[u] + 1;
+                queue.push_back(v);
+            }
+        }
+    }
+    // an edge from the nearer end to the farther points away from 0
+    let mut away: Vec[bool] = Vec.filled(n, false);
+    let mut root = 0;
+    for e in edges.iter() {
+        if depth[e[0]] < depth[e[1]] {
+            away[e[1]] = true;
+        } else {
+            root += 1;
+        }
+    }
+    let mut order: Vec[i64] = (0..n).collect();
+    order.sort_by_key(|v| depth[v]);
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    for u in order.iter() {
+        for v in adj[u].iter() {
+            if depth[v] == depth[u] + 1 {
+                parent[v] = u;
+                offset[v] = offset[u] + if away[v] { 1 } else { -1 };
+            }
+        }
+    }
+    offset.iter().map(|o| root + o).collect()
+}
+
+
+// ---- euler (reversals_euler.kara) -----------------------------------
+
+fn euler_min_edge_reversals(n: i64, edges: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut adj: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push(e[1]);
+        adj[e[1]].push(e[0]);
+    }
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    let mut enter: Vec[i64] = Vec.filled(n, 0);
+    let mut leave: Vec[i64] = Vec.filled(n, 0);
+    let mut next: Vec[i64] = Vec.filled(n, 0);
+    let mut clock = 0;
+    let mut stack = [0].to_vec();
+    parent[0] = 0;
+    while let Some(u) = stack.last() {
+        if next[u] == 0 {
+            enter[u] = clock;
+            clock += 1;
+        }
+        if next[u] < adj[u].len() {
+            let v = adj[u][next[u]];
+            next[u] += 1;
+            if parent[v] == -1 {
+                parent[v] = u;
+                stack.push(v);
+            }
+        } else {
+            leave[u] = clock;
+            stack.pop();
+        }
+    }
+    let mut diff: Vec[i64] = Vec.filled(n + 1, 0);
+    for e in edges.iter() {
+        let (u, v) = (e[0], e[1]);
+        if parent[v] == u and v != 0 {
+            diff[enter[v]] += 1;
+            diff[leave[v]] -= 1;
+        } else {
+            diff[0] += 1;
+            diff[enter[u]] -= 1;
+            diff[leave[u]] += 1;
+        }
+    }
+    let mut at_time: Vec[i64] = Vec.filled(n, 0);
+    let mut running = 0;
+    for t in 0..n {
+        running += diff[t];
+        at_time[t] = running;
+    }
+    (0..n).map(|v| at_time[enter[v]]).collect()
+}
+
+
+// ---- recursive (reversals_recursive.kara) ---------------------------
+
+fn recursive_count_back(adj: Vec[Vec[(i64, i64)]], u: i64, from: i64) -> i64 {
+    let mut back = 0;
+    for (v, w) in adj[u].iter() {
+        if v != from {
+            back += w + recursive_count_back(adj, v, u);
+        }
+    }
+    back
+}
+
+fn recursive_spread(adj: Vec[Vec[(i64, i64)]], answer: mut ref Vec[i64], u: i64, from: i64) {
+    for (v, w) in adj[u].iter() {
+        if v != from {
+            answer[v] = answer[u] + if w == 0 { 1 } else { -1 };
+            recursive_spread(adj, mut answer, v, u);
+        }
+    }
+}
+
+fn recursive_min_edge_reversals(n: i64, edges: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut adj: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push((e[1], 0));
+        adj[e[1]].push((e[0], 1));
+    }
+    let mut answer: Vec[i64] = Vec.filled(n, 0);
+    answer[0] = recursive_count_back(adj, 0, -1);
+    recursive_spread(adj, mut answer, 0, -1);
+    answer
+}
+
+
+// ---- solution (reversals_solution.kara) -----------------------------
+
+fn solution_reroot(g: ref Vec[Vec[(i64, i32)]], ans: mut ref Vec[i32], u: i64, p: i64) {
+    for (v, w) in ref g[u] {
+        if v != p {
+            ans[v] = ans[u] + if w == 0 { 1 } else { -1 };
+            solution_reroot(g, mut ans, v, u);
+        }
+    }
+}
+
+fn solution_dfs(g: ref Vec[Vec[(i64, i32)]], u: i64, p: i64) -> i32 {
+    let mut s: i32 = 0;
+    for (v, w) in ref g[u] {
+        if v != p {
+            s += w + solution_dfs(g, v, u);
+        }
+    }
+    s
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_edge_reversals(n: i32, edges: Vec[Vec[i32]]) -> Vec[i32] {
+        let n = n as i64;
+        let mut g: Vec[Vec[(i64, i32)]] = Vec.filled(n, Vec.new());
+        for e in ref edges {
+            let (u, v) = (e[0] as i64, e[1] as i64);
+            g[u].push((v, 0));
+            g[v].push((u, 1));
+        }
+        let mut ans = Vec.filled(n, 0);
+        ans[0] = solution_dfs(g, 0, i64.MAX);
+        solution_reroot(g, mut ans, 0, i64.MAX);
+        ans
+    }
+}
+
+fn solution_min_edge_reversals(n: i64, edges: Vec[Vec[i64]]) -> Vec[i64] {
+    let e: Vec[Vec[i32]] = edges.iter().map(|p| p.iter().map(|v| v as i32).collect()).collect();
+    Solution.min_edge_reversals(n as i32, e).iter().map(|a| a as i64).collect()
+}
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, n: i64, edges: Vec[Vec[i64]]) -> Vec[i64] {
+    match arm {
+        0 => star_min_edge_reversals(n, edges),
+        1 => path_min_edge_reversals(n, edges),
+        2 => euler_min_edge_reversals(n, edges),
+        3 => recursive_min_edge_reversals(n, edges),
+        _ => solution_min_edge_reversals(n, edges),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn tree(n: i64, deep: bool, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut label: Vec[i64] = (0..n).collect();
+    for i in (1..n).rev() {
+        let j = wide(mut seed) % (i + 1);
+        label.swap(i, j);
+    }
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for i in 1..n {
+        let p = if deep { i - 1 - next_random(mut seed) % i.min(3) } else { wide(mut seed) % i };
+        if next_random(mut seed) % 2 == 0 {
+            edges.push([label[p], label[i]].to_vec());
+        } else {
+            edges.push([label[i], label[p]].to_vec());
+        }
+    }
+    edges
+}
+
+fn main() {
+    let names = ["star", "path", "euler", "recursive", "solution"];
+    let mut seed = 2858;
+    let mut cases: Vec[(i64, Vec[Vec[i64]])] = Vec.new();
+    for c in 0..2050 {
+        let n = if c < 2000 { next_random(mut seed) % 7 + 2 } else { next_random(mut seed) % 291 + 10 };
+        cases.push((n, tree(n, c % 2 == 1, mut seed)));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (n, edges)) in cases.iter().enumerate() {
+        let want = literal(n, edges);
+        for a in want.iter() {
+            check = (check * 31 + a) % 1000000007;
+        }
+        let got: Vec[Vec[i64]] = (0..5).map(|arm| answer(arm, n, edges)).collect();
+        let flipped: Vec[Vec[i64]] = edges.iter().map(|e| [e[1], e[0]].to_vec()).collect();
+        let mut perm: Vec[i64] = (0..n).collect();
+        for i in (1..n).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            perm.swap(i, j);
+        }
+        let relabelled: Vec[Vec[i64]] = edges.iter().map(|e| [perm[e[0]], perm[e[1]]].to_vec()).collect();
+        let backward: Vec[Vec[i64]] = edges.iter().rev().cloned().collect();
+        for arm in 0..5 {
+            let value = ref got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let turned = answer(arm, n, flipped);
+            let moved = answer(arm, n, relabelled);
+            let verdicts = [
+                value == want,
+                (0..n).all(|i| turned[i] == n - 1 - value[i]),
+                (0..n).all(|i| moved[perm[i]] == value[i]),
+                answer(arm, n, backward) == value,
+                edges.iter().all(|e| value[e[1]] == value[e[0]] + 1),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} n {n} {edges}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

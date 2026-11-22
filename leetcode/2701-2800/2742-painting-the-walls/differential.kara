@@ -1,0 +1,234 @@
+// LeetCode #2742: Painting the Walls -- the differential. The five arms,
+// against the statement read literally: every set of walls the paid
+// painter could take, as the bits of a number, kept when the walls left
+// to the free painter, one a unit, fit in the units the paid painter is
+// busy, and the cheapest kept; no knapsack. 1000 random sets of 1 to 10
+// walls costing up to 50 and taking up to 6; then 200 of up to 100
+// walls costing up to 10^6 and taking up to 20. Every case is drawn
+// before any arm answers; the literal reading is asked only of the
+// first 1000.
+//
+// P1  up to 10 walls, the answer is the literal reading's
+// P2  the walls listed in reverse order: the same answer
+// P3  every cost doubled: the answer doubled
+// P4  every wall taking one unit longer: an answer no larger
+// P5  a wall added: an answer no larger than the old one and its cost
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(cost: Vec[i64], time: Vec[i64]) -> i64 {
+    let n = cost.len();
+    let mut best = i64.MAX;
+    for paid in 1..1 << n {
+        let mut busy = 0;
+        let mut spent = 0;
+        let mut free = 0;
+        for i in 0..n {
+            if (paid >> i) & 1 == 1 {
+                busy += time[i];
+                spent += cost[i];
+            } else {
+                free += 1;
+            }
+        }
+        if free <= busy {
+            best = best.min(spent);
+        }
+    }
+    best
+}
+
+
+// ---- star (walls.kara) ----------------------------------------------
+
+fn star_paint_walls(cost: Vec[i64], time: Vec[i64]) -> i64 {
+    let n = cost.len();
+    let far = i64.MAX / 2;
+    let mut least: Vec[i64] = Vec.filled(n + 1, far);
+    least[0] = 0;
+    for i in 0..n {
+        for j in (1..=n).rev() {
+            let from = (j - time[i] - 1).max(0);
+            least[j] = least[j].min(least[from] + cost[i]);
+        }
+    }
+    least[n]
+}
+
+
+// ---- memo (walls_memo.kara) -----------------------------------------
+
+fn memo_cheapest(i: i64, left: i64, cost: Vec[i64], time: Vec[i64], memo: mut ref Map[(i64, i64), i64]) -> i64 {
+    if left <= 0 {
+        return 0;
+    }
+    if i == cost.len() {
+        return i64.MAX / 2;
+    }
+    if let Some(known) = memo.get((i, left)) {
+        return known;
+    }
+    let skip = memo_cheapest(i + 1, left, cost, time, mut memo);
+    let pay = cost[i] + memo_cheapest(i + 1, left - time[i] - 1, cost, time, mut memo);
+    let best = skip.min(pay);
+    memo.insert((i, left), best);
+    best
+}
+
+fn memo_paint_walls(cost: Vec[i64], time: Vec[i64]) -> i64 {
+    let mut memo: Map[(i64, i64), i64] = Map.new();
+    memo_cheapest(0, cost.len(), cost, time, mut memo)
+}
+
+
+// ---- table (walls_table.kara) ---------------------------------------
+
+fn table_paint_walls(cost: Vec[i64], time: Vec[i64]) -> i64 {
+    let n = cost.len();
+    let far = i64.MAX / 2;
+    let mut table: Vec[Vec[i64]] = Vec.new();
+    table.push((0..=n).map(|j| if j == 0 { 0 } else { far }).collect());
+    for i in 0..n {
+        let before = table[i].clone();
+        let row: Vec[i64] = (0..=n).map(|j| before[j].min(before[(j - time[i] - 1).max(0)] + cost[i])).collect();
+        table.push(row);
+    }
+    table[n][n]
+}
+
+
+// ---- balance (walls_balance.kara) -----------------------------------
+
+fn balance_paint_walls(cost: Vec[i64], time: Vec[i64]) -> i64 {
+    let n = cost.len();
+    let far = i64.MAX / 2;
+    let mut least: Vec[i64] = Vec.filled(2 * n + 1, far);
+    least[n] = 0;
+    for i in 0..n {
+        let mut next: Vec[i64] = Vec.filled(2 * n + 1, far);
+        for b in 0..=2 * n {
+            if least[b] == far {
+                continue;
+            }
+            let paid = (b + time[i]).min(2 * n);
+            next[paid] = next[paid].min(least[b] + cost[i]);
+            if b > 0 {
+                next[b - 1] = next[b - 1].min(least[b]);
+            }
+        }
+        least = next;
+    }
+    least[n..].iter().min().unwrap()
+}
+
+
+// ---- solution (walls_solution.kara) ---------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn paint_walls(cost: Vec[i32], time: Vec[i32]) -> i32 {
+        let n = cost.len();
+        let mut dp = Vec.filled(n + 1, i32.MAX / 2);
+        dp[0] = 0;
+        for (c, t) in cost.iter().zip(time.iter()) {
+            for j in (1..=n).rev() {
+                let k = (j as i32 - t - 1).max(0) as usize;
+                dp[j] = dp[j].min(dp[k] + c);
+            }
+        }
+        dp[n]
+    }
+}
+
+fn solution_paint_walls(cost: Vec[i64], time: Vec[i64]) -> i64 {
+    Solution.paint_walls(cost.iter().map(|x| x as i32).collect(), time.iter().map(|x| x as i32).collect())
+}
+
+
+fn answer(arm: i64, cost: Vec[i64], time: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_paint_walls(cost, time),
+        1 => memo_paint_walls(cost, time),
+        2 => table_paint_walls(cost, time),
+        3 => balance_paint_walls(cost, time),
+        _ => solution_paint_walls(cost, time),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "memo", "table", "balance", "solution"];
+    let mut seed = 2742;
+    let mut cases: Vec[(Vec[i64], Vec[i64], i64, i64)] = Vec.new();
+    for c in 0..1200 {
+        let (n, most_cost, most_time) = if c < 1000 { (next_random(mut seed) % 10 + 1, 50, 6) } else { (next_random(mut seed) % 100 + 1, 1000000, 20) };
+        let cost: Vec[i64] = (0..n).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % most_cost + 1).collect();
+        let time: Vec[i64] = (0..n).map(|_| next_random(mut seed) % most_time + 1).collect();
+        // the wall to add for P5
+        let extra_cost = next_random(mut seed) % most_cost + 1;
+        let extra_time = next_random(mut seed) % most_time + 1;
+        cases.push((cost, time, extra_cost, extra_time));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (cost, time, extra_cost, extra_time)) in cases.iter().enumerate() {
+        let small = c < 1000;
+        let want = if small { literal(cost, time) } else { -1 };
+        check = (check * 31 + want + 1) % 1000000007;
+        let cost_reversed: Vec[i64] = cost.iter().rev().collect();
+        let time_reversed: Vec[i64] = time.iter().rev().collect();
+        let cost_doubled: Vec[i64] = cost.iter().map(|x| 2 * x).collect();
+        let time_longer: Vec[i64] = time.iter().map(|t| t + 1).collect();
+        let mut cost_added = cost.clone();
+        cost_added.push(extra_cost);
+        let mut time_added = time.clone();
+        time_added.push(extra_time);
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, cost, time)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == want,
+                answer(arm, cost_reversed, time_reversed) == value,
+                answer(arm, cost_doubled, time) == 2 * value,
+                answer(arm, cost, time_longer) <= value,
+                answer(arm, cost_added, time_added) <= value + extra_cost,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {cost} {time}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

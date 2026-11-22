@@ -1,0 +1,102 @@
+// LeetCode #2719: Count of Integers -- the sweep arm. Bottom-up over the
+// places, the counts of prefixes by digit sum kept in two rows, one for
+// prefixes still equal to the bound and one for prefixes already below
+// it: each place moves the below row forward by every digit and splits
+// the equal prefix into those below and the one that stays equal.
+// O(digits * max_sum * 10).
+
+const MOD: i64 = 1000000007;
+
+fn good_up_to(bound: Str, min_sum: i64, max_sum: i64) -> i64 {
+    let mut below: Vec[i64] = Vec.filled(max_sum + 1, 0);
+    let mut equal_sum = 0;
+    for b in bound.bytes() {
+        let digit = (b - b'0') as i64;
+        let mut next: Vec[i64] = Vec.filled(max_sum + 1, 0);
+        for s in 0..=max_sum {
+            if below[s] != 0 {
+                for d in 0..=9 {
+                    if s + d <= max_sum {
+                        next[s + d] = (next[s + d] + below[s]) % MOD;
+                    }
+                }
+            }
+        }
+        for d in 0..digit {
+            if equal_sum + d <= max_sum {
+                next[equal_sum + d] = (next[equal_sum + d] + 1) % MOD;
+            }
+        }
+        equal_sum += digit;
+        below = next;
+    }
+    let mut found = if min_sum <= equal_sum and equal_sum <= max_sum { 1 } else { 0 };
+    for s in min_sum..=max_sum {
+        found = (found + below[s]) % MOD;
+    }
+    found
+}
+
+fn count(num1: Str, num2: Str, min_sum: i64, max_sum: i64) -> i64 {
+    let own: i64 = num1.bytes().iter().map(|b| (b - b'0') as i64).sum();
+    let itself = if min_sum <= own and own <= max_sum { 1 } else { 0 };
+    (good_up_to(num2, min_sum, max_sum) - good_up_to(num1, min_sum, max_sum) + itself + MOD) % MOD
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a number of 1 to `longest` digits, the first not zero
+fn random_number(seed: mut ref i64, longest: i64) -> String {
+    let n = next_random(mut seed) % longest + 1;
+    let mut digits = String.new();
+    digits.push((b'1' + (next_random(mut seed) % 9) as u8) as char);
+    for _ in 1..n {
+        digits.push((b'0' + (next_random(mut seed) % 10) as u8) as char);
+    }
+    digits
+}
+
+// a before b as numbers: the shorter first, then by digits
+fn at_most(a: Str, b: Str) -> bool {
+    a.len() < b.len() or (a.len() == b.len() and a <= b)
+}
+
+fn main() {
+    // LeetCode's two examples; 1 to 10^22, LeetCode's widest, with every
+    // sum allowed and with only 400; one number; the 22 nines
+    println(f"{count("1", "12", 1, 8)}");
+    println(f"{count("1", "5", 1, 5)}");
+    let top = f"1{"0".repeat(22)}";
+    println(f"{count("1", top, 1, 400)}");
+    println(f"{count("1", top, 400, 400)}");
+    println(f"{count("4179", "4179", 21, 21)}");
+    let nines = "9".repeat(22);
+    println(f"{count(nines, nines, 198, 400)}");
+    println(f"{count("1", nines, 99, 99)}");
+    // 2000 random ranges up to 10^4 with sums up to 40; then 300 of up to
+    // 22 digits with sums up to 200
+    let mut seed = 2719;
+    let mut sum = 0;
+    let mut check = 0;
+    for c in 0..2300 {
+        let (longest, most) = if c < 2000 { (4, 40) } else { (22, 200) };
+        let a = random_number(mut seed, longest);
+        let b = random_number(mut seed, longest);
+        let low = next_random(mut seed) % most + 1;
+        let high = low + next_random(mut seed) % (most - low + 1);
+        let found = if at_most(a, b) { count(a, b, low, high) } else { count(b, a, low, high) };
+        sum += found;
+        check = (check * 31 + found) % 1000000007;
+        if c == 1999 {
+            println(f"2000 ranges up to 10^4: counts sum to {sum}, checksum {check}");
+            sum = 0;
+            check = 0;
+        }
+    }
+    println(f"300 ranges up to 22 digits: counts mod p sum to {sum}, checksum {check}");
+}

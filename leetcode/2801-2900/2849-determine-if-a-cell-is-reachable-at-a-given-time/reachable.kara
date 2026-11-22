@@ -1,0 +1,64 @@
+// LeetCode #2849: Determine if a Cell Is Reachable at a Given Time --
+// ★: a move goes to any of the eight cells around, so the fewest moves
+// to the finish is the larger of the two distances, and any spare moves
+// can be spent on the way; only the start itself, at t = 1, cannot be
+// reached, since one move must leave it.
+
+fn is_reachable_at_time(sx: i64, sy: i64, fx: i64, fy: i64, t: i64) -> bool {
+    if sx == fx and sy == fy {
+        return t != 1;
+    }
+    (sx - fx).abs().max((sy - fy).abs()) <= t
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; the start itself at t = 0, 1 and 2; the
+    // far corner of LeetCode's grid with t just enough and one short
+    println(f"{is_reachable_at_time(2, 4, 7, 7, 6)} {is_reachable_at_time(3, 1, 7, 3, 3)}");
+    println(f"{is_reachable_at_time(5, 5, 5, 5, 0)} {is_reachable_at_time(5, 5, 5, 5, 1)} {is_reachable_at_time(5, 5, 5, 5, 2)}");
+    println(f"{is_reachable_at_time(1, 1, 1000000000, 1000000000, 999999999)} {is_reachable_at_time(1, 1, 1000000000, 1000000000, 999999998)}");
+    // every start and finish within 1 to 4 and t from 0 to 4, then 20000
+    // random pairs over LeetCode's grid, t within 3 of the distance
+    let mut yes = 0;
+    let mut check = 0;
+    for sx in 1..5 {
+        for sy in 1..5 {
+            for fx in 1..5 {
+                for fy in 1..5 {
+                    for t in 0..5 {
+                        let r = is_reachable_at_time(sx, sy, fx, fy, t);
+                        if r {
+                            yes += 1;
+                        }
+                        check = (check * 3 + if r { 2 } else { 1 }) % 1000000007;
+                    }
+                }
+            }
+        }
+    }
+    println(f"1280 small cases: {yes} true, checksum {check}");
+    let mut seed = 2849;
+    yes = 0;
+    check = 0;
+    for _ in 0..20000 {
+        let sx = next_random(mut seed) * 30000 % 1000000000 + 1;
+        let sy = next_random(mut seed) * 30000 % 1000000000 + 1;
+        let fx = (sx + next_random(mut seed) % 2001 - 1000).max(1).min(1000000000);
+        let fy = if next_random(mut seed) % 2 == 0 { sy } else { (sy + next_random(mut seed) % 2001 - 1000).max(1).min(1000000000) };
+        let d = (sx - fx).abs().max((sy - fy).abs());
+        let t = (d + next_random(mut seed) % 7 - 3).max(0);
+        let r = is_reachable_at_time(sx, sy, fx, fy, t);
+        if r {
+            yes += 1;
+        }
+        check = (check * 3 + if r { 2 } else { 1 }) % 1000000007;
+    }
+    println(f"20000 random cases: {yes} true, checksum {check}");
+}

@@ -1,0 +1,334 @@
+// LeetCode #2791: Count Paths That Can Form a Palindrome in a Tree -- the
+// differential. The five arms, against the statement read literally:
+// every pair u < v, the path between them found by climbing the deeper
+// node and then both until they meet, the letters on its edges gathered
+// and counted, and the pair taken when at most one letter is there an
+// odd number of times; no masks. 2000 random trees of 1 to 10 nodes with
+// letters from a to c; then 50 of up to 2000 nodes, the letters from a
+// to c or from a to z. Every case is drawn before any arm answers; the
+// literal reading is asked only of the first 2000.
+//
+// P1  up to 10 nodes, the count is the literal reading's
+// P2  every letter moved one on round the alphabet: the same count
+// P3  the root's letter, on no edge, changed: the same count
+// P4  every node but the root numbered from the other end: the same count
+// P5  from n - 1, each edge's two ends, to n(n - 1) / 2, and n(n - 1) / 2
+//     when every letter is a
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(parent: Vec[i64], s: Str) -> i64 {
+    let n = parent.len();
+    let letters: Vec[char] = s.chars().collect();
+    let mut depth: Vec[i64] = Vec.filled(n, 0);
+    for v in 0..n {
+        let mut u = v;
+        while u != 0 {
+            depth[v] += 1;
+            u = parent[u];
+        }
+    }
+    let mut count = 0;
+    for u in 0..n {
+        for v in u + 1..n {
+            let mut on_path: Vec[char] = Vec.new();
+            let mut (a, b) = (u, v);
+            while depth[a] > depth[b] {
+                on_path.push(letters[a]);
+                a = parent[a];
+            }
+            while depth[b] > depth[a] {
+                on_path.push(letters[b]);
+                b = parent[b];
+            }
+            while a != b {
+                on_path.push(letters[a]);
+                on_path.push(letters[b]);
+                a = parent[a];
+                b = parent[b];
+            }
+            let odd: Set[char] = on_path.iter().filter(|c| on_path.iter().filter(|d| d == c).count() % 2 == 1).collect();
+            if odd.len() <= 1 {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+
+// ---- star (paths.kara) ----------------------------------------------
+
+fn star_count_palindrome_paths(parent: Vec[i64], s: Str) -> i64 {
+    let n = parent.len();
+    let letters: Vec[i64] = s.bytes().iter().map(|b| (b - 97) as i64).collect();
+    let mut children: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for i in 1..n {
+        children[parent[i]].push(i);
+    }
+    let mut mask: Vec[i64] = Vec.filled(n, 0);
+    let mut todo: Vec[i64] = [0];
+    while let Some(u) = todo.pop() {
+        for c in children[u].iter() {
+            mask[c] = mask[u] ^ (1 << letters[c]);
+            todo.push(c);
+        }
+    }
+    let mut seen: Map[i64, i64] = Map.new();
+    let mut paths = 0;
+    for m in mask.iter() {
+        paths += seen.get(m) ?? 0;
+        for b in 0..26 {
+            paths += seen.get(m ^ (1 << b)) ?? 0;
+        }
+        *seen.entry(m).or_insert(0) += 1;
+    }
+    paths
+}
+
+
+// ---- memo (paths_memo.kara) -----------------------------------------
+
+fn memo_count_palindrome_paths(parent: Vec[i64], s: Str) -> i64 {
+    let n = parent.len();
+    let letters: Vec[i64] = s.bytes().iter().map(|b| (b - 97) as i64).collect();
+    let mut mask: Vec[Option[i64]] = Vec.filled(n, None);
+    mask[0] = Some(0);
+    for v in 0..n {
+        let mut climb: Vec[i64] = Vec.new();
+        let mut u = v;
+        while mask[u].is_none() {
+            climb.push(u);
+            u = parent[u];
+        }
+        let mut known = mask[u].unwrap();
+        while let Some(w) = climb.pop() {
+            known = known ^ (1 << letters[w]);
+            mask[w] = Some(known);
+        }
+    }
+    let mut seen: Map[i64, i64] = Map.new();
+    let mut paths = 0;
+    for m in mask.iter() {
+        let m = m.unwrap();
+        paths += seen.get(m) ?? 0;
+        for b in 0..26 {
+            paths += seen.get(m ^ (1 << b)) ?? 0;
+        }
+        *seen.entry(m).or_insert(0) += 1;
+    }
+    paths
+}
+
+
+// ---- sorted (paths_sorted.kara) -------------------------------------
+
+fn sorted_count_palindrome_paths(parent: Vec[i64], s: Str) -> i64 {
+    let n = parent.len();
+    let letters: Vec[i64] = s.bytes().iter().map(|b| (b - 97) as i64).collect();
+    let mut children: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for i in 1..n {
+        children[parent[i]].push(i);
+    }
+    let mut mask: Vec[i64] = Vec.filled(n, 0);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    queue.push_back(0);
+    while let Some(u) = queue.pop_front() {
+        for c in children[u].iter() {
+            mask[c] = mask[u] ^ (1 << letters[c]);
+            queue.push_back(c);
+        }
+    }
+    let mut sorted = mask.clone();
+    sorted.sort();
+    let count = |m: i64| sorted.partition_point(|x| x <= m) - sorted.partition_point(|x| x < m);
+    let mut ends = 0;
+    for m in sorted.iter() {
+        ends += count(m) - 1;
+        for b in 0..26 {
+            ends += count(m ^ (1 << b));
+        }
+    }
+    ends / 2
+}
+
+
+// ---- groups (paths_groups.kara) -------------------------------------
+
+fn groups_fill(u: i64, children: ref Vec[Vec[i64]], letters: ref Vec[i64], mask: mut ref Vec[i64]) {
+    for c in children[u].iter() {
+        mask[c] = mask[u] ^ (1 << letters[c]);
+        groups_fill(c, children, letters, mut mask);
+    }
+}
+
+fn groups_count_palindrome_paths(parent: Vec[i64], s: Str) -> i64 {
+    let n = parent.len();
+    let letters: Vec[i64] = s.bytes().iter().map(|b| (b - 97) as i64).collect();
+    let mut children: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for i in 1..n {
+        children[parent[i]].push(i);
+    }
+    let mut mask: Vec[i64] = Vec.filled(n, 0);
+    groups_fill(0, children, letters, mut mask);
+    let mut groups: Map[i64, i64] = Map.new();
+    for m in mask.iter() {
+        *groups.entry(m).or_insert(0) += 1;
+    }
+    let mut paths = 0;
+    for (m, c) in groups.iter() {
+        paths += c * (c - 1) / 2;
+        for b in 0..26 {
+            if m & (1 << b) == 0 {
+                paths += c * (groups.get(m | (1 << b)) ?? 0);
+            }
+        }
+    }
+    paths
+}
+
+
+// ---- solution (paths_solution.kara) ---------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn count_palindrome_paths(parent: Vec[i32], s: String) -> i64 {
+        let n = parent.len();
+        let s = s.bytes();
+        let mut g: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+        for i in 1..n {
+            g[parent[i]].push(i);
+        }
+        let mut cnt: Map[i32, i64] = Map.new();
+        let mut ans: i64 = 0;
+        let mut stack = [(0, 0i32)];
+        while let Some((u, m)) = stack.pop() {
+            if let Some(c) = cnt.get(m).cloned() {
+                ans += c;
+            }
+            for b in 0..26 {
+                if let Some(c) = cnt.get(m ^ (1 << b)).cloned() {
+                    ans += c;
+                }
+            }
+            *cnt.entry(m).or_insert(0) += 1;
+            for v in ref g[u] {
+                stack.push((v, m ^ (1 << (s[v] - b'a'))));
+            }
+        }
+        ans
+    }
+}
+
+fn solution_count_palindrome_paths(parent: Vec[i64], s: Str) -> i64 {
+    Solution.count_palindrome_paths(parent.iter().map(|p| p as i32).collect(), s.to_string())
+}
+
+
+fn answer(arm: i64, parent: Vec[i64], s: Str) -> i64 {
+    match arm {
+        0 => star_count_palindrome_paths(parent, s),
+        1 => memo_count_palindrome_paths(parent, s),
+        2 => sorted_count_palindrome_paths(parent, s),
+        3 => groups_count_palindrome_paths(parent, s),
+        _ => solution_count_palindrome_paths(parent, s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "memo", "sorted", "groups", "solution"];
+    let alphabet: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    let mut seed = 2791;
+    let mut cases: Vec[(Vec[i64], String)] = Vec.new();
+    for c in 0..2050 {
+        let (n, letters) = if c < 2000 {
+            (next_random(mut seed) % 10 + 1, 3)
+        } else {
+            (wide(mut seed) % 2000 + 1, if c % 2 == 0 { 3 } else { 26 })
+        };
+        let mut parent: Vec[i64] = [-1];
+        for i in 1..n {
+            parent.push(wide(mut seed) % i);
+        }
+        let s: String = (0..n).map(|_| alphabet[next_random(mut seed) % letters]).collect();
+        cases.push((parent, s));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (parent, s)) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(parent, s) } else { 0 };
+        check = (check * 31 + want + 1) % 1000000007;
+        let n = parent.len();
+        let letters: Vec[char] = s.chars().collect();
+        let moved: String = letters.iter().map(|ch| alphabet[(alphabet.iter().position(|a| a == ch).unwrap() + 1) % 26]).collect();
+        let mut rooted = letters.clone();
+        rooted[0] = if letters[0] == 'z' { 'y' } else { 'z' };
+        let rooted: String = rooted.iter().collect();
+        // node i becomes n - i, the root staying 0
+        let label = |i: i64| if i == 0 { 0 } else { n - i };
+        let mut renumbered: Vec[i64] = Vec.filled(n, -1);
+        let mut relettered: Vec[char] = Vec.filled(n, 'a');
+        for i in 0..n {
+            if i > 0 {
+                renumbered[label(i)] = label(parent[i]);
+            }
+            relettered[label(i)] = letters[i];
+        }
+        let relettered: String = relettered.iter().collect();
+        let all_a = "a".repeat(n);
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, parent, s)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let pairs = n * (n - 1) / 2;
+            let verdicts = [
+                not small or value == want,
+                answer(arm, parent, moved) == value,
+                answer(arm, parent, rooted) == value,
+                answer(arm, renumbered, relettered) == value,
+                value >= n - 1 and value <= pairs and answer(arm, parent, all_a) == pairs,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {parent} {s}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,101 @@
+// LeetCode #2812: Find the Safest Path in a Grid -- the bench: the ★ arm
+// over 10 grids of 400 by 400, LeetCode's largest, a thief in about one
+// cell of 2000, all drawn first, then each answered 3 times.
+
+fn thief_distances(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let n = grid.len();
+    let mut dist: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, -1));
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    for r in 0..n {
+        for c in 0..n {
+            if grid[r][c] == 1 {
+                dist[r][c] = 0;
+                queue.push_back((r, c));
+            }
+        }
+    }
+    while let Some((r, c)) = queue.pop_front() {
+        for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr >= 0 and nr < n and nc >= 0 and nc < n and dist[nr][nc] == -1 {
+                dist[nr][nc] = dist[r][c] + 1;
+                queue.push_back((nr, nc));
+            }
+        }
+    }
+    dist
+}
+
+fn reachable(dist: Vec[Vec[i64]], s: i64) -> bool {
+    let n = dist.len();
+    if dist[0][0] < s {
+        return false;
+    }
+    let mut seen: Vec[Vec[bool]] = Vec.filled(n, Vec.filled(n, false));
+    seen[0][0] = true;
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    queue.push_back((0, 0));
+    while let Some((r, c)) = queue.pop_front() {
+        if r == n - 1 and c == n - 1 {
+            return true;
+        }
+        for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr >= 0 and nr < n and nc >= 0 and nc < n and not seen[nr][nc] and dist[nr][nc] >= s {
+                seen[nr][nc] = true;
+                queue.push_back((nr, nc));
+            }
+        }
+    }
+    false
+}
+
+fn maximum_safeness_factor(grid: Vec[Vec[i64]]) -> i64 {
+    let n = grid.len();
+    let dist = thief_distances(grid);
+    let mut lo = 0;
+    let mut hi = dist[0][0].min(dist[n - 1][n - 1]);
+    while lo < hi {
+        let mid = (lo + hi + 1) / 2;
+        if reachable(dist, mid) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 10;
+    let rounds = 3;
+    let n = 400;
+    let mut seed = 2812;
+    let mut grids: Vec[Vec[Vec[i64]]] = Vec.new();
+    for _ in 0..count {
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..n {
+            let row: Vec[i64] = (0..n).map(|_| if next_random(mut seed) % 2000 == 0 { 1 } else { 0 }).collect();
+            grid.push(row);
+        }
+        let r = next_random(mut seed) % n;
+        let c = next_random(mut seed) % n;
+        grid[r][c] = 1;
+        grids.push(grid);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for grid in grids.iter() {
+            let a = maximum_safeness_factor(grid);
+            total += a;
+            check = (check * 31 + a + r) % 1000000007;
+        }
+    }
+    println(f"{count} grids of {n}, {rounds} rounds: safeness sums to {total}, checksum {check}");
+}

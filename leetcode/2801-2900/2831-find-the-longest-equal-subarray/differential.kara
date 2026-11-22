@@ -1,0 +1,235 @@
+// LeetCode #2831: Find the Longest Equal Subarray -- the differential.
+// The five arms, against the statement read literally: every subarray
+// and every value in it; deleting the other numbers leaves an equal
+// subarray of that value's count, when they are at most k. 2000 random
+// arrays of 1 to 12 numbers from 1 to 3, none above the count, with k up
+// to the count; then 50 of up to 2000 numbers from 1 to 20 with k up to
+// 100. Every case is drawn before any arm answers; the literal reading
+// is asked only of the first 2000.
+//
+// P1  up to 12 numbers, the answer is the literal reading's
+// P2  the numbers reversed: the same answer
+// P3  k one larger: no shorter
+// P4  k = n: the count of the commonest value
+// P5  every v as m + 1 - v, m the largest: the same answer
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(nums: Vec[i64], k: i64) -> i64 {
+    let n = nums.len();
+    let mut best = 0;
+    for i in 0..n {
+        for j in i..n {
+            for v in nums[i..=j].iter() {
+                let count = nums[i..=j].iter().filter(|x| x == v).count();
+                if j - i + 1 - count <= k {
+                    best = best.max(count);
+                }
+            }
+        }
+    }
+    best
+}
+
+
+// ---- star (equal.kara) ----------------------------------------------
+
+fn star_longest_equal_subarray(nums: Vec[i64], k: i64) -> i64 {
+    let n = nums.len();
+    let mut places: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.new());
+    for i in 0..n {
+        places[nums[i]].push(i);
+    }
+    let mut best = 0;
+    for pos in places.iter() {
+        let mut l = 0;
+        for r in 0..pos.len() {
+            while pos[r] - pos[l] - (r - l) > k {
+                l += 1;
+            }
+            best = best.max(r - l + 1);
+        }
+    }
+    best
+}
+
+
+// ---- window (equal_window.kara) -------------------------------------
+
+fn window_longest_equal_subarray(nums: Vec[i64], k: i64) -> i64 {
+    let mut count: Vec[i64] = Vec.filled(nums.len() + 1, 0);
+    let mut most = 0;
+    let mut l = 0;
+    for r in 0..nums.len() {
+        count[nums[r]] += 1;
+        most = most.max(count[nums[r]]);
+        if r - l + 1 - most > k {
+            count[nums[l]] -= 1;
+            l += 1;
+        }
+    }
+    most
+}
+
+
+// ---- search (equal_search.kara) -------------------------------------
+
+fn search_longest_equal_subarray(nums: Vec[i64], k: i64) -> i64 {
+    let mut gaps: Map[i64, Vec[i64]] = Map.new();
+    for i in 0..nums.len() {
+        let list = gaps.entry(nums[i]).or_insert(Vec.new());
+        let j = list.len();
+        list.push(i - j);
+    }
+    let mut best = 0;
+    for (_, gap) in gaps.iter() {
+        for r in 0..gap.len() {
+            let l = gap.partition_point(|g| g < gap[r] - k);
+            best = best.max(r - l + 1);
+        }
+    }
+    best
+}
+
+
+// ---- each (equal_each.kara) -----------------------------------------
+
+fn each_longest_equal_subarray(nums: Vec[i64], k: i64) -> i64 {
+    let mut best = 0;
+    for i in 0..nums.len() {
+        let mut kept = 0;
+        let mut spent = 0;
+        for j in i..nums.len() {
+            if nums[j] == nums[i] {
+                kept += 1;
+                best = best.max(kept);
+            } else {
+                spent += 1;
+                if spent > k {
+                    break;
+                }
+            }
+        }
+    }
+    best
+}
+
+
+// ---- solution (equal_solution.kara) ---------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn longest_equal_subarray(nums: Vec[i32], k: i32) -> i32 {
+        let mut pos: Map[i32, Vec[i64]] = Map.new();
+        for (i, x) in nums.iter().enumerate() {
+            pos.entry(x).or_insert(Vec.new()).push(i);
+        }
+        let k = k as i64;
+        let mut ans = 0;
+        for ids in pos.values() {
+            let mut l = 0;
+            for r in 0..ids.len() {
+                while ids[r] - ids[l] - (r - l) > k {
+                    l += 1;
+                }
+                ans = ans.max(r - l + 1);
+            }
+        }
+        ans as i32
+    }
+}
+
+fn solution_longest_equal_subarray(nums: Vec[i64], k: i64) -> i64 {
+    Solution.longest_equal_subarray(nums.iter().map(|v| v as i32).collect(), k as i32)
+}
+
+
+// ---- the checks ------------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64], k: i64) -> i64 {
+    match arm {
+        0 => star_longest_equal_subarray(nums, k),
+        1 => window_longest_equal_subarray(nums, k),
+        2 => search_longest_equal_subarray(nums, k),
+        3 => each_longest_equal_subarray(nums, k),
+        _ => solution_longest_equal_subarray(nums, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "window", "search", "each", "solution"];
+    let mut seed = 2831;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..2050 {
+        if c < 2000 {
+            let n = next_random(mut seed) % 12 + 1;
+            let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % n.min(3) + 1).collect();
+            cases.push((nums, next_random(mut seed) % (n + 1)));
+        } else {
+            let n = next_random(mut seed) % 2000 + 1;
+            let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % n.min(20) + 1).collect();
+            cases.push((nums, next_random(mut seed) % 101));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (nums, k)) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(nums, k) } else { 0 };
+        check = (check * 31 + want + 1) % 1000000007;
+        let n = nums.len();
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let top = nums.iter().max().unwrap();
+        let flipped: Vec[i64] = nums.iter().map(|v| top + 1 - v).collect();
+        let commonest = (1..=top).map(|v| nums.iter().filter(|x| x == v).count()).max().unwrap();
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums, k)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == want,
+                answer(arm, reversed, k) == value,
+                answer(arm, nums, k + 1) >= value,
+                answer(arm, nums, n) == commonest,
+                answer(arm, flipped, k) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums} k {k}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

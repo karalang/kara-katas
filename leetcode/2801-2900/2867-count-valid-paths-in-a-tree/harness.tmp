@@ -1,0 +1,44 @@
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; 10^5 nodes, LeetCode's most, as a path
+    // and as a star around node 2
+    println(f"{count_paths(5, [[1, 2], [1, 3], [2, 4], [2, 5]].to_vec())} {count_paths(6, [[1, 2], [1, 3], [2, 4], [3, 5], [3, 6]].to_vec())}");
+    let n = 100000;
+    let path: Vec[Vec[i64]] = (1..n).map(|i| [i, i + 1].to_vec()).collect();
+    let star: Vec[Vec[i64]] = (1..n + 1).filter(|i| i != 2).map(|i| [2, i].to_vec()).collect();
+    println(f"{count_paths(n, path)} {count_paths(n, star)}");
+    // 3000 random trees of 1 to 10 nodes; then 30 of 10^4 to 10^5, every
+    // other one deep, each node's parent among the five before it
+    let mut seed = 2867;
+    let mut total = 0;
+    let mut check = 0;
+    for c in 0..3030 {
+        let small = c < 3000;
+        let n = if small { next_random(mut seed) % 10 + 1 } else { wide(mut seed) % 90001 + 10000 };
+        let mut edges: Vec[Vec[i64]] = Vec.new();
+        for v in 2..n + 1 {
+            let reach = if not small and c % 2 == 1 { (v - 1).min(5) } else { v - 1 };
+            let parent = v - 1 - wide(mut seed) % reach;
+            edges.push([parent, v].to_vec());
+        }
+        let paths = count_paths(n, edges);
+        total += paths;
+        check = (check * 31 + paths) % 1000000007;
+        if c == 2999 {
+            println(f"3000 small trees: {total} paths, checksum {check}");
+            total = 0;
+            check = 0;
+        }
+    }
+    println(f"30 large trees: {total} paths, checksum {check}");
+}

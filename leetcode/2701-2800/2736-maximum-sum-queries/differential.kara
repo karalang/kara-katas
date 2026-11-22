@@ -1,0 +1,378 @@
+// LeetCode #2736: Maximum Sum Queries -- the differential. The five arms,
+// against the statement read literally: each query answered by trying
+// every index j, in a plain loop, for nums1[j] >= x and nums2[j] >= y.
+// 600 random cases of 1 to 15 pairs and queries up to 20; then 100 of up
+// to 300 pairs and queries up to 10^9. Every case is drawn before any arm
+// answers.
+//
+// P1  the answers are the literal reading's
+// P2  the pairs listed in reverse order: the same answers
+// P3  the queries listed in reverse order: the answers reversed
+// P4  nums1 and nums2 swapped, and each query's x and y: the same answers
+// P5  each answer is -1 or at least x + y; and a query of (1, 1) added at
+//     the end answers the largest sum of all
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- star (queries.kara) --------------------------------------------
+
+fn star_maximum_sum_queries(nums1: Vec[i64], nums2: Vec[i64], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let n = nums1.len();
+    let mut pairs: Vec[(i64, i64)] = (0..n).map(|i| (nums1[i], nums2[i])).collect();
+    pairs.sort_by(|a, b| b.0.cmp(a.0));
+    let mut order: Vec[i64] = (0..queries.len()).collect();
+    order.sort_by(|a, b| queries[b][0].cmp(queries[a][0]));
+    let mut answer: Vec[i64] = Vec.filled(queries.len(), -1);
+    // (nums2, sum), nums2 rising and sum falling from the bottom
+    let mut stack: Vec[(i64, i64)] = Vec.new();
+    let mut j = 0;
+    for q in order.iter() {
+        let x = queries[q][0];
+        let y = queries[q][1];
+        while j < n and pairs[j].0 >= x {
+            let (a, b) = pairs[j];
+            j += 1;
+            if stack.len() > 0 and stack[stack.len() - 1].0 >= b {
+                continue;
+            }
+            while stack.len() > 0 and stack[stack.len() - 1].1 <= a + b {
+                stack.pop();
+            }
+            stack.push((b, a + b));
+        }
+        let mut low = 0;
+        let mut high = stack.len();
+        while low < high {
+            let middle = (low + high) / 2;
+            if stack[middle].0 >= y {
+                high = middle;
+            } else {
+                low = middle + 1;
+            }
+        }
+        if low < stack.len() {
+            answer[q] = stack[low].1;
+        }
+    }
+    answer
+}
+
+
+// ---- scan (queries_scan.kara) ---------------------------------------
+
+fn scan_maximum_sum_queries(nums1: Vec[i64], nums2: Vec[i64], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    queries.iter().map(|query| {
+        (0..nums1.len())
+            .filter(|j| nums1[j] >= query[0] and nums2[j] >= query[1])
+            .map(|j| nums1[j] + nums2[j])
+            .max()
+            .unwrap_or(-1)
+    }).collect()
+}
+
+
+// ---- fenwick (queries_fenwick.kara) ---------------------------------
+
+fn fenwick_maximum_sum_queries(nums1: Vec[i64], nums2: Vec[i64], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let n = nums1.len();
+    // nums2's values, highest first, without repeats; rank r is 1 + index
+    let mut values = nums2.clone();
+    values.sort();
+    values.dedup();
+    values.reverse();
+    let m = values.len();
+    let mut tree: Vec[i64] = Vec.filled(m + 1, -1);
+    let mut pairs: Vec[(i64, i64)] = (0..n).map(|i| (nums1[i], nums2[i])).collect();
+    pairs.sort_by(|a, b| b.0.cmp(a.0));
+    let mut order: Vec[i64] = (0..queries.len()).collect();
+    order.sort_by(|a, b| queries[b][0].cmp(queries[a][0]));
+    let mut answer: Vec[i64] = Vec.filled(queries.len(), -1);
+    let mut j = 0;
+    for q in order.iter() {
+        while j < n and pairs[j].0 >= queries[q][0] {
+            let (a, b) = pairs[j];
+            j += 1;
+            // b's rank: the count of values above b, plus one
+            let mut low = 0;
+            let mut high = m;
+            while low < high {
+                let middle = (low + high) / 2;
+                if values[middle] > b {
+                    low = middle + 1;
+                } else {
+                    high = middle;
+                }
+            }
+            let mut r = low + 1;
+            while r <= m {
+                tree[r] = tree[r].max(a + b);
+                r += r & -r;
+            }
+        }
+        // the ranks of values >= y run from 1 to the count of them
+        let y = queries[q][1];
+        let mut low = 0;
+        let mut high = m;
+        while low < high {
+            let middle = (low + high) / 2;
+            if values[middle] >= y {
+                low = middle + 1;
+            } else {
+                high = middle;
+            }
+        }
+        let mut r = low;
+        let mut best = -1;
+        while r > 0 {
+            best = best.max(tree[r]);
+            r -= r & -r;
+        }
+        answer[q] = best;
+    }
+    answer
+}
+
+
+// ---- segment (queries_segment.kara) ---------------------------------
+
+struct Node {
+    // (nums1, sum) sorted by nums1, and best[k] the largest sum from k on
+    firsts: Vec[i64],
+    best: Vec[i64],
+}
+
+fn segment_build(points: Vec[(i64, i64)]) -> Node {
+    let mut sorted = points.clone();
+    sorted.sort_by(|a, b| a.0.cmp(b.0));
+    let firsts: Vec[i64] = sorted.iter().map(|p| p.0).collect();
+    let mut best: Vec[i64] = Vec.filled(sorted.len() + 1, -1);
+    for k in (0..sorted.len()).rev() {
+        best[k] = best[k + 1].max(sorted[k].1);
+    }
+    Node { firsts, best }
+}
+
+// the largest sum in a node among its pairs with nums1 >= x
+fn segment_node_best(node: ref Node, x: i64) -> i64 {
+    let mut low = 0;
+    let mut high = node.firsts.len();
+    while low < high {
+        let middle = (low + high) / 2;
+        if node.firsts[middle] >= x {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    node.best[low]
+}
+
+fn segment_maximum_sum_queries(nums1: Vec[i64], nums2: Vec[i64], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let n = nums1.len();
+    let mut by_second: Vec[(i64, i64, i64)] = (0..n).map(|i| (nums2[i], nums1[i], nums1[i] + nums2[i])).collect();
+    by_second.sort_by(|a, b| a.0.cmp(b.0));
+    let seconds: Vec[i64] = by_second.iter().map(|p| p.0).collect();
+    let mut size = 1;
+    while size < n {
+        size *= 2;
+    }
+    // leaves size..size + n hold one pair each; node k covers 2k and 2k + 1
+    let mut leaves: Vec[Vec[(i64, i64)]] = Vec.filled(2 * size, Vec.new());
+    for i in 0..n {
+        leaves[size + i] = [(by_second[i].1, by_second[i].2)].to_vec();
+    }
+    for k in (1..size).rev() {
+        let mut both = leaves[2 * k].clone();
+        both.extend(leaves[2 * k + 1].iter());
+        leaves[k] = both;
+    }
+    let tree: Vec[Node] = leaves.iter().map(|points| segment_build(points)).collect();
+    queries.iter().map(|query| {
+        // the first pair, in nums2 order, with nums2 >= y
+        let mut low = 0;
+        let mut high = n;
+        while low < high {
+            let middle = (low + high) / 2;
+            if seconds[middle] >= query[1] {
+                high = middle;
+            } else {
+                low = middle + 1;
+            }
+        }
+        let mut left = low + size;
+        let mut right = n + size;
+        let mut best = -1;
+        while left < right {
+            if left % 2 == 1 {
+                best = best.max(segment_node_best(tree[left], query[0]));
+                left += 1;
+            }
+            if right % 2 == 1 {
+                right -= 1;
+                best = best.max(segment_node_best(tree[right], query[0]));
+            }
+            left /= 2;
+            right /= 2;
+        }
+        best
+    }).collect()
+}
+
+
+// ---- solution (queries_solution.kara) -------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn maximum_sum_queries(nums1: own Vec[i32], nums2: own Vec[i32], queries: Vec[Vec[i32]]) -> Vec[i32] {
+        let n = nums1.len();
+        let mut a: Vec[(i32, i32)] = nums1.into_iter().zip(nums2.into_iter()).collect();
+        a.sort_by(|x, y| y.0.cmp(x.0));
+        let mut qs: Vec[(i64, i32, i32)] = queries.iter().enumerate().map(|(i, q)| (i, q[0], q[1])).collect();
+        qs.sort_by(|x, y| y.1.cmp(x.1));
+        let mut ans = Vec.filled(queries.len(), -1);
+        let mut st: Vec[(i32, i32)] = Vec.new();
+        let mut j = 0;
+        for (i, x, y) in qs {
+            while j < n and a[j].0 >= x {
+                let (p, q) = a[j];
+                let s = p + q;
+                while let Some((_, ts)) = st.last().cloned() {
+                    if ts <= s {
+                        st.pop();
+                    } else {
+                        break;
+                    }
+                }
+                if st.is_empty() or st.last().unwrap().0 < q {
+                    st.push((q, s));
+                }
+                j += 1;
+            }
+            let k = st.partition_point(|(b, _)| b < y);
+            if k < st.len() {
+                ans[i] = st[k].1;
+            }
+        }
+        ans
+    }
+}
+
+fn solution_maximum_sum_queries(nums1: Vec[i64], nums2: Vec[i64], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let nums1: Vec[i32] = nums1.iter().map(|v| v as i32).collect();
+    let nums2: Vec[i32] = nums2.iter().map(|v| v as i32).collect();
+    let queries: Vec[Vec[i32]] = queries.iter().map(|q| q.iter().map(|v| v as i32).collect()).collect();
+    Solution.maximum_sum_queries(nums1, nums2, queries).iter().map(|v| v as i64).collect()
+}
+
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(nums1: Vec[i64], nums2: Vec[i64], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut answer: Vec[i64] = Vec.new();
+    for query in queries.iter() {
+        let mut best = -1;
+        for j in 0..nums1.len() {
+            if nums1[j] >= query[0] and nums2[j] >= query[1] and nums1[j] + nums2[j] > best {
+                best = nums1[j] + nums2[j];
+            }
+        }
+        answer.push(best);
+    }
+    answer
+}
+
+fn answer(arm: i64, nums1: Vec[i64], nums2: Vec[i64], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    match arm {
+        0 => star_maximum_sum_queries(nums1, nums2, queries),
+        1 => scan_maximum_sum_queries(nums1, nums2, queries),
+        2 => fenwick_maximum_sum_queries(nums1, nums2, queries),
+        3 => segment_maximum_sum_queries(nums1, nums2, queries),
+        _ => solution_maximum_sum_queries(nums1, nums2, queries),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_up_to(seed: mut ref i64, most: i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1
+}
+
+fn main() {
+    let names = ["star", "scan", "fenwick", "segment", "solution"];
+    let mut seed = 2736;
+    let mut cases: Vec[(Vec[i64], Vec[i64], Vec[Vec[i64]])] = Vec.new();
+    for c in 0..700 {
+        let (n, q, most) = if c < 600 {
+            (next_random(mut seed) % 15 + 1, next_random(mut seed) % 15 + 1, 20)
+        } else {
+            (next_random(mut seed) % 300 + 1, next_random(mut seed) % 300 + 1, 1000000000)
+        };
+        let nums1: Vec[i64] = (0..n).map(|_| random_up_to(mut seed, most)).collect();
+        let nums2: Vec[i64] = (0..n).map(|_| random_up_to(mut seed, most)).collect();
+        let queries: Vec[Vec[i64]] = (0..q).map(|_| [random_up_to(mut seed, most), random_up_to(mut seed, most)].to_vec()).collect();
+        cases.push((nums1, nums2, queries));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (nums1, nums2, queries)) in cases.iter().enumerate() {
+        let truth = literal(nums1, nums2, queries);
+        for t in truth.iter() {
+            check = (check * 31 + t + 1) % 1000000007;
+        }
+        let back1: Vec[i64] = nums1.iter().rev().collect();
+        let back2: Vec[i64] = nums2.iter().rev().collect();
+        let back_queries: Vec[Vec[i64]] = queries.iter().rev().map(|q| q.clone()).collect();
+        let swapped_queries: Vec[Vec[i64]] = queries.iter().map(|q| [q[1], q[0]].to_vec()).collect();
+        let mut with_all = queries.clone();
+        with_all.push([1, 1].to_vec());
+        let largest = (0..nums1.len()).map(|j| nums1[j] + nums2[j]).max().unwrap();
+        let got: Vec[Vec[i64]] = (0..5).map(|arm| answer(arm, nums1, nums2, queries)).collect();
+        for arm in 0..5 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let reversed: Vec[i64] = value.iter().rev().collect();
+            let extended = answer(arm, nums1, nums2, with_all);
+            let bounded = (0..queries.len()).all(|k| value[k] == -1 or value[k] >= queries[k][0] + queries[k][1]);
+            let verdicts = [
+                value == truth,
+                answer(arm, back1, back2, queries) == value,
+                answer(arm, nums1, nums2, back_queries) == reversed,
+                answer(arm, nums2, nums1, swapped_queries) == value,
+                bounded and extended[queries.len()] == largest,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

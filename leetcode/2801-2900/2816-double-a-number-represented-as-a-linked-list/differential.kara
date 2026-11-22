@@ -1,0 +1,316 @@
+// LeetCode #2816: Double a Number Represented as a Linked List -- the
+// differential. The five arms, against the statement read literally: the
+// digits read as one number, that number times 2, and its digits written
+// out again; no carry and no list. 2000 random numbers of 1 to 12
+// digits; then 50 of up to 3000. Every case is drawn before any arm
+// answers; the literal reading is asked only of the first 2000. The four
+// own arms share the `shared` list; the solution keeps LeetCode's plain
+// one, here `BoxNode`, with `i32` values.
+//
+// P1  up to 12 digits, the digits are the literal reading's
+// P2  digits from 0 to 9, no leading 0 but for 0 itself, and one digit
+//     more just when the first was 5 or more
+// P3  halved by long division: the number given
+// P4  the last digit the given last digit's double, modulo 10
+// P5  the number with a 0 after it: the answer with a 0 after it
+// P6  each arm agrees with at least three of the other four
+
+shared struct ListNode {
+    mut val: i64,
+    mut next: Option[ListNode],
+}
+
+
+// ---- star (double.kara) ---------------------------------------------
+
+fn star_double_it(head: Option[ListNode]) -> Option[ListNode] {
+    let Some(first) = head else {
+        return None;
+    };
+    let start = if first.val > 4 { ListNode { val: 0, next: Some(first) } } else { first };
+    let mut cur = Some(start);
+    while let Some(node) = cur {
+        node.val = node.val * 2 % 10;
+        if let Some(after) = node.next {
+            if after.val > 4 {
+                node.val += 1;
+            }
+        }
+        cur = node.next;
+    }
+    Some(start)
+}
+
+
+// ---- prev (double_prev.kara) ----------------------------------------
+
+fn prev_double_it(head: Option[ListNode]) -> Option[ListNode] {
+    let front = ListNode { val: 0, next: head };
+    let mut behind = front;
+    let mut cur = front.next;
+    while let Some(node) = cur {
+        let twice = node.val * 2;
+        if twice >= 10 {
+            behind.val += 1;
+        }
+        node.val = twice % 10;
+        behind = node;
+        cur = node.next;
+    }
+    if front.val > 0 { Some(front) } else { front.next }
+}
+
+
+// ---- reverse (double_reverse.kara) ----------------------------------
+
+fn reverse_reversed(head: Option[ListNode]) -> Option[ListNode] {
+    let mut done: Option[ListNode] = None;
+    let mut cur = head;
+    while let Some(node) = cur {
+        cur = node.next;
+        node.next = done;
+        done = Some(node);
+    }
+    done
+}
+
+fn reverse_double_it(head: Option[ListNode]) -> Option[ListNode] {
+    let tail_first = reverse_reversed(head);
+    let mut carry = 0;
+    let mut cur = tail_first;
+    while let Some(node) = cur {
+        let twice = node.val * 2 + carry;
+        node.val = twice % 10;
+        carry = twice / 10;
+        cur = node.next;
+    }
+    let back = reverse_reversed(tail_first);
+    if carry > 0 { Some(ListNode { val: carry, next: back }) } else { back }
+}
+
+
+// ---- stack (double_stack.kara) --------------------------------------
+
+fn stack_double_it(head: Option[ListNode]) -> Option[ListNode] {
+    let mut digits: Vec[i64] = Vec.new();
+    let mut cur = head;
+    while let Some(node) = cur {
+        digits.push(node.val);
+        cur = node.next;
+    }
+    let mut out: Vec[i64] = Vec.new();
+    let mut carry = 0;
+    while let Some(d) = digits.pop() {
+        let twice = d * 2 + carry;
+        out.push(twice % 10);
+        carry = twice / 10;
+    }
+    if carry > 0 {
+        out.push(carry);
+    }
+    let mut built: Option[ListNode] = None;
+    for d in out.iter() {
+        built = Some(ListNode { val: d, next: built });
+    }
+    built
+}
+
+
+// ---- solution (double_solution.kara) --------------------------------
+
+// LeetCode's singly-linked list, renamed `BoxNode` here.
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct BoxNode {
+    pub val: i32,
+    pub next: Option[BoxNode],
+}
+
+impl BoxNode {
+    #[inline]
+    fn new(val: i32) -> Self {
+        BoxNode { next: None, val }
+    }
+}
+
+fn solution_carry(node: mut ref Option[BoxNode]) -> i32 {
+    match node {
+        None => 0,
+        Some(n) => {
+            let v = n.val * 2 + solution_carry(mut n.next);
+            n.val = v % 10;
+            v / 10
+        }
+    }
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn double_it(head: own Option[BoxNode]) -> Option[BoxNode] {
+        let mut head = head;
+        let c = solution_carry(mut head);
+        if c > 0 {
+            Some(BoxNode { val: c, next: head })
+        } else {
+            head
+        }
+    }
+}
+
+fn solution_double_it(head: own Option[BoxNode]) -> Option[BoxNode] {
+    Solution.double_it(head)
+}
+
+
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(digits: Vec[i64]) -> Vec[i64] {
+    let number = digits.iter().fold(0, |n, d| n * 10 + d);
+    f"{number * 2}".chars().map(|c| c.to_digit(10).unwrap() as i64).collect()
+}
+
+fn build(values: Vec[i64]) -> Option[ListNode] {
+    let mut head: Option[ListNode] = None;
+    for v in values.iter().rev() {
+        head = Some(ListNode { val: v, next: head });
+    }
+    head
+}
+
+fn values_of(head: Option[ListNode]) -> Vec[i64] {
+    let mut out = Vec.new();
+    let mut cur = head;
+    while let Some(node) = cur {
+        out.push(node.val);
+        cur = node.next;
+    }
+    out
+}
+
+fn solution_build(values: Vec[i64]) -> Option[BoxNode] {
+    let mut head: Option[BoxNode] = None;
+    for v in values.iter().rev() {
+        head = Some(BoxNode { val: v as i32, next: head });
+    }
+    head
+}
+
+fn solution_values_of(head: Option[BoxNode]) -> Vec[i64] {
+    let mut out = Vec.new();
+    let mut cur = ref head;
+    while let Some(node) = cur {
+        out.push(node.val as i64);
+        cur = ref node.next;
+    }
+    out
+}
+
+fn answer(arm: i64, digits: Vec[i64]) -> Vec[i64] {
+    match arm {
+        0 => values_of(star_double_it(build(digits))),
+        1 => values_of(prev_double_it(build(digits))),
+        2 => values_of(reverse_double_it(build(digits))),
+        3 => values_of(stack_double_it(build(digits))),
+        _ => solution_values_of(solution_double_it(solution_build(digits))),
+    }
+}
+
+// long division by 2, the leading 0 it leaves dropped
+fn halved(digits: Vec[i64]) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    let mut rest = 0;
+    for d in digits.iter() {
+        let part = rest * 10 + d;
+        out.push(part / 2);
+        rest = part % 2;
+    }
+    if out.len() > 1 and out[0] == 0 {
+        out.remove(0);
+    }
+    out
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_digits(n: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut digits: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 10).collect();
+    if n > 1 and digits[0] == 0 {
+        digits[0] = next_random(mut seed) % 9 + 1;
+    }
+    digits
+}
+
+fn main() {
+    let names = ["star", "prev", "reverse", "stack", "solution"];
+    let mut seed = 2816;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..2050 {
+        let n = if c < 2000 { next_random(mut seed) % 12 + 1 } else { next_random(mut seed) % 3000 + 1 };
+        cases.push(random_digits(n, mut seed));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, digits) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want: Vec[i64] = if small { literal(digits) } else { Vec.new() };
+        check = want.iter().fold((check * 31 + want.len()) % 1000000007, |h, d| (h * 11 + d) % 1000000007);
+        let n = digits.len();
+        let mut tenfold = digits.clone();
+        if not (n == 1 and digits[0] == 0) {
+            tenfold.push(0);
+        }
+        let got: Vec[Vec[i64]] = (0..5).map(|arm| answer(arm, digits)).collect();
+        for arm in 0..5 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let grows = digits[0] >= 5;
+            let shaped = value.iter().all(|d| d >= 0 and d <= 9)
+                and (value.len() == 1 or value[0] != 0)
+                and value.len() == if grows { n + 1 } else { n };
+            let mut longer = value.clone();
+            if not (n == 1 and digits[0] == 0) {
+                longer.push(0);
+            }
+            let verdicts = [
+                not small or value == want,
+                shaped,
+                halved(value) == digits,
+                value.len() > 0 and value[value.len() - 1] == digits[n - 1] * 2 % 10,
+                answer(arm, tenfold) == longer,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {digits}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

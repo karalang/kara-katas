@@ -1,0 +1,238 @@
+// LeetCode #2834: Find the Minimum Possible Sum of a Beautiful Array --
+// the differential. The five arms, against the statement read
+// literally: every set of n distinct numbers from 1 to n + target, by a
+// bit mask, kept when no two of them sum to target, and the least sum.
+// Every n and target from 1 to 40, then 450 random pairs up to 10^9;
+// the literal reading is asked only of n and target up to 8. The sums
+// are compared modulo 10^9 + 7, as the arms return them.
+//
+// P1  n and target up to 8, the answer is the literal reading's
+// P2  one number more: the sum grows by the next number taken, n + 1 below target / 2, else target + n - target / 2
+// P3  target 1 or 2, or at least 2n: 1 + 2 + .. + n, nothing to avoid
+// P4  an even target made odd, one larger: each number taken from the target up moves up one
+// P5  the answer is from 0 to 10^9 + 6
+// P6  each arm agrees with at least three of the other four
+
+fn literal(n: i64, target: i64) -> i64 {
+    let top = n + target;
+    let mut best = i64.MAX;
+    for mask in 0..(1 << top) {
+        let chosen: Vec[i64] = (0..top).filter(|i| (mask >> i) & 1 == 1).map(|i| i + 1).collect();
+        if chosen.len() != n {
+            continue;
+        }
+        let avoids = chosen.iter().all(|a| chosen.iter().all(|b| a == b or a + b != target));
+        if avoids {
+            best = best.min(chosen.iter().sum());
+        }
+    }
+    best
+}
+
+
+// ---- star (sum.kara) ------------------------------------------------
+
+const STAR_MOD: i64 = 1000000007;
+
+fn star_minimum_possible_sum(n: i64, target: i64) -> i64 {
+    let low = n.min(target / 2);
+    let high = n - low;
+    let first = low * (low + 1) / 2;
+    let rest = high * (2 * target + high - 1) / 2;
+    (first + rest) % STAR_MOD
+}
+
+
+// ---- skip (sum_skip.kara) -------------------------------------------
+
+fn skip_upto(m: i64) -> i64 {
+    m * (m + 1) / 2
+}
+
+fn skip_minimum_possible_sum(n: i64, target: i64) -> i64 {
+    let half = target / 2;
+    if n <= half {
+        return skip_upto(n) % 1000000007;
+    }
+    let skipped = (target - 1 - half).max(0);
+    (skip_upto(n + skipped) - (skip_upto(half + skipped) - skip_upto(half))) % 1000000007
+}
+
+
+// ---- modular (sum_modular.kara) -------------------------------------
+
+const MODULAR_MOD: i64 = 1000000007;
+
+fn modular_power(base: i64, exp: i64) -> i64 {
+    let mut result = 1;
+    let mut b = base % MODULAR_MOD;
+    let mut e = exp;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % MODULAR_MOD;
+        }
+        b = b * b % MODULAR_MOD;
+        e /= 2;
+    }
+    result
+}
+
+fn modular_series(first: i64, count: i64) -> i64 {
+    // first + (first + 1) + .. over count terms: count * (2 first + count - 1) / 2
+    let half = modular_power(2, MODULAR_MOD - 2);
+    count % MODULAR_MOD * ((2 * first + count - 1) % MODULAR_MOD) % MODULAR_MOD * half % MODULAR_MOD
+}
+
+fn modular_minimum_possible_sum(n: i64, target: i64) -> i64 {
+    let low = n.min(target / 2);
+    (modular_series(1, low) + modular_series(target, n - low)) % MODULAR_MOD
+}
+
+
+// ---- search (sum_search.kara) ---------------------------------------
+
+struct Barred {
+    from: i64,
+    to: i64,
+}
+
+impl Barred {
+    // how many barred numbers are at most x
+    fn below(self, x: i64) -> i64 {
+        (x.min(self.to) - self.from + 1).max(0)
+    }
+
+    fn sum_below(self, x: i64) -> i64 {
+        let top = x.min(self.to);
+        if top < self.from {
+            0
+        } else {
+            (top - self.from + 1) * (self.from + top) / 2
+        }
+    }
+}
+
+fn search_minimum_possible_sum(n: i64, target: i64) -> i64 {
+    let barred = Barred { from: target / 2 + 1, to: target - 1 };
+    let mut lo = n;
+    let mut hi = n + target;
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if mid - barred.below(mid) >= n {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    (lo * (lo + 1) / 2 - barred.sum_below(lo)) % 1000000007
+}
+
+
+// ---- solution (sum_solution.kara) -----------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_possible_sum(n: i32, target: i32) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let (n, t) = (n as i64, target as i64);
+        let m = n.min(t / 2);
+        let a = m * (m + 1) / 2;
+        let b = (n - m) * (2 * t + n - m - 1) / 2;
+        ((a + b) % MOD) as i32
+    }
+}
+
+fn solution_minimum_possible_sum(n: i64, target: i64) -> i64 {
+    Solution.minimum_possible_sum(n as i32, target as i32)
+}
+
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, n: i64, target: i64) -> i64 {
+    match arm {
+        0 => star_minimum_possible_sum(n, target),
+        1 => skip_minimum_possible_sum(n, target),
+        2 => modular_minimum_possible_sum(n, target),
+        3 => search_minimum_possible_sum(n, target),
+        _ => solution_minimum_possible_sum(n, target),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "skip", "modular", "search", "solution"];
+    let m = 1000000007;
+    let mut seed = 2834;
+    let mut cases: Vec[(i64, i64)] = Vec.new();
+    for n in 1..=40 {
+        for target in 1..=40 {
+            cases.push((n, target));
+        }
+    }
+    for _ in 0..450 {
+        let n = wide(mut seed) % 999999999 + 1;
+        cases.push((n, wide(mut seed) % 999999999 + 1));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (n, target) in cases.iter() {
+        let small = n <= 8 and target <= 8;
+        let want = if small { literal(n, target) } else { 0 };
+        check = (check * 31 + want + 1) % m;
+        let half = target / 2;
+        let next = if n + 1 <= half { n + 1 } else { target + n - half };
+        let moved = n - n.min(half);
+        let plain = n * (n + 1) / 2 % m;
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, n, target)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == want,
+                answer(arm, n + 1, target) == (value + next) % m,
+                not (target <= 2 or target >= 2 * n) or value == plain,
+                target % 2 == 1 or answer(arm, n, target + 1) == (value + moved) % m,
+                value >= 0 and value < m,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"n {n} target {target}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

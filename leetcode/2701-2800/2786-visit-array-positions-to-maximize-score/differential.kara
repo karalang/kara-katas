@@ -1,0 +1,239 @@
+// LeetCode #2786: Visit Array Positions to Maximize Score -- the
+// differential. The five arms, against the statement read literally:
+// every walk from position 0 to later positions, each a subset of the
+// rest taken by the bits of a mask, scored as the sum of its numbers less
+// x for each step between parities, and the best kept; no running best.
+// 2000 random arrays of 2 to 12 numbers from 1 to 10 with x from 1 to
+// 10; then 50 of up to 2000 numbers up to 10^6 with x up to 10^6. Every
+// case is drawn before any arm answers; the literal reading is asked
+// only of the first 2000.
+//
+// P1  up to 12 numbers, the score is the literal reading's
+// P2  x one more: no more, and no less than the score less n - 1
+// P3  a number put after: no less, and no more than the score plus it
+// P4  x of 10^6, LeetCode's most, where the numbers sum to less: the
+//     sum of the numbers of the first one's parity
+// P5  from the first number to the sum of all, and the sum when they
+//     are all of one parity
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- star (score.kara) ----------------------------------------------
+
+fn star_max_score(nums: Vec[i64], x: i64) -> i64 {
+    let unreached = -1000000000000000;
+    let mut best = [unreached, unreached];
+    best[nums[0] % 2] = nums[0];
+    for v in nums[1..].iter() {
+        let p = v % 2;
+        best[p] = best[p].max(best[1 - p] - x) + v;
+    }
+    best[0].max(best[1])
+}
+
+
+// ---- suffix (score_suffix.kara) -------------------------------------
+
+fn suffix_max_score(nums: Vec[i64], x: i64) -> i64 {
+    let mut later: Vec[Option[i64]] = [None, None].to_vec();
+    let mut from_here = 0;
+    for i in (0..nums.len()).rev() {
+        let v = nums[i];
+        let p = v % 2;
+        let same = later[p] ?? 0;
+        let other = later[1 - p].map(|s| s - x) ?? 0;
+        from_here = v + same.max(other).max(0);
+        later[p] = Some(later[p].map(|s| s.max(from_here)) ?? from_here);
+    }
+    from_here
+}
+
+
+// ---- fold (score_fold.kara) -----------------------------------------
+
+fn fold_max_score(nums: Vec[i64], x: i64) -> i64 {
+    let none = -1000000000000000;
+    let start = if nums[0] % 2 == 0 { (nums[0], none) } else { (none, nums[0]) };
+    let (even, odd) = nums.iter().skip(1).fold(start, |(even, odd), v| {
+        if v % 2 == 0 {
+            (even.max(odd - x) + v, odd)
+        } else {
+            (even, odd.max(even - x) + v)
+        }
+    });
+    even.max(odd)
+}
+
+
+// ---- table (score_table.kara) ---------------------------------------
+
+struct Row {
+    even: Option[i64],
+    odd: Option[i64],
+}
+
+fn table_max_score(nums: Vec[i64], x: i64) -> i64 {
+    let first = if nums[0] % 2 == 0 {
+        Row { even: Some(nums[0]), odd: None }
+    } else {
+        Row { even: None, odd: Some(nums[0]) }
+    };
+    let mut rows: Vec[Row] = [first];
+    for i in 1..nums.len() {
+        let v = nums[i];
+        let last = ref rows[i - 1];
+        let (same, other) = if v % 2 == 0 { (last.even, last.odd) } else { (last.odd, last.even) };
+        let reach = match (same, other) {
+            (Some(s), Some(o)) => s.max(o - x),
+            (Some(s), None) => s,
+            (None, Some(o)) => o - x,
+            (None, None) => 0,
+        };
+        let row = if v % 2 == 0 {
+            Row { even: Some(reach + v), odd: last.odd }
+        } else {
+            Row { even: last.even, odd: Some(reach + v) }
+        };
+        rows.push(row);
+    }
+    let end = ref rows[nums.len() - 1];
+    (end.even ?? 0).max(end.odd ?? 0)
+}
+
+
+// ---- solution (score_solution.kara) ---------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_score(nums: Vec[i32], x: i32) -> i64 {
+        let x = x as i64;
+        let mut dp = [i64.MIN / 2; 2];
+        dp[(nums[0] & 1) as usize] = nums[0];
+        for v in nums[1..] {
+            let p = (v & 1) as usize;
+            dp[p] = dp[p].max(dp[p ^ 1] - x) + v;
+        }
+        dp[0].max(dp[1])
+    }
+}
+
+fn solution_max_score(nums: Vec[i64], x: i64) -> i64 {
+    Solution.max_score(nums.iter().map(|v| v as i32).collect(), x as i32)
+}
+
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(nums: Vec[i64], x: i64) -> i64 {
+    let n = nums.len();
+    let mut best = nums[0];
+    for mask in 0..(1 << (n - 1)) {
+        let mut score = nums[0];
+        let mut last = nums[0];
+        for k in 1..n {
+            if (mask >> (k - 1)) & 1 == 1 {
+                score += nums[k];
+                if nums[k] % 2 != last % 2 {
+                    score -= x;
+                }
+                last = nums[k];
+            }
+        }
+        best = best.max(score);
+    }
+    best
+}
+
+fn answer(arm: i64, nums: Vec[i64], x: i64) -> i64 {
+    match arm {
+        0 => star_max_score(nums, x),
+        1 => suffix_max_score(nums, x),
+        2 => fold_max_score(nums, x),
+        3 => table_max_score(nums, x),
+        _ => solution_max_score(nums, x),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "suffix", "fold", "table", "solution"];
+    let mut seed = 2786;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..2050 {
+        if c < 2000 {
+            let n = next_random(mut seed) % 11 + 2;
+            let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 10 + 1).collect();
+            cases.push((nums, next_random(mut seed) % 10 + 1));
+        } else {
+            let n = wide(mut seed) % 1999 + 2;
+            let nums: Vec[i64] = (0..n).map(|_| wide(mut seed) % 1000000 + 1).collect();
+            cases.push((nums, wide(mut seed) % 1000000 + 1));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (nums, x)) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(nums, x) } else { 0 };
+        check = (check * 31 + want) % 1000000007;
+        let n = nums.len();
+        let total: i64 = nums.iter().sum();
+        let one_parity = nums.iter().all(|v| v % 2 == nums[0] % 2);
+        let own: i64 = nums.iter().filter(|v| v % 2 == nums[0] % 2).sum();
+        let last = nums[n - 1];
+        let mut longer = nums.clone();
+        longer.push(last + 1);
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums, x)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let dearer = answer(arm, nums, x + 1);
+            let after = answer(arm, longer, x);
+            let verdicts = [
+                not small or value == want,
+                dearer <= value and dearer >= value - (n - 1),
+                after >= value and after <= value + last + 1,
+                total >= 1000000 or answer(arm, nums, 1000000) == own,
+                nums[0] <= value and value <= total and (not one_parity or value == total),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums} x {x}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

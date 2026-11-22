@@ -1,0 +1,275 @@
+// LeetCode #2771: Longest Non-decreasing Subarray From Two Arrays -- the
+// differential. The five arms, against the statement read literally:
+// every way to build nums3, each index's choice of array a bit of a
+// number, and every subarray of each nums3 checked by `all` for no step
+// down; the longest over every choice. 2000 random pairs of 1 to 11
+// numbers from 1 to a top of 2 to 6; then 50 of up to 2000 from 1 to
+// 10^9, one array rising with noise. Every case is drawn before any arm
+// answers; the literal reading is asked only of the first 2000.
+//
+// P1  up to 11 numbers, the answer is the literal reading's
+// P2  the two arrays swapped: the same answer
+// P3  every number doubled: the same answer
+// P4  both arrays reversed and every number negated: the same answer
+// P5  from 1 to n, and no shorter than the longest run in either array
+//     alone
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let mut best = 0;
+    for choice in 0..(1 << n) {
+        let nums3: Vec[i64] = (0..n).map(|i| if (choice >> i) & 1 == 1 { nums2[i] } else { nums1[i] }).collect();
+        for l in 0..n {
+            for r in l..n {
+                if (l..r).all(|k| nums3[k] <= nums3[k + 1]) and r - l + 1 > best {
+                    best = r - l + 1;
+                }
+            }
+        }
+    }
+    best
+}
+
+
+// ---- star (nondecreasing.kara) --------------------------------------
+
+fn star_max_non_decreasing_length(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let mut (one, two) = (1, 1);
+    let mut best = 1;
+    for i in 1..n {
+        let mut next_one = 1;
+        let mut next_two = 1;
+        if nums1[i - 1] <= nums1[i] {
+            next_one = next_one.max(one + 1);
+        }
+        if nums2[i - 1] <= nums1[i] {
+            next_one = next_one.max(two + 1);
+        }
+        if nums1[i - 1] <= nums2[i] {
+            next_two = next_two.max(one + 1);
+        }
+        if nums2[i - 1] <= nums2[i] {
+            next_two = next_two.max(two + 1);
+        }
+        one = next_one;
+        two = next_two;
+        best = best.max(one).max(two);
+    }
+    best
+}
+
+
+// ---- memo (nondecreasing_memo.kara) ---------------------------------
+
+fn memo_ending(i: i64, side: i64, nums: Slice[Vec[i64]], memo: mut ref Vec[i64]) -> i64 {
+    if memo[2 * i + side] > 0 {
+        return memo[2 * i + side];
+    }
+    let mut best = 1;
+    if i > 0 {
+        for before in 0..2 {
+            let run = memo_ending(i - 1, before, nums, mut memo);
+            if nums[before][i - 1] <= nums[side][i] {
+                best = best.max(run + 1);
+            }
+        }
+    }
+    memo[2 * i + side] = best;
+    best
+}
+
+fn memo_max_non_decreasing_length(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let nums = [nums1.clone(), nums2.clone()];
+    let mut memo: Vec[i64] = Vec.filled(2 * n, 0);
+    let mut best = 0;
+    for side in 0..2 {
+        best = best.max(memo_ending(n - 1, side, nums, mut memo));
+    }
+    for i in 0..n {
+        for side in 0..2 {
+            best = best.max(memo_ending(i, side, nums, mut memo));
+        }
+    }
+    best
+}
+
+
+// ---- windows (nondecreasing_windows.kara) ---------------------------
+
+fn windows_max_non_decreasing_length(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let mut lengths = [1, 1];
+    let mut best = 1;
+    for (a, b) in nums1.windows(2).iter().zip(nums2.windows(2).iter()) {
+        let before = [a[0], b[0]];
+        let now = [a[1], b[1]];
+        let mut next = [1, 1];
+        for side in 0..2 {
+            for p in 0..2 {
+                if before[p] <= now[side] {
+                    next[side] = next[side].max(lengths[p] + 1);
+                }
+            }
+        }
+        lengths = next;
+        best = best.max(lengths[0]).max(lengths[1]);
+    }
+    best
+}
+
+
+// ---- fold (nondecreasing_fold.kara) ---------------------------------
+
+fn fold_max_non_decreasing_length(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let (_, _, _, _, best) = nums1.iter().zip(nums2.iter()).fold((0, 0, 0, 0, 0), |(p1, p2, one, two, best), (x, y)| {
+        let from = |p: i64, run: i64, v: i64| if p <= v { run } else { 0 };
+        let one_now = 1 + from(p1, one, x).max(from(p2, two, x));
+        let two_now = 1 + from(p1, one, y).max(from(p2, two, y));
+        (x, y, one_now, two_now, best.max(one_now).max(two_now))
+    });
+    best
+}
+
+
+// ---- solution (nondecreasing_solution.kara) -------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_non_decreasing_length(nums1: Vec[i32], nums2: Vec[i32]) -> i32 {
+        let n = nums1.len();
+        let mut dp = Vec.filled(n, [1i32; 2]);
+        let mut ans: i32 = 1;
+        for i in 1..n {
+            if nums1[i - 1] <= nums1[i] {
+                dp[i][0] = dp[i][0].max(dp[i - 1][0] + 1);
+            }
+            if nums2[i - 1] <= nums1[i] {
+                dp[i][0] = dp[i][0].max(dp[i - 1][1] + 1);
+            }
+            if nums1[i - 1] <= nums2[i] {
+                dp[i][1] = dp[i][1].max(dp[i - 1][0] + 1);
+            }
+            if nums2[i - 1] <= nums2[i] {
+                dp[i][1] = dp[i][1].max(dp[i - 1][1] + 1);
+            }
+            ans = ans.max(dp[i][0]).max(dp[i][1]);
+        }
+        ans
+    }
+}
+
+fn solution_max_non_decreasing_length(nums1: ref Vec[i64], nums2: ref Vec[i64]) -> i64 {
+    let narrow = |v: ref Vec[i64]| v.iter().map(|x| x as i32).collect();
+    Solution.max_non_decreasing_length(narrow(nums1), narrow(nums2))
+}
+
+
+fn answer(arm: i64, nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_max_non_decreasing_length(nums1, nums2),
+        1 => memo_max_non_decreasing_length(nums1, nums2),
+        2 => windows_max_non_decreasing_length(nums1, nums2),
+        3 => fold_max_non_decreasing_length(nums1, nums2),
+        _ => solution_max_non_decreasing_length(nums1, nums2),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// the longest run with no step down in one array
+fn longest_run(nums: Vec[i64]) -> i64 {
+    let mut best = 1;
+    let mut run = 1;
+    for i in 1..nums.len() {
+        run = if nums[i - 1] <= nums[i] { run + 1 } else { 1 };
+        best = best.max(run);
+    }
+    best
+}
+
+fn main() {
+    let names = ["star", "memo", "windows", "fold", "solution"];
+    let mut seed = 2771;
+    let mut cases: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    for c in 0..2050 {
+        if c < 2000 {
+            let n = next_random(mut seed) % 11 + 1;
+            let top = next_random(mut seed) % 5 + 2;
+            let nums1: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top + 1).collect();
+            let nums2: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top + 1).collect();
+            cases.push((nums1, nums2));
+        } else {
+            let n = wide(mut seed) % 2000 + 1;
+            let noise = next_random(mut seed) % 200 + 1;
+            let nums1: Vec[i64] = (0..n).map(|i| i * 10 + next_random(mut seed) % noise + 1).collect();
+            let nums2: Vec[i64] = (0..n).map(|_| wide(mut seed) % 1000000000 + 1).collect();
+            cases.push((nums1, nums2));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (nums1, nums2)) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(nums1, nums2) } else { 0 };
+        check = (check * 31 + want + 1) % 1000000007;
+        let n = nums1.len();
+        let doubled1: Vec[i64] = nums1.iter().map(|x| 2 * x).collect();
+        let doubled2: Vec[i64] = nums2.iter().map(|x| 2 * x).collect();
+        let back1: Vec[i64] = nums1.iter().rev().map(|x| -x).collect();
+        let back2: Vec[i64] = nums2.iter().rev().map(|x| -x).collect();
+        let alone = longest_run(nums1).max(longest_run(nums2));
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums1, nums2)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == want,
+                answer(arm, nums2, nums1) == value,
+                answer(arm, doubled1, doubled2) == value,
+                answer(arm, back1, back2) == value,
+                1 <= value and value <= n and value >= alone,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums1} {nums2}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,89 @@
+// LeetCode #2875: Minimum Size Subarray in Infinite Array -- the rest,
+// less than one copy's sum, without laying nums twice: a run summing to
+// it either lies inside nums, or wraps, a suffix and a prefix, and then
+// what it leaves out is a run inside nums summing to the total less the
+// rest, as long as possible. One sliding window gives both runs' best.
+
+fn windows(nums: Vec[i64], goal: i64) -> (i64, i64) {
+    let mut shortest = -1;
+    let mut longest = -1;
+    let mut sum = 0;
+    let mut left = 0;
+    for right in 0..nums.len() {
+        sum += nums[right];
+        while sum > goal {
+            sum -= nums[left];
+            left += 1;
+        }
+        if sum == goal {
+            let length = right - left + 1;
+            if shortest < 0 or length < shortest {
+                shortest = length;
+            }
+            longest = longest.max(length);
+        }
+    }
+    (shortest, longest)
+}
+
+fn min_size_subarray(nums: Vec[i64], target: i64) -> i64 {
+    let n = nums.len();
+    let total: i64 = nums.iter().sum();
+    let whole = target / total * n;
+    let rest = target % total;
+    if rest == 0 {
+        return whole;
+    }
+    let (inside, _) = windows(nums, rest);
+    let (_, left_out) = windows(nums, total - rest);
+    let wrapped = if left_out < 0 { -1 } else { n - left_out };
+    let best = if inside < 0 { wrapped } else if wrapped < 0 { inside } else { inside.min(wrapped) };
+    if best < 0 { -1 } else { whole + best }
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's three examples; 10^5 values, LeetCode's most, all 1 with
+    // target 10^9, all 10^5 with target 10^9, and 1 to 7 over and over
+    // with target 10^9 - 1
+    println(f"{min_size_subarray([1, 2, 3].to_vec(), 5)} {min_size_subarray([1, 1, 1, 2, 3].to_vec(), 4)} {min_size_subarray([2, 4, 6, 8].to_vec(), 3)}");
+    let n = 100000;
+    println(f"{min_size_subarray(Vec.filled(n, 1), 1000000000)} {min_size_subarray(Vec.filled(n, 100000), 1000000000)} {min_size_subarray((0..n).map(|i| i % 7 + 1).collect(), 999999999)}");
+    // 3000 random arrays of 1 to 6 values from 1 to 5, target 1 to 60;
+    // then 100 of 1000 to 10^5 values, every other one from 1 to 10 and
+    // the rest up to 10^5, target up to 10^9
+    let mut seed = 2875;
+    let mut total = 0;
+    let mut check = 0;
+    let mut missing = 0;
+    for c in 0..3100 {
+        let small = c < 3000;
+        let n = if small { next_random(mut seed) % 6 + 1 } else { wide(mut seed) % 99001 + 1000 };
+        let top = if small { 5 } else if c % 2 == 1 { 10 } else { 100000 };
+        let nums: Vec[i64] = (0..n).map(|_| wide(mut seed) % top + 1).collect();
+        let target = if small { next_random(mut seed) % 60 + 1 } else { wide(mut seed) % 1000000000 + 1 };
+        let length = min_size_subarray(nums, target);
+        if length < 0 {
+            missing += 1;
+        } else {
+            total += length;
+        }
+        check = (check * 31 + length + 1) % 1000000007;
+        if c == 2999 or c == 3099 {
+            println(f"{if small { "3000 short" } else { "100 long" }} arrays: {missing} with none, lengths total {total}, checksum {check}");
+            total = 0;
+            check = 0;
+            missing = 0;
+        }
+    }
+}

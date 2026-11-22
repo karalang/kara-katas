@@ -1,0 +1,86 @@
+// LeetCode #2702: Minimum Operations to Make Numbers Non-positive -- the
+// iterator arm. Whether t operations suffice is a closure: the numbers
+// above t * y `filter`ed, each `map`ped to its extra shares of x - y
+// rounded up, and `sum`med against t; a generic search over any
+// monotone test finds the least t that passes. O(n log(max / y)).
+
+fn first_true(low: i64, high: i64, holds: Fn(i64) -> bool) -> i64 {
+    let mut low = low;
+    let mut high = high;
+    while low < high {
+        let mid = low + (high - low) / 2;
+        if holds(mid) {
+            high = mid;
+        } else {
+            low = mid + 1;
+        }
+    }
+    low
+}
+
+fn min_operations(nums: Vec[i64], x: i64, y: i64) -> i64 {
+    let most = nums.iter().max().unwrap();
+    let enough = |t: i64| {
+        let need: i64 = nums.iter().filter(|v| v > t * y).map(|v| (v - t * y + x - y - 1) / (x - y)).sum();
+        need <= t
+    };
+    first_true(0, most / y + 1, enough)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; one number of 1; one of 10^9 taken by a
+    // single x of 10^9; then 10^5 numbers, LeetCode's most, of 10^9 with
+    // x = 10^9 and y one less, with x = 2 and y = 1, and falling from 10^9
+    // by one with x = 10^9 and y = 1
+    println(f"{min_operations([3, 4, 1, 7, 6].to_vec(), 4, 2)}");
+    println(f"{min_operations([1, 2, 1].to_vec(), 2, 1)}");
+    println(f"{min_operations([1].to_vec(), 2, 1)}");
+    println(f"{min_operations([1000000000].to_vec(), 1000000000, 1)}");
+    let tall: Vec[i64] = (0..100000).map(|_| 1000000000).collect();
+    println(f"{min_operations(tall, 1000000000, 999999999)}");
+    println(f"{min_operations(tall, 2, 1)}");
+    let falling: Vec[i64] = (0..100000).map(|i| 1000000000 - i).collect();
+    println(f"{min_operations(falling, 1000000000, 1)}");
+    // 2000 random cases of 1 to 8 numbers up to 100, y up to 20 and x up
+    // to 30 above it; then 200 of up to 1000 numbers up to 10^9, y up to
+    // 10^9 - 1, or half the time up to 1000, and x above it up to 10^9
+    let mut seed = 2702;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 8 + 1;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 100 + 1).collect();
+        let y = next_random(mut seed) % 20 + 1;
+        let x = y + next_random(mut seed) % 30 + 1;
+        let t = min_operations(nums, x, y);
+        sum += t;
+        check = (check * 31 + t) % 1000000007;
+    }
+    println(f"2000 cases up to 100: operations sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for _ in 0..200 {
+        let n = next_random(mut seed) % 1000 + 1;
+        let nums: Vec[i64] = (0..n).map(|_| wide(mut seed) % 1000000000 + 1).collect();
+        let mut y = wide(mut seed) % 999999999 + 1;
+        if next_random(mut seed) % 2 == 0 {
+            y = next_random(mut seed) % 1000 + 1;
+        }
+        let x = y + wide(mut seed) % (1000000000 - y) + 1;
+        let t = min_operations(nums, x, y);
+        sum += t;
+        check = (check * 31 + t) % 1000000007;
+    }
+    println(f"200 cases up to 1000000000: operations sum to {sum}, checksum {check}");
+}

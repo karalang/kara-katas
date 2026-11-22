@@ -1,0 +1,392 @@
+// LeetCode #2850: Minimum Moves to Spread Stones Over Grid -- the
+// differential. The five arms, against the statement read literally:
+// one stone moved to a cell sharing a side at a time, a breadth-first
+// search over every grid of nine stones out from the one spread, each
+// grid kept as its nine counts in base ten in a `Map[i64, i64]` to its
+// fewest moves; since a move can be made back, that is the fewest to
+// spread it. 2000 random grids, each stone dropped into one of the nine
+// cells, then 50 with every stone dropped into one of at most three,
+// all drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the grid transposed: the same answer
+// P3  the grid mirrored left to right: the same answer
+// P4  the grid turned a quarter: the same answer
+// P5  at least the count of empty cells, at most four times it
+// P6  each arm agrees with at least three of the other four
+
+fn encode(counts: Vec[i64]) -> i64 {
+    counts.iter().fold(0, |code, k| code * 10 + k)
+}
+
+fn fewest_moves() -> Map[i64, i64] {
+    let start: Vec[i64] = Vec.filled(9, 1);
+    let mut seen: Map[i64, i64] = Map.new();
+    seen.insert(encode(start), 0);
+    let mut queue: Vec[Vec[i64]] = Vec.new();
+    queue.push(start);
+    let mut head = 0;
+    while head < queue.len() {
+        let counts = queue[head].clone();
+        head += 1;
+        let moves = seen[encode(counts)];
+        for cell in 0..9 {
+            if counts[cell] == 0 {
+                continue;
+            }
+            let (r, c) = (cell / 3, cell % 3);
+            for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)].iter() {
+                let (nr, nc) = (r + dr, c + dc);
+                if nr < 0 or nr > 2 or nc < 0 or nc > 2 {
+                    continue;
+                }
+                let mut next = counts.clone();
+                next[cell] -= 1;
+                next[nr * 3 + nc] += 1;
+                let code = encode(next);
+                if not seen.contains_key(code) {
+                    seen.insert(code, moves + 1);
+                    queue.push(next);
+                }
+            }
+        }
+    }
+    seen
+}
+
+
+// ---- star (moves.kara) ----------------------------------------------
+
+fn star_spread(k: i64, from: Vec[(i64, i64)], to: Vec[(i64, i64)], used: mut ref Vec[bool]) -> i64 {
+    if k == from.len() {
+        return 0;
+    }
+    let (r, c) = from[k];
+    let mut best = i64.MAX;
+    for j in 0..to.len() {
+        if not used[j] {
+            used[j] = true;
+            let (tr, tc) = to[j];
+            best = best.min((r - tr).abs() + (c - tc).abs() + star_spread(k + 1, from, to, mut used));
+            used[j] = false;
+        }
+    }
+    best
+}
+
+fn star_minimum_moves(grid: Vec[Vec[i64]]) -> i64 {
+    let mut from: Vec[(i64, i64)] = Vec.new();
+    let mut to: Vec[(i64, i64)] = Vec.new();
+    for r in 0..3 {
+        for c in 0..3 {
+            if grid[r][c] == 0 {
+                to.push((r, c));
+            }
+            for _ in 1..grid[r][c] {
+                from.push((r, c));
+            }
+        }
+    }
+    let mut used = Vec.filled(to.len(), false);
+    star_spread(0, from, to, mut used)
+}
+
+
+// ---- permute (moves_permute.kara) -----------------------------------
+
+fn permute_far(a: (i64, i64), b: (i64, i64)) -> i64 {
+    (a.0 - b.0).abs() + (a.1 - b.1).abs()
+}
+
+fn permute_minimum_moves(grid: Vec[Vec[i64]]) -> i64 {
+    let mut from: Vec[(i64, i64)] = Vec.new();
+    let mut to: Vec[(i64, i64)] = Vec.new();
+    for r in 0..3 {
+        for c in 0..3 {
+            if grid[r][c] == 0 {
+                to.push((r, c));
+            }
+            for _ in 1..grid[r][c] {
+                from.push((r, c));
+            }
+        }
+    }
+    let n = to.len();
+    if n == 0 {
+        return 0;
+    }
+    let mut order: Vec[i64] = (0..n).collect();
+    let mut best = i64.MAX;
+    loop {
+        let cost: i64 = (0..n).map(|k| permute_far(from[k], to[order[k]])).sum();
+        best = best.min(cost);
+        let mut i = n - 1;
+        while i > 0 and order[i - 1] >= order[i] {
+            i -= 1;
+        }
+        if i == 0 {
+            break;
+        }
+        let mut j = n - 1;
+        while order[j] <= order[i - 1] {
+            j -= 1;
+        }
+        order.swap(i - 1, j);
+        order[i..].reverse();
+    }
+    best
+}
+
+
+// ---- mask (moves_mask.kara) -----------------------------------------
+
+fn mask_far(a: (i64, i64), b: (i64, i64)) -> i64 {
+    (a.0 - b.0).abs() + (a.1 - b.1).abs()
+}
+
+fn mask_minimum_moves(grid: Vec[Vec[i64]]) -> i64 {
+    let mut from: Vec[(i64, i64)] = Vec.new();
+    let mut to: Vec[(i64, i64)] = Vec.new();
+    for r in 0..3 {
+        for c in 0..3 {
+            if grid[r][c] == 0 {
+                to.push((r, c));
+            }
+            for _ in 1..grid[r][c] {
+                from.push((r, c));
+            }
+        }
+    }
+    let m = to.len();
+    let full = 1 << m;
+    let mut best: Vec[i64] = Vec.filled(full, i64.MAX);
+    best[0] = 0;
+    for mask in 0..full {
+        let k = mask.count_ones();
+        if best[mask] == i64.MAX or k == m {
+            continue;
+        }
+        for j in 0..m {
+            if mask & (1 << j) == 0 {
+                let next = mask | (1 << j);
+                best[next] = best[next].min(best[mask] + mask_far(from[k], to[j]));
+            }
+        }
+    }
+    best[full - 1]
+}
+
+
+// ---- flow (moves_flow.kara) -----------------------------------------
+
+struct Edge {
+    to: i64,
+    cap: i64,
+    cost: i64,
+}
+
+struct Network {
+    edges: Vec[Edge],
+    out: Vec[Vec[i64]],
+}
+
+impl Network {
+    fn new(n: i64) -> Network {
+        Network { edges: Vec.new(), out: Vec.filled(n, Vec.new()) }
+    }
+
+    fn link(mut ref self, a: i64, b: i64, cap: i64, cost: i64) {
+        self.out[a].push(self.edges.len());
+        self.edges.push(Edge { to: b, cap: cap, cost: cost });
+        self.out[b].push(self.edges.len());
+        self.edges.push(Edge { to: a, cap: 0, cost: -cost });
+    }
+
+    fn cheapest(mut ref self, source: i64, sink: i64) -> i64 {
+        let n = self.out.len();
+        let mut total = 0;
+        loop {
+            let mut dist: Vec[i64] = Vec.filled(n, i64.MAX);
+            let mut via: Vec[i64] = Vec.filled(n, -1);
+            dist[source] = 0;
+            let mut changed = true;
+            while changed {
+                changed = false;
+                for u in 0..n {
+                    if dist[u] == i64.MAX {
+                        continue;
+                    }
+                    for e in self.out[u].iter() {
+                        let v = self.edges[e].to;
+                        if self.edges[e].cap > 0 and dist[u] + self.edges[e].cost < dist[v] {
+                            dist[v] = dist[u] + self.edges[e].cost;
+                            via[v] = e;
+                            changed = true;
+                        }
+                    }
+                }
+            }
+            if dist[sink] == i64.MAX {
+                return total;
+            }
+            let mut v = sink;
+            while v != source {
+                let e = via[v];
+                self.edges[e].cap -= 1;
+                self.edges[e ^ 1].cap += 1;
+                v = self.edges[e ^ 1].to;
+            }
+            total += dist[sink];
+        }
+    }
+}
+
+fn flow_minimum_moves(grid: Vec[Vec[i64]]) -> i64 {
+    // nodes: 0 the source, 1 to 9 the cells, 10 the sink
+    let mut net = Network.new(11);
+    for a in 0..9 {
+        let have = grid[a / 3][a % 3];
+        if have > 1 {
+            net.link(0, a + 1, have - 1, 0);
+            for b in 0..9 {
+                if grid[b / 3][b % 3] == 0 {
+                    net.link(a + 1, b + 1, 9, (a / 3 - b / 3).abs() + (a % 3 - b % 3).abs());
+                }
+            }
+        } else if have == 0 {
+            net.link(a + 1, 10, 1, 0);
+        }
+    }
+    net.cheapest(0, 10)
+}
+
+
+// ---- solution (moves_solution.kara) ---------------------------------
+
+fn solution_dfs(k: i64, from: ref Vec[(i32, i32)], to: ref Vec[(i32, i32)], used: mut ref Vec[bool]) -> i32 {
+    if k == from.len() {
+        return 0;
+    }
+    let mut best = i32.MAX;
+    for j in 0..to.len() {
+        if not used[j] {
+            used[j] = true;
+            let d = (from[k].0 - to[j].0).abs() + (from[k].1 - to[j].1).abs();
+            best = best.min(d + solution_dfs(k + 1, from, to, mut used));
+            used[j] = false;
+        }
+    }
+    best
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_moves(grid: Vec[Vec[i32]]) -> i32 {
+        let mut from = Vec.new();
+        let mut to = Vec.new();
+        for i in 0..3 {
+            for j in 0..3 {
+                if grid[i][j] == 0 {
+                    to.push((i as i32, j as i32));
+                } else {
+                    for _ in 1..grid[i][j] {
+                        from.push((i as i32, j as i32));
+                    }
+                }
+            }
+        }
+        let mut used = Vec.filled(to.len(), false);
+        solution_dfs(0, from, to, mut used)
+    }
+}
+
+fn solution_minimum_moves(grid: Vec[Vec[i64]]) -> i64 {
+    let g: Vec[Vec[i32]] = grid.iter().map(|r| r.iter().map(|x| x as i32).collect()).collect();
+    Solution.minimum_moves(g)
+}
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, grid: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_minimum_moves(grid),
+        1 => permute_minimum_moves(grid),
+        2 => mask_minimum_moves(grid),
+        3 => flow_minimum_moves(grid),
+        _ => solution_minimum_moves(grid),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "permute", "mask", "flow", "solution"];
+    let fewest = fewest_moves();
+    let mut seed = 2850;
+    let mut cases: Vec[Vec[Vec[i64]]] = Vec.new();
+    for c in 0..2050 {
+        let mut counts: Vec[i64] = Vec.filled(9, 0);
+        let cells: Vec[i64] = if c < 2000 { (0..9).collect() } else { (0..next_random(mut seed) % 3 + 1).map(|_| next_random(mut seed) % 9).collect() };
+        for _ in 0..9 {
+            counts[cells[next_random(mut seed) % cells.len()]] += 1;
+        }
+        let grid: Vec[Vec[i64]] = (0..3).map(|r| (0..3).map(|c| counts[r * 3 + c]).collect()).collect();
+        cases.push(grid);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, grid) in cases.iter().enumerate() {
+        let counts: Vec[i64] = grid.iter().flat_map(|row| row.iter()).collect();
+        let want = fewest[encode(counts)];
+        check = (check * 31 + want) % 1000000007;
+        let empty = counts.iter().filter(|k| k == 0).count();
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, grid)).collect();
+        let transposed: Vec[Vec[i64]] = (0..3).map(|r| (0..3).map(|c| grid[c][r]).collect()).collect();
+        let mirrored: Vec[Vec[i64]] = (0..3).map(|r| (0..3).map(|c| grid[r][2 - c]).collect()).collect();
+        let turned: Vec[Vec[i64]] = (0..3).map(|r| (0..3).map(|c| grid[2 - c][r]).collect()).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == want,
+                answer(arm, transposed) == value,
+                answer(arm, mirrored) == value,
+                answer(arm, turned) == value,
+                empty <= value and value <= 4 * empty,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {grid}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases, {fewest.len()} grids searched: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

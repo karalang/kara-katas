@@ -1,0 +1,97 @@
+// LeetCode #2832: Maximal Range That Each Element Is Maximum in It -- a
+// Rust solution as LeetCode's Rust users write it, carried to Kāra by
+// `karac fix`: `vec![-1i32; n]` and `vec![n as i32; n]` for the ends, a
+// `Vec<usize>` stack walked twice with `while let Some(&top)`, and the
+// answer collected as `i32`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn maximum_length_of_ranges(nums: Vec[i32]) -> Vec[i32] {
+        let n = nums.len();
+        let mut left = Vec.filled(n, -1i32);
+        let mut right = Vec.filled(n, n as i32);
+        let mut stk: Vec[i64] = Vec.new();
+        for i in 0..n {
+            while let Some(j) = stk.last().cloned() {
+                if nums[j] > nums[i] {
+                    break;
+                }
+                stk.pop();
+            }
+            if let Some(j) = stk.last().cloned() {
+                left[i] = j as i32;
+            }
+            stk.push(i);
+        }
+        stk.clear();
+        for i in (0..n).rev() {
+            while let Some(j) = stk.last().cloned() {
+                if nums[j] > nums[i] {
+                    break;
+                }
+                stk.pop();
+            }
+            if let Some(j) = stk.last().cloned() {
+                right[i] = j as i32;
+            }
+            stk.push(i);
+        }
+        (0..n).map(|i| right[i] - left[i] - 1).collect()
+    }
+}
+
+fn maximum_length_of_ranges(nums: Vec[i64]) -> Vec[i64] {
+    Solution.maximum_length_of_ranges(nums.iter().map(|v| v as i32).collect())
+        .into_iter()
+        .map(|v| v as i64)
+        .collect()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn digest(xs: Vec[i64]) -> i64 {
+    xs.iter().fold(0, |h, x| (h * 131 + x) % 1000000007)
+}
+
+// n distinct numbers from 1 to 10^5: the i-th in its own stride of
+// 10^5 / n, picked at random there, and then all shuffled
+fn distinct(n: i64, seed: mut ref i64) -> Vec[i64] {
+    let step = 100000 / n;
+    let mut nums: Vec[i64] = (0..n).map(|i| i * step + next_random(mut seed) % step + 1).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        nums.swap(i, j);
+    }
+    nums
+}
+
+fn main() {
+    // LeetCode's two examples; one number; falling; and 10^5 numbers,
+    // LeetCode's most, 1 to 10^5 shuffled
+    println(f"{maximum_length_of_ranges([1, 5, 4, 3, 6])}");
+    println(f"{maximum_length_of_ranges([1, 2, 3, 4, 5])}");
+    println(f"{maximum_length_of_ranges([7])}");
+    println(f"{maximum_length_of_ranges([9, 7, 5, 3, 1])}");
+    let mut seed = 2832;
+    let out = maximum_length_of_ranges(distinct(100000, mut seed));
+    println(f"{out.len()} {out.iter().sum()} {digest(out)}");
+    // 3000 random arrays of 1 to 12 numbers; then 50 of up to 3000
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 12 + 1;
+        check = (check * 31 + digest(maximum_length_of_ranges(distinct(n, mut seed)))) % 1000000007;
+    }
+    println(f"3000 short arrays: checksum {check}");
+    check = 0;
+    for _ in 0..50 {
+        let n = next_random(mut seed) % 3000 + 1;
+        check = (check * 31 + digest(maximum_length_of_ranges(distinct(n, mut seed)))) % 1000000007;
+    }
+    println(f"50 long arrays: checksum {check}");
+}

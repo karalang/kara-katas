@@ -1,0 +1,192 @@
+// LeetCode #2729: Check if The Number is Fascinating -- the differential.
+// The five arms, against the statement read literally: the three numbers
+// written one after another into one string, and each of the digits 1 to
+// 9 counted in it and found exactly once, and 0 found nowhere. Every n
+// from 100 to 999, LeetCode's whole domain; then 2000 random n up to
+// 10^5, beyond it, where the joined text is too long. Every case is drawn
+// before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  where 3 n has four digits or more: false
+// P3  where n repeats a digit or holds a 0: false
+// P4  where true: n is a multiple of 3, since the digits 1 to 9 sum to
+//     45 and n + 2 n + 3 n leaves the same remainder by 9 as they do
+// P5  over 100 to 999, exactly 4 are true, each arm counted once
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- star (fascinating.kara) ----------------------------------------
+
+fn star_is_fascinating(n: i64) -> bool {
+    let joined = f"{n}{2 * n}{3 * n}";
+    let mut digits: Vec[char] = joined.chars().collect();
+    digits.sort();
+    let sorted: String = digits.into_iter().collect();
+    sorted == "123456789"
+}
+
+
+// ---- mask (fascinating_mask.kara) -----------------------------------
+
+fn mask_is_fascinating(n: i64) -> bool {
+    let mut mask = 0;
+    let mut seen = 0;
+    for m in [n, 2 * n, 3 * n] {
+        let mut x = m;
+        while x > 0 {
+            let d = x % 10;
+            if d == 0 or (mask >> d) & 1 == 1 {
+                return false;
+            }
+            mask |= 1 << d;
+            seen += 1;
+            x /= 10;
+        }
+    }
+    seen == 9
+}
+
+
+// ---- counts (fascinating_counts.kara) -------------------------------
+
+fn counts_is_fascinating(n: i64) -> bool {
+    let mut counts: Array[i64, 10] = [0; 10];
+    for b in f"{n}{2 * n}{3 * n}".bytes() {
+        counts[b - b'0'] += 1;
+    }
+    counts[0] == 0 and (1..10).all(|d| counts[d] == 1)
+}
+
+
+// ---- set (fascinating_set.kara) -------------------------------------
+
+fn set_is_fascinating(n: i64) -> bool {
+    let joined = f"{n}{2 * n}{3 * n}";
+    let distinct: Set[char] = joined.chars().collect();
+    joined.len() == 9 and not joined.contains("0") and distinct.len() == 9
+}
+
+
+// ---- solution (fascinating_solution.kara) ---------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn is_fascinating(n: i32) -> bool {
+        let s = f"{n}{2 * n}{3 * n}";
+        let mut v: Vec[char] = s.chars().collect();
+        v.sort();
+        String.from_iter(v.into_iter()) == "123456789"
+    }
+}
+
+fn solution_is_fascinating(n: i64) -> bool {
+    Solution.is_fascinating(n as i32)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+// "concatenate n with the numbers 2 * n and 3 * n", then "the resulting
+// number contains all the digits from 1 to 9 exactly once and does not
+// contain any 0's"
+fn literal(n: i64) -> bool {
+    let mut resulting = String.new();
+    resulting.push_str(n.to_string());
+    resulting.push_str((2 * n).to_string());
+    resulting.push_str((3 * n).to_string());
+    for digit in "123456789".chars() {
+        let mut times = 0;
+        for c in resulting.chars() {
+            if c == digit {
+                times += 1;
+            }
+        }
+        if times != 1 {
+            return false;
+        }
+    }
+    for c in resulting.chars() {
+        if c == '0' {
+            return false;
+        }
+    }
+    true
+}
+
+fn answer(arm: i64, n: i64) -> bool {
+    match arm {
+        0 => star_is_fascinating(n),
+        1 => mask_is_fascinating(n),
+        2 => counts_is_fascinating(n),
+        3 => set_is_fascinating(n),
+        _ => solution_is_fascinating(n),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "mask", "counts", "set", "solution"];
+    let mut seed = 2729;
+    let mut cases: Vec[i64] = (100..1000).collect();
+    for _ in 0..2000 {
+        cases.push((next_random(mut seed) * 32768 + next_random(mut seed)) % 100000 + 1);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut found = [0, 0, 0, 0, 0];
+    for (c, n) in cases.iter().enumerate() {
+        let truth = literal(n);
+        check = (check * 31 + if truth { 2 } else { 1 }) % 1000000007;
+        let text = n.to_string();
+        let distinct: Set[char] = text.chars().collect();
+        let plain = distinct.len() == text.len() and not text.contains("0");
+        let got: Vec[bool] = (0..5).map(|arm| answer(arm, n)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            if value and c < 900 {
+                found[arm] += 1;
+            }
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                3 * n < 1000 or not value,
+                plain or not value,
+                not value or n % 3 == 0,
+                c != 899 or found[arm] == 4,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} (n = {n}), arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

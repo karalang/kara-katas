@@ -1,0 +1,87 @@
+// LeetCode #2827: Number of Beautiful Integers in the Range -- both
+// bounds at once: one digit DP over the digits of high, low padded with
+// leading zeros to the same length, whose state carries whether the
+// prefix still sits on low's digits and on high's; every state, both
+// flags included, memoized in a `Map` keyed by a tuple.
+
+struct Walk {
+    lo: Vec[i64],
+    hi: Vec[i64],
+    k: i64,
+    memo: Map[(i64, i64, i64, bool, bool, bool), i64],
+}
+
+impl Walk {
+    fn count(mut ref self, pos: i64, diff: i64, rem: i64, on_lo: bool, on_hi: bool, started: bool) -> i64 {
+        if pos == self.hi.len() {
+            return if started and diff == 0 and rem == 0 { 1 } else { 0 };
+        }
+        let key = (pos, diff, rem, on_lo, on_hi, started);
+        if let Some(v) = self.memo.get(key) {
+            return v;
+        }
+        let from = if on_lo { self.lo[pos] } else { 0 };
+        let to = if on_hi { self.hi[pos] } else { 9 };
+        let mut total = 0;
+        for d in from..=to {
+            let now = started or d > 0;
+            let next_diff = if now { diff + if d % 2 == 0 { 1 } else { -1 } } else { 0 };
+            let next_rem = (rem * 10 + d) % self.k;
+            total += self.count(pos + 1, next_diff, next_rem, on_lo and d == from, on_hi and d == to, now);
+        }
+        self.memo.insert(key, total);
+        total
+    }
+}
+
+fn number_of_beautiful_integers(low: i64, high: i64, k: i64) -> i64 {
+    let hi: Vec[i64] = high.to_string().bytes().iter().map(|c| (c - b'0') as i64).collect();
+    let shown = low.to_string();
+    let padded = f"{"0".repeat(hi.len() - shown.len())}{shown}";
+    let lo: Vec[i64] = padded.bytes().iter().map(|c| (c - b'0') as i64).collect();
+    let mut walk = Walk { lo, hi, k, memo: Map.new() };
+    walk.count(0, 0, 0, true, true, false)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's three examples; the whole range for k = 1, 7 and 20;
+    // one balanced number alone; and a range of one even-length band
+    println(f"{number_of_beautiful_integers(10, 20, 3)}");
+    println(f"{number_of_beautiful_integers(1, 10, 1)}");
+    println(f"{number_of_beautiful_integers(5, 5, 2)}");
+    println(f"{number_of_beautiful_integers(1, 1000000000, 1)}");
+    println(f"{number_of_beautiful_integers(1, 1000000000, 7)}");
+    println(f"{number_of_beautiful_integers(1, 1000000000, 20)}");
+    println(f"{number_of_beautiful_integers(1234, 1234, 2)}");
+    println(f"{number_of_beautiful_integers(100000, 999999, 3)}");
+    // 300 random ranges up to 10^9 with k from 1 to 20; then 300 ranges
+    // of up to 1000 numbers
+    let mut seed = 2827;
+    let mut check = 0;
+    for _ in 0..300 {
+        let a = wide(mut seed) % 1000000000 + 1;
+        let b = wide(mut seed) % 1000000000 + 1;
+        let k = next_random(mut seed) % 20 + 1;
+        check = (check * 31 + number_of_beautiful_integers(a.min(b), a.max(b), k)) % 1000000007;
+    }
+    println(f"300 wide ranges: checksum {check}");
+    check = 0;
+    for _ in 0..300 {
+        let a = wide(mut seed) % 1000000000 + 1;
+        let b = (a + next_random(mut seed) % 1000).min(1000000000);
+        let k = next_random(mut seed) % 20 + 1;
+        check = (check * 31 + number_of_beautiful_integers(a, b, k)) % 1000000007;
+    }
+    println(f"300 narrow ranges: checksum {check}");
+}

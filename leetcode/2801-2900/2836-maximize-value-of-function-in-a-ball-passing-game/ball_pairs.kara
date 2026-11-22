@@ -1,0 +1,57 @@
+// LeetCode #2836: Maximize Value of Function in a Ball Passing Game --
+// doubling over one table of pairs: step[i] is (where the ball goes,
+// what it gains) for a block of passes, squared level by level while
+// k's bits, low to high, are folded into every start at once.
+
+fn get_max_function_value(receiver: Vec[i64], k: i64) -> i64 {
+    let n = receiver.len();
+    let mut step: Vec[(i64, i64)] = receiver.iter().map(|r| (r, r)).collect();
+    let mut state: Vec[(i64, i64)] = (0..n).map(|i| (i, i)).collect();
+    let mut rest = k;
+    while rest > 0 {
+        if rest % 2 == 1 {
+            state = state.iter().map(|(at, total)| (step[at].0, total + step[at].1)).collect();
+        }
+        step = step.iter().map(|(to, sum)| (step[to].0, sum + step[to].1)).collect();
+        rest /= 2;
+    }
+    state.iter().map(|(_, total)| total).max().unwrap()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; one player; and 10^5 players, LeetCode's
+    // most, each keeping the ball, with k = 10^10, LeetCode's most
+    println(f"{get_max_function_value([2, 0, 1], 4)} {get_max_function_value([1, 1, 1, 2, 3], 3)}");
+    println(f"{get_max_function_value([0], 10000000000)}");
+    println(f"{get_max_function_value((0..100000).collect(), 10000000000)}");
+    // 3000 random games of 1 to 8 players with k up to 20; then 100 of up
+    // to 2000 players with k up to 10^10
+    let mut seed = 2836;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 8 + 1;
+        let receiver: Vec[i64] = (0..n).map(|_| next_random(mut seed) % n).collect();
+        let k = next_random(mut seed) % 20 + 1;
+        check = (check * 31 + get_max_function_value(receiver, k)) % 1000000007;
+    }
+    println(f"3000 small games: checksum {check}");
+    check = 0;
+    for _ in 0..100 {
+        let n = next_random(mut seed) % 2000 + 1;
+        let receiver: Vec[i64] = (0..n).map(|_| next_random(mut seed) % n).collect();
+        let k = (wide(mut seed) * 10 + next_random(mut seed)) % 10000000000 + 1;
+        check = (check * 31 + get_max_function_value(receiver, k)) % 1000000007;
+    }
+    println(f"100 large games: checksum {check}");
+}

@@ -1,0 +1,69 @@
+// LeetCode #2807: Insert Greatest Common Divisors in Linked List -- the
+// bench: the ★ arm over 200 lists of 5000 values, LeetCode's most, up to
+// 1000, every other one of multiples of 12, all drawn first, then each
+// built afresh as a list and answered 10 times, since the answer changes
+// the list in place.
+
+shared struct ListNode {
+    val: i64,
+    mut next: Option[ListNode],
+}
+
+fn gcd(a: i64, b: i64) -> i64 {
+    let mut (a, b) = (a, b);
+    while b != 0 {
+        a, b = b, a % b;
+    }
+    a
+}
+
+fn insert_greatest_common_divisors(head: Option[ListNode]) -> Option[ListNode] {
+    let mut cur = head;
+    while let Some(node) = cur {
+        let Some(after) = node.next else {
+            break;
+        };
+        node.next = Some(ListNode { val: gcd(node.val, after.val), next: Some(after) });
+        cur = Some(after);
+    }
+    head
+}
+
+fn build(values: Vec[i64]) -> Option[ListNode] {
+    let mut head: Option[ListNode] = None;
+    for v in values.iter().rev() {
+        head = Some(ListNode { val: v, next: head });
+    }
+    head
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 200;
+    let rounds = 10;
+    let mut seed = 2807;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for t in 0..count {
+        let step = if t % 2 == 0 { 12 } else { 1 };
+        cases.push((0..5000).map(|_| (next_random(mut seed) % (1000 / step) + 1) * step).collect());
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for values in cases.iter() {
+            let mut sum = 0;
+            let mut cur = insert_greatest_common_divisors(build(values));
+            while let Some(node) = cur {
+                sum += node.val;
+                cur = node.next;
+            }
+            total += sum;
+            check = (check * 31 + sum + r) % 1000000007;
+        }
+    }
+    println(f"{count} lists of 5000, {rounds} rounds: values sum to {total}, checksum {check}");
+}

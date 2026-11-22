@@ -1,0 +1,277 @@
+// LeetCode #2870: Minimum Number of Operations to Make Array Empty --
+// the differential. The five arms, against the statement read
+// literally: every way to take two or three equal values at a time
+// searched, from the array's counts, the fewest operations that empty
+// it kept, each set of counts searched once and kept in a
+// `Map[String, i64]` by its counts written out. 2000 random arrays of
+// 2 to 10 values from 1 to 4, then 50 of up to 3000, every other one
+// with each value it holds at least twice, all drawn before any arm
+// answers; the literal reading is asked only of the first 2000.
+//
+// P1  up to 10 values, the answer is the literal reading's
+// P2  every value v made 2v + 1: the same answer
+// P3  the array three times over: n
+// P4  two more of the first value: the same answer or one more, when
+//     the array can be emptied
+// P5  -1 exactly when a value is seen once, else from n / 3 to n / 2
+// P6  each arm agrees with at least three of the other four
+
+fn fewest(counts: Vec[i64], memo: mut ref Map[String, i64]) -> i64 {
+    if counts.iter().all(|f| f == 0) {
+        return 0;
+    }
+    let key = f"{counts}";
+    if let Some(known) = memo.get(key) {
+        return known;
+    }
+    let mut best = -1;
+    for i in 0..counts.len() {
+        for take in 2..4 {
+            if counts[i] >= take {
+                let mut rest = counts.clone();
+                rest[i] -= take;
+                let after = fewest(rest, mut memo);
+                if after >= 0 and (best < 0 or after + 1 < best) {
+                    best = after + 1;
+                }
+            }
+        }
+    }
+    memo.insert(key, best);
+    best
+}
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let mut counts: Vec[i64] = Vec.filled(5, 0);
+    for v in nums.iter() {
+        counts[v] += 1;
+    }
+    let mut memo: Map[String, i64] = Map.new();
+    fewest(counts, mut memo)
+}
+
+
+// ---- star (empty.kara) ----------------------------------------------
+
+fn star_min_operations(nums: Vec[i64]) -> i64 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut ops = 0;
+    let mut i = 0;
+    while i < sorted.len() {
+        let mut j = i;
+        while j < sorted.len() and sorted[j] == sorted[i] {
+            j += 1;
+        }
+        let f = j - i;
+        if f == 1 {
+            return -1;
+        }
+        ops += (f + 2) / 3;
+        i = j;
+    }
+    ops
+}
+
+
+// ---- map (empty_map.kara) -------------------------------------------
+
+fn map_min_operations(nums: Vec[i64]) -> i64 {
+    let mut counts: Map[i64, i64] = Map.new();
+    for v in nums.iter() {
+        counts[v] = counts.get(v).unwrap_or(0) + 1;
+    }
+    if counts.values().any(|f| f == 1) {
+        return -1;
+    }
+    counts.values().map(|f| (f + 2) / 3).sum()
+}
+
+
+// ---- dp (empty_dp.kara) ---------------------------------------------
+
+fn dp_min_operations(nums: Vec[i64]) -> i64 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut counts: Vec[i64] = Vec.new();
+    for (i, v) in sorted.iter().enumerate() {
+        if i == 0 or sorted[i - 1] != v {
+            counts.push(1);
+        } else {
+            let last = counts.len() - 1;
+            counts[last] += 1;
+        }
+    }
+    let most = counts.iter().max().unwrap();
+    let none = 1000000000;
+    let mut best: Vec[i64] = Vec.filled(most + 1, none);
+    best[0] = 0;
+    for f in 2..most + 1 {
+        let two = best[f - 2];
+        let three = if f >= 3 { best[f - 3] } else { none };
+        if two.min(three) < none {
+            best[f] = two.min(three) + 1;
+        }
+    }
+    let mut ops = 0;
+    for f in counts.iter() {
+        if best[f] == none {
+            return -1;
+        }
+        ops += best[f];
+    }
+    ops
+}
+
+
+// ---- cases (empty_cases.kara) ---------------------------------------
+
+fn cases_min_operations(nums: Vec[i64]) -> i64 {
+    let mut counts: Map[i64, i64] = Map.new();
+    for v in nums.iter() {
+        *counts.entry(v).or_insert(0) += 1;
+    }
+    let mut ops = 0;
+    for f in counts.values() {
+        let (q, r) = (f / 3, f % 3);
+        ops += match r {
+            0 => q,
+            2 => q + 1,
+            _ => {
+                if q == 0 {
+                    return -1;
+                }
+                q + 1
+            }
+        };
+    }
+    ops
+}
+
+
+// ---- solution (empty_solution.kara) ---------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_operations(nums: Vec[i32]) -> i32 {
+        let mut cnt = Map.new();
+        for x in ref nums {
+            *cnt.entry(x).or_insert(0) += 1;
+        }
+        let mut ans = 0;
+        for c in cnt.values() {
+            if c == 1 {
+                return -1;
+            }
+            ans += (c + 2) / 3;
+        }
+        ans
+    }
+}
+
+fn solution_min_operations(nums: Vec[i64]) -> i64 {
+    Solution.min_operations(nums.iter().map(|x| x as i32).collect())
+}
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_min_operations(nums),
+        1 => map_min_operations(nums),
+        2 => dp_min_operations(nums),
+        3 => cases_min_operations(nums),
+        _ => solution_min_operations(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "map", "dp", "cases", "solution"];
+    let mut seed = 2870;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..2050 {
+        let small = c < 2000;
+        let nums: Vec[i64] = if small {
+            (0..next_random(mut seed) % 9 + 2).map(|_| next_random(mut seed) % 4 + 1).collect()
+        } else {
+            let n = wide(mut seed) % 3000 + 2;
+            let mut nums: Vec[i64] = Vec.new();
+            while nums.len() < n {
+                let v = wide(mut seed) % 1000000 + 1;
+                let copies = if c % 2 == 0 { next_random(mut seed) % 7 + 2 } else { next_random(mut seed) % 3 + 1 };
+                for _ in 0..copies {
+                    nums.push(if c % 2 == 0 { v } else { v % (n / 3 + 1) + 1 });
+                }
+            }
+            nums
+        };
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut total = 0;
+    for (c, nums) in cases.iter().enumerate() {
+        let n = nums.len();
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums)).collect();
+        let want = if c < 2000 { literal(nums) } else { got[0] };
+        total += want;
+        check = (check * 31 + want + 1) % 1000000007;
+        let spread: Vec[i64] = nums.iter().map(|v| 2 * v + 1).collect();
+        let thrice: Vec[i64] = nums.iter().chain(nums.iter()).chain(nums.iter()).cloned().collect();
+        let mut more = nums.clone();
+        more.push(nums[0]);
+        more.push(nums[0]);
+        let lone = nums.iter().any(|v| nums.iter().filter(|w| w == v).count() == 1);
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let grown = answer(arm, more);
+            let verdicts = [
+                c >= 2000 or value == want,
+                answer(arm, spread) == value,
+                answer(arm, thrice) == n,
+                value < 0 or grown == value or grown == value + 1,
+                if lone { value == -1 } else { 3 * value >= n and 2 * value <= n },
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases, {total} operations: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

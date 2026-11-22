@@ -1,0 +1,83 @@
+// LeetCode #2840: Check if Strings Can be Made Equal With Operations II
+// -- each string split by parity of place with `step_by`, each half
+// sorted, and the halves compared.
+
+fn halves(s: Str) -> (Vec[u8], Vec[u8]) {
+    let b = s.bytes();
+    let mut even: Vec[u8] = b.iter().step_by(2).collect();
+    let mut odd: Vec[u8] = b.iter().skip(1).step_by(2).collect();
+    even.sort();
+    odd.sort();
+    (even, odd)
+}
+
+fn check_strings(s1: Str, s2: Str) -> bool {
+    halves(s1) == halves(s2)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letters(n: i64, kinds: i64, seed: mut ref i64) -> Vec[u8] {
+    (0..n).map(|_| (97 + next_random(mut seed) % kinds) as u8).collect()
+}
+
+// s shuffled within its even places and within its odd ones, and then,
+// for `spoil`, one letter changed
+fn shuffled(s: Vec[u8], kinds: i64, spoil: bool, seed: mut ref i64) -> Vec[u8] {
+    let mut t = s.clone();
+    let n = t.len();
+    for i in (2..n).rev() {
+        let j = i % 2 + 2 * (next_random(mut seed) % (i / 2 + 1));
+        if j <= i {
+            t.swap(i, j);
+        }
+    }
+    if spoil {
+        t[next_random(mut seed) % n] = (97 + next_random(mut seed) % kinds) as u8;
+    }
+    t
+}
+
+fn main() {
+    // LeetCode's two examples; one letter each; and 10^5 letters,
+    // LeetCode's most, reversed: equal for an odd length, not for an
+    // even one unless the halves agree
+    println(f"{check_strings("abcdba", "cabdab")} {check_strings("abe", "bea")} {check_strings("a", "a")} {check_strings("a", "b")}");
+    let mut seed = 2840;
+    let long = letters(100000, 26, mut seed);
+    let back: Vec[u8] = long.iter().rev().collect();
+    let odd = long[..99999].to_vec();
+    let odd_back: Vec[u8] = odd.iter().rev().collect();
+    let text = |b: Vec[u8]| String.from_utf8(b).unwrap();
+    println(f"{check_strings(text(long), text(back))} {check_strings(text(odd), text(odd_back))}");
+    // 3000 random pairs of 1 to 8 letters over a to c; then 300 of up
+    // to 2000 over all 26: a third random, a third shuffled within
+    // parities, a third shuffled and one letter changed
+    let mut yes = 0;
+    let mut check = 0;
+    for c in 0..3300 {
+        let (n, kinds) = if c < 3000 { (next_random(mut seed) % 8 + 1, 3) } else { (next_random(mut seed) % 2000 + 1, 26) };
+        let s1 = letters(n, kinds, mut seed);
+        let s2 = match c % 3 {
+            0 => letters(n, kinds, mut seed),
+            1 => shuffled(s1, kinds, false, mut seed),
+            _ => shuffled(s1, kinds, true, mut seed),
+        };
+        let same = check_strings(text(s1), text(s2));
+        if same {
+            yes += 1;
+        }
+        check = (check * 31 + if same { 2 } else { 1 }) % 1000000007;
+        if c == 2999 {
+            println(f"3000 short pairs: {yes} true, checksum {check}");
+            yes = 0;
+            check = 0;
+        }
+    }
+    println(f"300 long pairs: {yes} true, checksum {check}");
+}

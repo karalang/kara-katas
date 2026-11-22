@@ -1,0 +1,97 @@
+// LeetCode #2767: Partition String Into Minimum Beautiful Substrings --
+// the search arm. Every way to cut the string into beautiful pieces found
+// by a recursive search from the left: at each place every piece that
+// starts there with a 1 and reads as a power of 5 is taken in turn, and
+// the fewest pieces over the cuts that reach the end kept; no table.
+// Exponential in the worst case.
+
+fn fewest(s: Str, from: i64) -> i64 {
+    if from == s.len() {
+        return 0;
+    }
+    if s[from..from + 1] == "0" {
+        return -1;
+    }
+    let mut best = -1;
+    let mut value = 0;
+    for to in from..s.len() {
+        value = value * 2 + if s[to..to + 1] == "1" { 1 } else { 0 };
+        let mut v = value;
+        while v % 5 == 0 {
+            v /= 5;
+        }
+        if v != 1 {
+            continue;
+        }
+        let rest = fewest(s, to + 1);
+        if rest >= 0 and (best < 0 or rest + 1 < best) {
+            best = rest + 1;
+        }
+    }
+    best
+}
+
+fn minimum_beautiful_substrings(s: String) -> i64 {
+    fewest(s, 0)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn binary(v: i64, length: i64) -> String {
+    (0..length).map(|k| if (v >> (length - 1 - k)) & 1 == 1 { '1' } else { '0' }).collect()
+}
+
+fn fold(a: i64, split: mut ref i64, pieces: mut ref i64, check: mut ref i64) {
+    if a > 0 {
+        *split += 1;
+        *pieces += a;
+    }
+    *check = (*check * 31 + a + 1) % 1000000007;
+}
+
+fn main() {
+    // LeetCode's three examples; one 1; 25, 125 and 625 whole; 5 twice;
+    // and 15625 whole, the greatest power of 5 that fits in 15
+    for s in ["1011", "111", "0", "1", "11001", "1111101", "101101", "1001110001", "11110100001001"] {
+        println(f"{minimum_beautiful_substrings(s.to_string())}");
+    }
+    // every string of 1 to 10 binary digits
+    let mut split = 0;
+    let mut pieces = 0;
+    let mut check = 0;
+    for length in 1..=10 {
+        for v in 0..(1 << length) {
+            fold(minimum_beautiful_substrings(binary(v, length)), mut split, mut pieces, mut check);
+        }
+    }
+    println(f"2046 strings up to 10 long: {split} split, pieces sum to {pieces}, checksum {check}");
+    // 3000 strings of powers of 5 joined while they fit in 15, LeetCode's
+    // most, then half the time one place flipped
+    let powers = ["1", "101", "11001", "1111101", "1001110001", "110000110101", "11110100001001"];
+    let mut seed = 2767;
+    let mut split = 0;
+    let mut pieces = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let mut s = String.new();
+        loop {
+            let p = ref powers[next_random(mut seed) % 7];
+            if s.len() + p.len() > 15 {
+                break;
+            }
+            s.push_str(p);
+        }
+        if next_random(mut seed) % 2 == 1 {
+            let k = next_random(mut seed) % s.len();
+            let flipped = if s[k..k + 1] == "1" { "0" } else { "1" };
+            s = f"{s[..k]}{flipped}{s[k + 1..]}";
+        }
+        fold(minimum_beautiful_substrings(s), mut split, mut pieces, mut check);
+    }
+    println(f"3000 joined powers: {split} split, pieces sum to {pieces}, checksum {check}");
+}

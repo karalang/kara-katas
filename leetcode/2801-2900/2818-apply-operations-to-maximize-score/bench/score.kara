@@ -1,0 +1,95 @@
+// LeetCode #2818: Apply Operations to Maximize Score -- the bench: the
+// ★ arm over 20 arrays of 10^5 numbers up to 10^5, LeetCode's most,
+// each with k up to 10^9, all drawn first, then each answered 3 times.
+
+const MOD: i64 = 1000000007;
+
+fn prime_scores(limit: i64) -> Vec[i64] {
+    let mut score: Vec[i64] = Vec.filled(limit + 1, 0);
+    for p in 2..=limit {
+        if score[p] == 0 {
+            let mut q = p;
+            while q <= limit {
+                score[q] += 1;
+                q += p;
+            }
+        }
+    }
+    score
+}
+
+fn power(base: i64, exp: i64) -> i64 {
+    let mut result = 1;
+    let mut b = base % MOD;
+    let mut e = exp;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % MOD;
+        }
+        b = b * b % MOD;
+        e /= 2;
+    }
+    result
+}
+
+fn maximum_score(nums: Vec[i64], k: i64) -> i64 {
+    let n = nums.len();
+    let score = prime_scores(nums.iter().max().unwrap());
+    let s: Vec[i64] = nums.iter().map(|v| score[v]).collect();
+    let mut left: Vec[i64] = Vec.filled(n, -1);
+    let mut right: Vec[i64] = Vec.filled(n, n);
+    let mut stack: Vec[i64] = Vec.new();
+    for i in 0..n {
+        while not stack.is_empty() and s[stack[stack.len() - 1]] < s[i] {
+            right[stack.pop().unwrap()] = i;
+        }
+        if let Some(t) = stack.last() {
+            left[i] = t;
+        }
+        stack.push(i);
+    }
+    let mut order: Vec[i64] = (0..n).collect();
+    order.sort_by_key(|i| -nums[i]);
+    let mut rest = k;
+    let mut total = 1;
+    for i in order.iter() {
+        if rest == 0 {
+            break;
+        }
+        let take = ((i - left[i]) * (right[i] - i)).min(rest);
+        total = total * power(nums[i], take) % MOD;
+        rest -= take;
+    }
+    total
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let count = 20;
+    let rounds = 3;
+    let n = 100000;
+    let mut seed = 2818;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for _ in 0..count {
+        let nums: Vec[i64] = (0..n).map(|_| wide(mut seed) % 100000 + 1).collect();
+        cases.push((nums, wide(mut seed) % 1000000000 + 1));
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (nums, k) in cases.iter() {
+            let a = maximum_score(nums, k);
+            total += a;
+            check = (check * 31 + a + r) % 1000000007;
+        }
+    }
+    println(f"{count} arrays of {n}, {rounds} rounds: scores sum to {total}, checksum {check}");
+}

@@ -1,0 +1,53 @@
+// LeetCode #2736: Maximum Sum Queries -- the scan arm. Each query looks at
+// every pair, keeping the largest sum among those with nums1 >= x and
+// nums2 >= y, by `filter` and `map` and `max`. O(n q).
+
+fn maximum_sum_queries(nums1: Vec[i64], nums2: Vec[i64], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    queries.iter().map(|query| {
+        (0..nums1.len())
+            .filter(|j| nums1[j] >= query[0] and nums2[j] >= query[1])
+            .map(|j| nums1[j] + nums2[j])
+            .max()
+            .unwrap_or(-1)
+    }).collect()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a number from 1 to most, most up to 10^9
+fn random_up_to(seed: mut ref i64, most: i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{maximum_sum_queries([4, 3, 1, 2].to_vec(), [2, 4, 9, 5].to_vec(), [[4, 1].to_vec(), [1, 3].to_vec(), [2, 5].to_vec()].to_vec())}");
+    println(f"{maximum_sum_queries([3, 2, 5].to_vec(), [2, 3, 4].to_vec(), [[4, 4].to_vec(), [3, 2].to_vec(), [1, 1].to_vec()].to_vec())}");
+    println(f"{maximum_sum_queries([2, 1].to_vec(), [2, 3].to_vec(), [[3, 3].to_vec()].to_vec())}");
+    // 1000 random cases of 1 to 20 pairs and queries up to 30; then 10 of
+    // 2000 pairs and 2000 queries up to 10^9
+    let mut seed = 2736;
+    let mut sum = 0;
+    let mut check = 0;
+    for c in 0..1010 {
+        let (n, q, most) = if c < 1000 { (next_random(mut seed) % 20 + 1, next_random(mut seed) % 20 + 1, 30) } else { (2000, 2000, 1000000000) };
+        let nums1: Vec[i64] = (0..n).map(|_| random_up_to(mut seed, most)).collect();
+        let nums2: Vec[i64] = (0..n).map(|_| random_up_to(mut seed, most)).collect();
+        let queries: Vec[Vec[i64]] = (0..q).map(|_| [random_up_to(mut seed, most), random_up_to(mut seed, most)].to_vec()).collect();
+        for best in maximum_sum_queries(nums1, nums2, queries).iter() {
+            sum += best;
+            check = (check * 31 + best + 1) % 1000000007;
+        }
+        if c == 999 {
+            println(f"1000 small cases: answers sum to {sum}, checksum {check}");
+            sum = 0;
+            check = 0;
+        }
+    }
+    println(f"10 cases of 2000 pairs: answers sum to {sum}, checksum {check}");
+}

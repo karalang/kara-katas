@@ -1,0 +1,70 @@
+// LeetCode #2830: Maximize the Profit as the Salesman -- from the back:
+// the offers filed by their first house in a `Map` of lists, and
+// after[i] the most gold from house i on: house i unsold, or an offer
+// starting there plus whatever follows its last house.
+
+fn maximize_the_profit(n: i64, offers: Vec[Vec[i64]]) -> i64 {
+    let mut starting: Map[i64, Vec[(i64, i64)]] = Map.new();
+    for o in offers.iter() {
+        starting.entry(o[0]).or_insert(Vec.new()).push((o[1], o[2]));
+    }
+    let mut after: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in (0..n).rev() {
+        after[i] = after[i + 1];
+        if let Some(list) = starting.get(i) {
+            for (end, gold) in list.iter() {
+                after[i] = after[i].max(gold + after[end + 1]);
+            }
+        }
+    }
+    after[0]
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` offers on n houses, each a stretch of up to `span` houses
+fn offers_on(n: i64, count: i64, span: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    (0..count)
+        .map(|_| {
+            let start = next_random(mut seed) % n;
+            let end = (start + next_random(mut seed) % span).min(n - 1);
+            [start, end, next_random(mut seed) % 1000 + 1]
+        })
+        .collect()
+}
+
+fn main() {
+    // LeetCode's two examples; one house; 1000 houses each offered alone
+    // for its number, against one offer for them all; and the same 1000
+    // against an offer for all of them worth more than the parts
+    println(f"{maximize_the_profit(5, [[0, 0, 1], [0, 2, 2], [1, 3, 2]])}");
+    println(f"{maximize_the_profit(5, [[0, 0, 1], [0, 2, 10], [1, 3, 2]])}");
+    println(f"{maximize_the_profit(1, [[0, 0, 7]])}");
+    let mut singles: Vec[Vec[i64]] = (0..1000).map(|i| [i, i, i % 1000 + 1]).collect();
+    singles.push([0, 999, 1000]);
+    println(f"{maximize_the_profit(1000, singles)}");
+    singles.push([0, 999, 600000]);
+    println(f"{maximize_the_profit(1000, singles)}");
+    // 3000 random cases of 1 to 10 houses with 1 to 8 offers; then 50 of
+    // up to 2000 houses with up to 2000 offers of up to 50 houses
+    let mut seed = 2830;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 10 + 1;
+        let count = next_random(mut seed) % 8 + 1;
+        check = (check * 31 + maximize_the_profit(n, offers_on(n, count, n, mut seed))) % 1000000007;
+    }
+    println(f"3000 small streets: checksum {check}");
+    check = 0;
+    for _ in 0..50 {
+        let n = next_random(mut seed) % 2000 + 1;
+        let count = next_random(mut seed) % 2000 + 1;
+        check = (check * 31 + maximize_the_profit(n, offers_on(n, count, 50, mut seed))) % 1000000007;
+    }
+    println(f"50 long streets: checksum {check}");
+}

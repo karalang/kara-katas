@@ -1,0 +1,40 @@
+// LeetCode #2778: Sum of Squares of Special Elements -- the bench in
+// Rust: the ★ arm over 100000 random arrays, all drawn first, then each
+// answered 20 times.
+
+fn sum_of_squares(nums: &[i64]) -> i64 {
+    let n = nums.len();
+    let mut total = 0;
+    for i in 1..=n {
+        if n % i == 0 {
+            total += nums[i - 1] * nums[i - 1];
+        }
+    }
+    total
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 100000;
+    let rounds = 20;
+    let mut seed: i64 = 2778;
+    let mut arrays: Vec<Vec<i64>> = Vec::new();
+    for _ in 0..count {
+        let n = next_random(&mut seed) % 50 + 1;
+        arrays.push((0..n).map(|_| next_random(&mut seed) % 50 + 1).collect());
+    }
+    let mut total: i64 = 0;
+    let mut check: i64 = 0;
+    for r in 0..rounds {
+        for nums in arrays.iter() {
+            let s = sum_of_squares(nums);
+            total += s;
+            check = (check * 31 + s + r) % 1000000007;
+        }
+    }
+    println!("{} arrays, {} rounds: sums total {}, checksum {}", count, rounds, total, check);
+}

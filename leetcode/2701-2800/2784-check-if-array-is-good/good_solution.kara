@@ -1,0 +1,75 @@
+// LeetCode #2784: Check if Array is Good -- a Rust solution as LeetCode's
+// Rust users write it, carried to Kāra by `karac fix`: `mut nums` sorted
+// by `sort_unstable`, each place i but the last checked to hold `(i + 1)
+// as i32`, and the last to hold `(n - 1) as i32`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn is_good(nums: own Vec[i32]) -> bool {
+        let mut nums = nums;
+        nums.sort();
+        let n = nums.len();
+        for i in 0..n - 1 {
+            if nums[i] != (i + 1) as i32 {
+                return false;
+            }
+        }
+        nums[n - 1] == (n - 1) as i32
+    }
+}
+
+fn is_good(nums: Vec[i64]) -> bool {
+    Solution.is_good(nums.iter().map(|v| v as i32).collect())
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// base[n] shuffled: 1 to n - 1 once and n twice
+fn shuffled_base(n: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut nums: Vec[i64] = (1..=n).collect();
+    nums.push(n);
+    for i in (1..n + 1).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        nums.swap(i, j);
+    }
+    nums
+}
+
+fn main() {
+    // LeetCode's four examples; one number; base[99] shuffled, LeetCode's
+    // longest, and the same with its last number raised to 200
+    println(f"{is_good([2, 1, 3].to_vec())}");
+    println(f"{is_good([1, 3, 3, 2].to_vec())}");
+    println(f"{is_good([1, 1].to_vec())}");
+    println(f"{is_good([3, 4, 4, 1, 2, 1].to_vec())}");
+    println(f"{is_good([1].to_vec())}");
+    let mut seed = 2784;
+    let mut long = shuffled_base(99, mut seed);
+    println(f"{is_good(long)}");
+    long[99] = 200;
+    println(f"{is_good(long)}");
+    // 3000 random cases: base[n] for n from 1 to 12 shuffled, and two in
+    // three of them with one number changed to one from 1 to 13
+    let mut good = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let mut nums = shuffled_base(n, mut seed);
+        if next_random(mut seed) % 3 != 0 {
+            let at = next_random(mut seed) % (n + 1);
+            nums[at] = next_random(mut seed) % 13 + 1;
+        }
+        let g = is_good(nums);
+        if g {
+            good += 1;
+        }
+        check = (check * 31 + if g { 2 } else { 1 }) % 1000000007;
+    }
+    println(f"3000 small cases: {good} good, checksum {check}");
+}

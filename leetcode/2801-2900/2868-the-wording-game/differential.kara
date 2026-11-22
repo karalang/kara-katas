@@ -1,0 +1,298 @@
+// LeetCode #2868: The Wording Game -- the differential. The five arms,
+// against the statement read literally: the whole game searched, every
+// playable word tried on every turn, a player winning when some word
+// leaves the other with no win. 2000 random deals of 2 to 8 words of 1
+// to 3 letters from a to d, then 50 of up to 3000 words, every other
+// one from a to e only, all drawn before any arm answers; the literal
+// reading is asked only of the first 2000.
+//
+// P1  up to 8 words, the answer is the literal reading's
+// P2  Bob given "a", smaller than Alice's first word, which he can never
+//     play: the same answer
+// P3  every letter moved one on, when no word holds a z: the same answer
+// P4  Alice given only her first word: she wins exactly when Bob has no
+//     reply to it
+// P5  when Bob has no reply to Alice's first word, Alice wins
+// P6  each arm agrees with at least three of the other four
+
+fn playable(w: Str, last: Str) -> bool {
+    let (c, d) = (w.bytes()[0], last.bytes()[0]);
+    (c == d and w > last) or c == d + 1
+}
+
+fn wins(a: Vec[String], b: Vec[String], used: mut ref Vec[Vec[bool]], turn: i64, last: Str) -> bool {
+    let hand = if turn == 0 { a } else { b };
+    for i in 0..hand.len() {
+        if not used[turn][i] and playable(hand[i], last) {
+            used[turn][i] = true;
+            let other_wins = wins(a, b, mut used, 1 - turn, hand[i]);
+            used[turn][i] = false;
+            if not other_wins {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn literal(a: Vec[String], b: Vec[String]) -> bool {
+    let mut used: Vec[Vec[bool]] = [Vec.filled(a.len(), false), Vec.filled(b.len(), false)].to_vec();
+    used[0][0] = true;
+    not wins(a, b, mut used, 1, a[0])
+}
+
+fn no_reply(a: Vec[String], b: Vec[String]) -> bool {
+    not b.iter().any(|w| playable(w, a[0]))
+}
+
+
+// ---- star (wording.kara) --------------------------------------------
+
+fn star_table(words: Vec[String]) -> Vec[i64] {
+    let mut top: Vec[i64] = Vec.filled(26, -1);
+    for (i, w) in words.iter().enumerate() {
+        top[w.bytes()[0] - b'a'] = i;
+    }
+    top
+}
+
+fn star_can_alice_win(a: Vec[String], b: Vec[String]) -> bool {
+    let mut last = a[0].clone();
+    let tops = [star_table(a), star_table(b)];
+    let hands = [a, b];
+    let mut turn = 1;
+    loop {
+        let c = (last.bytes()[0] - b'a') as i64;
+        let same = tops[turn][c];
+        if same >= 0 and hands[turn][same] > last {
+            last = hands[turn][same].clone();
+        } else if c < 25 and tops[turn][c + 1] >= 0 {
+            last = hands[turn][tops[turn][c + 1]].clone();
+        } else {
+            return turn == 1;
+        }
+        turn = 1 - turn;
+    }
+}
+
+
+// ---- search (wording_search.kara) -----------------------------------
+
+fn search_can_alice_win(a: Vec[String], b: Vec[String]) -> bool {
+    let mut last = a[0].clone();
+    let hands = [a, b];
+    let mut turn = 1;
+    loop {
+        let hand = ref hands[turn];
+        let at = hand.partition_point(|w| w <= last);
+        if at == hand.len() {
+            return turn == 1;
+        }
+        let (c, d) = (hand[at].bytes()[0], last.bytes()[0]);
+        if c != d and c != d + 1 {
+            return turn == 1;
+        }
+        last = hand[at].clone();
+        turn = 1 - turn;
+    }
+}
+
+
+// ---- scan (wording_scan.kara) ---------------------------------------
+
+fn scan_can_alice_win(a: Vec[String], b: Vec[String]) -> bool {
+    let mut last = a[0].clone();
+    let mut at = [1, 0];
+    let hands = [a, b];
+    let mut turn = 1;
+    loop {
+        let hand = ref hands[turn];
+        loop {
+            if at[turn] == hand.len() {
+                return turn == 1;
+            }
+            let w = ref hand[at[turn]];
+            at[turn] += 1;
+            let (c, d) = (w.bytes()[0], last.bytes()[0]);
+            if (c == d and *w > last) or c == d + 1 {
+                last = w.clone();
+                break;
+            }
+        }
+        turn = 1 - turn;
+    }
+}
+
+
+// ---- dp (wording_dp.kara) -------------------------------------------
+
+fn dp_can_alice_win(a: Vec[String], b: Vec[String]) -> bool {
+    let first = a[0].clone();
+    let mut words: Vec[(String, i64)] = a.iter().map(|w| (w.clone(), 0)).collect();
+    words.extend(b.iter().map(|w| (w.clone(), 1)));
+    words.sort();
+    let mut good = [[false; 26]; 2];
+    let mut alice = false;
+    for (w, owner) in words.iter().rev() {
+        let c = (w.bytes()[0] - b'a') as i64;
+        let other = 1 - owner;
+        let mover_wins = good[other][c] or (c < 25 and good[other][c + 1]);
+        if not mover_wins {
+            good[owner][c] = true;
+        }
+        if owner == 0 and *w == first {
+            alice = not mover_wins;
+        }
+    }
+    alice
+}
+
+
+// ---- solution (wording_solution.kara) -------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn can_alice_win(a: Vec[String], b: Vec[String]) -> bool {
+        let mut (i, j) = (1, 0);
+        let mut w = a[0].clone();
+        let mut bob = true;
+        loop {
+            let (words, k) = if bob { (ref b, mut ref j) } else { (ref a, mut ref i) };
+            if *k == words.len() {
+                return bob;
+            }
+            let x = ref words[*k];
+            let (c, d) = (x.bytes()[0], w.bytes()[0]);
+            if (c == d and *x > w) or c == d + 1 {
+                w = x.clone();
+                bob = not bob;
+            }
+            *k += 1;
+        }
+    }
+}
+
+fn solution_can_alice_win(a: Vec[String], b: Vec[String]) -> bool {
+    Solution.can_alice_win(a, b)
+}
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, a: Vec[String], b: Vec[String]) -> bool {
+    match arm {
+        0 => star_can_alice_win(a, b),
+        1 => search_can_alice_win(a, b),
+        2 => scan_can_alice_win(a, b),
+        3 => dp_can_alice_win(a, b),
+        _ => solution_can_alice_win(a, b),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn deal(seed: mut ref i64, n: i64, letters: i64, longest: i64) -> (Vec[String], Vec[String]) {
+    let mut words: Vec[String] = Vec.new();
+    while words.len() < 2 {
+        for _ in 0..n {
+            let len = next_random(mut seed) % longest + 1;
+            words.push((0..len).map(|_| (b'a' + (next_random(mut seed) % letters) as u8) as char).collect());
+        }
+        words.sort();
+        words.dedup();
+    }
+    let mut a: Vec[String] = Vec.new();
+    let mut b: Vec[String] = Vec.new();
+    let first = next_random(mut seed) % words.len();
+    for (i, w) in words.iter().enumerate() {
+        if i == first or (next_random(mut seed) % 2 == 0 and i != (first + 1) % words.len()) {
+            a.push(w.clone());
+        } else {
+            b.push(w.clone());
+        }
+    }
+    (a, b)
+}
+
+fn shifted(words: Vec[String]) -> Vec[String] {
+    words.iter().map(|w| w.bytes().iter().map(|c| (c + 1) as char).collect()).collect()
+}
+
+fn main() {
+    let names = ["star", "search", "scan", "dp", "solution"];
+    let mut seed = 2868;
+    let mut deals: Vec[(Vec[String], Vec[String])] = Vec.new();
+    for c in 0..2050 {
+        let small = c < 2000;
+        let deal = if small {
+            deal(mut seed, next_random(mut seed) % 7 + 2, 4, 3)
+        } else {
+            deal(mut seed, wide(mut seed) % 3000 + 2, if c % 2 == 0 { 26 } else { 5 }, 6)
+        };
+        deals.push(deal);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut alice = 0;
+    for (c, (a, b)) in deals.iter().enumerate() {
+        let got: Vec[bool] = (0..5).map(|arm| answer(arm, a, b)).collect();
+        let want = if c < 2000 { literal(a, b) } else { got[0] };
+        if want {
+            alice += 1;
+        }
+        check = (check * 2 + if want { 1 } else { 0 }) % 1000000007;
+        let helped = a[0] != "a" and b[0] != "a";
+        let mut padded: Vec[String] = ["a".to_string()].to_vec();
+        padded.extend(b.iter().cloned());
+        let has_z = a.iter().chain(b.iter()).any(|w| w.contains("z"));
+        let lone: Vec[String] = [a[0].clone()].to_vec();
+        let stuck = no_reply(a, b);
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                c >= 2000 or value == want,
+                not helped or answer(arm, a, padded) == value,
+                has_z or answer(arm, shifted(a), shifted(b)) == value,
+                answer(arm, lone, b) == stuck,
+                not stuck or value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {a} {b}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{deals.len()} deals, Alice wins {alice}: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

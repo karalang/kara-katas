@@ -1,0 +1,199 @@
+// LeetCode #2824: Count Pairs Whose Sum is Less than Target -- the
+// differential. The five arms, against the statement read literally:
+// every pair of indices i < j, counted when nums[i] + nums[j] is below
+// the target. 3000 random arrays of 1 to 50 numbers from -50 to 50, the
+// target from -50 to 50, all drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the numbers reversed: the same answer
+// P3  the target one higher: no fewer pairs
+// P4  every number negated, the target 1 - target: the pairs counted
+//     there and here make every pair
+// P5  every number one higher and the target two higher, or both lower,
+//     whichever keeps the numbers in -50..=50: the same answer
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(nums: Vec[i64], target: i64) -> i64 {
+    let mut count = 0;
+    for i in 0..nums.len() {
+        for j in i + 1..nums.len() {
+            if nums[i] + nums[j] < target {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+
+// ---- star (pairs.kara) ----------------------------------------------
+
+fn star_count_pairs(nums: Vec[i64], target: i64) -> i64 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut i = 0;
+    let mut j = sorted.len() - 1;
+    let mut count = 0;
+    while i < j {
+        if sorted[i] + sorted[j] < target {
+            count += j - i;
+            i += 1;
+        } else {
+            j -= 1;
+        }
+    }
+    count
+}
+
+
+// ---- all (pairs_all.kara) -------------------------------------------
+
+fn all_count_pairs(nums: Vec[i64], target: i64) -> i64 {
+    (0..nums.len())
+        .map(|i| nums[i + 1..].iter().filter(|v| nums[i] + v < target).count())
+        .sum()
+}
+
+
+// ---- search (pairs_search.kara) -------------------------------------
+
+fn search_count_pairs(nums: Vec[i64], target: i64) -> i64 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut count = 0;
+    for i in 0..sorted.len() {
+        let limit = target - sorted[i];
+        count += sorted[i + 1..].partition_point(|v| v < limit);
+    }
+    count
+}
+
+
+// ---- counts (pairs_counts.kara) -------------------------------------
+
+fn counts_count_pairs(nums: Vec[i64], target: i64) -> i64 {
+    let mut seen: Array[i64, 101] = [0; 101];
+    let mut count = 0;
+    for v in nums.iter() {
+        let limit = target - v;
+        for w in -50..=50 {
+            if w < limit {
+                count += seen[w + 50];
+            }
+        }
+        seen[v + 50] += 1;
+    }
+    count
+}
+
+
+// ---- solution (pairs_solution.kara) ---------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn count_pairs(nums: own Vec[i32], target: i32) -> i32 {
+        let mut nums = nums;
+        nums.sort();
+        let mut (i, j) = (0, nums.len() - 1);
+        let mut ans: i32 = 0;
+        while i < j {
+            if nums[i] + nums[j] < target {
+                ans += (j - i) as i32;
+                i += 1;
+            } else {
+                j -= 1;
+            }
+        }
+        ans
+    }
+}
+
+fn solution_count_pairs(nums: Vec[i64], target: i64) -> i64 {
+    Solution.count_pairs(nums.iter().map(|v| v as i32).collect(), target as i32)
+}
+
+
+// ---- the checks ------------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64], target: i64) -> i64 {
+    match arm {
+        0 => star_count_pairs(nums, target),
+        1 => all_count_pairs(nums, target),
+        2 => search_count_pairs(nums, target),
+        3 => counts_count_pairs(nums, target),
+        _ => solution_count_pairs(nums, target),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "all", "search", "counts", "solution"];
+    let mut seed = 2824;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 50 + 1;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 101 - 50).collect();
+        cases.push((nums, next_random(mut seed) % 101 - 50));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (nums, target)) in cases.iter().enumerate() {
+        let want = literal(nums, target);
+        check = (check * 31 + want) % 1000000007;
+        let n = nums.len();
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let negated: Vec[i64] = nums.iter().map(|v| -v).collect();
+        // shifted by one within -50..=50: up when room is there, else down
+        let step = if nums.iter().all(|v| v < 50) { 1 } else if nums.iter().all(|v| v > -50) { -1 } else { 0 };
+        let shifted: Vec[i64] = nums.iter().map(|v| v + step).collect();
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums, target)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == want,
+                answer(arm, reversed, target) == value,
+                answer(arm, nums, target + 1) >= value,
+                value + answer(arm, negated, 1 - target) == n * (n - 1) / 2,
+                answer(arm, shifted, target + 2 * step) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums} target {target}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

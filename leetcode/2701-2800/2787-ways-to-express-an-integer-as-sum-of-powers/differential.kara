@@ -1,0 +1,244 @@
+// LeetCode #2787: Ways to Express an Integer as Sum of Powers -- the
+// differential. The five arms, against the statement read literally:
+// with m the most numbers whose x-th powers can stay within n, every
+// subset of 1 to m taken by the bits of a mask, and those whose x-th
+// powers sum to n counted; no table. Every n from 1 to 300 with every x
+// from 1 to 5, LeetCode's whole range; the literal reading is asked
+// where m is at most 10.
+//
+// P1  m at most 10, the count is the literal reading's
+// P2  n a power i^x, or the sum of two different ones: at least one way
+// P3  x = 1: Euler's count of n as odd parts, any number of times each
+// P4  2^x past n: one way for n = 1, none for the rest
+// P5  from 0 to 10^9 + 6
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- star (powers.kara) ---------------------------------------------
+
+fn star_number_of_ways(n: i64, x: i64) -> i64 {
+    let modulus = 1000000007;
+    let mut ways: Vec[i64] = Vec.filled(n + 1, 0);
+    ways[0] = 1;
+    let mut i = 1;
+    while i.pow(x as u32) <= n {
+        let p = i.pow(x as u32);
+        for s in (p..=n).rev() {
+            ways[s] = (ways[s] + ways[s - p]) % modulus;
+        }
+        i += 1;
+    }
+    ways[n]
+}
+
+
+// ---- table (powers_table.kara) --------------------------------------
+
+fn table_number_of_ways(n: i64, x: i64) -> i64 {
+    let modulus = 1000000007;
+    let powers: Vec[i64] = (1..=n).map(|i| i.pow(x as u32)).take_while(|p| p <= n).collect();
+    let mut ways: Vec[Vec[i64]] = Vec.filled(powers.len() + 1, Vec.filled(n + 1, 0));
+    ways[0][0] = 1;
+    for k in 1..=powers.len() {
+        let p = powers[k - 1];
+        for s in 0..=n {
+            ways[k][s] = ways[k - 1][s];
+            if s >= p {
+                ways[k][s] = (ways[k][s] + ways[k - 1][s - p]) % modulus;
+            }
+        }
+    }
+    ways[powers.len()][n]
+}
+
+
+// ---- memo (powers_memo.kara) ----------------------------------------
+
+fn memo_ways_from(i: i64, rest: i64, x: i64, memo: mut ref Map[(i64, i64), i64]) -> i64 {
+    if rest == 0 {
+        return 1;
+    }
+    let p = i.pow(x as u32);
+    if p > rest {
+        return 0;
+    }
+    if let Some(w) = memo.get((i, rest)) {
+        return w;
+    }
+    let w = (memo_ways_from(i + 1, rest, x, mut memo) + memo_ways_from(i + 1, rest - p, x, mut memo)) % 1000000007;
+    memo.insert((i, rest), w);
+    w
+}
+
+fn memo_number_of_ways(n: i64, x: i64) -> i64 {
+    let mut memo: Map[(i64, i64), i64] = Map.new();
+    memo_ways_from(1, n, x, mut memo)
+}
+
+
+// ---- sums (powers_sums.kara) ----------------------------------------
+
+fn sums_number_of_ways(n: i64, x: i64) -> i64 {
+    let modulus = 1000000007;
+    let mut sums: Map[i64, i64] = Map.new();
+    sums.insert(0, 1);
+    let mut i = 1;
+    while i.pow(x as u32) <= n {
+        let p = i.pow(x as u32);
+        let moved: Vec[(i64, i64)] = sums.iter().filter(|(s, _)| s + p <= n).map(|(s, w)| (s + p, w)).collect();
+        for (s, w) in moved.iter() {
+            let held = sums.entry(s).or_insert(0);
+            *held = (*held + w) % modulus;
+        }
+        i += 1;
+    }
+    sums.get(n) ?? 0
+}
+
+
+// ---- solution (powers_solution.kara) --------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn number_of_ways(n: i32, x: i32) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let n = n as i64;
+        let mut dp = Vec.filled(n + 1, 0);
+        dp[0] = 1;
+        let mut i = 1;
+        loop {
+            let p = i.pow(x as u32);
+            if p > n {
+                break;
+            }
+            for s in (p..=n).rev() {
+                dp[s] = (dp[s] + dp[s - p]) % MOD;
+            }
+            i += 1;
+        }
+        dp[n] as i32
+    }
+}
+
+fn solution_number_of_ways(n: i64, x: i64) -> i64 {
+    Solution.number_of_ways(n as i32, x as i32)
+}
+
+
+// ---- the statement read literally ------------------------------------------
+
+fn bases(n: i64, x: i64) -> i64 {
+    let mut m = 0;
+    while (m + 1).pow(x as u32) <= n {
+        m += 1;
+    }
+    m
+}
+
+fn literal(n: i64, x: i64) -> i64 {
+    let m = bases(n, x);
+    let mut count = 0;
+    for mask in 0..(1 << m) {
+        let total: i64 = (1..=m).filter(|i| (mask >> (i - 1)) & 1 == 1).map(|i| i.pow(x as u32)).sum();
+        if total == n {
+            count += 1;
+        }
+    }
+    count
+}
+
+// n as odd parts, each used any number of times, mod 10^9 + 7
+fn odd_parts(n: i64) -> i64 {
+    let mut ways: Vec[i64] = Vec.filled(n + 1, 0);
+    ways[0] = 1;
+    for part in (1..=n).step_by(2) {
+        for s in part..=n {
+            ways[s] = (ways[s] + ways[s - part]) % 1000000007;
+        }
+    }
+    ways[n]
+}
+
+fn answer(arm: i64, n: i64, x: i64) -> i64 {
+    match arm {
+        0 => star_number_of_ways(n, x),
+        1 => table_number_of_ways(n, x),
+        2 => memo_number_of_ways(n, x),
+        3 => sums_number_of_ways(n, x),
+        _ => solution_number_of_ways(n, x),
+    }
+}
+
+fn main() {
+    let names = ["star", "table", "memo", "sums", "solution"];
+    let mut cases: Vec[(i64, i64)] = Vec.new();
+    for n in 1..=300 {
+        for x in 1..=5 {
+            cases.push((n, x));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut asked = 0;
+    for (n, x) in cases.iter() {
+        let m = bases(n, x);
+        let small = m <= 10;
+        let want = if small { literal(n, x) } else { -1 };
+        if small {
+            asked += 1;
+        }
+        check = (check * 31 + want + 1) % 1000000007;
+        let mut made = false;
+        for i in 1..=m {
+            for j in i..=m {
+                let p = i.pow(x as u32);
+                if p == n or (j > i and p + j.pow(x as u32) == n) {
+                    made = true;
+                }
+            }
+        }
+        let euler = if x == 1 { odd_parts(n) } else { -1 };
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, n, x)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == want,
+                not made or value >= 1,
+                x != 1 or value == euler,
+                2.pow(x as u32) <= n or value == if n == 1 { 1 } else { 0 },
+                value >= 0 and value < 1000000007,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"n {n} x {x}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases, {asked} asked literally: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

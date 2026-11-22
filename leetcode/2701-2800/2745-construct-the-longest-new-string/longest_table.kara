@@ -1,0 +1,73 @@
+// LeetCode #2745: Construct the Longest New String -- the table arm.
+// Bottom up: `more[a][b][c][last]`, the longest string a, b and c pieces
+// of "AA", "BB" and "AB" can add after the piece `last` (0 "AA", 1 "BB",
+// 2 "AB", 3 none yet), filled from no pieces up, flat in one `Vec`.
+// O(x y z).
+
+fn longest_string(x: i64, y: i64, z: i64) -> i64 {
+    let at = |a: i64, b: i64, c: i64, last: i64| ((a * (y + 1) + b) * (z + 1) + c) * 4 + last;
+    let mut more: Vec[i64] = Vec.filled((x + 1) * (y + 1) * (z + 1) * 4, 0);
+    for a in 0..=x {
+        for b in 0..=y {
+            for c in 0..=z {
+                for last in 0..4 {
+                    let mut best = 0;
+                    if a > 0 and last != 0 {
+                        best = best.max(2 + more[at(a - 1, b, c, 0)]);
+                    }
+                    if b > 0 and (last == 0 or last == 3) {
+                        best = best.max(2 + more[at(a, b - 1, c, 1)]);
+                    }
+                    if c > 0 and last != 0 {
+                        best = best.max(2 + more[at(a, b, c - 1, 2)]);
+                    }
+                    more[at(a, b, c, last)] = best;
+                }
+            }
+        }
+    }
+    more[at(x, y, z, 3)]
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{longest_string(2, 5, 1)}");
+    println(f"{longest_string(3, 2, 2)}");
+    // one of each; as many "AA" as "BB"; and LeetCode's largest counts
+    println(f"{longest_string(1, 1, 1)}");
+    println(f"{longest_string(7, 7, 3)}");
+    println(f"{longest_string(50, 50, 50)}");
+    // every count from 1 to 12 of each piece; then 100 random counts up to
+    // 50, LeetCode's most
+    let mut sum = 0;
+    let mut check = 0;
+    for x in 1..=12 {
+        for y in 1..=12 {
+            for z in 1..=12 {
+                let length = longest_string(x, y, z);
+                sum += length;
+                check = (check * 31 + length) % 1000000007;
+            }
+        }
+    }
+    println(f"1728 small counts: lengths sum to {sum}, checksum {check}");
+    let mut seed = 2745;
+    sum = 0;
+    check = 0;
+    for _ in 0..100 {
+        let x = next_random(mut seed) % 50 + 1;
+        let y = next_random(mut seed) % 50 + 1;
+        let z = next_random(mut seed) % 50 + 1;
+        let length = longest_string(x, y, z);
+        sum += length;
+        check = (check * 31 + length) % 1000000007;
+    }
+    println(f"100 counts up to 50: lengths sum to {sum}, checksum {check}");
+}

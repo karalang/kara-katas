@@ -1,0 +1,255 @@
+// LeetCode #2899: Last Visited Integers -- the differential. The five
+// arms, against the statement read literally: each integer prepended to
+// `seen` with `insert(0, ..)`, and for each -1 the run of -1s ending at
+// it counted afresh by walking back, its k-th entry of `seen` taken or
+// -1. 2000 random arrays of 1 to 10 entries, -1 one time in two and
+// otherwise 1 to 5, then 50 of up to 3000, -1 one time in three, all
+// drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  one answer for each -1
+// P3  every integer raised by 1000: every answer but -1 raised by 1000
+// P4  an integer and then a -1 added at the end: that integer added to
+//     the answer
+// P5  a -1 put in front: a -1 put in front of the answer
+// P6  each arm agrees with at least three of the other four
+
+fn literal(nums: Vec[i64]) -> Vec[i64] {
+    let mut seen: Vec[i64] = Vec.new();
+    let mut ans: Vec[i64] = Vec.new();
+    for i in 0..nums.len() {
+        if nums[i] > 0 {
+            seen.insert(0, nums[i]);
+        } else {
+            let mut k = 0;
+            let mut j = i;
+            while j >= 0 and nums[j] == -1 {
+                k += 1;
+                j -= 1;
+            }
+            ans.push(if k <= seen.len() { seen[k - 1] } else { -1 });
+        }
+    }
+    ans
+}
+
+
+// ---- star (last.kara) -----------------------------------------------
+
+fn star_last_visited_integers(nums: Vec[i64]) -> Vec[i64] {
+    let mut seen: Vec[i64] = Vec.new();
+    let mut ans: Vec[i64] = Vec.new();
+    let mut k = 0;
+    for v in nums.iter() {
+        if v == -1 {
+            k += 1;
+            ans.push(if k <= seen.len() { seen[seen.len() - k] } else { -1 });
+        } else {
+            seen.push(v);
+            k = 0;
+        }
+    }
+    ans
+}
+
+
+// ---- front (last_front.kara) ----------------------------------------
+
+fn front_last_visited_integers(nums: Vec[i64]) -> Vec[i64] {
+    let mut seen: VecDeque[i64] = VecDeque.new();
+    let mut ans: Vec[i64] = Vec.new();
+    let mut k = 0;
+    for v in nums.iter() {
+        if v > 0 {
+            seen.push_front(v);
+            k = 0;
+        } else {
+            k += 1;
+            match seen.get(k - 1) {
+                Some(last) => ans.push(last),
+                None => ans.push(-1),
+            }
+        }
+    }
+    ans
+}
+
+
+// ---- insert (last_insert.kara) --------------------------------------
+
+fn insert_last_visited_integers(nums: Vec[i64]) -> Vec[i64] {
+    let mut seen: Vec[i64] = Vec.new();
+    let mut ans: Vec[i64] = Vec.new();
+    let mut k = 0;
+    for v in nums.iter() {
+        if v == -1 {
+            k += 1;
+            ans.push(seen.get(k - 1).unwrap_or(-1));
+        } else {
+            seen.insert(0, v);
+            k = 0;
+        }
+    }
+    ans
+}
+
+
+// ---- back (last_back.kara) ------------------------------------------
+
+fn back_last_visited_integers(nums: Vec[i64]) -> Vec[i64] {
+    let mut ans: Vec[i64] = Vec.new();
+    for i in 0..nums.len() {
+        if nums[i] != -1 {
+            continue;
+        }
+        let mut start = i;
+        while start > 0 and nums[start - 1] == -1 {
+            start -= 1;
+        }
+        let mut k = i - start + 1;
+        let mut j = start - 1;
+        let mut found = -1;
+        while j >= 0 {
+            if nums[j] != -1 {
+                k -= 1;
+                if k == 0 {
+                    found = nums[j];
+                    break;
+                }
+            }
+            j -= 1;
+        }
+        ans.push(found);
+    }
+    ans
+}
+
+
+// ---- solution (last_solution.kara) ----------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn last_visited_integers(nums: Vec[i32]) -> Vec[i32] {
+        let mut seen: Vec[i32] = Vec.new();
+        let mut ans = Vec.new();
+        let mut k: i64 = 0;
+        for x in nums.iter() {
+            if x == -1 {
+                k += 1;
+                if k <= seen.len() {
+                    ans.push(seen[seen.len() - k]);
+                } else {
+                    ans.push(-1);
+                }
+            } else {
+                seen.push(x);
+                k = 0;
+            }
+        }
+        ans
+    }
+}
+
+fn solution_last_visited_integers(nums: Vec[i64]) -> Vec[i64] {
+    Solution.last_visited_integers(nums.iter().map(|x| x as i32).collect())
+        .into_iter()
+        .map(|x| x as i64)
+        .collect()
+}
+
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64]) -> Vec[i64] {
+    match arm {
+        0 => star_last_visited_integers(nums),
+        1 => front_last_visited_integers(nums),
+        2 => insert_last_visited_integers(nums),
+        3 => back_last_visited_integers(nums),
+        _ => solution_last_visited_integers(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "front", "insert", "back", "solution"];
+    let mut seed = 2899;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..2050 {
+        let small = c < 2000;
+        let n = if small { next_random(mut seed) % 10 + 1 } else { next_random(mut seed) % 3000 + 1 };
+        let nums: Vec[i64] = (0..n).map(|_| if small { if next_random(mut seed) % 2 == 0 { -1 } else { next_random(mut seed) % 5 + 1 } } else if next_random(mut seed) % 3 == 0 { -1 } else { next_random(mut seed) % 100 + 1 }).collect();
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut total = 0;
+    for (c, nums) in cases.iter().enumerate() {
+        let n = nums.len();
+        let got: Vec[Vec[i64]] = (0..5).map(|arm| answer(arm, nums)).collect();
+        let want = literal(nums);
+        check = (check * 31 + want.len()) % 1000000007;
+        for v in want.iter() {
+            total += v;
+            check = (check * 31 + v + 2) % 1000000007;
+        }
+        let minus_ones = nums.iter().filter(|v| v == -1).count();
+        let raised: Vec[i64] = nums.iter().map(|v| if v == -1 { -1 } else { v + 1000 }).collect();
+        let extra = c % 100 + 1;
+        let mut added = nums.clone();
+        added.push(extra);
+        added.push(-1);
+        let mut fronted: Vec[i64] = [-1];
+        fronted.extend(nums.iter().cloned());
+        for arm in 0..5 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let raised_want: Vec[i64] = value.iter().map(|v| if v == -1 { -1 } else { v + 1000 }).collect();
+            let mut added_want = value.clone();
+            added_want.push(extra);
+            let mut fronted_want: Vec[i64] = [-1];
+            fronted_want.extend(value.iter().cloned());
+            let verdicts = [
+                value == want,
+                value.len() == minus_ones,
+                answer(arm, raised) == raised_want,
+                answer(arm, added) == added_want,
+                answer(arm, fronted) == fronted_want,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} n {n}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let failed = by_property.iter().sum();
+    println(f"{cases.len()} cases, answers total {total}: checksum {check}, {checks} checks over 5 arms: {failed} failures");
+    if failed > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

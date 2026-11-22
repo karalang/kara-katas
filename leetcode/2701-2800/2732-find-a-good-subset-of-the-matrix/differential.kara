@@ -1,0 +1,298 @@
+// LeetCode #2732: Find a Good Subset of the Matrix -- the differential.
+// The five arms, against the statement read literally: every non-empty
+// subset of the rows, as a bit set, with each column's sum over it held
+// to half its size. No masks of the rows, no pairs. 1000 random grids of
+// 1 to 10 rows and 1 to 5 columns; then 200 of up to 300 rows. Every case
+// is drawn before any arm answers. Arms may name different subsets, so
+// what is compared is whether one is named, and each named is checked.
+//
+// P1  up to 10 rows, a subset is named exactly when the literal reading
+//     finds one good
+// P2  the subset named is good: ascending, in range, each column at most
+//     half its size
+// P3  the rows listed in reverse order: a subset named or not the same
+// P4  the columns rotated by one: a subset named or not the same
+// P5  a row of all ones added at the end: a subset named or not the same
+// P6  each arm agrees with at least three of the other four on whether
+//     a subset is named
+
+
+// ---- star (subset.kara) ---------------------------------------------
+
+fn star_good_subsetof_binary_matrix(grid: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut first: Array[i64, 32] = [-1; 32];
+    for (i, row) in grid.iter().enumerate() {
+        let mut mask = 0;
+        for (j, x) in row.iter().enumerate() {
+            mask |= x << j;
+        }
+        if mask == 0 {
+            return [i].to_vec();
+        }
+        if first[mask] < 0 {
+            first[mask] = i;
+        }
+    }
+    for a in 1..32 {
+        for b in a + 1..32 {
+            if a & b == 0 and first[a] >= 0 and first[b] >= 0 {
+                return [first[a].min(first[b]), first[a].max(first[b])].to_vec();
+            }
+        }
+    }
+    Vec.new()
+}
+
+
+// ---- pairs (subset_pairs.kara) --------------------------------------
+
+fn pairs_good_subsetof_binary_matrix(grid: Vec[Vec[i64]]) -> Vec[i64] {
+    let m = grid.len();
+    for i in 0..m {
+        if grid[i].iter().all(|x| x == 0) {
+            return [i].to_vec();
+        }
+    }
+    for i in 0..m {
+        for j in i + 1..m {
+            let apart = (0..grid[i].len()).all(|c| grid[i][c] + grid[j][c] < 2);
+            if apart {
+                return [i, j].to_vec();
+            }
+        }
+    }
+    Vec.new()
+}
+
+
+// ---- scan (subset_scan.kara) ----------------------------------------
+
+fn scan_good_subsetof_binary_matrix(grid: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut first: Array[i64, 32] = [-1; 32];
+    for i in 0..grid.len() {
+        let mask = grid[i].iter().enumerate().fold(0, |m, (j, x)| m | (x << j));
+        if mask == 0 {
+            return [i].to_vec();
+        }
+        for other in 1..32 {
+            if other & mask == 0 and first[other] >= 0 {
+                return [first[other], i].to_vec();
+            }
+        }
+        if first[mask] < 0 {
+            first[mask] = i;
+        }
+    }
+    Vec.new()
+}
+
+
+// ---- complement (subset_complement.kara) ----------------------------
+
+fn complement_good_subsetof_binary_matrix(grid: Vec[Vec[i64]]) -> Vec[i64] {
+    let full = (1 << grid[0].len()) - 1;
+    let mut first: Map[i64, i64] = Map.new();
+    for (i, row) in grid.iter().enumerate() {
+        let mut mask = 0;
+        for j in 0..row.len() {
+            if row[j] == 1 {
+                mask |= 1 << j;
+            }
+        }
+        if mask == 0 {
+            return [i].to_vec();
+        }
+        let rest = full & ~mask;
+        let mut sub = rest;
+        while sub > 0 {
+            if let Some(j) = first.get(sub) {
+                return [j, i].to_vec();
+            }
+            sub = (sub - 1) & rest;
+        }
+        if not first.contains_key(mask) {
+            first.insert(mask, i);
+        }
+    }
+    Vec.new()
+}
+
+
+// ---- solution (subset_solution.kara) --------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn good_subsetof_binary_matrix(grid: Vec[Vec[i32]]) -> Vec[i32] {
+        let mut g: Map[i32, i32] = Map.new();
+        for (i, row) in grid.iter().enumerate() {
+            let mut mask: i32 = 0;
+            for (j, x) in row.iter().enumerate() {
+                mask |= x << j;
+            }
+            if mask == 0 {
+                return [i as i32];
+            }
+            g.insert(mask, i as i32);
+        }
+        for (a, i) in g.iter() {
+            for (b, j) in g.iter() {
+                if a & b == 0 {
+                    return [i.min(j), i.max(j)];
+                }
+            }
+        }
+        Vec.new()
+    }
+}
+
+fn solution_good_subsetof_binary_matrix(grid: Vec[Vec[i64]]) -> Vec[i64] {
+    let grid: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|x| x as i32).collect()).collect();
+    Solution.good_subsetof_binary_matrix(grid).iter().map(|x| x as i64).collect()
+}
+
+
+// ---- the statement read literally ------------------------------------------
+
+// every non-empty subset of the rows, as the bits of a number, tried
+fn literal(grid: Vec[Vec[i64]]) -> bool {
+    let m = grid.len();
+    let n = grid[0].len();
+    for set in 1..(1 << m) {
+        let size = (0..m).filter(|r| (set >> r) & 1 == 1).count();
+        let mut fits = true;
+        for j in 0..n {
+            let sum: i64 = (0..m).filter(|r| (set >> r) & 1 == 1).map(|r| grid[r][j]).sum();
+            if 2 * sum > size {
+                fits = false;
+            }
+        }
+        if fits {
+            return true;
+        }
+    }
+    false
+}
+
+fn answer(arm: i64, grid: Vec[Vec[i64]]) -> Vec[i64] {
+    match arm {
+        0 => star_good_subsetof_binary_matrix(grid),
+        1 => pairs_good_subsetof_binary_matrix(grid),
+        2 => scan_good_subsetof_binary_matrix(grid),
+        3 => complement_good_subsetof_binary_matrix(grid),
+        _ => solution_good_subsetof_binary_matrix(grid),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_grid(seed: mut ref i64, m: i64, n: i64, kind: i64) -> Vec[Vec[i64]] {
+    let column = next_random(mut seed) % n;
+    let free = next_random(mut seed) % m;
+    let mut grid: Vec[Vec[i64]] = Vec.new();
+    for r in 0..m {
+        let mut row: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            row.push(next_random(mut seed) % 2);
+        }
+        if kind == 1 or (kind == 2 and r != free) {
+            row[column] = 1;
+        }
+        grid.push(row);
+    }
+    grid
+}
+
+fn is_good(grid: Vec[Vec[i64]], rows: Vec[i64]) -> bool {
+    if rows.len() == 0 {
+        return false;
+    }
+    for k in 0..rows.len() {
+        if rows[k] < 0 or rows[k] >= grid.len() or (k > 0 and rows[k] <= rows[k - 1]) {
+            return false;
+        }
+    }
+    for j in 0..grid[0].len() {
+        let sum: i64 = rows.iter().map(|r| grid[r][j]).sum();
+        if 2 * sum > rows.len() {
+            return false;
+        }
+    }
+    true
+}
+
+fn main() {
+    let names = ["star", "pairs", "scan", "complement", "solution"];
+    let mut seed = 2732;
+    let mut cases: Vec[Vec[Vec[i64]]] = Vec.new();
+    for c in 0..1200 {
+        let (m, n) = if c < 1000 {
+            (next_random(mut seed) % 10 + 1, next_random(mut seed) % 5 + 1)
+        } else {
+            (next_random(mut seed) % 300 + 1, next_random(mut seed) % 5 + 1)
+        };
+        cases.push(random_grid(mut seed, m, n, c % 3));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, grid) in cases.iter().enumerate() {
+        let small = c < 1000;
+        let truth = if small { literal(grid) } else { false };
+        if small {
+            check = (check * 31 + if truth { 1 } else { 0 }) % 1000000007;
+        }
+        let back: Vec[Vec[i64]] = grid.iter().rev().map(|row| row.clone()).collect();
+        let turned: Vec[Vec[i64]] = grid.iter().map(|row| {
+            let mut r = row.clone();
+            r.rotate_left(1);
+            r
+        }).collect();
+        let mut more = grid.clone();
+        more.push(Vec.filled(grid[0].len(), 1));
+        let got: Vec[bool] = (0..5).map(|arm| answer(arm, grid).len() > 0).collect();
+        for arm in 0..5 {
+            let named = answer(arm, grid);
+            let value = named.len() > 0;
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                not value or is_good(grid, named),
+                (answer(arm, back).len() > 0) == value,
+                (answer(arm, turned).len() > 0) == value,
+                (answer(arm, more).len() > 0) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, named {named}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

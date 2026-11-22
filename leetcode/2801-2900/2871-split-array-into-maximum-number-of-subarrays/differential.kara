@@ -1,0 +1,245 @@
+// LeetCode #2871: Split Array Into Maximum Number of Subarrays -- the
+// differential. The five arms, against the statement read literally:
+// every way to cut the array tried, each cut set read as a bit mask of
+// the n - 1 gaps, its parts' ANDs summed, the least sum found, and the
+// most parts among the cuts that reach it. 2000 random arrays of 1 to 10
+// values from 0 to 7, then 50 of up to 3000 up to 10^6, every other one
+// with most bits set, all drawn before any arm answers; the literal
+// reading is asked only of the first 2000.
+//
+// P1  up to 10 values, the answer is the literal reading's
+// P2  a 0 put at the end: one more, or 1 when the whole AND was above 0
+// P3  the array reversed: the same answer
+// P4  the first value written twice: the same answer, one more when it
+//     is 0
+// P5  from 1 to n, and 1 when the whole AND is above 0
+// P6  each arm agrees with at least three of the other four
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut least = -1;
+    let mut most = 0;
+    for cuts in 0..(1 << (n - 1)) {
+        let mut sum = 0;
+        let mut parts = 1;
+        let mut running = nums[0];
+        for i in 1..n {
+            if (cuts >> (i - 1)) & 1 == 1 {
+                sum += running;
+                parts += 1;
+                running = nums[i];
+            } else {
+                running &= nums[i];
+            }
+        }
+        sum += running;
+        if least < 0 or sum < least {
+            least = sum;
+            most = parts;
+        } else if sum == least {
+            most = most.max(parts);
+        }
+    }
+    most
+}
+
+
+// ---- star (split.kara) ----------------------------------------------
+
+fn star_max_subarrays(nums: Vec[i64]) -> i64 {
+    let mut parts = 0;
+    let mut running = -1;
+    for v in nums.iter() {
+        running &= v;
+        if running == 0 {
+            parts += 1;
+            running = -1;
+        }
+    }
+    parts.max(1)
+}
+
+
+// ---- bits (split_bits.kara) -----------------------------------------
+
+fn bits_max_subarrays(nums: Vec[i64]) -> i64 {
+    let mut parts = 0;
+    let mut alive = [true; 20];
+    let mut left = 20;
+    for v in nums.iter() {
+        for b in 0..20 {
+            if alive[b] and (v >> b) & 1 == 0 {
+                alive[b] = false;
+                left -= 1;
+            }
+        }
+        if left == 0 {
+            parts += 1;
+            alive = [true; 20];
+            left = 20;
+        }
+    }
+    parts.max(1)
+}
+
+
+// ---- dp (split_dp.kara) ---------------------------------------------
+
+fn dp_max_subarrays(nums: Vec[i64]) -> i64 {
+    if nums.iter().fold(-1, |a, v| a & v) > 0 {
+        return 1;
+    }
+    let mut best_before = 0;
+    let mut ending: Vec[(i64, i64)] = Vec.new();
+    for v in nums.iter() {
+        let mut next: Vec[(i64, i64)] = Vec.new();
+        for (r#and, most) in ending.iter().cloned().chain([(-1, best_before)].iter().cloned()) {
+            let joined = r#and & v;
+            match next.iter().position(|p| p.0 == joined) {
+                Some(at) => next[at].1 = next[at].1.max(most),
+                None => next.push((joined, most)),
+            }
+        }
+        ending = next;
+        // -1 marks a start no split of the values before can reach
+        best_before = match ending.iter().find(|p| p.0 == 0) {
+            Some(p) if p.1 >= 0 => p.1 + 1,
+            _ => -1,
+        };
+    }
+    best_before.max(1)
+}
+
+
+// ---- fold (split_fold.kara) -----------------------------------------
+
+fn fold_max_subarrays(nums: Vec[i64]) -> i64 {
+    let (parts, _) = nums.iter().fold((0, -1), |(parts, running), v| {
+        let r#and = running & v;
+        if r#and == 0 { (parts + 1, -1) } else { (parts, r#and) }
+    });
+    parts.max(1)
+}
+
+
+// ---- solution (split_solution.kara) ---------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_subarrays(nums: Vec[i32]) -> i32 {
+        let mut ans: i32 = 0;
+        let mut cur = -1i32;
+        for x in ref nums {
+            cur &= x;
+            if cur == 0 {
+                ans += 1;
+                cur = -1;
+            }
+        }
+        ans.max(1)
+    }
+}
+
+fn solution_max_subarrays(nums: Vec[i64]) -> i64 {
+    Solution.max_subarrays(nums.iter().map(|x| x as i32).collect())
+}
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_max_subarrays(nums),
+        1 => bits_max_subarrays(nums),
+        2 => dp_max_subarrays(nums),
+        3 => fold_max_subarrays(nums),
+        _ => solution_max_subarrays(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "bits", "dp", "fold", "solution"];
+    let mut seed = 2871;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..2050 {
+        let small = c < 2000;
+        let n = if small { next_random(mut seed) % 10 + 1 } else { wide(mut seed) % 3000 + 1 };
+        let nums: Vec[i64] = (0..n)
+            .map(|_| {
+                if small {
+                    next_random(mut seed) % 8
+                } else if c % 2 == 0 {
+                    wide(mut seed) % 1000001
+                } else {
+                    (wide(mut seed) | wide(mut seed)) % 1000001
+                }
+            })
+            .collect();
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut total = 0;
+    for (c, nums) in cases.iter().enumerate() {
+        let n = nums.len();
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums)).collect();
+        let want = if c < 2000 { literal(nums) } else { got[0] };
+        total += want;
+        check = (check * 31 + want) % 1000000007;
+        let whole = nums.iter().fold(-1, |a, v| a & v);
+        let mut zeroed = nums.clone();
+        zeroed.push(0);
+        let reversed: Vec[i64] = nums.iter().rev().cloned().collect();
+        let mut repeated: Vec[i64] = [nums[0]].to_vec();
+        repeated.extend(nums.iter().cloned());
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                c >= 2000 or value == want,
+                answer(arm, zeroed) == if whole > 0 { 1 } else { value + 1 },
+                answer(arm, reversed) == value,
+                answer(arm, repeated) == value + if nums[0] == 0 { 1 } else { 0 },
+                value >= 1 and value <= n and (whole == 0 or value == 1),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases, {total} subarrays: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

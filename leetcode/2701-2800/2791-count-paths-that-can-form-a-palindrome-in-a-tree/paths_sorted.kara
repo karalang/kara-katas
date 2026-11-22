@@ -1,0 +1,98 @@
+// LeetCode #2791: Count Paths That Can Form a Palindrome in a Tree -- by
+// sorting, no `Map`: the masks found breadth first from the root,
+// sorted, and each one's partners, the same mask and the 26 one bit
+// away, counted by two `partition_point`s on the sorted masks; each
+// pair counted from both ends, and a mask with itself taken out. O(26 n
+// log n).
+
+fn count_palindrome_paths(parent: Vec[i64], s: Str) -> i64 {
+    let n = parent.len();
+    let letters: Vec[i64] = s.bytes().iter().map(|b| (b - 97) as i64).collect();
+    let mut children: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for i in 1..n {
+        children[parent[i]].push(i);
+    }
+    let mut mask: Vec[i64] = Vec.filled(n, 0);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    queue.push_back(0);
+    while let Some(u) = queue.pop_front() {
+        for c in children[u].iter() {
+            mask[c] = mask[u] ^ (1 << letters[c]);
+            queue.push_back(c);
+        }
+    }
+    let mut sorted = mask.clone();
+    sorted.sort();
+    let count = |m: i64| sorted.partition_point(|x| x <= m) - sorted.partition_point(|x| x < m);
+    let mut ends = 0;
+    for m in sorted.iter() {
+        ends += count(m) - 1;
+        for b in 0..26 {
+            ends += count(m ^ (1 << b));
+        }
+    }
+    ends / 2
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// a random tree of n nodes, each node's parent one before it, with
+// letters from the first `letters` of the alphabet
+fn random_tree(n: i64, letters: i64, seed: mut ref i64) -> (Vec[i64], String) {
+    let mut parent: Vec[i64] = [-1];
+    for i in 1..n {
+        parent.push(wide(mut seed) % i);
+    }
+    let alphabet: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(alphabet[next_random(mut seed) % letters]);
+    }
+    (parent, s)
+}
+
+fn main() {
+    // LeetCode's two examples; a path of 10^5 nodes, LeetCode's most, all
+    // a, every pair counted, and deepest from the root; 10^5 nodes on one
+    // root, the letters going round the alphabet
+    println(f"{count_palindrome_paths([-1, 0, 0, 1, 1, 2], "acaabc")}");
+    println(f"{count_palindrome_paths([-1, 0, 0, 0, 0], "aaaaa")}");
+    let n = 100000;
+    let path: Vec[i64] = (0..n).map(|i| i - 1).collect();
+    println(f"{count_palindrome_paths(path, "a".repeat(n))}");
+    let star: Vec[i64] = (0..n).map(|i| if i == 0 { -1 } else { 0 }).collect();
+    let alphabet: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    let round: String = (0..n).map(|i| alphabet[i % 26]).collect();
+    println(f"{count_palindrome_paths(star, round)}");
+    // 3000 random trees of 1 to 12 nodes with letters from a to c; then
+    // 20 of 10^5 nodes with letters from a to z
+    let mut seed = 2791;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let m = next_random(mut seed) % 12 + 1;
+        let (parent, s) = random_tree(m, 3, mut seed);
+        let a = count_palindrome_paths(parent, s);
+        sum += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"3000 small trees: paths sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for _ in 0..20 {
+        let (parent, s) = random_tree(n, 26, mut seed);
+        let a = count_palindrome_paths(parent, s);
+        sum += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"20 trees of 10^5: paths sum to {sum}, checksum {check}");
+}

@@ -1,0 +1,71 @@
+// LeetCode #2808: Minimum Seconds to Equalize a Circular Array -- in one
+// pass: each value's first place, last place and widest gap so far kept
+// in a `Map` of a small struct, updated as the value comes round again;
+// the wrap-around gap added at the end.
+
+struct Seen {
+    first: i64,
+    last: i64,
+    widest: i64,
+}
+
+fn minimum_seconds(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut seen: Map[i64, Seen] = Map.new();
+    for (i, v) in nums.iter().enumerate() {
+        match seen.get_mut(v) {
+            Some(s) => {
+                s.widest = s.widest.max(i - s.last);
+                s.last = i;
+            }
+            None => {
+                seen.insert(v, Seen { first: i, last: i, widest: 0 });
+            }
+        }
+    }
+    seen.values().map(|s| s.widest.max(s.first + n - s.last) / 2).min().unwrap()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's three examples; 10^5 numbers, LeetCode's most, all
+    // different; the same with every third one 7
+    println(f"{minimum_seconds([1, 2, 1, 2])}");
+    println(f"{minimum_seconds([2, 1, 3, 3, 2])}");
+    println(f"{minimum_seconds([5, 5, 5, 5])}");
+    let n = 100000;
+    println(f"{minimum_seconds((0..n).map(|i| i + 1).collect())}");
+    println(f"{minimum_seconds((0..n).map(|i| if i % 3 == 0 { 7 } else { i + 10 }).collect())}");
+    // 3000 random arrays of 1 to 12 numbers from 1 to 4; then 50 of up to
+    // 10^5 numbers up to 10^9, from 10 values or from 10^9
+    let mut seed = 2808;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let m = next_random(mut seed) % 12 + 1;
+        let a = minimum_seconds((0..m).map(|_| next_random(mut seed) % 4 + 1).collect());
+        sum += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"3000 small arrays: seconds sum to {sum}, checksum {check}");
+    sum = 0;
+    check = 0;
+    for t in 0..50 {
+        let m = wide(mut seed) % n + 1;
+        let top = if t % 2 == 0 { 10 } else { 1000000000 };
+        let a = minimum_seconds((0..m).map(|_| wide(mut seed) % top + 1).collect());
+        sum += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"50 large arrays: seconds sum to {sum}, checksum {check}");
+}

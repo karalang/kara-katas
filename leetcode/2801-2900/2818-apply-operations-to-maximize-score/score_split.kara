@@ -1,0 +1,125 @@
+// LeetCode #2818: Apply Operations to Maximize Score -- splitting: a
+// smallest-prime-factor sieve for the prime scores; in a stretch of the
+// array, its first number of highest score rules every subarray of the
+// stretch that holds it, and the stretches either side of it are split
+// the same way; the (value, count) pairs sorted largest first and
+// multiplied in, each power by recursive squaring.
+
+const MOD: i64 = 1000000007;
+
+fn smallest_factors(limit: i64) -> Vec[i64] {
+    let mut spf: Vec[i64] = (0..=limit).collect();
+    let mut p = 2;
+    while p * p <= limit {
+        if spf[p] == p {
+            let mut q = p * p;
+            while q <= limit {
+                if spf[q] == q {
+                    spf[q] = p;
+                }
+                q += p;
+            }
+        }
+        p += 1;
+    }
+    spf
+}
+
+fn score_of(v: i64, spf: Vec[i64]) -> i64 {
+    let mut rest = v;
+    let mut count = 0;
+    while rest > 1 {
+        let p = spf[rest];
+        count += 1;
+        while rest % p == 0 {
+            rest /= p;
+        }
+    }
+    count
+}
+
+fn power(base: i64, exp: i64) -> i64 {
+    if exp == 0 {
+        return 1;
+    }
+    let half = power(base, exp / 2);
+    let square = half * half % MOD;
+    if exp % 2 == 1 { square * (base % MOD) % MOD } else { square }
+}
+
+fn split(s: Vec[i64], lo: i64, hi: i64, nums: Vec[i64], pairs: mut ref Vec[(i64, i64)]) {
+    if lo > hi {
+        return;
+    }
+    let mut m = lo;
+    for i in lo + 1..=hi {
+        if s[i] > s[m] {
+            m = i;
+        }
+    }
+    pairs.push((nums[m], (m - lo + 1) * (hi - m + 1)));
+    split(s, lo, m - 1, nums, mut pairs);
+    split(s, m + 1, hi, nums, mut pairs);
+}
+
+fn maximum_score(nums: Vec[i64], k: i64) -> i64 {
+    let spf = smallest_factors(nums.iter().max().unwrap());
+    let s: Vec[i64] = nums.iter().map(|v| score_of(v, spf)).collect();
+    let mut pairs: Vec[(i64, i64)] = Vec.new();
+    split(s, 0, nums.len() - 1, nums, mut pairs);
+    pairs.sort_by(|a, b| b.0.cmp(a.0));
+    let mut rest = k;
+    let mut total = 1;
+    for (v, count) in pairs.iter() {
+        if rest == 0 {
+            break;
+        }
+        let take = count.min(rest);
+        total = total * power(v, take) % MOD;
+        rest -= take;
+    }
+    total
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; one number; k every subarray; 2000 primes
+    // in a cycle of six, every score 1, k every subarray; and 2000 numbers
+    // of falling score
+    println(f"{maximum_score([8, 3, 9, 3, 8], 2)}");
+    println(f"{maximum_score([19, 12, 14, 6, 10, 18], 3)}");
+    println(f"{maximum_score([1], 1)}");
+    println(f"{maximum_score([2, 30, 6, 7], 10)}");
+    println(f"{maximum_score((0..2000).map(|i| [2, 3, 5, 7, 11, 13][i % 6]).collect(), 2001000)}");
+    println(f"{maximum_score((0..2000).map(|i| [30030, 2310, 210, 30, 6, 2][i * 6 / 2000]).collect(), 1999000)}");
+    // 3000 random arrays of 1 to 10 numbers up to 100 with k up to the
+    // count of subarrays; then 50 of up to 2000 numbers up to 10^5 with
+    // k up to 10^9
+    let mut seed = 2818;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 10 + 1;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 100 + 1).collect();
+        let k = next_random(mut seed) % (n * (n + 1) / 2) + 1;
+        check = (check * 31 + maximum_score(nums, k)) % 1000000007;
+    }
+    println(f"3000 small arrays: checksum {check}");
+    check = 0;
+    for _ in 0..50 {
+        let n = next_random(mut seed) % 2000 + 1;
+        let nums: Vec[i64] = (0..n).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000 + 1).collect();
+        let k = wide(mut seed) % (n * (n + 1) / 2).min(1000000000) + 1;
+        check = (check * 31 + maximum_score(nums, k)) % 1000000007;
+    }
+    println(f"50 large arrays: checksum {check}");
+}

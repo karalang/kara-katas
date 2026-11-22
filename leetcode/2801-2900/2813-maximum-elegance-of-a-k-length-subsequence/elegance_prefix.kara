@@ -1,0 +1,94 @@
+// LeetCode #2813: Maximum Elegance of a K-Length Subsequence -- the swap
+// laid out as two lists and prefix sums: the repeats among the k dearest
+// in the order taken, and the first item of each new category after
+// them; swapping j of them trades the last j repeats for the first j
+// newcomers, and every j is scored at once.
+
+fn find_maximum_elegance(items: Vec[Vec[i64]], k: i64) -> i64 {
+    let mut order: Vec[(i64, i64)] = items.iter().map(|item| (item[0], item[1])).collect();
+    order.sort();
+    order.reverse();
+    let mut seen: Set[i64] = Set.new();
+    let mut repeats: Vec[i64] = Vec.new();
+    let mut base = 0;
+    for i in 0..k {
+        let (profit, category) = order[i];
+        base += profit;
+        if seen.contains(category) {
+            repeats.push(profit);
+        } else {
+            seen.insert(category);
+        }
+    }
+    let mut newcomers: Vec[i64] = Vec.new();
+    for i in k..order.len() {
+        let (profit, category) = order[i];
+        if not seen.contains(category) {
+            seen.insert(category);
+            newcomers.push(profit);
+        }
+    }
+    let distinct = k - repeats.len();
+    let mut best = base + distinct * distinct;
+    let mut total = base;
+    let swaps = repeats.len().min(newcomers.len());
+    for j in 0..swaps {
+        total += newcomers[j] - repeats[repeats.len() - 1 - j];
+        let d = distinct + j + 1;
+        best = best.max(total + d * d);
+    }
+    best
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// n items with profits from 1 to `top` and categories from 1 to `kinds`
+fn random_items(n: i64, top: i64, kinds: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut items: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..n {
+        let profit = wide(mut seed) % top + 1;
+        let category = wide(mut seed) % kinds + 1;
+        items.push([profit, category]);
+    }
+    items
+}
+
+fn main() {
+    // LeetCode's three examples; 1000 items of one category, the 500
+    // dearest taken; 1000 of 1000 categories, every one taken
+    println(f"{find_maximum_elegance([[3, 2], [5, 1], [10, 1]], 2)}");
+    println(f"{find_maximum_elegance([[3, 1], [3, 1], [2, 2], [5, 3]], 3)}");
+    println(f"{find_maximum_elegance([[1, 1], [2, 1], [3, 1]], 3)}");
+    let same: Vec[Vec[i64]] = (1..=1000).map(|p| [p * 1000000, 7]).collect();
+    println(f"{find_maximum_elegance(same, 500)}");
+    let apart: Vec[Vec[i64]] = (1..=1000).map(|c| [1000000000, c]).collect();
+    println(f"{find_maximum_elegance(apart, 1000)}");
+    // 3000 random cases of 1 to 8 items, profits up to 10 and categories
+    // up to the count; then 50 of up to 1000 items, profits up to 10^9
+    let mut seed = 2813;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 8 + 1;
+        let items = random_items(n, 10, n, mut seed);
+        let k = next_random(mut seed) % n + 1;
+        check = (check * 31 + find_maximum_elegance(items, k)) % 1000000007;
+    }
+    println(f"3000 small cases: checksum {check}");
+    check = 0;
+    for _ in 0..50 {
+        let n = wide(mut seed) % 1000 + 1;
+        let items = random_items(n, 1000000000, n, mut seed);
+        let k = wide(mut seed) % n + 1;
+        check = (check * 31 + find_maximum_elegance(items, k)) % 1000000007;
+    }
+    println(f"50 large cases: checksum {check}");
+}

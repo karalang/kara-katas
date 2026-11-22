@@ -1,0 +1,266 @@
+// LeetCode #2830: Maximize the Profit as the Salesman -- the
+// differential. The five arms, against the statement read literally:
+// every set of offers, by a bit mask, kept when no house is in two of
+// them, and the most gold. 2000 random cases of 1 to 10 houses with 1 to
+// 8 offers; then 50 of up to 1500 houses with up to 1500 offers of up to
+// 50 houses. Every case is drawn before any arm answers; the literal
+// reading is asked only of the first 2000.
+//
+// P1  up to 8 offers, the answer is the literal reading's
+// P2  the offers in reverse order: the same answer
+// P3  an offer of no gold added: the same answer
+// P4  every offer's gold doubled: the answer doubled
+// P5  the street mirrored, house i as n - 1 - i: the same answer
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(n: i64, offers: Vec[Vec[i64]]) -> i64 {
+    let m = offers.len();
+    let mut best = 0;
+    for mask in 0..(1 << m) {
+        let mut sold: Vec[bool] = Vec.filled(n, false);
+        let mut gold = 0;
+        let mut clash = false;
+        for j in 0..m {
+            if (mask >> j) & 1 == 1 {
+                for h in offers[j][0]..=offers[j][1] {
+                    clash = clash or sold[h];
+                    sold[h] = true;
+                }
+                gold += offers[j][2];
+            }
+        }
+        if not clash {
+            best = best.max(gold);
+        }
+    }
+    best
+}
+
+
+// ---- star (profit.kara) ---------------------------------------------
+
+fn star_maximize_the_profit(n: i64, offers: Vec[Vec[i64]]) -> i64 {
+    let mut ending: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for o in offers.iter() {
+        ending[o[1]].push((o[0], o[2]));
+    }
+    let mut best: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        best[i + 1] = best[i];
+        for (start, gold) in ending[i].iter() {
+            best[i + 1] = best[i + 1].max(best[start] + gold);
+        }
+    }
+    best[n]
+}
+
+
+// ---- sorted (profit_sorted.kara) ------------------------------------
+
+fn sorted_maximize_the_profit(n: i64, offers: Vec[Vec[i64]]) -> i64 {
+    let mut sorted = offers.clone();
+    sorted.sort_by_key(|o| o[1]);
+    let ends: Vec[i64] = sorted.iter().map(|o| o[1]).collect();
+    let m = sorted.len();
+    let mut best: Vec[i64] = Vec.filled(m + 1, 0);
+    for j in 0..m {
+        let before = ends.partition_point(|e| e < sorted[j][0]);
+        best[j + 1] = best[j].max(best[before] + sorted[j][2]);
+    }
+    best[m]
+}
+
+
+// ---- back (profit_back.kara) ----------------------------------------
+
+fn back_maximize_the_profit(n: i64, offers: Vec[Vec[i64]]) -> i64 {
+    let mut starting: Map[i64, Vec[(i64, i64)]] = Map.new();
+    for o in offers.iter() {
+        starting.entry(o[0]).or_insert(Vec.new()).push((o[1], o[2]));
+    }
+    let mut after: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in (0..n).rev() {
+        after[i] = after[i + 1];
+        if let Some(list) = starting.get(i) {
+            for (end, gold) in list.iter() {
+                after[i] = after[i].max(gold + after[end + 1]);
+            }
+        }
+    }
+    after[0]
+}
+
+
+// ---- memo (profit_memo.kara) ----------------------------------------
+
+struct Offers {
+    sorted: Vec[Vec[i64]],
+    memo: Vec[Option[i64]],
+}
+
+impl Offers {
+    fn next_free(self, end: i64) -> i64 {
+        let mut (lo, hi) = (0, self.sorted.len());
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            if self.sorted[mid][0] <= end {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        lo
+    }
+
+    fn take(mut ref self, j: i64) -> i64 {
+        if j == self.sorted.len() {
+            return 0;
+        }
+        if let Some(v) = self.memo[j] {
+            return v;
+        }
+        let skip = self.take(j + 1);
+        let next = self.next_free(self.sorted[j][1]);
+        let sell = self.sorted[j][2] + self.take(next);
+        let v = skip.max(sell);
+        self.memo[j] = Some(v);
+        v
+    }
+}
+
+fn memo_maximize_the_profit(n: i64, offers: Vec[Vec[i64]]) -> i64 {
+    let mut sorted = offers.clone();
+    sorted.sort();
+    let m = sorted.len();
+    let mut all = Offers { sorted, memo: Vec.filled(m, None) };
+    all.take(0)
+}
+
+
+// ---- solution (profit_solution.kara) --------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn maximize_the_profit(n: i32, offers: Vec[Vec[i32]]) -> i32 {
+        let n = n as i64;
+        let mut groups: Vec[Vec[(i64, i32)]] = Vec.filled(n, Vec.new());
+        for o in offers.iter() {
+            groups[o[1]].push((o[0] as i64, o[2]));
+        }
+        let mut f = Vec.filled(n + 1, 0i32);
+        for i in 0..n {
+            f[i + 1] = f[i];
+            for (s, g) in groups[i].iter() {
+                f[i + 1] = f[i + 1].max(f[s] + g);
+            }
+        }
+        f[n]
+    }
+}
+
+fn solution_maximize_the_profit(n: i64, offers: Vec[Vec[i64]]) -> i64 {
+    let offers: Vec[Vec[i32]] = offers.iter().map(|o| o.iter().map(|v| v as i32).collect()).collect();
+    Solution.maximize_the_profit(n as i32, offers)
+}
+
+
+// ---- the checks ------------------------------------------------------------
+
+fn answer(arm: i64, n: i64, offers: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_maximize_the_profit(n, offers),
+        1 => sorted_maximize_the_profit(n, offers),
+        2 => back_maximize_the_profit(n, offers),
+        3 => memo_maximize_the_profit(n, offers),
+        _ => solution_maximize_the_profit(n, offers),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn offers_on(n: i64, count: i64, span: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    (0..count)
+        .map(|_| {
+            let start = next_random(mut seed) % n;
+            let end = (start + next_random(mut seed) % span).min(n - 1);
+            [start, end, next_random(mut seed) % 1000 + 1]
+        })
+        .collect()
+}
+
+fn main() {
+    let names = ["star", "sorted", "back", "memo", "solution"];
+    let mut seed = 2830;
+    let mut cases: Vec[(i64, Vec[Vec[i64]])] = Vec.new();
+    for c in 0..2050 {
+        if c < 2000 {
+            let n = next_random(mut seed) % 10 + 1;
+            let count = next_random(mut seed) % 8 + 1;
+            cases.push((n, offers_on(n, count, n, mut seed)));
+        } else {
+            let n = next_random(mut seed) % 1500 + 1;
+            let count = next_random(mut seed) % 1500 + 1;
+            cases.push((n, offers_on(n, count, 50, mut seed)));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (n, offers)) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(n, offers) } else { 0 };
+        check = (check * 31 + want + 1) % 1000000007;
+        let reversed: Vec[Vec[i64]] = offers.iter().rev().map(|o| o.clone()).collect();
+        let mut padded = offers.clone();
+        padded.push([0, n - 1, 0]);
+        let doubled: Vec[Vec[i64]] = offers.iter().map(|o| [o[0], o[1], 2 * o[2]]).collect();
+        let mirrored: Vec[Vec[i64]] = offers.iter().map(|o| [n - 1 - o[1], n - 1 - o[0], o[2]]).collect();
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, n, offers)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == want,
+                answer(arm, n, reversed) == value,
+                answer(arm, n, padded) == value,
+                answer(arm, n, doubled) == 2 * value,
+                answer(arm, n, mirrored) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} n {n} {offers}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

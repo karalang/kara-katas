@@ -1,0 +1,77 @@
+// LeetCode #2844: Minimum Operations to Make a Special Number -- ★: a
+// multiple of 25 ends in 00, 25, 50 or 75, or is 0 itself. One pass
+// from the right: a 0 or 5 met after a 0 has been seen, or a 2 or 7
+// after a 5, ends the number there, and every digit passed over but
+// the one kept goes. With no such pair, a lone 0 is kept if there is
+// one, and otherwise every digit goes.
+
+fn minimum_operations(num: Str) -> i64 {
+    let digits = num.bytes();
+    let n = digits.len();
+    let mut zero = false;
+    let mut five = false;
+    for i in (0..n).rev() {
+        let d = digits[i];
+        if (zero and (d == b'0' or d == b'5')) or (five and (d == b'2' or d == b'7')) {
+            return n - i - 2;
+        }
+        if d == b'0' {
+            zero = true;
+        }
+        if d == b'5' {
+            five = true;
+        }
+    }
+    if zero { n - 1 } else { n }
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n digits, the first not 0 unless n is 1, each drawn from the first
+// `kinds` of 0, 5, 2, 7 and then the rest
+fn number(n: i64, kinds: i64, seed: mut ref i64) -> String {
+    let order = "0527134689".bytes();
+    let mut digits: Vec[u8] = Vec.new();
+    for i in 0..n {
+        let mut d = order[next_random(mut seed) % kinds];
+        while i == 0 and n > 1 and d == b'0' {
+            d = order[next_random(mut seed) % kinds];
+        }
+        digits.push(d);
+    }
+    String.from_utf8(digits).unwrap()
+}
+
+fn main() {
+    // LeetCode's three examples; one digit of each kind; and 100 digits,
+    // LeetCode's most, with no 0, 2, 5 or 7, and then ending in 25
+    println(f"{minimum_operations("2245047")} {minimum_operations("2908305")} {minimum_operations("10")}");
+    println(f"{minimum_operations("0")} {minimum_operations("5")} {minimum_operations("25")} {minimum_operations("75")} {minimum_operations("57")}");
+    let ones = "1".repeat(100);
+    let ending = f"{"9".repeat(98)}25";
+    println(f"{minimum_operations(ones)} {minimum_operations(ending)}");
+    // 3000 random numbers of 1 to 8 digits from 0, 5, 2 and 7, with a 1
+    // or 3 now and then; then 300 of up to 100 digits from all ten
+    let mut seed = 2844;
+    let mut check = 0;
+    let mut total = 0;
+    for c in 0..3300 {
+        let short = c < 3000;
+        let n = if short { next_random(mut seed) % 8 + 1 } else { next_random(mut seed) % 100 + 1 };
+        let kinds = if short { 4 + next_random(mut seed) % 3 } else { 10 };
+        let ops = minimum_operations(number(n, kinds, mut seed));
+        total += ops;
+        check = (check * 31 + ops) % 1000000007;
+        if c == 2999 {
+            println(f"3000 short numbers: {total} operations, checksum {check}");
+            total = 0;
+            check = 0;
+        }
+    }
+    println(f"300 long numbers: {total} operations, checksum {check}");
+}

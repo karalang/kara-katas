@@ -1,0 +1,137 @@
+// LeetCode #2836: Maximize Value of Function in a Ball Passing Game --
+// the graph's shape, O(n) in all: every player passes to one, so each
+// part is a cycle with trees hanging into it. A cycle player's passes
+// are whole laps of the cycle's sum and a part lap, read off prefix sums
+// over the cycle written twice; a tree player's first passes go down
+// the path to the cycle, read off prefix sums kept along a depth-first
+// walk up the reversed edges from the cycle, and the rest go round.
+
+struct Cycles {
+    on: Vec[i64],       // which cycle a player is on, -1 if none
+    pos: Vec[i64],      // a cycle player's place on it
+    len: Vec[i64],      // each cycle's length
+    sums: Vec[Vec[i64]], // each cycle's ids written twice, as prefix sums
+}
+
+impl Cycles {
+    // the ids of the next `passes` receivers after the ball is at cycle
+    // player c
+    fn ahead(self, c: i64, passes: i64) -> i64 {
+        let id = self.on[c];
+        let l = self.len[id];
+        let p = ref self.sums[id];
+        let lap = p[l];
+        let from = self.pos[c] + 1;
+        passes / l * lap + p[from + passes % l] - p[from]
+    }
+}
+
+fn find_cycles(receiver: Vec[i64]) -> Cycles {
+    let n = receiver.len();
+    let mut state: Vec[i64] = Vec.filled(n, 0);
+    let mut cycles = Cycles { on: Vec.filled(n, -1), pos: Vec.filled(n, 0), len: Vec.new(), sums: Vec.new() };
+    for start in 0..n {
+        let mut walk: Vec[i64] = Vec.new();
+        let mut at = start;
+        while state[at] == 0 {
+            state[at] = 1;
+            walk.push(at);
+            at = receiver[at];
+        }
+        if state[at] == 1 {
+            let begin = walk.iter().position(|w| w == at).unwrap();
+            let ring: Vec[i64] = walk[begin..].to_vec();
+            let id = cycles.len.len();
+            let mut sums: Vec[i64] = [0];
+            for t in 0..2 * ring.len() {
+                sums.push(sums[t] + ring[t % ring.len()]);
+            }
+            for (i, c) in ring.iter().enumerate() {
+                cycles.on[c] = id;
+                cycles.pos[c] = i;
+            }
+            cycles.len.push(ring.len());
+            cycles.sums.push(sums);
+        }
+        for w in walk.iter() {
+            state[w] = 2;
+        }
+    }
+    cycles
+}
+
+fn get_max_function_value(receiver: Vec[i64], k: i64) -> i64 {
+    let n = receiver.len();
+    let cycles = find_cycles(receiver);
+    let mut children: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for v in 0..n {
+        if cycles.on[v] < 0 {
+            children[receiver[v]].push(v);
+        }
+    }
+    let mut best = 0;
+    let mut path: Vec[i64] = Vec.filled(n, 0);
+    let mut sum_to: Vec[i64] = Vec.filled(n, 0); // sum_to[d]: ids of path[0..=d]
+    for root in 0..n {
+        if cycles.on[root] < 0 {
+            continue;
+        }
+        best = best.max(root + cycles.ahead(root, k));
+        let mut stack: Vec[(i64, i64)] = children[root].iter().map(|c| (c, 1)).collect();
+        path[0] = root;
+        sum_to[0] = root;
+        while let Some((v, d)) = stack.pop() {
+            path[d] = v;
+            sum_to[d] = sum_to[d - 1] + v;
+            // the receivers are path[d - 1], .., path[0], then the cycle
+            let value = if k < d {
+                v + sum_to[d - 1] - sum_to[d - 1 - k]
+            } else {
+                v + sum_to[d - 1] + cycles.ahead(root, k - d)
+            };
+            best = best.max(value);
+            for c in children[v].iter() {
+                stack.push((c, d + 1));
+            }
+        }
+    }
+    best
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; one player; and 10^5 players, LeetCode's
+    // most, each keeping the ball, with k = 10^10, LeetCode's most
+    println(f"{get_max_function_value([2, 0, 1], 4)} {get_max_function_value([1, 1, 1, 2, 3], 3)}");
+    println(f"{get_max_function_value([0], 10000000000)}");
+    println(f"{get_max_function_value((0..100000).collect(), 10000000000)}");
+    // 3000 random games of 1 to 8 players with k up to 20; then 100 of up
+    // to 2000 players with k up to 10^10
+    let mut seed = 2836;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 8 + 1;
+        let receiver: Vec[i64] = (0..n).map(|_| next_random(mut seed) % n).collect();
+        let k = next_random(mut seed) % 20 + 1;
+        check = (check * 31 + get_max_function_value(receiver, k)) % 1000000007;
+    }
+    println(f"3000 small games: checksum {check}");
+    check = 0;
+    for _ in 0..100 {
+        let n = next_random(mut seed) % 2000 + 1;
+        let receiver: Vec[i64] = (0..n).map(|_| next_random(mut seed) % n).collect();
+        let k = (wide(mut seed) * 10 + next_random(mut seed)) % 10000000000 + 1;
+        check = (check * 31 + get_max_function_value(receiver, k)) % 1000000007;
+    }
+    println(f"100 large games: checksum {check}");
+}

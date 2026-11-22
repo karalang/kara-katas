@@ -1,0 +1,70 @@
+// LeetCode #2827: Number of Beautiful Integers in the Range -- the
+// bench: the ★ arm over 2000 random ranges up to 10^9, LeetCode's most,
+// with k from 1 to 20, all drawn first, then each answered 5 times.
+
+fn walk(digits: Vec[i64], pos: i64, diff: i64, rem: i64, tight: bool, started: bool, k: i64, memo: mut ref Vec[i64]) -> i64 {
+    let n = digits.len();
+    if pos == n {
+        return if started and diff == 0 and rem == 0 { 1 } else { 0 };
+    }
+    let key = (pos * (2 * n + 1) + diff + n) * k + rem;
+    if not tight and started and memo[key] >= 0 {
+        return memo[key];
+    }
+    let top = if tight { digits[pos] } else { 9 };
+    let mut total = 0;
+    for d in 0..=top {
+        let now = started or d > 0;
+        let next_diff = if now { diff + if d % 2 == 0 { 1 } else { -1 } } else { 0 };
+        total += walk(digits, pos + 1, next_diff, (rem * 10 + d) % k, tight and d == top, now, k, mut memo);
+    }
+    if not tight and started {
+        memo[key] = total;
+    }
+    total
+}
+
+fn count_upto(x: i64, k: i64) -> i64 {
+    if x <= 0 {
+        return 0;
+    }
+    let digits: Vec[i64] = x.to_string().bytes().iter().map(|c| (c - b'0') as i64).collect();
+    let n = digits.len();
+    let mut memo: Vec[i64] = Vec.filled(n * (2 * n + 1) * k, -1);
+    walk(digits, 0, 0, 0, true, false, k, mut memo)
+}
+
+fn number_of_beautiful_integers(low: i64, high: i64, k: i64) -> i64 {
+    count_upto(high, k) - count_upto(low - 1, k)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let count = 2000;
+    let rounds = 5;
+    let mut seed = 2827;
+    let mut cases: Vec[(i64, i64, i64)] = Vec.new();
+    for _ in 0..count {
+        let a = wide(mut seed) % 1000000000 + 1;
+        let b = wide(mut seed) % 1000000000 + 1;
+        cases.push((a.min(b), a.max(b), next_random(mut seed) % 20 + 1));
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (low, high, k) in cases.iter() {
+            let a = number_of_beautiful_integers(low, high, k);
+            total += a;
+            check = (check * 31 + a + r) % 1000000007;
+        }
+    }
+    println(f"{count} ranges, {rounds} rounds: {total} beautiful, checksum {check}");
+}

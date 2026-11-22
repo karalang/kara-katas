@@ -1,0 +1,259 @@
+// LeetCode #2863: Maximum Length of Semi-Decreasing Subarrays -- the
+// differential. The five arms, against the statement read literally:
+// every subarray from i to j > i tried, kept when its first value is
+// strictly greater than its last, the longest taken. 2000 random arrays
+// of 1 to 12 values from 0 to 6, then 50 of up to 500, every other one
+// rising with a few values moved, all drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the array reversed and negated: the same answer
+// P3  every value v made 2v + 1: the same answer
+// P4  a value above all of them put first: n + 1
+// P5  0 exactly when the array never falls, else from 2 to n
+// P6  each arm agrees with at least three of the other four
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut best = 0;
+    for i in 0..n {
+        for j in i + 1..n {
+            if nums[i] > nums[j] {
+                best = best.max(j - i + 1);
+            }
+        }
+    }
+    best
+}
+
+
+// ---- star (semi.kara) -----------------------------------------------
+
+fn star_max_subarray_length(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut starts: Vec[i64] = Vec.new();
+    for i in 0..n {
+        if starts.is_empty() or nums[i] > nums[starts[starts.len() - 1]] {
+            starts.push(i);
+        }
+    }
+    let mut best = 0;
+    for j in (0..n).rev() {
+        while let Some(i) = starts.last().cloned() {
+            if nums[i] <= nums[j] {
+                break;
+            }
+            best = best.max(j - i + 1);
+            starts.pop();
+        }
+    }
+    best
+}
+
+
+// ---- sorted (semi_sorted.kara) --------------------------------------
+
+fn sorted_max_subarray_length(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut order: Vec[i64] = (0..n).collect();
+    order.sort_by(|a, b| nums[b].cmp(nums[a]));
+    let mut first = i64.MAX;
+    let mut best = 0;
+    let mut g = 0;
+    while g < n {
+        let mut h = g;
+        while h < n and nums[order[h]] == nums[order[g]] {
+            h += 1;
+        }
+        for t in g..h {
+            let j = order[t];
+            if first < j {
+                best = best.max(j - first + 1);
+            }
+        }
+        for t in g..h {
+            first = first.min(order[t]);
+        }
+        g = h;
+    }
+    best
+}
+
+
+// ---- search (semi_search.kara) --------------------------------------
+
+fn search_max_subarray_length(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut low: Vec[i64] = Vec.filled(n, 0);
+    low[n - 1] = nums[n - 1];
+    for j in (0..n - 1).rev() {
+        low[j] = low[j + 1].min(nums[j]);
+    }
+    let mut best = 0;
+    for i in 0..n {
+        let past = low.partition_point(|v| v < nums[i]);
+        if past > i + 1 {
+            best = best.max(past - i);
+        }
+    }
+    best
+}
+
+
+// ---- pointers (semi_pointers.kara) ----------------------------------
+
+fn pointers_max_subarray_length(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut high = nums.clone();
+    for i in 1..n {
+        high[i] = high[i].max(high[i - 1]);
+    }
+    let mut low = nums.clone();
+    for j in (0..n - 1).rev() {
+        low[j] = low[j].min(low[j + 1]);
+    }
+    let mut best = 0;
+    let mut j = 0;
+    for i in 0..n {
+        if j < i {
+            j = i;
+        }
+        while j + 1 < n and high[i] > low[j + 1] {
+            j += 1;
+        }
+        if high[i] > low[j] and j > i {
+            best = best.max(j - i + 1);
+        }
+    }
+    best
+}
+
+
+// ---- solution (semi_solution.kara) ----------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_subarray_length(nums: Vec[i32]) -> i32 {
+        let n = nums.len();
+        let mut stk: Vec[i64] = Vec.new();
+        for i in 0..n {
+            if stk.is_empty() or nums[*stk.last().unwrap()] < nums[i] {
+                stk.push(i);
+            }
+        }
+        let mut ans: i32 = 0;
+        for j in (0..n).rev() {
+            while let Some(i) = stk.last().cloned() {
+                if nums[i] > nums[j] {
+                    ans = ans.max((j - i + 1) as i32);
+                    stk.pop();
+                } else {
+                    break;
+                }
+            }
+        }
+        ans
+    }
+}
+
+fn solution_max_subarray_length(nums: Vec[i64]) -> i64 {
+    Solution.max_subarray_length(nums.iter().map(|x| x as i32).collect())
+}
+
+// ---- the check ---------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_max_subarray_length(nums),
+        1 => sorted_max_subarray_length(nums),
+        2 => search_max_subarray_length(nums),
+        3 => pointers_max_subarray_length(nums),
+        _ => solution_max_subarray_length(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "sorted", "search", "pointers", "solution"];
+    let mut seed = 2863;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..2050 {
+        let small = c < 2000;
+        let n = if small { next_random(mut seed) % 12 + 1 } else { next_random(mut seed) % 500 + 1 };
+        let mut nums: Vec[i64] = if small or c % 2 == 0 {
+            (0..n).map(|_| if small { next_random(mut seed) % 7 } else { wide(mut seed) % 2000001 - 1000000 }).collect()
+        } else {
+            (0..n).map(|i| 1000 * i).collect()
+        };
+        if not small and c % 2 == 1 {
+            for _ in 0..3 {
+                let i = wide(mut seed) % n;
+                nums[i] = wide(mut seed) % (1000 * n);
+            }
+        }
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut total = 0;
+    for (c, nums) in cases.iter().enumerate() {
+        let n = nums.len();
+        let want = literal(nums);
+        total += want;
+        check = (check * 31 + want) % 1000000007;
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums)).collect();
+        let mirrored: Vec[i64] = nums.iter().rev().map(|v| -v).collect();
+        let spread: Vec[i64] = nums.iter().map(|v| 2 * v + 1).collect();
+        let top = nums.iter().max().unwrap() + 1;
+        let headed: Vec[i64] = [top].iter().cloned().chain(nums.iter().cloned()).collect();
+        let rises = (1..n).all(|i| nums[i - 1] <= nums[i]);
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == want,
+                answer(arm, mirrored) == value,
+                answer(arm, spread) == value,
+                answer(arm, headed) == n + 1,
+                if rises { value == 0 } else { value >= 2 and value <= n },
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases, lengths total {total}: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

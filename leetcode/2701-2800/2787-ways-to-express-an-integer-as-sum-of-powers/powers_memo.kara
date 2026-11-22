@@ -1,0 +1,50 @@
+// LeetCode #2787: Ways to Express an Integer as Sum of Powers -- top
+// down: the ways to make `rest` from powers of i and above are those that
+// skip i^x and those that take it, remembered in a `Map[(i64, i64), i64]`
+// keyed by (i, rest). O(n * n^(1/x)).
+
+fn ways_from(i: i64, rest: i64, x: i64, memo: mut ref Map[(i64, i64), i64]) -> i64 {
+    if rest == 0 {
+        return 1;
+    }
+    let p = i.pow(x as u32);
+    if p > rest {
+        return 0;
+    }
+    if let Some(w) = memo.get((i, rest)) {
+        return w;
+    }
+    let w = (ways_from(i + 1, rest, x, mut memo) + ways_from(i + 1, rest - p, x, mut memo)) % 1000000007;
+    memo.insert((i, rest), w);
+    w
+}
+
+fn number_of_ways(n: i64, x: i64) -> i64 {
+    let mut memo: Map[(i64, i64), i64] = Map.new();
+    ways_from(1, n, x, mut memo)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn main() {
+    // LeetCode's two examples; 300 as distinct numbers, LeetCode's most,
+    // and as distinct squares, cubes, 4th and 5th powers
+    println(f"{number_of_ways(10, 2)}");
+    println(f"{number_of_ways(4, 1)}");
+    for x in 1..=5 {
+        println(f"{number_of_ways(300, x)}");
+    }
+    // every n from 1 to 300 with every x from 1 to 5
+    let mut nonzero = 0;
+    let mut check = 0;
+    for n in 1..=300 {
+        for x in 1..=5 {
+            let w = number_of_ways(n, x);
+            if w > 0 {
+                nonzero += 1;
+            }
+            check = (check * 31 + w) % 1000000007;
+        }
+    }
+    println(f"1500 pairs: {nonzero} with a way, checksum {check}");
+}

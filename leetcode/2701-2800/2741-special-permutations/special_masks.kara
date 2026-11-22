@@ -1,0 +1,102 @@
+// LeetCode #2741: Special Permutations -- the masks arm. Each number's
+// partners, those it divides or that divide it, as a bit mask; the
+// table is pulled rather than pushed: the orders of a mask ending at
+// `last` come from the mask without `last`, ending at any of its
+// partners in it, walked bit by bit with `trailing_zeros`. O(2^n n^2).
+
+const MOD: i64 = 1000000007;
+
+fn special_perm(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let partners: Vec[i64] = (0..n)
+        .map(|i| (0..n).filter(|j| j != i and (nums[i] % nums[j] == 0 or nums[j] % nums[i] == 0)).fold(0, |m, j| m | (1 << j)))
+        .collect();
+    let mut ways: Vec[Vec[i64]] = Vec.filled(1 << n, Vec.filled(n, 0));
+    for mask in 1..1 << n {
+        for last in 0..n {
+            if (mask >> last) & 1 == 0 {
+                continue;
+            }
+            let rest = mask & ~(1 << last);
+            if rest == 0 {
+                ways[mask][last] = 1;
+                continue;
+            }
+            let mut from = rest & partners[last];
+            let mut total = 0;
+            while from != 0 {
+                let before = from.trailing_zeros();
+                total = (total + ways[rest][before]) % MOD;
+                from &= from - 1;
+            }
+            ways[mask][last] = total;
+        }
+    }
+    ways[(1 << n) - 1].iter().fold(0, |s, w| (s + w) % MOD)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n distinct numbers of the form 2^a 3^b, a up to 5 and b up to 3, so
+// that one divides another often
+fn random_smooth(seed: mut ref i64, n: i64) -> Vec[i64] {
+    let mut nums: Vec[i64] = Vec.new();
+    while nums.len() < n {
+        let x = (1 << (next_random(mut seed) % 6)) * [1, 3, 9, 27][next_random(mut seed) % 4];
+        if not nums.contains(x) {
+            nums.push(x);
+        }
+    }
+    nums
+}
+
+// n distinct numbers from 1 to most
+fn random_numbers(seed: mut ref i64, n: i64, most: i64) -> Vec[i64] {
+    let mut nums: Vec[i64] = Vec.new();
+    while nums.len() < n {
+        let x = next_random(mut seed) % most + 1;
+        if not nums.contains(x) {
+            nums.push(x);
+        }
+    }
+    nums
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{special_perm([2, 3, 6].to_vec())}");
+    println(f"{special_perm([1, 4, 3].to_vec())}");
+    // two numbers, one dividing the other and not; and 14 powers of two,
+    // where every order is special: 14! mod 10^9 + 7
+    println(f"{special_perm([1, 2].to_vec())}");
+    println(f"{special_perm([2, 3].to_vec())}");
+    println(f"{special_perm((0..14).map(|k| 1 << k).collect())}");
+    // 2000 random arrays of 2 to 8 distinct numbers, by turns of the form
+    // 2^a 3^b and up to 30; then 10 of 14 of the form 2^a 3^b, LeetCode's
+    // longest
+    let mut seed = 2741;
+    let mut sum = 0;
+    let mut check = 0;
+    for c in 0..2010 {
+        let nums = if c < 2000 {
+            let n = next_random(mut seed) % 7 + 2;
+            if c % 2 == 0 { random_smooth(mut seed, n) } else { random_numbers(mut seed, n, 30) }
+        } else {
+            random_smooth(mut seed, 14)
+        };
+        let count = special_perm(nums);
+        sum += count;
+        check = (check * 31 + count) % 1000000007;
+        if c == 1999 {
+            println(f"2000 small arrays: counts sum to {sum}, checksum {check}");
+            sum = 0;
+            check = 0;
+        }
+    }
+    println(f"10 arrays of 14 numbers: counts sum to {sum}, checksum {check}");
+}

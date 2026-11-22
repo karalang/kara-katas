@@ -1,0 +1,218 @@
+// LeetCode #2779: Maximum Beauty of an Array After Applying Operation --
+// the differential. The five arms, against the statement read literally:
+// for every value v the numbers can reach, the numbers that can be
+// replaced by v, those with v in [x - k, x + k], counted; the beauty is
+// the most for any v, the longest subsequence of equal numbers that the
+// operation can make; no sorting. 2000 random arrays of 1 to 12 numbers
+// from 0 to 20 with k from 0 to 5; then 50 of up to 2000 numbers up to
+// 10^5 with k up to 10^5. Every case is drawn before any arm answers;
+// the literal reading is asked only of the first 2000.
+//
+// P1  up to 12 numbers, the answer is the literal reading's
+// P2  every number 1000 more: the same answer
+// P3  k one more: no less
+// P4  the numbers reversed: the same answer
+// P5  from the most repeats of one number to n, and n when 2k reaches
+//     from the least number to the greatest
+// P6  each arm agrees with at least three of the other four
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(nums: Vec[i64], k: i64) -> i64 {
+    let low = nums.iter().min().unwrap() - k;
+    let high = nums.iter().max().unwrap() + k;
+    let mut best = 0;
+    for v in low..=high {
+        let can = nums.iter().filter(|x| x - k <= v and v <= x + k).count();
+        best = best.max(can);
+    }
+    best
+}
+
+
+// ---- star (beauty.kara) ---------------------------------------------
+
+fn star_maximum_beauty(nums: Vec[i64], k: i64) -> i64 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut best = 0;
+    let mut lo = 0;
+    for hi in 0..sorted.len() {
+        while sorted[hi] - sorted[lo] > 2 * k {
+            lo += 1;
+        }
+        best = best.max(hi - lo + 1);
+    }
+    best
+}
+
+
+// ---- sweep (beauty_sweep.kara) --------------------------------------
+
+fn sweep_maximum_beauty(nums: Vec[i64], k: i64) -> i64 {
+    let low = nums.iter().min().unwrap() - k;
+    let high = nums.iter().max().unwrap() + k;
+    let mut delta: Vec[i64] = Vec.filled(high - low + 2, 0);
+    for x in nums.iter() {
+        delta[x - k - low] += 1;
+        delta[x + k - low + 1] -= 1;
+    }
+    let mut covering = 0;
+    let mut best = 0;
+    for d in delta.iter() {
+        covering += d;
+        best = best.max(covering);
+    }
+    best
+}
+
+
+// ---- search (beauty_search.kara) ------------------------------------
+
+fn search_maximum_beauty(nums: Vec[i64], k: i64) -> i64 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    (0..sorted.len()).map(|i| sorted.partition_point(|v| v <= sorted[i] + 2 * k) - i).max().unwrap()
+}
+
+
+// ---- events (beauty_events.kara) ------------------------------------
+
+fn events_maximum_beauty(nums: Vec[i64], k: i64) -> i64 {
+    let mut events: Vec[(i64, i64)] = Vec.new();
+    for x in nums.iter() {
+        events.push((x - k, 1));
+        events.push((x + k + 1, -1));
+    }
+    events.sort();
+    let mut open = 0;
+    let mut best = 0;
+    for (_, change) in events.iter() {
+        open += change;
+        best = best.max(open);
+    }
+    best
+}
+
+
+// ---- solution (beauty_solution.kara) --------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn maximum_beauty(nums: own Vec[i32], k: i32) -> i32 {
+        let mut nums = nums;
+        nums.sort();
+        let mut ans = 0;
+        let mut l = 0;
+        for r in 0..nums.len() {
+            while nums[r] - nums[l] > 2 * k {
+                l += 1;
+            }
+            ans = ans.max(r - l + 1);
+        }
+        ans as i32
+    }
+}
+
+fn solution_maximum_beauty(nums: ref Vec[i64], k: i64) -> i64 {
+    Solution.maximum_beauty(nums.iter().map(|x| x as i32).collect(), k as i32)
+}
+
+
+fn answer(arm: i64, nums: Vec[i64], k: i64) -> i64 {
+    match arm {
+        0 => star_maximum_beauty(nums, k),
+        1 => sweep_maximum_beauty(nums, k),
+        2 => search_maximum_beauty(nums, k),
+        3 => events_maximum_beauty(nums, k),
+        _ => solution_maximum_beauty(nums, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "sweep", "search", "events", "solution"];
+    let mut seed = 2779;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..2050 {
+        if c < 2000 {
+            let n = next_random(mut seed) % 12 + 1;
+            let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 21).collect();
+            cases.push((nums, next_random(mut seed) % 6));
+        } else {
+            let n = wide(mut seed) % 2000 + 1;
+            let nums: Vec[i64] = (0..n).map(|_| wide(mut seed) % 100001).collect();
+            let k = if c % 2 == 0 { wide(mut seed) % 1001 } else { wide(mut seed) % 100001 };
+            cases.push((nums, k));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (nums, k)) in cases.iter().enumerate() {
+        let small = c < 2000;
+        let want = if small { literal(nums, k) } else { 0 };
+        check = (check * 31 + want + 1) % 1000000007;
+        let n = nums.len();
+        let shifted: Vec[i64] = nums.iter().map(|x| x + 1000).collect();
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let mut sorted = nums.clone();
+        sorted.sort();
+        let mut repeats = 0;
+        let mut run = 0;
+        for i in 0..n {
+            run = if i > 0 and sorted[i] == sorted[i - 1] { run + 1 } else { 1 };
+            repeats = repeats.max(run);
+        }
+        let spans = 2 * k >= sorted[n - 1] - sorted[0];
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, nums, k)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == want,
+                answer(arm, shifted, k) == value,
+                answer(arm, nums, k + 1) >= value,
+                answer(arm, reversed, k) == value,
+                repeats <= value and value <= n and (not spans or value == n),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c} {nums} k {k}, arm {names[arm]}: P{q + 1} fails, gave {value}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

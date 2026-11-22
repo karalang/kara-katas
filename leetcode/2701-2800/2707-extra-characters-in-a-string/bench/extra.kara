@@ -1,0 +1,60 @@
+// LeetCode #2707: Extra Characters in a String -- the bench (extra.kara):
+// the fewest extra characters of each suffix, from the end back, with
+// the dictionary a `Set[String]` asked about every slice.
+
+fn min_extra_char(s: String, dictionary: Vec[String]) -> i64 {
+    let words: Set[String] = dictionary.iter().map(|w| w.clone()).collect();
+    let n = s.len();
+    let mut best: Vec[i64] = (0..n + 1).map(|_| 0).collect();
+    for i in (0..n).rev() {
+        best[i] = best[i + 1] + 1;
+        for j in i + 1..n + 1 {
+            if words.contains(s[i..j]) and best[j] < best[i] {
+                best[i] = best[j];
+            }
+        }
+    }
+    best[0]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(seed: mut ref i64, n: i64) -> String {
+    let mut word = String.new();
+    for _ in 0..n {
+        word.push((b'a' + (next_random(mut seed) % 3) as u8) as char);
+    }
+    word
+}
+
+fn main() {
+    let cases = 10000;
+    let rounds = 5;
+    let mut seed = 2707;
+    let mut problems: Vec[(String, Vec[String])] = Vec.new();
+    for _ in 0..cases {
+        let s = random_word(mut seed, 50);
+        let mut dictionary: Vec[String] = Vec.new();
+        for _ in 0..50 {
+            let n = next_random(mut seed) % 5 + 1;
+            let word = random_word(mut seed, n);
+            if not dictionary.contains(word) {
+                dictionary.push(word);
+            }
+        }
+        problems.push((s, dictionary));
+    }
+    let mut sum = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (s, dictionary) in problems.iter() {
+            let extra = min_extra_char(s, dictionary);
+            sum += extra;
+            check = (check * 31 + extra + r) % 1000000007;
+        }
+    }
+    println(f"{cases} strings of 50 letters against up to 50 words, {rounds} rounds: extra characters sum to {sum}, checksum {check}");
+}

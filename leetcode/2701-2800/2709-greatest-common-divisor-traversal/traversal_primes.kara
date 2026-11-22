@@ -1,0 +1,141 @@
+// LeetCode #2709: Greatest Common Divisor Traversal -- the primes arm. A
+// union-find over the primes themselves, as numbers: the primes of each
+// number, sieved by its smallest factor, are joined to one another, and
+// every pair can be traversed when every number's first prime ends in
+// one set, no number is 1 among others, and so each index reaches each
+// other through a chain of shared primes. Union by size, with full path
+// compression by recursion. O(m log log m + n log m).
+
+fn root(parent: mut ref Vec[i64], a: i64) -> i64 {
+    if parent[a] == a {
+        return a;
+    }
+    let r = root(mut parent, parent[a]);
+    parent[a] = r;
+    r
+}
+
+fn join(parent: mut ref Vec[i64], size: mut ref Vec[i64], a: i64, b: i64) {
+    let mut ra = root(mut parent, a);
+    let mut rb = root(mut parent, b);
+    if ra == rb {
+        return;
+    }
+    if size[ra] < size[rb] {
+        let t = ra;
+        ra = rb;
+        rb = t;
+    }
+    parent[rb] = ra;
+    size[ra] += size[rb];
+}
+
+fn can_traverse_all_pairs(nums: Vec[i64]) -> bool {
+    if nums.len() == 1 {
+        return true;
+    }
+    let top = nums.iter().max().unwrap();
+    let mut spf: Vec[i64] = (0..top + 1).map(|_| 0).collect();
+    for p in 2..top + 1 {
+        if spf[p] == 0 {
+            let mut m = p;
+            while m <= top {
+                if spf[m] == 0 {
+                    spf[m] = p;
+                }
+                m += p;
+            }
+        }
+    }
+    let mut parent: Vec[i64] = (0..top + 1).collect();
+    let mut size: Vec[i64] = (0..top + 1).map(|_| 1).collect();
+    for v in nums.iter() {
+        if v == 1 {
+            return false;
+        }
+        let lead = spf[v];
+        let mut rest = v;
+        while rest > 1 {
+            let q = spf[rest];
+            join(mut parent, mut size, lead, q);
+            rest /= q;
+        }
+    }
+    let anchor = root(mut parent, spf[nums[0]]);
+    nums.iter().all(|v| root(mut parent, spf[v]) == anchor)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// whether 2, 3, 5 and 7 are v's only prime factors
+fn is_smooth(v: i64) -> bool {
+    let mut rest = v;
+    for p in [2, 3, 5, 7] {
+        while rest % p == 0 {
+            rest /= p;
+        }
+    }
+    rest == 1
+}
+
+fn main() {
+    // LeetCode's three examples; one 1, alone and twice; two primes;
+    // 10^5 copies of the prime 99991; every number from 2 to 100001;
+    // the even numbers to 10^5; and a prime among numbers that join
+    println(f"{can_traverse_all_pairs([2, 3, 6].to_vec())}");
+    println(f"{can_traverse_all_pairs([3, 9, 5].to_vec())}");
+    println(f"{can_traverse_all_pairs([4, 3, 12, 8].to_vec())}");
+    println(f"{can_traverse_all_pairs([1].to_vec())}");
+    println(f"{can_traverse_all_pairs([1, 1].to_vec())}");
+    println(f"{can_traverse_all_pairs([2, 3].to_vec())}");
+    println(f"{can_traverse_all_pairs((0..100000).map(|_| 99991).collect())}");
+    println(f"{can_traverse_all_pairs((2..100002).collect())}");
+    println(f"{can_traverse_all_pairs((1..50001).map(|i| 2 * i).collect())}");
+    let mut joined = [99998, 99991, 2].to_vec();
+    for _ in 0..10 {
+        joined.push(6);
+    }
+    println(f"{can_traverse_all_pairs(joined)}");
+    // 2000 random cases of 1 to 8 numbers up to 30; then 100 of up to
+    // 10^4 numbers, half of them drawn from the numbers up to 10^5 whose
+    // only prime factors are 2, 3, 5 and 7, half up to 10^5 at random
+    let mut seed = 2709;
+    let mut yes = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 8 + 1;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 30 + 1).collect();
+        let can = can_traverse_all_pairs(nums);
+        if can {
+            yes += 1;
+        }
+        check = (check * 31 + if can { 2 } else { 1 }) % 1000000007;
+    }
+    println(f"2000 cases up to 30: {yes} traversable, checksum {check}");
+    let smooth: Vec[i64] = (2..100001).filter(|v| is_smooth(v)).collect();
+    yes = 0;
+    check = 0;
+    for _ in 0..100 {
+        let n = next_random(mut seed) % 10000 + 1;
+        let nums: Vec[i64] = if next_random(mut seed) % 2 == 0 {
+            (0..n).map(|_| smooth[next_random(mut seed) % smooth.len()]).collect()
+        } else {
+            (0..n).map(|_| wide(mut seed) % 100000 + 1).collect()
+        };
+        let can = can_traverse_all_pairs(nums);
+        if can {
+            yes += 1;
+        }
+        check = (check * 31 + if can { 2 } else { 1 }) % 1000000007;
+    }
+    println(f"100 cases up to 100000: {yes} traversable, checksum {check}, {smooth.len()} smooth numbers");
+}

@@ -1,0 +1,72 @@
+// LeetCode #2753: Count Houses in a Circular Street II -- the bench: the
+// ★ arm over 30 streets of up to 10^5 houses, LeetCode's most, with k =
+// 10^5, all drawn first, then each walked 20 times, every walk on a
+// fresh copy of its street, the walk closing the doors it meets.
+
+struct Street {
+    doors: Vec[bool],
+    at: i64,
+    moves: i64,
+}
+
+impl Street {
+    fn close_door(mut ref self) {
+        self.doors[self.at] = false;
+    }
+
+    fn is_door_open(ref self) -> bool {
+        self.doors[self.at]
+    }
+
+    fn move_right(mut ref self) {
+        self.at = (self.at + 1) % self.doors.len();
+        self.moves += 1;
+    }
+}
+
+fn house_count(street: mut ref Street, k: i64) -> i64 {
+    while not street.is_door_open() {
+        street.move_right();
+    }
+    let mut last = 0;
+    for step in 1..=k {
+        street.move_right();
+        if street.is_door_open() {
+            street.close_door();
+            last = step;
+        }
+    }
+    last
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 30;
+    let rounds = 20;
+    let k = 100000;
+    let mut seed = 2753;
+    let mut cases: Vec[(Vec[bool], i64)] = Vec.new();
+    for _ in 0..count {
+        let n = next_random(mut seed) % k + 1;
+        let mut doors: Vec[bool] = (0..n).map(|_| next_random(mut seed) % 2 == 0).collect();
+        doors[next_random(mut seed) % n] = true;
+        cases.push((doors, next_random(mut seed) % n));
+    }
+    let mut total = 0;
+    let mut moves = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        for (doors, at) in cases.iter() {
+            let mut street = Street { doors: doors.clone(), at: at, moves: 0 };
+            let a = house_count(mut street, k);
+            total += a;
+            moves += street.moves;
+            check = (check * 31 + a + r) % 1000000007;
+        }
+    }
+    println(f"{count} streets, {rounds} rounds: houses sum to {total} in {moves} moves, checksum {check}");
+}

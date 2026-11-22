@@ -1,0 +1,90 @@
+// LeetCode #2855: Minimum Right Shifts to Sort the Array -- the array as
+// a cycle: the places where a value is followed by a smaller one, the
+// last value followed by the first, gathered with `filter`. A sorted
+// shift has exactly one, at the last value of the sorted order, which
+// the shift must bring to the end; one element has none.
+
+fn minimum_right_shifts(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let drops: Vec[i64] = (0..n).filter(|i| nums[i] > nums[(i + 1) % n]).collect();
+    match drops.len() {
+        0 => 0,
+        1 => n - 1 - drops[0],
+        _ => -1,
+    }
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn permutations(n: i64) -> Vec[Vec[i64]] {
+    if n == 0 {
+        return [Vec.new()].to_vec();
+    }
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    for p in permutations(n - 1).iter() {
+        for at in 0..n {
+            let mut q = p.clone();
+            q.insert(at, n);
+            out.push(q);
+        }
+    }
+    out
+}
+
+fn main() {
+    // LeetCode's three examples; one element; 100 elements, LeetCode's
+    // most, sorted, shifted by 1 and by 99, and with the last two swapped
+    println(f"{minimum_right_shifts([3, 4, 5, 1, 2].to_vec())} {minimum_right_shifts([1, 3, 5].to_vec())} {minimum_right_shifts([2, 1, 4].to_vec())} {minimum_right_shifts([7].to_vec())}");
+    let sorted: Vec[i64] = (1..101).collect();
+    let rest: Vec[i64] = (1..100).collect();
+    let by_one: Vec[i64] = [100].iter().chain(rest.iter()).collect();
+    let by_99: Vec[i64] = (2..101).chain([1].iter().cloned()).collect();
+    let mut swapped = sorted.clone();
+    swapped.swap(98, 99);
+    println(f"{minimum_right_shifts(sorted)} {minimum_right_shifts(by_one)} {minimum_right_shifts(by_99)} {minimum_right_shifts(swapped)}");
+    // every permutation of 1 to 7 elements, then 3000 random arrays of 1
+    // to 100 distinct values up to 100, two times in three sorted and
+    // shifted, else shuffled
+    let mut sortable = 0;
+    let mut check = 0;
+    let mut count = 0;
+    for n in 1..8 {
+        for p in permutations(n).iter() {
+            let shifts = minimum_right_shifts(p);
+            count += 1;
+            if shifts >= 0 {
+                sortable += 1;
+            }
+            check = (check * 31 + shifts + 1) % 1000000007;
+        }
+    }
+    println(f"{count} permutations: {sortable} sortable, checksum {check}");
+    let mut seed = 2855;
+    sortable = 0;
+    check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 100 + 1;
+        let mut pool: Vec[i64] = (1..101).collect();
+        for i in 0..100 {
+            let j = i + next_random(mut seed) % (100 - i);
+            pool.swap(i, j);
+        }
+        let mut nums: Vec[i64] = pool[..n].to_vec();
+        if next_random(mut seed) % 3 < 2 {
+            nums.sort();
+            let k = next_random(mut seed) % n;
+            nums.rotate_right(k);
+        }
+        let shifts = minimum_right_shifts(nums);
+        if shifts >= 0 {
+            sortable += 1;
+        }
+        check = (check * 31 + shifts + 1) % 1000000007;
+    }
+    println(f"3000 random arrays: {sortable} sortable, checksum {check}");
+}

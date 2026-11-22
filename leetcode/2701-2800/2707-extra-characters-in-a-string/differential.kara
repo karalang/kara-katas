@@ -1,0 +1,315 @@
+// LeetCode #2707: Extra Characters in a String -- the differential. The
+// five arms, against the statement read literally: every choice of which
+// characters are covered, as a mask, stands when each run of covered
+// characters breaks into dictionary words, and the answer is the fewest
+// characters any standing choice leaves over. No dynamic programming.
+// 600 random cases of 1 to 10 letters from a and b, or a to c, against
+// up to 8 words of up to 4 letters; 100 of up to 50 letters from a to c
+// against up to 50 words of up to 5; 100 of up to 50 letters from a to y
+// against 50 words of up to 3. Every case is drawn before any arm
+// answers.
+//
+// P1  up to 10 letters, the answer is the literal reading's
+// P2  up to five dictionary words joined: the answer is 0
+// P3  one word more in the dictionary: the answer is no larger
+// P4  the string cut in two: the answer is at most the two halves'
+//     answers added
+// P5  a z added, a letter no word holds: the answer is one more
+// P6  each arm agrees with at least three of the other four
+
+
+// ---- star (extra.kara) ----------------------------------------------
+
+fn star_min_extra_char(s: String, dictionary: Vec[String]) -> i64 {
+    let words: Set[String] = dictionary.iter().map(|w| w.clone()).collect();
+    let n = s.len();
+    let mut best: Vec[i64] = (0..n + 1).map(|_| 0).collect();
+    for i in (0..n).rev() {
+        best[i] = best[i + 1] + 1;
+        for j in i + 1..n + 1 {
+            if words.contains(s[i..j]) and best[j] < best[i] {
+                best[i] = best[j];
+            }
+        }
+    }
+    best[0]
+}
+
+
+// ---- trie (extra_trie.kara) -----------------------------------------
+
+fn trie_min_extra_char(s: String, dictionary: Vec[String]) -> i64 {
+    let mut next: Vec[Array[i64, 26]] = [[0; 26]].to_vec();
+    let mut ends: Vec[bool] = [false].to_vec();
+    for word in dictionary.iter() {
+        let mut node = 0;
+        for b in word.bytes() {
+            let c = (b - b'a') as i64;
+            if next[node][c] == 0 {
+                next[node][c] = next.len();
+                next.push([0; 26]);
+                ends.push(false);
+            }
+            node = next[node][c];
+        }
+        ends[node] = true;
+    }
+    let text = s.bytes();
+    let n = text.len();
+    let mut best: Vec[i64] = (0..n + 1).map(|_| 0).collect();
+    for i in (0..n).rev() {
+        best[i] = best[i + 1] + 1;
+        let mut node = 0;
+        let mut j = i;
+        while j < n and next[node][text[j] - b'a'] != 0 {
+            node = next[node][text[j] - b'a'];
+            j += 1;
+            if ends[node] {
+                best[i] = best[i].min(best[j]);
+            }
+        }
+    }
+    best[0]
+}
+
+
+// ---- memo (extra_memo.kara) -----------------------------------------
+
+fn memo_fewest(rest_of: Str, at: i64, words: Vec[String], memo: mut ref Vec[Option[i64]]) -> i64 {
+    if at == rest_of.len() {
+        return 0;
+    }
+    if let Some(known) = memo[at] {
+        return known;
+    }
+    let rest = rest_of.slice(at, rest_of.len());
+    let mut best = 1 + memo_fewest(rest_of, at + 1, words, mut memo);
+    for word in words.iter() {
+        if rest.starts_with(word) {
+            best = best.min(memo_fewest(rest_of, at + word.len(), words, mut memo));
+        }
+    }
+    memo[at] = Some(best);
+    best
+}
+
+fn memo_min_extra_char(s: String, dictionary: Vec[String]) -> i64 {
+    let mut memo: Vec[Option[i64]] = (0..s.len()).map(|_| None).collect();
+    memo_fewest(s, 0, dictionary, mut memo)
+}
+
+
+// ---- forward (extra_forward.kara) -----------------------------------
+
+fn forward_min_extra_char(s: String, dictionary: Vec[String]) -> i64 {
+    let n = s.len();
+    let mut best: Vec[i64] = (0..n + 1).map(|i| i).collect();
+    for end in 1..n + 1 {
+        let prefix = s.slice(0, end);
+        best[end] = best[end - 1] + 1;
+        for word in dictionary.iter() {
+            let len = word.len();
+            if len <= end and prefix.ends_with(word) {
+                best[end] = best[end].min(best[end - len]);
+            }
+        }
+    }
+    best[n]
+}
+
+
+// ---- solution (extra_solution.kara) ---------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_extra_char(s: String, dictionary: Vec[String]) -> i32 {
+        let set: Set[Str] = dictionary.iter().map(|w| w.as_str()).collect();
+        let n = s.len();
+        let mut dp = Vec.filled(n + 1, 0i32);
+        for i in (0..n).rev() {
+            dp[i] = dp[i + 1] + 1;
+            for j in i + 1..=n {
+                if set.contains(s[i..j]) {
+                    dp[i] = dp[i].min(dp[j]);
+                }
+            }
+        }
+        dp[0]
+    }
+}
+
+fn solution_min_extra_char(s: String, dictionary: Vec[String]) -> i64 {
+    Solution.min_extra_char(s, dictionary)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+// whether the whole of `piece` breaks into dictionary words
+fn breaks(piece: Str, words: Vec[String]) -> bool {
+    if piece.len() == 0 {
+        return true;
+    }
+    for word in words.iter() {
+        if piece.starts_with(word) and breaks(piece.slice(word.len(), piece.len()), words) {
+            return true;
+        }
+    }
+    false
+}
+
+// every choice of which characters are covered, as a mask: it stands when
+// each run of covered characters breaks into dictionary words, and the
+// answer is the fewest characters any standing choice leaves over
+fn literal(s: String, dictionary: Vec[String]) -> i64 {
+    let n = s.len();
+    let mut best = n;
+    for mask in 0..(1 << n) {
+        let mut stands = true;
+        let mut start = 0;
+        while start < n and stands {
+            if (mask >> start) & 1 == 0 {
+                start += 1;
+                continue;
+            }
+            let mut end = start;
+            while end < n and (mask >> end) & 1 == 1 {
+                end += 1;
+            }
+            stands = breaks(s.slice(start, end), dictionary);
+            start = end;
+        }
+        if stands {
+            let mut left = 0;
+            for i in 0..n {
+                if (mask >> i) & 1 == 0 {
+                    left += 1;
+                }
+            }
+            best = best.min(left);
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, s: String, dictionary: Vec[String]) -> i64 {
+    match arm {
+        0 => star_min_extra_char(s, dictionary),
+        1 => trie_min_extra_char(s, dictionary),
+        2 => memo_min_extra_char(s, dictionary),
+        3 => forward_min_extra_char(s, dictionary),
+        _ => solution_min_extra_char(s, dictionary),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(seed: mut ref i64, n: i64, letters: i64) -> String {
+    let mut word = String.new();
+    for _ in 0..n {
+        word.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+    }
+    word
+}
+
+fn random_dictionary(seed: mut ref i64, count: i64, longest: i64, letters: i64) -> Vec[String] {
+    let mut words: Vec[String] = Vec.new();
+    for _ in 0..count {
+        let n = next_random(mut seed) % longest + 1;
+        let word = random_word(mut seed, n, letters);
+        if not words.contains(word) {
+            words.push(word);
+        }
+    }
+    words
+}
+
+fn main() {
+    let names = ["star", "trie", "memo", "forward", "solution"];
+    let mut seed = 2707;
+    // (string, dictionary, a word more, words joined, where to split)
+    let mut cases: Vec[(String, Vec[String], String, String, i64)] = Vec.new();
+    for c in 0..800 {
+        let (n, letters, count, longest) = if c < 600 {
+            (next_random(mut seed) % 10 + 1, next_random(mut seed) % 2 + 2, next_random(mut seed) % 8 + 1, 4)
+        } else if c < 700 {
+            (next_random(mut seed) % 50 + 1, 3, next_random(mut seed) % 50 + 1, 5)
+        } else {
+            (next_random(mut seed) % 50 + 1, 25, 50, 3)
+        };
+        let s = random_word(mut seed, n, letters);
+        let dictionary = random_dictionary(mut seed, count, longest, letters);
+        let more_len = next_random(mut seed) % longest + 1;
+        let more = random_word(mut seed, more_len, letters);
+        let mut joined = String.new();
+        let pieces = next_random(mut seed) % 5 + 1;
+        for _ in 0..pieces {
+            let w = next_random(mut seed) % dictionary.len();
+            if joined.len() + dictionary[w].len() <= 50 {
+                joined.push_str(dictionary[w]);
+            }
+        }
+        let split = next_random(mut seed) % (n + 1);
+        cases.push((s, dictionary, more, joined, split));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (c, (s, dictionary, more, joined, split)) in cases.iter().enumerate() {
+        let small = c < 600;
+        let truth = if small { literal(s, dictionary) } else { -1 };
+        if small {
+            check = (check * 31 + truth) % 1000000007;
+        }
+        let mut larger = dictionary.clone();
+        if not larger.contains(more) {
+            larger.push(more.clone());
+        }
+        let head = s.slice(0, split).to_string();
+        let tail = s.slice(split, s.len()).to_string();
+        let marked = f"{s}z";
+        let got: Vec[i64] = (0..5).map(|arm| answer(arm, s, dictionary)).collect();
+        for arm in 0..5 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..5 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                not small or value == truth,
+                joined.len() == 0 or answer(arm, joined, dictionary) == 0,
+                answer(arm, s, larger) <= value,
+                head.len() == 0 or tail.len() == 0 or value <= answer(arm, head, dictionary) + answer(arm, tail, dictionary),
+                answer(arm, marked, dictionary) == value + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 5 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

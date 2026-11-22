@@ -1,0 +1,38 @@
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's three examples; 10^5 towers, LeetCode's most, all 10^9,
+    // rising, and a valley
+    println(f"{maximum_sum_of_heights([5, 3, 4, 1, 1].to_vec())} {maximum_sum_of_heights([6, 5, 3, 9, 2, 7].to_vec())} {maximum_sum_of_heights([3, 2, 5, 5, 2, 3].to_vec())}");
+    let n = 100000;
+    println(f"{maximum_sum_of_heights(Vec.filled(n, 1000000000))} {maximum_sum_of_heights((1..n + 1).collect())} {maximum_sum_of_heights((0..n).map(|i| (i - 50000).abs() + 1).collect())}");
+    // 3000 random arrays of 1 to 8 heights from 1 to 6; then 30 of 10^4 to
+    // 10^5, every other one up to 10^9 and the rest up to 50
+    let mut seed = 2866;
+    let mut total = 0;
+    let mut check = 0;
+    for c in 0..3030 {
+        let small = c < 3000;
+        let n = if small { next_random(mut seed) % 8 + 1 } else { wide(mut seed) % 90001 + 10000 };
+        let top = if small { 6 } else if c % 2 == 0 { 1000000000 } else { 50 };
+        let heights: Vec[i64] = (0..n).map(|_| wide(mut seed) % top + 1).collect();
+        let best = maximum_sum_of_heights(heights);
+        total += best;
+        check = (check * 31 + best) % 1000000007;
+        if c == 2999 {
+            println(f"3000 short arrays: sums total {total}, checksum {check}");
+            total = 0;
+            check = 0;
+        }
+    }
+    println(f"30 long arrays: sums total {total}, checksum {check}");
+}

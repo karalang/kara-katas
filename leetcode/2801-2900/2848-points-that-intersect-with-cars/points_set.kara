@@ -1,0 +1,50 @@
+// LeetCode #2848: Points That Intersect With Cars -- every car's points
+// spelt out by `flat_map` over its range and gathered into a `Set`, the
+// answer its size.
+
+fn number_of_points(nums: Vec[Vec[i64]]) -> i64 {
+    let points: Set[i64] = nums.iter().flat_map(|car| car[0]..car[1] + 1).collect();
+    points.len()
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; one car of one point; one car over the
+    // whole road; and 100 cars, LeetCode's most, each of one point
+    println(f"{number_of_points([[3, 6], [1, 5], [4, 7]])} {number_of_points([[1, 3], [5, 8]])}");
+    println(f"{number_of_points([[7, 7]])} {number_of_points([[1, 100]])}");
+    let singles: Vec[Vec[i64]] = (1..101).map(|i| [i, i]).collect();
+    println(f"{number_of_points(singles)}");
+    // 3000 random parkings of 1 to 6 cars within 1 to 20, then 300 of 1
+    // to 100 cars within 1 to 100, shorter cars more likely
+    let mut seed = 2848;
+    let mut check = 0;
+    let mut total = 0;
+    for c in 0..3300 {
+        let short = c < 3000;
+        let cars = if short { next_random(mut seed) % 6 + 1 } else { next_random(mut seed) % 100 + 1 };
+        let road = if short { 20 } else { 100 };
+        let nums: Vec[Vec[i64]] = (0..cars)
+            .map(|_| {
+                let start = next_random(mut seed) % road + 1;
+                let length = next_random(mut seed) % (next_random(mut seed) % road + 1);
+                [start, (start + length).min(road)]
+            })
+            .collect();
+        let points = number_of_points(nums);
+        total += points;
+        check = (check * 31 + points) % 1000000007;
+        if c == 2999 {
+            println(f"3000 short roads: {total} points, checksum {check}");
+            total = 0;
+            check = 0;
+        }
+    }
+    println(f"300 long roads: {total} points, checksum {check}");
+}
