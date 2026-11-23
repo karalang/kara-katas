@@ -1,0 +1,119 @@
+// LeetCode #2512: Reward Top K Students -- the ★ arm. The positive and
+// the negative words each in a `Set`; every report split at its spaces
+// and scored 3 for a positive word and -1 for a negative one; then the
+// students sorted by (-score, id), so the higher score and, at a tie,
+// the smaller id come first, and the first k taken. O(total length +
+// n log n).
+
+fn top_students(positive: Vec[String], negative: Vec[String], report: Vec[String], student_id: Vec[i64], k: i64) -> Vec[i64] {
+    let good: Set[String] = positive.iter().map(|w| w.clone()).collect();
+    let bad: Set[String] = negative.iter().map(|w| w.clone()).collect();
+    let mut ranked: Vec[(i64, i64)] = Vec.new();
+    for i in 0..report.len() {
+        let mut score = 0;
+        for word in report[i].split(" ") {
+            if good.contains(word) {
+                score += 3;
+            } else if bad.contains(word) {
+                score -= 1;
+            }
+        }
+        ranked.push((-score, student_id[i]));
+    }
+    ranked.sort();
+    ranked.iter().take(k).map(|(_, id)| id).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a value from 0 below `top`, from two draws, since one is below 32768
+fn below(top: i64, seed: mut ref i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % top
+}
+
+fn words_of(list: Vec[Str]) -> Vec[String] {
+    list.iter().map(|w| w.to_string()).collect()
+}
+
+// the word numbered `w`: w + 5 written in base 5 with the letters a to
+// e, so two to four letters, and every number its own word
+fn word(w: i64) -> String {
+    let mut digits: Vec[i64] = Vec.new();
+    let mut v = w + 5;
+    while v > 0 {
+        digits.push(v % 5);
+        v /= 5;
+    }
+    digits.iter().rev().map(|d| (b'a' + d as u8) as char).collect()
+}
+
+// a vocabulary of `size` words, the first `p` positive and the next `q`
+// negative; `n` reports of 1 to `most` words from it; distinct ids to
+// `top`; and k from 1 to n
+fn random_case(size: i64, most: i64, n: i64, top: i64, seed: mut ref i64) -> (Vec[String], Vec[String], Vec[String], Vec[i64], i64) {
+    let p = next_random(mut seed) % (size / 2) + 1;
+    let q = next_random(mut seed) % (size / 2) + 1;
+    let positive: Vec[String] = (0..p).map(|w| word(w)).collect();
+    let negative: Vec[String] = (p..p + q).map(|w| word(w)).collect();
+    let mut report: Vec[String] = Vec.new();
+    for _ in 0..n {
+        let length = next_random(mut seed) % most + 1;
+        let words: Vec[String] = (0..length).map(|_| word(next_random(mut seed) % size)).collect();
+        report.push(words.join(" "));
+    }
+    let mut seen: Set[i64] = Set.new();
+    let mut ids: Vec[i64] = Vec.new();
+    while ids.len() < n {
+        let id = below(top, mut seed) + 1;
+        if not seen.contains(id) {
+            seen.insert(id);
+            ids.push(id);
+        }
+    }
+    let k = next_random(mut seed) % n + 1;
+    (positive, negative, report, ids, k)
+}
+
+fn fold(check: i64, answers: Vec[i64]) -> i64 {
+    let mut check = check;
+    for a in answers.iter() {
+        check = (check * 31 + a) % 1000000007;
+    }
+    check
+}
+
+fn main() {
+    // LeetCode's two examples, then four more
+    let p = words_of(["smart", "brilliant", "studious"].to_vec());
+    let q = words_of(["not"].to_vec());
+    println(f"{top_students(p, q, words_of(["this student is studious", "the student is smart"].to_vec()), [1, 2].to_vec(), 2)}");
+    println(f"{top_students(p, q, words_of(["this student is not studious", "the student is smart"].to_vec()), [1, 2].to_vec(), 2)}");
+    println(f"{top_students(p, q, words_of(["not not not", "a b c", "smart not"].to_vec()), [7, 3, 5].to_vec(), 3)}");
+    println(f"{top_students(p, q, words_of(["x", "x", "x", "x"].to_vec()), [40, 10, 30, 20].to_vec(), 2)}");
+    println(f"{top_students(p, q, words_of(["smart smart smart", "brilliant not studious not"].to_vec()), [1000000000, 1].to_vec(), 1)}");
+    println(f"{top_students(words_of(["a"].to_vec()), words_of(["b"].to_vec()), words_of(["a b b b", "b b b b a", "a b b"].to_vec()), [5, 4, 6].to_vec(), 3)}");
+    // 2000 random cases of 1 to 12 reports of 1 to 8 words from 6 and
+    // from 60, ids to 30 and to 10^9: a checksum of the rankings each
+    let mut seed = 2512;
+    for (size, top) in [(6, 30), (60, 1000000000)] {
+        let mut check = 0;
+        for _ in 0..2000 {
+            let n = next_random(mut seed) % 12 + 1;
+            let (positive, negative, report, ids, k) = random_case(size, 8, n, top, mut seed);
+            check = fold(check, top_students(positive, negative, report, ids, k));
+        }
+        println(f"2000 random from {size} words, ids to {top}: checksum {check}");
+    }
+    // the constraints' largest: 10^4 reports of 1 to 20 words from 400,
+    // ids to 10^9 and k of 10^4; and 10^4 copies of the first report, with
+    // k of 5000
+    let (positive, negative, report, ids, _) = random_case(400, 20, 10000, 1000000000, mut seed);
+    println(f"10^4 reports: checksum {fold(0, top_students(positive, negative, report, ids, 10000))}");
+    let same: Vec[String] = Vec.filled(10000, report[0].clone());
+    println(f"10^4 equal reports: checksum {fold(0, top_students(positive, negative, same, ids, 5000))}");
+}
