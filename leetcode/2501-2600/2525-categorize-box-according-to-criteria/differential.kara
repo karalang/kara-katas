@@ -1,0 +1,249 @@
+// LeetCode #2525: Categorize Box According to Criteria -- the
+// differential. The six arms against the statement read literally: a loop
+// over the three sides for one of at least 10^4, the volume formed and
+// compared with 10^9, the mass compared with 100, and then the statement's
+// four sentences in its own order. 200 random boxes with sides from 1 to
+// 10^5, 100 near a threshold with a mass from 98 to 101 (half with one
+// side of 9999 or 10^4 and two of 1 to 100, half with three sides of 999
+// to 1001, the volume about 10^9), and 100 with sides from 1 to 1000 and a
+// mass from 1 to 200; masses otherwise from 1 to 1000. Every box is drawn
+// before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is one of the four names, and names heavy exactly when the mass is at least 100
+// P3  the sides rotated (width, height, length): the same answer
+// P4  the mass raised to 1000: the answer names heavy, its bulky half kept
+// P5  the length raised to 10^5: the answer names bulky, its heavy half kept
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally
+
+fn literal(length: i64, width: i64, height: i64, mass: i64) -> String {
+    let mut bulky = false;
+    for side in [length, width, height] {
+        if side >= 10000 {
+            bulky = true;
+        }
+    }
+    if length * width * height >= 1000000000 {
+        bulky = true;
+    }
+    let heavy = mass >= 100;
+    if bulky and heavy {
+        "Both".to_string()
+    } else if not bulky and not heavy {
+        "Neither".to_string()
+    } else if bulky and not heavy {
+        "Bulky".to_string()
+    } else {
+        "Heavy".to_string()
+    }
+}
+
+// ---- star (box.kara) -----------------------------------------------------
+
+fn star_categorize_box(length: i64, width: i64, height: i64, mass: i64) -> Str {
+    let bulky = length >= 10000 or width >= 10000 or height >= 10000 or length * width * height >= 1000000000;
+    let heavy = mass >= 100;
+    match (bulky, heavy) {
+        (true, true) => "Both",
+        (true, false) => "Bulky",
+        (false, true) => "Heavy",
+        (false, false) => "Neither",
+    }
+}
+
+// ---- table (box_table.kara) ----------------------------------------------
+
+fn table_categorize_box(length: i64, width: i64, height: i64, mass: i64) -> Str {
+    let names: Vec[Str] = ["Neither", "Heavy", "Bulky", "Both"];
+    let side = length.max(width).max(height);
+    let bulky = if side >= 10000 or length * width * height >= 1000000000 { 1 } else { 0 };
+    let heavy = if mass >= 100 { 1 } else { 0 };
+    names[bulky * 2 + heavy]
+}
+
+// ---- nested (box_nested.kara) --------------------------------------------
+
+fn nested_categorize_box(length: i64, width: i64, height: i64, mass: i64) -> Str {
+    let heavy = mass >= 100;
+    if length >= 10000 or width >= 10000 or height >= 10000 {
+        return if heavy { "Both" } else { "Bulky" };
+    }
+    let base = length * width;
+    if height >= (1000000000 + base - 1) / base {
+        return if heavy { "Both" } else { "Bulky" };
+    }
+    if heavy { "Heavy" } else { "Neither" }
+}
+
+// ---- rec (box_rec.kara) --------------------------------------------------
+
+fn rec_bulky_from(sides: Array[i64, 3], i: i64, volume: i64) -> bool {
+    if i == 3 {
+        volume >= 1000000000
+    } else {
+        sides[i] >= 10000 or rec_bulky_from(sides, i + 1, volume * sides[i])
+    }
+}
+
+fn rec_categorize_box(length: i64, width: i64, height: i64, mass: i64) -> Str {
+    let bulky = rec_bulky_from([length, width, height], 0, 1);
+    if bulky and mass >= 100 {
+        "Both"
+    } else if bulky {
+        "Bulky"
+    } else if mass >= 100 {
+        "Heavy"
+    } else {
+        "Neither"
+    }
+}
+
+// ---- iter (box_iter.kara) ------------------------------------------------
+
+fn iter_categorize_box(length: i64, width: i64, height: i64, mass: i64) -> Str {
+    let sides = [length, width, height];
+    let bulky = sides.iter().any(|s| s >= 10000) or sides.iter().product() >= 1000000000;
+    let heavy = mass >= 100;
+    let table: Vec[(Str, bool, bool)] = [("Both", true, true), ("Bulky", true, false), ("Heavy", false, true), ("Neither", false, false)];
+    table
+        .iter()
+        .filter(|(_, b, h)| b == bulky and h == heavy)
+        .map(|(name, _, _)| name)
+        .next()
+        .unwrap()
+}
+
+// ---- solution (box_solution.kara) ----------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn categorize_box(length: i32, width: i32, height: i32, mass: i32) -> String {
+        let volume = length as i64 * width as i64 * height;
+        let bulky = length >= 10_000 or width >= 10_000 or height >= 10_000 or volume >= 1_000_000_000;
+        let heavy = mass >= 100;
+        match (bulky, heavy) {
+            (true, true) => "Both".to_string(),
+            (true, false) => "Bulky".to_string(),
+            (false, true) => "Heavy".to_string(),
+            (false, false) => "Neither".to_string(),
+        }
+    }
+}
+
+fn solution_categorize_box(length: i64, width: i64, height: i64, mass: i64) -> String {
+    Solution.categorize_box(length as i32, width as i32, height as i32, mass as i32)
+}
+
+// ---- the differential --------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn answer(arm: i64, length: i64, width: i64, height: i64, mass: i64) -> String {
+    match arm {
+        0 => star_categorize_box(length, width, height, mass).to_string(),
+        1 => table_categorize_box(length, width, height, mass).to_string(),
+        2 => nested_categorize_box(length, width, height, mass).to_string(),
+        3 => rec_categorize_box(length, width, height, mass).to_string(),
+        4 => iter_categorize_box(length, width, height, mass).to_string(),
+        _ => solution_categorize_box(length, width, height, mass),
+    }
+}
+
+fn names_heavy(name: String) -> bool {
+    name == "Both" or name == "Heavy"
+}
+
+fn names_bulky(name: String) -> bool {
+    name == "Both" or name == "Bulky"
+}
+
+fn main() {
+    let names = ["star", "table", "nested", "rec", "iter", "solution"];
+    let mut seed = 2525;
+    let mut boxes: Vec[(i64, i64, i64, i64)] = Vec.new();
+    for t in 0..400 {
+        if t < 200 {
+            let length = wide_random(mut seed) % 100000 + 1;
+            let width = wide_random(mut seed) % 100000 + 1;
+            let height = wide_random(mut seed) % 100000 + 1;
+            boxes.push((length, width, height, next_random(mut seed) % 1000 + 1));
+        } else if t < 300 {
+            let mut sides = [999 + next_random(mut seed) % 3, 999 + next_random(mut seed) % 3, 999 + next_random(mut seed) % 3];
+            if t % 2 == 0 {
+                sides = [next_random(mut seed) % 100 + 1, next_random(mut seed) % 100 + 1, next_random(mut seed) % 100 + 1];
+                sides[next_random(mut seed) % 3] = 9999 + next_random(mut seed) % 2;
+            }
+            boxes.push((sides[0], sides[1], sides[2], next_random(mut seed) % 4 + 98));
+        } else {
+            let length = next_random(mut seed) % 1000 + 1;
+            let width = next_random(mut seed) % 1000 + 1;
+            let height = next_random(mut seed) % 1000 + 1;
+            boxes.push((length, width, height, next_random(mut seed) % 200 + 1));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut neither = 0;
+    for (length, width, height, mass) in boxes.iter() {
+        let truth = literal(length, width, height, mass);
+        if truth == "Neither" {
+            neither += 1;
+        }
+        let code = if truth == "Both" { 1 } else if truth == "Bulky" { 2 } else if truth == "Heavy" { 3 } else { 4 };
+        check = (check * 31 + code) % 1000000007;
+        let got: Vec[String] = (0..6).map(|arm| answer(arm, length, width, height, mass)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let named = x == "Both" or x == "Bulky" or x == "Heavy" or x == "Neither";
+            let heavier = answer(arm, length, width, height, 1000);
+            let longer = answer(arm, 100000, width, height, mass);
+            let verdicts = [
+                x == truth,
+                named and names_heavy(x) == (mass >= 100),
+                answer(arm, width, height, length, mass) == x,
+                names_heavy(heavier) and names_bulky(heavier) == names_bulky(x),
+                names_bulky(longer) and names_heavy(longer) == names_heavy(x),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{length} {width} {height} {mass}, arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{boxes.len()} boxes, {neither} neither: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
