@@ -1,0 +1,39 @@
+// LeetCode #2530: Maximal Score After Applying K Operations -- benchmark of
+// the ★ arm (score.kara): 10^5 numbers from 1 to 10^9 built once from its
+// own generator; then the passes, each asking for the score with a `k`
+// from 5 * 10^4 to 10^5 that the checksum so far picks.
+
+fn max_kelements(nums: Vec[i64], k: i64) -> i64 {
+    let mut heap: PriorityQueue[i64] = PriorityQueue.max_first();
+    for x in nums.iter() {
+        heap.push(x);
+    }
+    let mut score = 0;
+    for _ in 0..k {
+        let top = heap.pop().unwrap();
+        score += top;
+        heap.push((top + 2) / 3);
+    }
+    score
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let mut seed = 2530;
+    let nums: Vec[i64] = (0..100000).map(|_| wide_random(mut seed) % 1000000000 + 1).collect();
+    let passes = 170;
+    let mut check = 0;
+    for p in 0..passes {
+        let k = 50000 + check % 50001;
+        check = (check * 31 + max_kelements(nums, k) % 1000000007 + p) % 1000000007;
+    }
+    println(f"{passes} passes over 100000 numbers: checksum {check}");
+}

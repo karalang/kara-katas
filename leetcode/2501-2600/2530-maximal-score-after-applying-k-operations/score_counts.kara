@@ -1,0 +1,72 @@
+// LeetCode #2530: Maximal Score After Applying K Operations -- a
+// `SortedMap` from each value to how many of the numbers hold it: each
+// step takes the largest key, one of its copies, and adds a copy of its
+// third. Equal numbers are one entry. O((n + k) log n).
+
+fn max_kelements(nums: Vec[i64], k: i64) -> i64 {
+    let mut counts: SortedMap[i64, i64] = SortedMap.new();
+    for x in nums.iter() {
+        counts[x] = counts.get(x).unwrap_or(0) + 1;
+    }
+    let mut score = 0;
+    for _ in 0..k {
+        let (top, many): (i64, i64) = counts.last().unwrap();
+        score += top;
+        if many == 1 {
+            counts.remove(top);
+        } else {
+            counts[top] = many - 1;
+        }
+        let third = (top + 2) / 3;
+        counts[third] = counts.get(third).unwrap_or(0) + 1;
+    }
+    score
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a value from 0 to 2^30 - 1, next_random giving only 15 bits
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples, then six more
+    let fixed: Vec[(Vec[i64], i64)] = [
+        ([10, 10, 10, 10, 10], 5),
+        ([1, 10, 3, 3, 3], 3),
+        ([1], 1),
+        ([1], 100000),
+        ([1000000000], 25),
+        ([2, 2], 3),
+        ([9, 3, 1], 4),
+        ([7, 7, 7], 7),
+    ];
+    for (nums, k) in fixed.iter() {
+        println(f"{nums} k {k} -> {max_kelements(nums, k)}");
+    }
+    // 2000 random lists of 1 to 20 numbers to 30 with k up to 30, and 200
+    // of 1 to 1000 to 10^9 with k up to 2000: the sum and a checksum
+    let mut seed = 2530;
+    for (count, most, top, ops) in [(2000, 20, 30, 30), (200, 1000, 1000000000, 2000)] {
+        let mut total = 0;
+        let mut check = 0;
+        for _ in 0..count {
+            let n = next_random(mut seed) % most + 1;
+            let nums: Vec[i64] = (0..n).map(|_| wide_random(mut seed) % top + 1).collect();
+            let k = next_random(mut seed) % ops + 1;
+            let a = max_kelements(nums, k);
+            total += a;
+            check = (check * 31 + a % 1000000007) % 1000000007;
+        }
+        println(f"{count} random lists of up to {most} numbers to {top}: total {total}, checksum {check}");
+    }
+    // the constraints' largest: 10^5 numbers to 10^9 and k = 10^5
+    let nums: Vec[i64] = (0..100000).map(|_| wide_random(mut seed) % 1000000000 + 1).collect();
+    println(f"10^5 numbers, k 10^5: {max_kelements(nums, 100000)}");
+}
