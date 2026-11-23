@@ -1,0 +1,483 @@
+// LeetCode #2532: Time to Cross a Bridge -- the differential. The six
+// arms against the statement read literally: the clock moved one minute
+// at a time, each worker's step ended when its minute comes, and the
+// bridge given out by the statement's three rules whenever it is free.
+// 300 random cases of 1 to 8 boxes, 1 to 4 workers and times to 3, 6 or
+// 12; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  at least n of the quickest crossings each way
+// P3  the first worker alone: n round trips less the last put
+// P4  one box: the least efficient worker's trip there and back
+// P5  with no two workers equally efficient, the workers listed backwards: the same answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally
+
+fn literal(n: i64, k: i64, time: Vec[Vec[i64]]) -> i64 {
+    // 0 waiting left, 1 crossing right, 2 picking, 3 waiting right,
+    // 4 crossing left, 5 putting
+    let mut step = Vec.filled(k, 0);
+    let mut until = Vec.filled(k, 0);
+    let mut sent = 0;
+    let mut carried = 0;
+    let mut on_bridge = false;
+    let mut minute = 0;
+    let mut last = 0;
+    loop {
+        for i in 0..k {
+            if step[i] % 3 != 0 and until[i] == minute {
+                if step[i] == 1 {
+                    step[i] = 2;
+                    until[i] = minute + time[i][1];
+                    on_bridge = false;
+                } else if step[i] == 2 {
+                    step[i] = 3;
+                } else if step[i] == 4 {
+                    step[i] = 5;
+                    until[i] = minute + time[i][3];
+                    on_bridge = false;
+                    carried += 1;
+                    last = minute;
+                } else {
+                    step[i] = 0;
+                }
+            }
+        }
+        if carried == n {
+            return last;
+        }
+        if not on_bridge {
+            let mut pick = -1;
+            for want in [3, 0] {
+                if pick == -1 and (want == 3 or sent < n) {
+                    for i in 0..k {
+                        if step[i] == want and (pick == -1 or time[i][0] + time[i][2] >= time[pick][0] + time[pick][2]) {
+                            pick = i;
+                        }
+                    }
+                }
+            }
+            if pick != -1 {
+                if step[pick] == 3 {
+                    step[pick] = 4;
+                    until[pick] = minute + time[pick][2];
+                } else {
+                    step[pick] = 1;
+                    until[pick] = minute + time[pick][0];
+                    sent += 1;
+                }
+                on_bridge = true;
+            }
+        }
+        minute += 1;
+    }
+}
+
+// ---- star (bridge.kara) --------------------------------------------------
+
+fn star_find_crossing_time(n: i64, k: i64, time: Vec[Vec[i64]]) -> i64 {
+    let mut left: PriorityQueue[(i64, i64)] = PriorityQueue.max_first();
+    for i in 0..k {
+        left.push((time[i][0] + time[i][2], i));
+    }
+    let mut right: PriorityQueue[(i64, i64)] = PriorityQueue.max_first();
+    let mut picking: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    let mut putting: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    let mut boxes = n;
+    let mut now = 0;
+    while boxes > 0 or not right.is_empty() or not picking.is_empty() {
+        while let Some((done, i)) = putting.peek() {
+            if not (done <= now) {
+                break;
+            }
+            putting.pop();
+            left.push((time[i][0] + time[i][2], i));
+        }
+        while let Some((done, i)) = picking.peek() {
+            if not (done <= now) {
+                break;
+            }
+            picking.pop();
+            right.push((time[i][0] + time[i][2], i));
+        }
+        if let Some((_, i)) = right.pop() {
+            now += time[i][2];
+            putting.push((now + time[i][3], i));
+        } else if boxes > 0 and not left.is_empty() {
+            let (_, i) = left.pop().unwrap();
+            now += time[i][0];
+            boxes -= 1;
+            picking.push((now + time[i][1], i));
+        } else {
+            let mut next = i64.MAX;
+            if let Some((done, _)) = picking.peek() {
+                next = next.min(done);
+            }
+            if boxes > 0 {
+                if let Some((done, _)) = putting.peek() {
+                    next = next.min(done);
+                }
+            }
+            now = next;
+        }
+    }
+    now
+}
+
+// ---- scan (bridge_scan.kara) ---------------------------------------------
+
+enum ScanPlace {
+    WaitLeft,
+    Picking,
+    WaitRight,
+    Putting,
+}
+
+fn scan_find_crossing_time(n: i64, k: i64, time: Vec[Vec[i64]]) -> i64 {
+    let mut place = Vec.filled(k, ScanPlace.WaitLeft);
+    let mut free = Vec.filled(k, 0);
+    let mut boxes = n;
+    let mut carried = 0;
+    let mut now = 0;
+    while carried < n {
+        for i in 0..k {
+            if free[i] <= now {
+                match place[i] {
+                    ScanPlace.Picking => place[i] = ScanPlace.WaitRight,
+                    ScanPlace.Putting => place[i] = ScanPlace.WaitLeft,
+                    _ => {}
+                }
+            }
+        }
+        let mut right = -1;
+        let mut left = -1;
+        for i in 0..k {
+            let worse = |j: i64| j == -1 or time[i][0] + time[i][2] >= time[j][0] + time[j][2];
+            match place[i] {
+                ScanPlace.WaitRight => if worse(right) { right = i; },
+                ScanPlace.WaitLeft => if worse(left) { left = i; },
+                _ => {}
+            }
+        }
+        if right != -1 {
+            now += time[right][2];
+            place[right] = ScanPlace.Putting;
+            free[right] = now + time[right][3];
+            carried += 1;
+        } else if boxes > 0 and left != -1 {
+            now += time[left][0];
+            place[left] = ScanPlace.Picking;
+            free[left] = now + time[left][1];
+            boxes -= 1;
+        } else {
+            let mut next = i64.MAX;
+            for i in 0..k {
+                match place[i] {
+                    ScanPlace.Picking => next = next.min(free[i]),
+                    ScanPlace.Putting => if boxes > 0 { next = next.min(free[i]); },
+                    _ => {}
+                }
+            }
+            now = next;
+        }
+    }
+    now
+}
+
+// ---- sorted (bridge_sorted.kara) -----------------------------------------
+
+fn sorted_find_crossing_time(n: i64, k: i64, time: Vec[Vec[i64]]) -> i64 {
+    let mut left: SortedSet[(i64, i64)] = SortedSet.new();
+    for i in 0..k {
+        left.insert((time[i][0] + time[i][2], i));
+    }
+    let mut right: SortedSet[(i64, i64)] = SortedSet.new();
+    let mut picking: SortedSet[(i64, i64)] = SortedSet.new();
+    let mut putting: SortedSet[(i64, i64)] = SortedSet.new();
+    let mut boxes = n;
+    let mut now = 0;
+    while boxes > 0 or right.len() > 0 or picking.len() > 0 {
+        while let Some(first) = putting.pop_first() {
+            if first.0 > now {
+                putting.insert(first);
+                break;
+            }
+            left.insert((time[first.1][0] + time[first.1][2], first.1));
+        }
+        while let Some(first) = picking.pop_first() {
+            if first.0 > now {
+                picking.insert(first);
+                break;
+            }
+            right.insert((time[first.1][0] + time[first.1][2], first.1));
+        }
+        if let Some((_, i)) = right.pop_last() {
+            now += time[i][2];
+            putting.insert((now + time[i][3], i));
+        } else if boxes > 0 and left.len() > 0 {
+            let (_, i) = left.pop_last().unwrap();
+            now += time[i][0];
+            boxes -= 1;
+            picking.insert((now + time[i][1], i));
+        } else {
+            let soonest_pick = picking.min().map(|p| p.0).unwrap_or(i64.MAX);
+            let soonest_put = if boxes > 0 { putting.min().map(|p| p.0).unwrap_or(i64.MAX) } else { i64.MAX };
+            now = soonest_pick.min(soonest_put);
+        }
+    }
+    now
+}
+
+// ---- rec (bridge_rec.kara) -----------------------------------------------
+
+fn rec_release(working: mut ref PriorityQueue[(i64, i64)], waiting: mut ref PriorityQueue[(i64, i64)], time: Vec[Vec[i64]], now: i64) {
+    match working.peek() {
+        Some((done, i)) if done <= now => {
+            let worker = i;
+            working.pop();
+            waiting.push((time[worker][0] + time[worker][2], worker));
+            rec_release(mut working, mut waiting, time, now);
+        }
+        _ => {}
+    }
+}
+
+fn rec_cross(
+    time: Vec[Vec[i64]],
+    left: mut ref PriorityQueue[(i64, i64)],
+    right: mut ref PriorityQueue[(i64, i64)],
+    picking: mut ref PriorityQueue[(i64, i64)],
+    putting: mut ref PriorityQueue[(i64, i64)],
+    boxes: i64,
+    now: i64,
+) -> i64 {
+    if boxes == 0 and right.is_empty() and picking.is_empty() {
+        return now;
+    }
+    rec_release(mut putting, mut left, time, now);
+    rec_release(mut picking, mut right, time, now);
+    if let Some((_, i)) = right.pop() {
+        let at = now + time[i][2];
+        putting.push((at + time[i][3], i));
+        rec_cross(time, mut left, mut right, mut picking, mut putting, boxes, at)
+    } else if boxes > 0 and not left.is_empty() {
+        let (_, i) = left.pop().unwrap();
+        let at = now + time[i][0];
+        picking.push((at + time[i][1], i));
+        rec_cross(time, mut left, mut right, mut picking, mut putting, boxes - 1, at)
+    } else {
+        let mut next = picking.peek().map(|p| p.0).unwrap_or(i64.MAX);
+        if boxes > 0 {
+            next = next.min(putting.peek().map(|p| p.0).unwrap_or(i64.MAX));
+        }
+        rec_cross(time, mut left, mut right, mut picking, mut putting, boxes, next)
+    }
+}
+
+fn rec_find_crossing_time(n: i64, k: i64, time: Vec[Vec[i64]]) -> i64 {
+    let mut left: PriorityQueue[(i64, i64)] = PriorityQueue.max_first_from((0..k).map(|i| (time[i][0] + time[i][2], i)).collect());
+    let mut right: PriorityQueue[(i64, i64)] = PriorityQueue.max_first();
+    let mut picking: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    let mut putting: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    rec_cross(time, mut left, mut right, mut picking, mut putting, n, 0)
+}
+
+// ---- iter (bridge_iter.kara) ---------------------------------------------
+
+#[derive(PartialEq, Clone, Copy)]
+enum IterPlace {
+    WaitLeft,
+    Picking,
+    WaitRight,
+    Putting,
+}
+
+fn iter_find_crossing_time(n: i64, k: i64, time: Vec[Vec[i64]]) -> i64 {
+    let mut place = Vec.filled(k, IterPlace.WaitLeft);
+    let mut free = Vec.filled(k, 0);
+    let mut boxes = n;
+    let mut carried = 0;
+    let mut now = 0;
+    let worst = |place: Vec[IterPlace], want: IterPlace| (0..k).filter(|i| place[i] == want).max_by_key(|i| (time[i][0] + time[i][2], i));
+    while carried < n {
+        place = place.iter().zip(free.iter()).map(|(p, f)| match p {
+            IterPlace.Picking if f <= now => IterPlace.WaitRight,
+            IterPlace.Putting if f <= now => IterPlace.WaitLeft,
+            _ => p,
+        }).collect();
+        if let Some(i) = worst(place, IterPlace.WaitRight) {
+            now += time[i][2];
+            place[i] = IterPlace.Putting;
+            free[i] = now + time[i][3];
+            carried += 1;
+        } else if let Some(i) = worst(place, IterPlace.WaitLeft).filter(|_| boxes > 0) {
+            now += time[i][0];
+            place[i] = IterPlace.Picking;
+            free[i] = now + time[i][1];
+            boxes -= 1;
+        } else {
+            now = (0..k)
+                .filter(|i| place[i] == IterPlace.Picking or (place[i] == IterPlace.Putting and boxes > 0))
+                .map(|i| free[i])
+                .min()
+                .unwrap();
+        }
+    }
+    now
+}
+
+// ---- solution (bridge_solution.kara) -------------------------------------
+
+struct Solution {}
+
+impl Solution {
+    pub fn find_crossing_time(n: i32, k: i32, time: Vec[Vec[i32]]) -> i32 {
+        let mut left = PriorityQueue.max_first();
+        let mut right = PriorityQueue.max_first();
+        let mut pick: PriorityQueue[(i32, i64)] = PriorityQueue.new();
+        let mut put: PriorityQueue[(i32, i64)] = PriorityQueue.new();
+        for (i, t) in time.iter().enumerate() {
+            left.push((t[0] + t[2], i));
+        }
+        let mut n = n;
+        let mut cur: i32 = 0;
+        while n > 0 or not right.is_empty() or not pick.is_empty() {
+            while let Some((t, i)) = put.peek().cloned() {
+                if t > cur {
+                    break;
+                }
+                put.pop();
+                left.push((time[i][0] + time[i][2], i));
+            }
+            while let Some((t, i)) = pick.peek().cloned() {
+                if t > cur {
+                    break;
+                }
+                pick.pop();
+                right.push((time[i][0] + time[i][2], i));
+            }
+            if let Some((_, i)) = right.pop() {
+                cur += time[i][2];
+                put.push((cur + time[i][3], i));
+            } else if n > 0 and not left.is_empty() {
+                let (_, i) = left.pop().unwrap();
+                cur += time[i][0];
+                n -= 1;
+                pick.push((cur + time[i][1], i));
+            } else {
+                let mut next = i32.MAX;
+                if let Some((t, _)) = pick.peek().cloned() {
+                    next = next.min(t);
+                }
+                if n > 0 {
+                    if let Some((t, _)) = put.peek().cloned() {
+                        next = next.min(t);
+                    }
+                }
+                cur = next;
+            }
+        }
+        cur
+    }
+}
+
+fn solution_find_crossing_time(n: i64, k: i64, time: Vec[Vec[i64]]) -> i64 {
+    Solution.find_crossing_time(n as i32, k as i32, time.iter().map(|row| row.iter().map(|x| x as i32).collect()).collect())
+}
+
+// ---- the differential --------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn answer(arm: i64, n: i64, k: i64, time: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_find_crossing_time(n, k, time),
+        1 => scan_find_crossing_time(n, k, time),
+        2 => sorted_find_crossing_time(n, k, time),
+        3 => rec_find_crossing_time(n, k, time),
+        4 => iter_find_crossing_time(n, k, time),
+        _ => solution_find_crossing_time(n, k, time),
+    }
+}
+
+fn main() {
+    let names = ["star", "scan", "sorted", "rec", "iter", "solution"];
+    let mut seed = 2532;
+    let mut problems: Vec[(i64, i64, Vec[Vec[i64]])] = Vec.new();
+    for _ in 0..300 {
+        let n = next_random(mut seed) % 8 + 1;
+        let k = next_random(mut seed) % 4 + 1;
+        let most = [3, 6, 12][next_random(mut seed) % 3];
+        let mut time: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..k {
+            time.push((0..4).map(|_| next_random(mut seed) % most + 1).collect());
+        }
+        problems.push((n, k, time));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut distinct = 0;
+    for (n, k, time) in problems.iter() {
+        let truth = literal(n, k, time);
+        check = (check * 31 + truth) % 1000000007;
+        let quickest = time.iter().map(|t| t[0]).min().unwrap() + time.iter().map(|t| t[2]).min().unwrap();
+        let first: Vec[Vec[i64]] = [time[0].clone()];
+        let mut worst = 0;
+        for i in 0..k {
+            if time[i][0] + time[i][2] >= time[worst][0] + time[worst][2] {
+                worst = i;
+            }
+        }
+        let keys: SortedSet[i64] = time.iter().map(|t| t[0] + t[2]).collect();
+        let all_distinct = keys.len() == k;
+        if all_distinct {
+            distinct += 1;
+        }
+        let backwards: Vec[Vec[i64]] = time.iter().rev().map(|t| t.clone()).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, n, k, time)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                x >= n * quickest,
+                answer(arm, n, 1, first) == n * (time[0][0] + time[0][1] + time[0][2]) + (n - 1) * time[0][3],
+                answer(arm, 1, k, time) == time[worst][0] + time[worst][1] + time[worst][2],
+                not all_distinct or answer(arm, n, k, backwards) == x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"n {n} k {k} {time}, arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} cases, {distinct} with no two workers equally efficient: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,94 @@
+// LeetCode #2532: Time to Cross a Bridge -- iterators: the scan arm's
+// places and free minutes, with each choice an iterator over the workers:
+// `max_by_key` on `(lr + rl, i)` among those waiting for the least
+// efficient, and `min` over the free minutes of those working for the
+// next jump of the clock. O(n k).
+
+#[derive(PartialEq, Clone, Copy)]
+enum Place {
+    WaitLeft,
+    Picking,
+    WaitRight,
+    Putting,
+}
+
+fn find_crossing_time(n: i64, k: i64, time: Vec[Vec[i64]]) -> i64 {
+    let mut place = Vec.filled(k, Place.WaitLeft);
+    let mut free = Vec.filled(k, 0);
+    let mut boxes = n;
+    let mut carried = 0;
+    let mut now = 0;
+    let worst = |place: Vec[Place], want: Place| (0..k).filter(|i| place[i] == want).max_by_key(|i| (time[i][0] + time[i][2], i));
+    while carried < n {
+        place = place.iter().zip(free.iter()).map(|(p, f)| match p {
+            Place.Picking if f <= now => Place.WaitRight,
+            Place.Putting if f <= now => Place.WaitLeft,
+            _ => p,
+        }).collect();
+        if let Some(i) = worst(place, Place.WaitRight) {
+            now += time[i][2];
+            place[i] = Place.Putting;
+            free[i] = now + time[i][3];
+            carried += 1;
+        } else if let Some(i) = worst(place, Place.WaitLeft).filter(|_| boxes > 0) {
+            now += time[i][0];
+            place[i] = Place.Picking;
+            free[i] = now + time[i][1];
+            boxes -= 1;
+        } else {
+            now = (0..k)
+                .filter(|i| place[i] == Place.Picking or (place[i] == Place.Putting and boxes > 0))
+                .map(|i| free[i])
+                .min()
+                .unwrap();
+        }
+    }
+    now
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples, then six more
+    let fixed: Vec[(i64, i64, Vec[Vec[i64]])] = [
+        (1, 3, [[1, 1, 2, 1], [1, 1, 3, 1], [1, 1, 4, 1]]),
+        (3, 2, [[1, 9, 1, 8], [10, 10, 10, 10]]),
+        (1, 1, [[1, 1, 1, 1]]),
+        (1000, 1, [[1, 1, 1, 1]]),
+        (2, 3, [[5, 1, 5, 1], [1, 1, 9, 1], [9, 1, 1, 1]]),
+        (5, 2, [[1, 1000, 1, 1000], [1000, 1, 1000, 1]]),
+        (4, 4, [[3, 3, 3, 3], [3, 3, 3, 3], [3, 3, 3, 3], [3, 3, 3, 3]]),
+        (10, 3, [[2, 7, 4, 1], [6, 1, 1, 9], [3, 3, 3, 3]]),
+    ];
+    for (n, k, time) in fixed.iter() {
+        println(f"n {n} k {k} {time} -> {find_crossing_time(n, k, time)}");
+    }
+    // 2000 random cases of 1 to 10 boxes, 1 to 5 workers and times to 10,
+    // and 40 of 1 to 1000 boxes, 1 to 100 workers and times to 1000
+    let mut seed = 2532;
+    for (count, boxes, workers, most) in [(2000, 10, 5, 10), (40, 1000, 100, 1000)] {
+        let mut total = 0;
+        let mut check = 0;
+        for _ in 0..count {
+            let n = next_random(mut seed) % boxes + 1;
+            let k = next_random(mut seed) % workers + 1;
+            let mut time: Vec[Vec[i64]] = Vec.new();
+            for _ in 0..k {
+                let mut row = Vec.new();
+                for _ in 0..4 {
+                    row.push(next_random(mut seed) % most + 1);
+                }
+                time.push(row);
+            }
+            let answer = find_crossing_time(n, k, time);
+            total += answer;
+            check = (check * 31 + answer) % 1000000007;
+        }
+        println(f"{count} random cases of up to {boxes} boxes and {workers} workers: total {total}, checksum {check}");
+    }
+}

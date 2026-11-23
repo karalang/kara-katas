@@ -1,0 +1,109 @@
+// LeetCode #2532: Time to Cross a Bridge -- LeetCode's Rust template:
+// two `i32`s and a `Vec<Vec<i32>>` in, `i32` out; the ★ arm's four
+// queues as `BinaryHeap`s, the working ones soonest first through
+// `Reverse`, and the worker an `enumerate` index; carried by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn find_crossing_time(n: i32, k: i32, time: Vec[Vec[i32]]) -> i32 {
+        let mut left = PriorityQueue.max_first();
+        let mut right = PriorityQueue.max_first();
+        let mut pick: PriorityQueue[(i32, i64)] = PriorityQueue.new();
+        let mut put: PriorityQueue[(i32, i64)] = PriorityQueue.new();
+        for (i, t) in time.iter().enumerate() {
+            left.push((t[0] + t[2], i));
+        }
+        let mut n = n;
+        let mut cur: i32 = 0;
+        while n > 0 or not right.is_empty() or not pick.is_empty() {
+            while let Some((t, i)) = put.peek().cloned() {
+                if t > cur {
+                    break;
+                }
+                put.pop();
+                left.push((time[i][0] + time[i][2], i));
+            }
+            while let Some((t, i)) = pick.peek().cloned() {
+                if t > cur {
+                    break;
+                }
+                pick.pop();
+                right.push((time[i][0] + time[i][2], i));
+            }
+            if let Some((_, i)) = right.pop() {
+                cur += time[i][2];
+                put.push((cur + time[i][3], i));
+            } else if n > 0 and not left.is_empty() {
+                let (_, i) = left.pop().unwrap();
+                cur += time[i][0];
+                n -= 1;
+                pick.push((cur + time[i][1], i));
+            } else {
+                let mut next = i32.MAX;
+                if let Some((t, _)) = pick.peek().cloned() {
+                    next = next.min(t);
+                }
+                if n > 0 {
+                    if let Some((t, _)) = put.peek().cloned() {
+                        next = next.min(t);
+                    }
+                }
+                cur = next;
+            }
+        }
+        cur
+    }
+}
+
+fn find_crossing_time(n: i64, k: i64, time: Vec[Vec[i64]]) -> i64 {
+    Solution.find_crossing_time(n as i32, k as i32, time.iter().map(|row| row.iter().map(|x| x as i32).collect()).collect())
+}
+
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples, then six more
+    let fixed: Vec[(i64, i64, Vec[Vec[i64]])] = [
+        (1, 3, [[1, 1, 2, 1], [1, 1, 3, 1], [1, 1, 4, 1]]),
+        (3, 2, [[1, 9, 1, 8], [10, 10, 10, 10]]),
+        (1, 1, [[1, 1, 1, 1]]),
+        (1000, 1, [[1, 1, 1, 1]]),
+        (2, 3, [[5, 1, 5, 1], [1, 1, 9, 1], [9, 1, 1, 1]]),
+        (5, 2, [[1, 1000, 1, 1000], [1000, 1, 1000, 1]]),
+        (4, 4, [[3, 3, 3, 3], [3, 3, 3, 3], [3, 3, 3, 3], [3, 3, 3, 3]]),
+        (10, 3, [[2, 7, 4, 1], [6, 1, 1, 9], [3, 3, 3, 3]]),
+    ];
+    for (n, k, time) in fixed.iter() {
+        println(f"n {n} k {k} {time} -> {find_crossing_time(n, k, time)}");
+    }
+    // 2000 random cases of 1 to 10 boxes, 1 to 5 workers and times to 10,
+    // and 40 of 1 to 1000 boxes, 1 to 100 workers and times to 1000
+    let mut seed = 2532;
+    for (count, boxes, workers, most) in [(2000, 10, 5, 10), (40, 1000, 100, 1000)] {
+        let mut total = 0;
+        let mut check = 0;
+        for _ in 0..count {
+            let n = next_random(mut seed) % boxes + 1;
+            let k = next_random(mut seed) % workers + 1;
+            let mut time: Vec[Vec[i64]] = Vec.new();
+            for _ in 0..k {
+                let mut row = Vec.new();
+                for _ in 0..4 {
+                    row.push(next_random(mut seed) % most + 1);
+                }
+                time.push(row);
+            }
+            let answer = find_crossing_time(n, k, time);
+            total += answer;
+            check = (check * 31 + answer) % 1000000007;
+        }
+        println(f"{count} random cases of up to {boxes} boxes and {workers} workers: total {total}, checksum {check}");
+    }
+}
