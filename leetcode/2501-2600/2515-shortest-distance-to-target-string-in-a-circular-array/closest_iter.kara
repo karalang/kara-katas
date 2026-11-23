@@ -1,0 +1,89 @@
+// LeetCode #2515: Shortest Distance to Target String in a Circular Array
+// -- iterators: the places `enumerate`d, those holding the target kept by
+// `filter`, each `map`ped to the shorter way round, and the `min` of them,
+// -1 when the iterator is empty.
+
+fn closet_target(words: Vec[String], target: String, start: i64) -> i64 {
+    let n = words.len();
+    words
+        .iter()
+        .enumerate()
+        .filter(|(_, w)| w == target)
+        .map(|(i, _)| (i - start).abs().min(n - (i - start).abs()))
+        .min()
+        ?? -1
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a word of 1 to `most` letters from the first `letters`
+fn word(most: i64, letters: i64, seed: mut ref i64) -> String {
+    let mut w = String.new();
+    let length = next_random(mut seed) % most + 1;
+    for _ in 0..length {
+        w.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+    }
+    w
+}
+
+fn strings(list: Vec[Str]) -> Vec[String] {
+    list.iter().map(|w| w.to_string()).collect()
+}
+
+fn main() {
+    // LeetCode's three examples, then five more
+    let cases: Vec[(Vec[String], String, i64)] = [
+        (["hello", "i", "am", "leetcode", "hello"].to_vec(), "hello", 1),
+        (["a", "b", "leetcode"].to_vec(), "leetcode", 0),
+        (["i", "eat", "leetcode"].to_vec(), "ate", 0),
+        (["a"].to_vec(), "a", 0),
+        (["a", "b"].to_vec(), "b", 0),
+        (["x", "y", "z", "w"].to_vec(), "z", 0),
+        (["t", "o", "o", "o", "o", "t", "o"].to_vec(), "t", 3),
+        (["ab", "a", "b", "ba"].to_vec(), "a", 3),
+    ].to_vec();
+    for (list, target, start) in cases.iter() {
+        println(f"{list} \"{target}\" from {start} -> {closet_target(list, target, start)}");
+    }
+    // 2000 random lists of 1 to 10 words of 1 letter from 3, the target 1
+    // letter from 4; and 2000 of 1 to 100 words of 1 to 3 letters from 2,
+    // the target a word of the same kind: the misses, the sum and a
+    // checksum
+    let mut seed = 2515;
+    for (most_words, most, letters) in [(10, 1, 3), (100, 3, 2)] {
+        let mut misses = 0;
+        let mut total = 0;
+        let mut check = 0;
+        for _ in 0..2000 {
+            let n = next_random(mut seed) % most_words + 1;
+            let words: Vec[String] = (0..n).map(|_| word(most, letters, mut seed)).collect();
+            let target = word(most, if letters == 3 { 4 } else { letters }, mut seed);
+            let start = next_random(mut seed) % n;
+            let a = closet_target(words, target, start);
+            if a == -1 {
+                misses += 1;
+            } else {
+                total += a;
+            }
+            check = (check * 31 + a + 1) % 1000000007;
+        }
+        println(f"2000 random of up to {most_words} words: {misses} misses, total {total}, checksum {check}");
+    }
+    // the constraints' largest, 100 words of 100 letters: the target only
+    // opposite the start; only beside it on the left; nowhere; and
+    // everywhere
+    let a = "a".repeat(100);
+    let b = "b".repeat(100);
+    let c = "c".repeat(100);
+    let far: Vec[String] = (0..100).map(|i| if i == 50 { b.clone() } else { a.clone() }).collect();
+    println(f"100 words, the target opposite: {closet_target(far, b, 0)}");
+    println(f"100 words, the target to the left: {closet_target(far, b, 51)}");
+    println(f"100 words, no target: {closet_target(far, c, 7)}");
+    let same: Vec[String] = (0..100).map(|_| a.clone()).collect();
+    println(f"100 words, all the target: {closet_target(same, a, 99)}");
+}
