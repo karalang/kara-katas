@@ -1,0 +1,69 @@
+// LeetCode 138 — Copy List with Random Pointer, keyed by identity.
+//
+// The deep copy LeetCode asks for, with no `id` field in the node: a
+// `Map[Identity[Node], Node]` (std.hash) maps each original node to its
+// copy, the shape Python writes with `id(node)` and Rust with
+// `Rc::as_ptr`. Pass 1 walks `next` and copies every node; pass 2 walks
+// again and wires each copy's `next` and `random` through the map.
+// `random` stays a `weak Node`, so the cycles it makes are reclaimed.
+
+import std.hash.Identity;
+
+shared struct Node {
+    val: i64,
+    mut next: Option[Node],
+    mut random: weak Node,
+}
+
+// The original list from parallel arrays: `vals[i]` is node i's value and
+// `rnd[i]` the place its `random` targets, -1 for null.
+fn build(vals: Vec[i64], rnd: Vec[i64]) -> Option[Node] {
+    let nodes: Vec[Node] = vals.iter().map(|v| Node { val: v, next: None, random: None }).collect();
+    for i in 0..nodes.len() {
+        if i + 1 < nodes.len() {
+            nodes[i].next = Some(nodes[i + 1]);
+        }
+        if rnd[i] >= 0 {
+            nodes[i].random = nodes[rnd[i]];
+        }
+    }
+    nodes.first().cloned()
+}
+
+fn copy_random_list(head: Option[Node]) -> Option[Node] {
+    let mut copy_of: Map[Identity[Node], Node] = Map.new();
+    let mut cur = head;
+    while let Some(n) = cur {
+        copy_of.insert(n.identity(), Node { val: n.val, next: None, random: None });
+        cur = n.next;
+    }
+    cur = head;
+    while let Some(n) = cur {
+        let c = copy_of[n.identity()];
+        if let Some(x) = n.next {
+            c.next = Some(copy_of[x.identity()]);
+        }
+        if let Some(r) = n.random {
+            c.random = copy_of[r.identity()];
+        }
+        cur = n.next;
+    }
+    match head {
+        Some(h) => Some(copy_of[h.identity()]),
+        None => None,
+    }
+}
+
+fn main() {
+    let head = build([7, 13, 11, 10, 1].to_vec(), [-1, 0, 4, 2, 0].to_vec());
+    let copy = copy_random_list(head);
+    let mut cur = copy;
+    while let Some(n) = cur {
+        let rv = match n.random {
+            Some(r) => r.val,
+            None => -1,
+        };
+        println(f"{n.val}|{rv}");
+        cur = n.next;
+    }
+}

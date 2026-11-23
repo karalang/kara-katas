@@ -18,6 +18,7 @@ random = [-1, 0, 4, 2, 0]      # index each node's `random` points at (-1 = null
 | Approach | Kāra | Python |
 |---|---|---|
 | **id-indexed clone + re-wire** (`next` owns, `random` is `weak`) ★ | [`copy_random_list.kara`](copy_random_list.kara) ✓ | [`copy_random_list.py`](copy_random_list.py) ✓ |
+| **identity-keyed map** (`Map[Identity[Node], Node]`, no `id` field) | [`copy_random_list_identity.kara`](copy_random_list_identity.kara) ✓ | [`copy_random_list.py`](copy_random_list.py) ✓ |
 
 `✓` runs end-to-end today across interpreter, JIT, and codegen (default auto-par and `KARAC_AUTO_PAR=0`), byte-identical to the Python mirror. Zero diagnostics, valgrind/LSan-clean — **including the `random`-cyclic graph**, which plain reference counting cannot collect.
 
@@ -38,6 +39,24 @@ shared struct Node {
 - **Read (upgrade):** `match orig[i].random { Some(r) => …, None => … }` — a `weak` field **reads as `Option[Node]`**: `Some(node)` while a strong reference to the target still exists, `None` once the last one is gone (never a dangling read).
 
 The deep-copy is the canonical two-pass map algorithm, indexed by a stable per-node `id`: pass 1 clones every node; pass 2 re-wires `next` (strong) and `random` (weak) against the **fresh** copies.
+
+## Keyed by identity
+
+The ★ arm gives every node an `id` so pass 2 can find a node's copy by
+index. That field is not part of LeetCode's node: Python writes the map
+as `{id(node): copy}`, Rust keys a `HashMap` by `Rc::as_ptr`. Kāra had
+`ref_eq` but nothing that hashed a handle's identity, so the natural
+deep copy could not be written (kara `B-2026-11-21-55`, raised by kata
+1485, Clone Binary Tree With Random Pointer). `copy_random_list_identity.kara`
+is that copy: `Map[Identity[Node], Node]` from `std.hash` maps each
+original to its copy, `n.identity()` makes the key, and the node has only
+`val`, `next` and `random`. The key holds a counted copy of the handle,
+so a node cannot be freed and its address reused while the map lives.
+The arm prints the same five lines as the mirror under `karac __mir-run`,
+`karac __mir-llvm-run` and `karac __mir-llvm-asan` (no leak, the `weak`
+cycles included). `check` first refused `nodes.first()` as the list's
+head, an `Option[ref Node]` where `Option[Node]` was declared, and `karac
+fix` applied its one edit, `.cloned()`.
 
 ## Kāra features exercised
 
