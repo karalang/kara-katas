@@ -1,0 +1,70 @@
+// LeetCode #1346: Check If N and Its Double Exist -- the ★ arm: a `Set` of
+// the values seen so far; for each new value x, one of them is x's double
+// if 2x is in the set, and x is the double of one if x is even and x / 2
+// is in it.
+// Checking before inserting keeps a lone 0 from pairing with itself.
+// O(n)
+
+fn check_if_exist(arr: Vec[i32]) -> bool {
+    let mut seen: Set[i32] = Set.new();
+    for x in arr.iter() {
+        if seen.contains(2 * x) or (x % 2 == 0 and seen.contains(x / 2)) {
+            return true;
+        }
+        seen.insert(x);
+    }
+    false
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; one zero and two zeros; -2 and -4; 7 and 14
+    // far apart, 498 odd numbers between them; 500 odd numbers, the
+    // constraints' longest, none the double of another; and the first 499
+    // of them with 994, twice the largest, put last
+    let e1 = check_if_exist([10, 2, 5, 3]);
+    let e2 = check_if_exist([3, 1, 7, 11]);
+    let one_zero = check_if_exist([0, 5]);
+    let two_zeros = check_if_exist([0, 5, 0]);
+    let negative = check_if_exist([-2, 3, -4]);
+    let mut far: Vec[i32] = [7];
+    for k in 0..498 {
+        far.push((2 * k - 999) as i32);
+    }
+    far.push(14);
+    let odds: Vec[i32] = (0..500).map(|k| (2 * k - 499) as i32).collect();
+    let mut odds_and: Vec[i32] = (0..499).map(|k| (2 * k - 499) as i32).collect();
+    odds_and.push(994);
+    println(f"{e1} {e2} {one_zero} {two_zeros} {negative} {check_if_exist(far)} {check_if_exist(odds)} {check_if_exist(odds_and)}");
+    // 2000 random arrays of 2 to 500 values, most of them short, from -10
+    // to 10, from -1000 to 1000, or odd
+    let mut seed = 1346;
+    let mut found = 0;
+    let mut check = 0;
+    for t in 0..2000 {
+        let n = if t % 10 == 0 { 2 + next_random(mut seed) % 499 } else { 2 + next_random(mut seed) % 15 };
+        let mut arr: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            let v = if t % 3 == 0 {
+                next_random(mut seed) % 21 - 10
+            } else if t % 3 == 1 {
+                next_random(mut seed) % 2001 - 1000
+            } else {
+                2 * (next_random(mut seed) % 1000) - 999
+            };
+            arr.push(v as i32);
+        }
+        let yes = check_if_exist(arr);
+        if yes {
+            found += 1;
+        }
+        check = (check * 131 + if yes { 2 } else { 1 }) % 1000000007;
+    }
+    println(f"2000 random arrays: {found} with a double, checksum {check}");
+}
