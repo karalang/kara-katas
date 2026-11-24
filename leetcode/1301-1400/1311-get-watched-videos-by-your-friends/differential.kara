@@ -1,0 +1,426 @@
+// LeetCode #1311: Get Watched Videos by Your Friends -- differential test of
+// the five arms against the statement read literally, with five more
+// properties.
+//
+// The statement: there are n people, each with an id from 0 to n - 1, given
+// the videos each person watched and each person's friends. Level 1 of
+// videos are those watched by your friends, level 2 those watched by the
+// friends of your friends, and so on: level k are the videos watched by the
+// people whose shortest path to you is exactly k. Given your id and a level,
+// return that level's videos ordered by their frequency, increasing, and
+// alphabetically from least to greatest on a tie.
+
+// ---- watched_videos_by_friends.kara ----
+fn a0_watched_videos_by_friends(watched_videos: Vec[Vec[String]], friends: Vec[Vec[i64]], id: i64, level: i64) -> Vec[String] {
+    let n = friends.len();
+    let mut seen: Vec[bool] = Vec.filled(n, false);
+    seen[id] = true;
+    let mut people: Vec[i64] = [id];
+    for _ in 0..level {
+        let mut next: Vec[i64] = Vec.new();
+        for p in people.iter() {
+            for f in friends[p].iter() {
+                if not seen[f] {
+                    seen[f] = true;
+                    next.push(f);
+                }
+            }
+        }
+        people = next;
+    }
+    let mut count: Map[String, i64] = Map.new();
+    for p in people.iter() {
+        for video in watched_videos[p].iter() {
+            *count.entry(video.clone()).or_insert(0) += 1;
+        }
+    }
+    let mut ranked: Vec[(i64, String)] = count.into_iter().map(|(video, c)| (c, video)).collect();
+    ranked.sort();
+    ranked.into_iter().map(|(_, video)| video).collect()
+}
+
+// ---- watched_videos_by_friends_distances.kara ----
+fn a1_watched_videos_by_friends(watched_videos: Vec[Vec[String]], friends: Vec[Vec[i64]], id: i64, level: i64) -> Vec[String] {
+    let n = friends.len();
+    let mut dist: Vec[i64] = Vec.filled(n, -1);
+    dist[id] = 0;
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    queue.push_back(id);
+    while let Some(p) = queue.pop_front() {
+        for f in friends[p].iter() {
+            if dist[f] < 0 {
+                dist[f] = dist[p] + 1;
+                queue.push_back(f);
+            }
+        }
+    }
+    let mut count: SortedMap[String, i64] = SortedMap.new();
+    for p in 0..n {
+        if dist[p] == level {
+            for video in watched_videos[p].iter() {
+                *count.entry(video.clone()).or_insert(0) += 1;
+            }
+        }
+    }
+    let mut ranked: Vec[(String, i64)] = count.into_iter().collect();
+    ranked.sort_by_key(|(_, c)| c);
+    ranked.into_iter().map(|(video, _)| video).collect()
+}
+
+// ---- watched_videos_by_friends_relax.kara ----
+fn a2_watched_videos_by_friends(watched_videos: Vec[Vec[String]], friends: Vec[Vec[i64]], id: i64, level: i64) -> Vec[String] {
+    let n = friends.len();
+    let far = n + 1;
+    let mut dist: Vec[i64] = Vec.filled(n, far);
+    dist[id] = 0;
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for p in 0..n {
+            if dist[p] == far {
+                continue;
+            }
+            for f in friends[p].iter() {
+                if dist[p] + 1 < dist[f] {
+                    dist[f] = dist[p] + 1;
+                    changed = true;
+                }
+            }
+        }
+    }
+    let mut all: Vec[String] = Vec.new();
+    for p in 0..n {
+        if dist[p] == level {
+            for video in watched_videos[p].iter() {
+                all.push(video.clone());
+            }
+        }
+    }
+    all.sort();
+    let mut ranked: Vec[(i64, String)] = Vec.new();
+    let mut i = 0;
+    while i < all.len() {
+        let mut j = i;
+        while j < all.len() and all[j] == all[i] {
+            j += 1;
+        }
+        ranked.push((j - i, all[i].clone()));
+        i = j;
+    }
+    ranked.sort();
+    ranked.into_iter().map(|(_, video)| video).collect()
+}
+
+// ---- watched_videos_by_friends_sets.kara ----
+fn a3_watched_videos_by_friends(watched_videos: Vec[Vec[String]], friends: Vec[Vec[i64]], id: i64, level: i64) -> Vec[String] {
+    let mut seen: Set[i64] = Set.new();
+    seen.insert(id);
+    let mut people: Set[i64] = Set.new();
+    people.insert(id);
+    for _ in 0..level {
+        let mut next: Set[i64] = Set.new();
+        for p in people.iter() {
+            for f in friends[p].iter() {
+                if not seen.contains(f) {
+                    next.insert(f);
+                }
+            }
+        }
+        for p in next.iter() {
+            seen.insert(p);
+        }
+        people = next;
+    }
+    let mut count: Map[String, i64] = Map.new();
+    for p in people.iter() {
+        for video in watched_videos[p].iter() {
+            *count.entry(video.clone()).or_insert(0) += 1;
+        }
+    }
+    let mut titles: Vec[String] = count.keys().map(|t| t.clone()).collect();
+    titles.sort_by(|a, b| if count[a] != count[b] { count[a].cmp(count[b]) } else { a.cmp(b) });
+    titles
+}
+
+// ---- watched_videos_by_friends_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_watched_videos_by_friends(watched_videos: Vec[Vec[String]], friends: Vec[Vec[i32]], id: i32, level: i32) -> Vec[String] {
+        let n = friends.len();
+        let mut visited = Vec.filled(n, false);
+        let mut q = VecDeque.new();
+        visited[id as usize] = true;
+        q.push_back(id as usize);
+        for _ in 0..level {
+            for _ in 0..q.len() {
+                let u = q.pop_front().unwrap();
+                for v in ref friends[u] {
+                    let v = v as usize;
+                    if not visited[v] {
+                        visited[v] = true;
+                        q.push_back(v);
+                    }
+                }
+            }
+        }
+        let mut freq: Map[ref String, i32] = Map.new();
+        for u in q.iter() {
+            for video in ref watched_videos[u] {
+                *freq.entry(video).or_insert(0) += 1;
+            }
+        }
+        let mut res: Vec[(ref String, i32)] = freq.into_iter().collect();
+        res.sort_by(|a, b| a.1.cmp(b.1).then(a.0.cmp(b.0)));
+        res.into_iter().map(|(s, _)| s.clone()).collect()
+    }
+}
+
+fn a4_watched_videos_by_friends(watched_videos: Vec[Vec[String]], friends: Vec[Vec[i64]], id: i64, level: i64) -> Vec[String] {
+    let friends: Vec[Vec[i32]] = friends.iter().map(|f| f.iter().map(|x| x as i32).collect()).collect();
+    A4Solution.a4_watched_videos_by_friends(watched_videos, friends, id as i32, level as i32)
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// every shortest path found by Floyd and Warshall's sweep over a table of
+// distances, every video of the people at exactly `level` gathered, each
+// title counted by looking through all of them, and the least (count, title)
+// taken again and again
+fn literal(watched: Vec[Vec[String]], friends: Vec[Vec[i64]], id: i64, level: i64) -> Vec[String] {
+    let n = friends.len();
+    let far = n + 1;
+    let mut d: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, far));
+    for p in 0..n {
+        d[p][p] = 0;
+        for f in friends[p].iter() {
+            d[p][f] = 1;
+        }
+    }
+    for k in 0..n {
+        for i in 0..n {
+            for j in 0..n {
+                if d[i][k] + d[k][j] < d[i][j] {
+                    d[i][j] = d[i][k] + d[k][j];
+                }
+            }
+        }
+    }
+    let mut videos: Vec[String] = Vec.new();
+    for p in 0..n {
+        if d[id][p] == level {
+            for v in watched[p].iter() {
+                videos.push(v.clone());
+            }
+        }
+    }
+    let mut titles: Vec[String] = Vec.new();
+    let mut counts: Vec[i64] = Vec.new();
+    for v in videos.iter() {
+        if not titles.contains(v) {
+            titles.push(v.clone());
+            counts.push(videos.iter().filter(|w| w == v).count());
+        }
+    }
+    let mut out: Vec[String] = Vec.new();
+    let mut taken: Vec[bool] = Vec.filled(titles.len(), false);
+    for _ in 0..titles.len() {
+        let mut best = -1;
+        for t in 0..titles.len() {
+            if not taken[t] and (best < 0 or counts[t] < counts[best] or (counts[t] == counts[best] and titles[t] < titles[best])) {
+                best = t;
+            }
+        }
+        taken[best] = true;
+        out.push(titles[best].clone());
+    }
+    out
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[String]) -> String {
+    if v.len() == 0 {
+        return "-".to_string();
+    }
+    v.join(",")
+}
+
+struct Case {
+    watched: Vec[Vec[String]],
+    friends: Vec[Vec[i64]],
+    id: i64,
+    level: i64,
+    // P2: the new number of each person
+    perm: Vec[i64],
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, watched: Vec[Vec[String]], friends: Vec[Vec[i64]], id: i64, level: i64) -> Vec[String] {
+    match i {
+        0 => a0_watched_videos_by_friends(watched, friends, id, level),
+        1 => a1_watched_videos_by_friends(watched, friends, id, level),
+        2 => a2_watched_videos_by_friends(watched, friends, id, level),
+        3 => a3_watched_videos_by_friends(watched, friends, id, level),
+        _ => a4_watched_videos_by_friends(watched, friends, id, level),
+    }
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    t.cases += 1;
+    let n = c.friends.len();
+    let want = literal(c.watched, c.friends, c.id, c.level);
+    for v in want.iter() {
+        for ch in v.chars() {
+            t.check = (t.check * 31 + (ch as i64)) % 1000000007;
+        }
+        t.check = (t.check * 31 + 1) % 1000000007;
+    }
+    t.check = (t.check * 31 + 2) % 1000000007;
+    // P2: person p renumbered perm[p]
+    let mut renamed_watched: Vec[Vec[String]] = Vec.filled(n, Vec.new());
+    let mut renamed_friends: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for p in 0..n {
+        renamed_watched[c.perm[p]] = c.watched[p].clone();
+        renamed_friends[c.perm[p]] = c.friends[p].iter().map(|f| c.perm[f]).collect();
+    }
+    // P3: every list of videos and of friends back to front
+    let back_watched: Vec[Vec[String]] = c.watched.iter().map(|vs| vs.iter().rev().map(|v| v.clone()).collect()).collect();
+    let back_friends: Vec[Vec[i64]] = c.friends.iter().map(|fs| fs.iter().rev().collect()).collect();
+    // P4: every video watched twice
+    let mut doubled: Vec[Vec[String]] = Vec.new();
+    for vs in c.watched.iter() {
+        let mut twice: Vec[String] = Vec.new();
+        for v in vs.iter() {
+            twice.push(v.clone());
+            twice.push(v.clone());
+        }
+        doubled.push(twice);
+    }
+    // P5: one more person, a friend of `id` alone, who watched "zz"
+    let zz = "zz".to_string();
+    let mut leaf_watched = c.watched.clone();
+    leaf_watched.push([zz.clone()]);
+    let mut leaf_friends = c.friends.clone();
+    leaf_friends[c.id].push(n);
+    leaf_friends.push([c.id]);
+    let star = a0_watched_videos_by_friends(c.watched, c.friends, c.id, c.level);
+    for i in 0..5 {
+        let got = arm(i, c.watched, c.friends, c.id, c.level);
+        let what = f"arm {i} case {t.cases} id {c.id} level {c.level}: got {show(got)}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal {show(want)}");
+        // P2: everyone renumbered, the same answer
+        let rn = arm(i, renamed_watched, renamed_friends, c.perm[c.id], c.level);
+        expect(mut t, 2, rn == got, f"P2 {what}, renumbered: {show(rn)}");
+        // P3: every list back to front, the same answer
+        let bk = arm(i, back_watched, back_friends, c.id, c.level);
+        expect(mut t, 3, bk == got, f"P3 {what}, back to front: {show(bk)}");
+        // P4: every video watched twice, the same answer
+        let db = arm(i, doubled, c.friends, c.id, c.level);
+        expect(mut t, 4, db == got, f"P4 {what}, doubled: {show(db)}");
+        // P5: a new friend of `id` alone, who watched "zz": the same answer
+        // once "zz" is taken out, and "zz" in it at level 1 only
+        let lf = arm(i, leaf_watched, leaf_friends, c.id, c.level);
+        let rest: Vec[String] = lf.iter().filter(|v| v != zz).map(|v| v.clone()).collect();
+        expect(mut t, 5, rest == got and lf.contains(zz) == (c.level == 1), f"P5 {what}, with a leaf: {show(lf)}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {show(star)}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 groups of 2 to 9 people watching 0 to 4 videos each from 1 to 4
+    // titles (a, ab, b, ba), so that ties are common, asked from a random
+    // person at a random level, in four kinds, 500 each: each pair friends
+    // with a chance of 1 in 2; 1 in 4, so that some are out of reach; a
+    // chain through everyone in a random order with one more friendship, so
+    // that the levels run deep; and a star around person 0 with a chance of
+    // 1 in 5 for the rest, each watching up to 6. Every group, level and
+    // renumbering is drawn before any arm answers.
+    let names = ["b", "a", "ab", "ba"];
+    let mut seed = 13111;
+    let mut cases: Vec[Case] = Vec.new();
+    for i in 0..2000 {
+        let kind = i / 500;
+        let n = 2 + next_random(mut seed) % 8;
+        let pool = 1 + next_random(mut seed) % 4;
+        let mut friends: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+        if kind == 2 {
+            let mut order: Vec[i64] = (0..n).collect();
+            for k in 1..n {
+                let j = next_random(mut seed) % (k + 1);
+                order.swap(k, j);
+            }
+            for k in 1..n {
+                friends[order[k - 1]].push(order[k]);
+                friends[order[k]].push(order[k - 1]);
+            }
+            let a = next_random(mut seed) % n;
+            let b = next_random(mut seed) % n;
+            if a != b and not friends[a].contains(b) {
+                friends[a].push(b);
+                friends[b].push(a);
+            }
+        } else {
+            let odds = if kind == 0 { 2 } else if kind == 1 { 4 } else { 5 };
+            for a in 0..n {
+                for b in a + 1..n {
+                    if (kind == 3 and a == 0) or next_random(mut seed) % odds == 0 {
+                        friends[a].push(b);
+                        friends[b].push(a);
+                    }
+                }
+            }
+        }
+        let most = if kind == 3 { 7 } else { 5 };
+        let mut watched: Vec[Vec[String]] = Vec.new();
+        for _ in 0..n {
+            let mut videos: Vec[String] = Vec.new();
+            for _ in 0..next_random(mut seed) % most {
+                videos.push(names[next_random(mut seed) % pool].to_string());
+            }
+            watched.push(videos);
+        }
+        let id = next_random(mut seed) % n;
+        let level = 1 + next_random(mut seed) % (n - 1);
+        let mut perm: Vec[i64] = (0..n).collect();
+        for k in 1..n {
+            let j = next_random(mut seed) % (k + 1);
+            perm.swap(k, j);
+        }
+        cases.push(Case { watched, friends, id, level, perm });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} groups: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

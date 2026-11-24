@@ -1,0 +1,122 @@
+// LeetCode #1311: Get Watched Videos by Your Friends -- the ★ arm: a
+// breadth-first walk from `id` a level at a time, the people of each level
+// those of the level before's friends not yet seen, `level` times; the
+// videos of the people left counted in a `Map`, then sorted as (count,
+// title) pairs, so that a tie in count goes to the title first in order.
+// O(n + friendships + v log v)
+
+fn watched_videos_by_friends(watched_videos: Vec[Vec[String]], friends: Vec[Vec[i64]], id: i64, level: i64) -> Vec[String] {
+    let n = friends.len();
+    let mut seen: Vec[bool] = Vec.filled(n, false);
+    seen[id] = true;
+    let mut people: Vec[i64] = [id];
+    for _ in 0..level {
+        let mut next: Vec[i64] = Vec.new();
+        for p in people.iter() {
+            for f in friends[p].iter() {
+                if not seen[f] {
+                    seen[f] = true;
+                    next.push(f);
+                }
+            }
+        }
+        people = next;
+    }
+    let mut count: Map[String, i64] = Map.new();
+    for p in people.iter() {
+        for video in watched_videos[p].iter() {
+            *count.entry(video.clone()).or_insert(0) += 1;
+        }
+    }
+    let mut ranked: Vec[(i64, String)] = count.into_iter().map(|(video, c)| (c, video)).collect();
+    ranked.sort();
+    ranked.into_iter().map(|(_, video)| video).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[String]) -> String {
+    if v.len() == 0 {
+        return "-".to_string();
+    }
+    v.join(",")
+}
+
+fn ask(watched: Vec[Vec[Str]], friends: Vec[Vec[i64]], id: i64, level: i64) -> String {
+    let watched: Vec[Vec[String]] = watched.iter().map(|vs| vs.iter().map(|v| v.to_string()).collect()).collect();
+    show(watched_videos_by_friends(watched, friends, id, level))
+}
+
+fn main() {
+    // LeetCode's two examples; a level past everyone reached (nothing); a
+    // friend of a friend who is also a friend, counted only at level 1; a
+    // tie in count broken by title; and a video watched twice by one person,
+    // counted twice
+    let square: Vec[Vec[i64]] = [[1, 2], [0, 3], [0, 3], [1, 2]];
+    let e1 = ask([["A", "B"], ["C"], ["B", "C"], ["D"]], square, 0, 1);
+    let e2 = ask([["A", "B"], ["C"], ["B", "C"], ["D"]], square, 0, 2);
+    let past = ask([["a"], ["b"], ["c"]], [[1], [0], []], 0, 2);
+    let triangle = ask([["x"], ["y"], ["z"], ["w"]], [[1, 2], [0, 2], [0, 1, 3], [2]], 0, 2);
+    let tie = ask([[], ["bb", "ab"], ["ab", "bb", "c"]], [[1, 2], [0], [0]], 0, 1);
+    let twice = ask([[], ["m", "m", "k"], ["k", "j"]], [[1, 2], [0], [0]], 0, 1);
+    println(f"{e1} {e2} {past} {triangle} {tie} {twice}");
+    // 600 random groups of 2 to 40 people, each pair friends with a chance
+    // of 1 in 2 to 1 in 12, each person watching 0 to 6 videos from a pool
+    // of 3, 12 or 60 titles of 1 to 3 letters, asked from a random person at
+    // a random level from 1 to n - 1, most of them small
+    let mut seed = 1311;
+    let mut total = 0;
+    let mut check = 0;
+    for g in 0..600 {
+        let n = 2 + next_random(mut seed) % 39;
+        let odds = 2 + next_random(mut seed) % 11;
+        let pool = if g % 3 == 0 { 3 } else if g % 3 == 1 { 12 } else { 60 };
+        let mut titles: Vec[String] = Vec.new();
+        for t in 0..pool {
+            let mut title = String.new();
+            let mut k = t;
+            loop {
+                title.push(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'][k % 8]);
+                k = k / 8;
+                if k == 0 {
+                    break;
+                }
+            }
+            titles.push(title);
+        }
+        let mut friends: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+        for a in 0..n {
+            for b in a + 1..n {
+                if next_random(mut seed) % odds == 0 {
+                    friends[a].push(b);
+                    friends[b].push(a);
+                }
+            }
+        }
+        let mut watched: Vec[Vec[String]] = Vec.new();
+        for _ in 0..n {
+            let mut videos: Vec[String] = Vec.new();
+            for _ in 0..next_random(mut seed) % 7 {
+                videos.push(titles[next_random(mut seed) % pool].clone());
+            }
+            watched.push(videos);
+        }
+        let id = next_random(mut seed) % n;
+        let level = if next_random(mut seed) % 4 == 0 { 1 + next_random(mut seed) % (n - 1) } else { 1 + next_random(mut seed) % 3 % (n - 1) };
+        let got = watched_videos_by_friends(watched, friends, id, level);
+        total += got.len();
+        for video in got.iter() {
+            for c in video.chars() {
+                check = (check * 31 + (c as i64)) % 1000000007;
+            }
+            check = (check * 31 + 1) % 1000000007;
+        }
+        check = (check * 31 + 2) % 1000000007;
+    }
+    println(f"600 random groups: {total} videos, checksum {check}");
+}

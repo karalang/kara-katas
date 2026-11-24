@@ -1,0 +1,104 @@
+// LeetCode #1311 bench: the ★ arm (a breadth-first walk a level at a time,
+// the videos of the people left counted in a `Map`, then sorted as (count,
+// title) pairs) on 50 groups of 100 people, the constraints' most, each pair
+// friends with a chance of 1 in 25 and each person watching 100 videos from
+// 400 titles of 1 to 8 letters, built once; then 200 passes, each changing
+// one video of one person in every group and asking from a person at a
+// level from 1 to 3, all chosen by the checksum so far, so no answer
+// carries over, folding the answer's length, its first and last titles and
+// the pass into the checksum.
+
+fn watched_videos_by_friends(watched_videos: Vec[Vec[String]], friends: Vec[Vec[i64]], id: i64, level: i64) -> Vec[String] {
+    let n = friends.len();
+    let mut seen: Vec[bool] = Vec.filled(n, false);
+    seen[id] = true;
+    let mut people: Vec[i64] = [id];
+    for _ in 0..level {
+        let mut next: Vec[i64] = Vec.new();
+        for p in people.iter() {
+            for f in friends[p].iter() {
+                if not seen[f] {
+                    seen[f] = true;
+                    next.push(f);
+                }
+            }
+        }
+        people = next;
+    }
+    let mut count: Map[String, i64] = Map.new();
+    for p in people.iter() {
+        for video in watched_videos[p].iter() {
+            *count.entry(video.clone()).or_insert(0) += 1;
+        }
+    }
+    let mut ranked: Vec[(i64, String)] = count.into_iter().map(|(video, c)| (c, video)).collect();
+    ranked.sort();
+    ranked.into_iter().map(|(_, video)| video).collect()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn fold(check: i64, title: String) -> i64 {
+    let mut c = check;
+    for ch in title.chars() {
+        c = (c * 31 + (ch as i64)) % 1000000007;
+    }
+    c
+}
+
+fn main() {
+    let letters = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'];
+    let mut seed = 1311;
+    let mut titles: Vec[String] = Vec.new();
+    for _ in 0..400 {
+        let len = 1 + next_random(mut seed) % 8;
+        let mut title = String.new();
+        for _ in 0..len {
+            title.push(letters[next_random(mut seed) % 26]);
+        }
+        titles.push(title);
+    }
+    let n = 100;
+    let mut groups: Vec[Vec[Vec[String]]] = Vec.new();
+    let mut links: Vec[Vec[Vec[i64]]] = Vec.new();
+    for _ in 0..50 {
+        let mut friends: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+        for a in 0..n {
+            for b in a + 1..n {
+                if next_random(mut seed) % 25 == 0 {
+                    friends[a].push(b);
+                    friends[b].push(a);
+                }
+            }
+        }
+        let mut watched: Vec[Vec[String]] = Vec.new();
+        for _ in 0..n {
+            let mut videos: Vec[String] = Vec.new();
+            for _ in 0..100 {
+                videos.push(titles[next_random(mut seed) % 400].clone());
+            }
+            watched.push(videos);
+        }
+        groups.push(watched);
+        links.push(friends);
+    }
+    let mut check: i64 = 0;
+    for pass in 0..200 {
+        for g in 0..50 {
+            groups[g][check % n][(check / 7) % 100] = titles[(check / 11) % 400].clone();
+            let id = (check / 13) % n;
+            let level = 1 + (check / 17) % 3;
+            let got = watched_videos_by_friends(groups[g], links[g], id, level);
+            check = (check * 31 + got.len()) % 1000000007;
+            if got.len() > 0 {
+                check = fold(check, got[0]);
+                check = fold(check, got[got.len() - 1]);
+            }
+            check = (check + pass) % 1000000007;
+        }
+    }
+    println(f"200 passes over 50 groups of 100: checksum {check}");
+}
