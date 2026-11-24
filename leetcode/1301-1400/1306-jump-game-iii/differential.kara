@@ -1,0 +1,302 @@
+// LeetCode #1306: Jump Game III -- differential test of the six arms
+// against the statement read literally, with five more properties.
+//
+// The statement: given an array of non-negative integers arr, you are
+// initially positioned at the start index. When you are at index i, you can
+// jump to i + arr[i] or i - arr[i]; check if you can reach any index with
+// value 0. Notice that you can not jump outside of the array at any time.
+
+// ---- can_reach.kara ----
+fn a0_can_reach(arr: Vec[i64], start: i64) -> bool {
+    let n = arr.len();
+    let mut seen: Vec[bool] = Vec.filled(n, false);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    queue.push_back(start);
+    seen[start] = true;
+    while let Some(i) = queue.pop_front() {
+        if arr[i] == 0 {
+            return true;
+        }
+        for j in [i + arr[i], i - arr[i]] {
+            if j >= 0 and j < n and not seen[j] {
+                seen[j] = true;
+                queue.push_back(j);
+            }
+        }
+    }
+    false
+}
+
+// ---- can_reach_dfs.kara ----
+fn a1_reach_from(arr: Vec[i64], i: i64, seen: mut ref Vec[bool]) -> bool {
+    if i < 0 or i >= arr.len() or seen[i] {
+        return false;
+    }
+    if arr[i] == 0 {
+        return true;
+    }
+    seen[i] = true;
+    a1_reach_from(arr, i + arr[i], mut seen) or a1_reach_from(arr, i - arr[i], mut seen)
+}
+
+fn a1_can_reach(arr: Vec[i64], start: i64) -> bool {
+    let mut seen: Vec[bool] = Vec.filled(arr.len(), false);
+    a1_reach_from(arr, start, mut seen)
+}
+
+// ---- can_reach_stack.kara ----
+fn a2_can_reach(arr: Vec[i64], start: i64) -> bool {
+    let n = arr.len();
+    let mut seen: Vec[bool] = Vec.filled(n, false);
+    let mut stack: Vec[i64] = [start];
+    while let Some(i) = stack.pop() {
+        if i < 0 or i >= n or seen[i] {
+            continue;
+        }
+        if arr[i] == 0 {
+            return true;
+        }
+        seen[i] = true;
+        stack.push(i - arr[i]);
+        stack.push(i + arr[i]);
+    }
+    false
+}
+
+// ---- can_reach_sweep.kara ----
+fn a3_can_reach(arr: Vec[i64], start: i64) -> bool {
+    let n = arr.len();
+    let mut reached: Vec[bool] = Vec.filled(n, false);
+    reached[start] = true;
+    let mut grew = true;
+    while grew {
+        grew = false;
+        for i in 0..n {
+            if not reached[i] {
+                continue;
+            }
+            for j in [i + arr[i], i - arr[i]] {
+                if j >= 0 and j < n and not reached[j] {
+                    reached[j] = true;
+                    grew = true;
+                }
+            }
+        }
+    }
+    (0..n).any(|i| reached[i] and arr[i] == 0)
+}
+
+// ---- can_reach_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_can_reach(arr: Vec[i32], start: i32) -> bool {
+        let n = arr.len();
+        let mut visited = Vec.filled(n, false);
+        let mut q = VecDeque.new();
+        q.push_back(start as i64);
+        while let Some(i) = q.pop_front() {
+            if arr[i] == 0 {
+                return true;
+            }
+            if visited[i] {
+                continue;
+            }
+            visited[i] = true;
+            let j = i + arr[i];
+            if j < n {
+                q.push_back(j);
+            }
+            if i >= arr[i] {
+                q.push_back(i - arr[i]);
+            }
+        }
+        false
+    }
+}
+
+fn a4_can_reach(arr: Vec[i64], start: i64) -> bool {
+    let narrow: Vec[i32] = arr.iter().map(|x| x as i32).collect();
+    A4Solution.a4_can_reach(narrow, start as i32)
+}
+
+// ---- can_reach_negate.kara ----
+struct A5Solution {}
+
+fn a5_dfs(arr: mut ref Vec[i32], i: i32) -> bool {
+    if i < 0 or i >= arr.len() as i32 or arr[i as usize] < 0 {
+        return false;
+    }
+    let v = arr[i as usize];
+    if v == 0 {
+        return true;
+    }
+    arr[i as usize] = -v;
+    a5_dfs(mut arr, i + v) or a5_dfs(mut arr, i - v)
+}
+
+impl A5Solution {
+    pub fn a5_can_reach(arr: own Vec[i32], start: i32) -> bool {
+        let mut arr = arr;
+        a5_dfs(mut arr, start)
+    }
+}
+
+fn a5_can_reach(arr: Vec[i64], start: i64) -> bool {
+    let narrow: Vec[i32] = arr.iter().map(|x| x as i32).collect();
+    A5Solution.a5_can_reach(narrow, start as i32)
+}
+// ---- the statement read literally -----------------------------------------
+
+// every walk of at most `left` jumps from i, each to the right or the left,
+// none off the array: true if one stands on a 0
+fn walks(arr: Vec[i64], i: i64, left: i64) -> bool {
+    if arr[i] == 0 {
+        return true;
+    }
+    if left == 0 {
+        return false;
+    }
+    let right = i + arr[i];
+    let back = i - arr[i];
+    (right < arr.len() and walks(arr, right, left - 1)) or (back >= 0 and walks(arr, back, left - 1))
+}
+
+// a place that can be reached at all can be reached in n - 1 jumps, since a
+// shortest walk never stands on a place twice
+fn literal(arr: Vec[i64], start: i64) -> bool {
+    walks(arr, start, arr.len() - 1)
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(arr: Vec[i64]) -> String {
+    let parts: Vec[String] = arr.iter().map(|x| f"{x}").collect();
+    parts.join(",")
+}
+
+struct Case {
+    arr: Vec[i64],
+    start: i64,
+    // P4: the place given a 0
+    zero_at: i64,
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, arr: Vec[i64], start: i64) -> bool {
+    match i {
+        0 => a0_can_reach(arr, start),
+        1 => a1_can_reach(arr, start),
+        2 => a2_can_reach(arr, start),
+        3 => a3_can_reach(arr, start),
+        4 => a4_can_reach(arr, start),
+        _ => a5_can_reach(arr, start),
+    }
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    t.cases += 1;
+    let n = c.arr.len();
+    let want = literal(c.arr, c.start);
+    t.check = (t.check * 3 + if want { 1 } else { 0 }) % 1000000007;
+    let reversed: Vec[i64] = c.arr.iter().rev().collect();
+    let mut zeroed = c.arr.clone();
+    zeroed[c.zero_at] = 0;
+    let no_zero: Vec[i64] = c.arr.iter().map(|x| if x == 0 { 1 } else { x }).collect();
+    let star = a0_can_reach(c.arr, c.start);
+    for i in 0..6 {
+        let got = arm(i, c.arr, c.start);
+        let what = f"arm {i} case {t.cases} [{show(c.arr)}] from {c.start}: got {got}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal {want}");
+        // P2: the array reversed and the start with it, the same answer
+        let rv = arm(i, reversed, n - 1 - c.start);
+        expect(mut t, 2, rv == got, f"P2 {what}, reversed: {rv}");
+        // P3: a 0 reached from a place one jump from the start is reached from
+        // the start
+        for j in [c.start + c.arr[c.start], c.start - c.arr[c.start]] {
+            if j >= 0 and j < n {
+                let from_j = arm(i, c.arr, j);
+                expect(mut t, 3, not from_j or got, f"P3 {what}, from {j}: {from_j}");
+            }
+        }
+        // P4: one more place given a 0, no worse
+        let zr = arm(i, zeroed, c.start);
+        expect(mut t, 4, zr or not got, f"P4 {what}, a 0 at {c.zero_at}: {zr}");
+        // P5: every 0 made a jump of 1, never true (a single place must hold 0)
+        if n > 1 {
+            let nz = arm(i, no_zero, c.start);
+            expect(mut t, 5, not nz, f"P5 {what}, no 0: {nz}");
+        }
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 arrays of 1 to 9 places in four kinds, 500 each: values from 0 to
+    // n - 1, so that 0s are common; values from 1 to n - 1 with one 0; jumps
+    // of 1 or 2 with one 0; and values from 1 to n - 1 with one 0, half of
+    // them a place's distance to the far end, so that walks bounce. Every
+    // array, start and extra 0 is drawn before any arm answers.
+    let mut seed = 13061;
+    let mut cases: Vec[Case] = Vec.new();
+    for i in 0..2000 {
+        let kind = i / 500;
+        let n = 1 + next_random(mut seed) % 9;
+        let mut arr: Vec[i64] = Vec.new();
+        for k in 0..n {
+            let v = if n == 1 {
+                0
+            } else if kind == 0 {
+                next_random(mut seed) % n
+            } else if kind == 2 {
+                1 + next_random(mut seed) % 2
+            } else if kind == 3 and next_random(mut seed) % 2 == 0 {
+                if k < n - 1 - k { n - 1 - k } else { k }
+            } else {
+                1 + next_random(mut seed) % (n - 1)
+            };
+            arr.push(if v < n { v } else { n - 1 });
+        }
+        if kind >= 1 {
+            let at = next_random(mut seed) % n;
+            arr[at] = 0;
+        }
+        let start = next_random(mut seed) % n;
+        let zero_at = next_random(mut seed) % n;
+        cases.push(Case { arr, start, zero_at });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} arrays: checksum {t.check}, {t.checks} checks over 6 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

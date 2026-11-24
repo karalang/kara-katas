@@ -1,0 +1,84 @@
+// LeetCode #1306: Jump Game III -- a Rust solution as LeetCode's Rust users
+// write it (a `std::collections::VecDeque` of `usize` places, a `vec![false;
+// n]` of visited ones checked as each comes off, `i + arr[i] as usize` and
+// `i - arr[i] as usize` guarded against running off either end), carried to
+// Kāra by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn can_reach(arr: Vec[i32], start: i32) -> bool {
+        let n = arr.len();
+        let mut visited = Vec.filled(n, false);
+        let mut q = VecDeque.new();
+        q.push_back(start as i64);
+        while let Some(i) = q.pop_front() {
+            if arr[i] == 0 {
+                return true;
+            }
+            if visited[i] {
+                continue;
+            }
+            visited[i] = true;
+            let j = i + arr[i];
+            if j < n {
+                q.push_back(j);
+            }
+            if i >= arr[i] {
+                q.push_back(i - arr[i]);
+            }
+        }
+        false
+    }
+}
+
+fn can_reach(arr: Vec[i64], start: i64) -> bool {
+    let narrow: Vec[i32] = arr.iter().map(|x| x as i32).collect();
+    Solution.can_reach(narrow, start as i32)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples, one place holding 0, two places with no 0,
+    // and 5 * 10^4 places, the constraints' most, each a jump of 1 to the
+    // right but the last, a 0, reached from the far left: the longest walk
+    let e1 = can_reach([4, 2, 3, 0, 3, 1, 2], 5);
+    let e2 = can_reach([4, 2, 3, 0, 3, 1, 2], 0);
+    let e3 = can_reach([3, 0, 2, 1, 2], 2);
+    let one = can_reach([0], 0);
+    let none = can_reach([1, 1], 0);
+    let mut line: Vec[i64] = Vec.filled(50000, 1);
+    line[49999] = 0;
+    let long = can_reach(line, 0);
+    println(f"{e1} {e2} {e3} {one} {none} {long}");
+    // 3000 random arrays of 1 to 300 places, each value below the length,
+    // with from none to a few places holding 0, and a random start
+    let mut seed = 1306;
+    let mut reached = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 300;
+        let mut arr: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            arr.push(if n > 1 { 1 + next_random(mut seed) % (n - 1) } else { 0 });
+        }
+        let zeros = next_random(mut seed) % 4;
+        for _ in 0..zeros {
+            let at = next_random(mut seed) % n;
+            arr[at] = 0;
+        }
+        let start = next_random(mut seed) % n;
+        let got = can_reach(arr, start);
+        if got {
+            reached += 1;
+        }
+        check = (check * 3 + if got { 1 } else { 0 }) % 1000000007;
+    }
+    println(f"3000 random arrays: {reached} reach a 0, checksum {check}");
+}
