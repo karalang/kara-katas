@@ -1,0 +1,84 @@
+// LeetCode #1297: Maximum Number of Occurrences of a Substring -- the hash
+// arm: only windows of minSize count, each kept by two polynomial hashes of
+// its letters, rolled along in O(1) per step, a pair as the `Map` key; the
+// distinct letters by a sliding count. O(n)
+
+fn max_freq(s: Str, max_letters: i64, min_size: i64, max_size: i64) -> i64 {
+    let bytes = s.bytes();
+    let n = bytes.len();
+    let (p1, m1) = (131, 1000000007);
+    let (p2, m2) = (137, 998244353);
+    // the weight of the letter leaving a window: p^(minSize - 1)
+    let mut top1 = 1;
+    let mut top2 = 1;
+    for _ in 1..min_size {
+        top1 = top1 * p1 % m1;
+        top2 = top2 * p2 % m2;
+    }
+    let mut h1 = 0;
+    let mut h2 = 0;
+    let mut letters: Vec[i64] = Vec.filled(26, 0);
+    let mut distinct = 0;
+    let mut seen: Map[(i64, i64), i64] = Map.new();
+    let mut best = 0;
+    for i in 0..n {
+        let c = bytes[i] as i64;
+        if i >= min_size {
+            let gone = bytes[i - min_size] as i64;
+            h1 = (h1 - gone * top1 % m1 + m1) % m1;
+            h2 = (h2 - gone * top2 % m2 + m2) % m2;
+            letters[gone - 97] -= 1;
+            if letters[gone - 97] == 0 {
+                distinct -= 1;
+            }
+        }
+        h1 = (h1 * p1 + c) % m1;
+        h2 = (h2 * p2 + c) % m2;
+        if letters[c - 97] == 0 {
+            distinct += 1;
+        }
+        letters[c - 97] += 1;
+        if i + 1 >= min_size and distinct <= max_letters {
+            let times = seen.get((h1, h2)).cloned().unwrap_or(0) + 1;
+            seen[(h1, h2)] = times;
+            if times > best {
+                best = times;
+            }
+        }
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's examples, a window as long as the string, no substring
+    // with few enough letters, and one letter repeated
+    println(f"{max_freq("aababcaab", 2, 3, 4)} {max_freq("aaaa", 1, 3, 3)} {max_freq("abcde", 5, 5, 5)} {max_freq("abcde", 1, 2, 3)} {max_freq("zzzzzzzzzz", 1, 1, 10)}");
+    // random strings of 1 to 600 letters over the first 2 to 26 letters,
+    // and random limits within the constraints
+    let mut seed = 1297;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..200 {
+        let len = 1 + next_random(mut seed) % 600;
+        let alphabet = 2 + next_random(mut seed) % 25;
+        let mut s = String.new();
+        for _ in 0..len {
+            s.push(char.try_from(97 + (next_random(mut seed) % alphabet) as u32).ok().unwrap());
+        }
+        let top = if len < 26 { len } else { 26 };
+        let min_size = 1 + next_random(mut seed) % (if top < 6 { top } else { 6 });
+        let max_size = min_size + next_random(mut seed) % (top - min_size + 1);
+        let max_letters = 1 + next_random(mut seed) % 26;
+        let best = max_freq(s, max_letters, min_size, max_size);
+        total += best;
+        check = (check * 131 + best) % 1000000007;
+    }
+    println(f"200 random strings: occurrences total {total}, checksum {check}");
+}

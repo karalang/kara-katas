@@ -1,0 +1,313 @@
+// LeetCode #1297: Maximum Number of Occurrences of a Substring --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+//
+// The statement: given a string s, return the maximum number of occurrences
+// of any substring under the rules: the number of unique characters in the
+// substring is at most maxLetters, and its size is from minSize to maxSize
+// inclusive.
+
+// ---- max_freq.kara ----
+fn a0_max_freq(s: Str, max_letters: i64, min_size: i64, max_size: i64) -> i64 {
+    let bytes = s.bytes();
+    let n = bytes.len();
+    let mut letters: Vec[i64] = Vec.filled(26, 0);
+    let mut distinct = 0;
+    let mut seen: Map[Str, i64] = Map.new();
+    let mut best = 0;
+    for i in 0..n {
+        let add = (bytes[i] - 97) as i64;
+        if letters[add] == 0 {
+            distinct += 1;
+        }
+        letters[add] += 1;
+        if i >= min_size {
+            let gone = (bytes[i - min_size] - 97) as i64;
+            letters[gone] -= 1;
+            if letters[gone] == 0 {
+                distinct -= 1;
+            }
+        }
+        if i + 1 >= min_size and distinct <= max_letters {
+            let window = s[i + 1 - min_size..i + 1];
+            let times = seen.get(window).cloned().unwrap_or(0) + 1;
+            seen.insert(window, times);
+            if times > best {
+                best = times;
+            }
+        }
+    }
+    best
+}
+
+// ---- max_freq_every.kara ----
+fn a1_max_freq(s: Str, max_letters: i64, min_size: i64, max_size: i64) -> i64 {
+    let n = s.len();
+    let mut seen: Map[String, i64] = Map.new();
+    let mut best = 0;
+    for size in min_size..max_size + 1 {
+        for start in 0..n - size + 1 {
+            let sub = s[start..start + size];
+            let letters: Set[char] = sub.chars().collect();
+            if letters.len() <= max_letters {
+                let times = seen.entry(sub.to_string()).or_insert(0);
+                *times += 1;
+                if *times > best {
+                    best = *times;
+                }
+            }
+        }
+    }
+    best
+}
+
+// ---- max_freq_hash.kara ----
+fn a2_max_freq(s: Str, max_letters: i64, min_size: i64, max_size: i64) -> i64 {
+    let bytes = s.bytes();
+    let n = bytes.len();
+    let (p1, m1) = (131, 1000000007);
+    let (p2, m2) = (137, 998244353);
+    // the weight of the letter leaving a window: p^(minSize - 1)
+    let mut top1 = 1;
+    let mut top2 = 1;
+    for _ in 1..min_size {
+        top1 = top1 * p1 % m1;
+        top2 = top2 * p2 % m2;
+    }
+    let mut h1 = 0;
+    let mut h2 = 0;
+    let mut letters: Vec[i64] = Vec.filled(26, 0);
+    let mut distinct = 0;
+    let mut seen: Map[(i64, i64), i64] = Map.new();
+    let mut best = 0;
+    for i in 0..n {
+        let c = bytes[i] as i64;
+        if i >= min_size {
+            let gone = bytes[i - min_size] as i64;
+            h1 = (h1 - gone * top1 % m1 + m1) % m1;
+            h2 = (h2 - gone * top2 % m2 + m2) % m2;
+            letters[gone - 97] -= 1;
+            if letters[gone - 97] == 0 {
+                distinct -= 1;
+            }
+        }
+        h1 = (h1 * p1 + c) % m1;
+        h2 = (h2 * p2 + c) % m2;
+        if letters[c - 97] == 0 {
+            distinct += 1;
+        }
+        letters[c - 97] += 1;
+        if i + 1 >= min_size and distinct <= max_letters {
+            let times = seen.get((h1, h2)).cloned().unwrap_or(0) + 1;
+            seen[(h1, h2)] = times;
+            if times > best {
+                best = times;
+            }
+        }
+    }
+    best
+}
+
+// ---- max_freq_windows.kara ----
+fn a3_max_freq(s: Str, max_letters: i64, min_size: i64, max_size: i64) -> i64 {
+    let bytes: Vec[u8] = s.bytes().iter().collect();
+    let mut seen: Map[Vec[u8], i64] = Map.new();
+    for w in bytes.windows(min_size) {
+        let letters: Set[u8] = w.iter().cloned().collect();
+        if letters.len() <= max_letters {
+            *seen.entry(w.to_vec()).or_insert(0) += 1;
+        }
+    }
+    seen.values().cloned().max().unwrap_or(0)
+}
+
+// ---- max_freq_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn max_freq(s: String, max_letters: i32, min_size: i32, _max_size: i32) -> i32 {
+        let k = min_size as i64;
+        let b = s.bytes();
+        let mut map: Map[Str, i32] = Map.new();
+        let mut ans: i32 = 0;
+        for i in 0..=b.len() - k {
+            let mut cnt = [0; 26];
+            let mut uniq = 0;
+            for j in i..i + k {
+                let c = (b[j] - b'a') as i64;
+                if cnt[c] == 0 {
+                    uniq += 1;
+                }
+                cnt[c] += 1;
+            }
+            if uniq <= max_letters {
+                let e = map.entry(s[i..i + k]).or_insert(0);
+                *e += 1;
+                ans = ans.max(*e);
+            }
+        }
+        ans
+    }
+}
+
+fn a4_max_freq(s: Str, max_letters: i64, min_size: i64, max_size: i64) -> i64 {
+    A4Solution.max_freq(s.to_string(), max_letters as i32, min_size as i32, max_size as i32)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(w: i64, s: Str, max_letters: i64, min_size: i64, max_size: i64) -> i64 {
+    match w {
+        0 => a0_max_freq(s, max_letters, min_size, max_size),
+        1 => a1_max_freq(s, max_letters, min_size, max_size),
+        2 => a2_max_freq(s, max_letters, min_size, max_size),
+        3 => a3_max_freq(s, max_letters, min_size, max_size),
+        _ => a4_max_freq(s, max_letters, min_size, max_size),
+    }
+}
+
+// The statement read literally: every substring of a size from minSize to
+// maxSize with at most maxLetters different letters, its occurrences
+// counted by comparing it with the text at every place, letter by letter;
+// the most of any.
+fn literal(s: Str, max_letters: i64, min_size: i64, max_size: i64) -> i64 {
+    let t: Vec[char] = s.chars().collect();
+    let n = t.len();
+    let mut best = 0;
+    for size in min_size..max_size + 1 {
+        for start in 0..n - size + 1 {
+            let mut different = 0;
+            for i in start..start + size {
+                let mut earlier = false;
+                for j in start..i {
+                    if t[j] == t[i] {
+                        earlier = true;
+                    }
+                }
+                if not earlier {
+                    different += 1;
+                }
+            }
+            if different > max_letters {
+                continue;
+            }
+            let mut times = 0;
+            for at in 0..n - size + 1 {
+                let mut same = true;
+                for i in 0..size {
+                    if t[at + i] != t[start + i] {
+                        same = false;
+                    }
+                }
+                if same {
+                    times += 1;
+                }
+            }
+            if times > best {
+                best = times;
+            }
+        }
+    }
+    best
+}
+
+struct Case {
+    s: String,
+    max_letters: i64,
+    min_size: i64,
+    max_size: i64,
+    // P2's renaming of the letters: rename[c] for each letter c
+    rename: Vec[i64],
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: String) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 10 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    let renamed: String = c.s.chars().map(|ch| char.try_from((97 + c.rename[(ch as i64) - 97]) as u32).ok().unwrap()).collect();
+    let reversed: String = c.s.chars().rev().collect();
+    let n = c.s.len();
+    let widest = if n < 26 { n } else { 26 };
+    let want = literal(c.s, c.max_letters, c.min_size, c.max_size);
+    let star = arm(0, c.s, c.max_letters, c.min_size, c.max_size);
+    for a in 0..5 {
+        let got = arm(a, c.s, c.max_letters, c.min_size, c.max_size);
+        let what = f"arm {a}, case {t.cases} {c.s} letters {c.max_letters} sizes {c.min_size}..{c.max_size} -> {got}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal {want}");
+        // P2: the letters renamed one for one, the same answer
+        let rn = arm(a, renamed, c.max_letters, c.min_size, c.max_size);
+        expect(mut t, 2, rn == got, f"P2 {what}, renamed {renamed}: {rn}");
+        // P3: the string reversed, the same answer
+        let rv = arm(a, reversed, c.max_letters, c.min_size, c.max_size);
+        expect(mut t, 3, rv == got, f"P3 {what}, reversed: {rv}");
+        // P4: maxSize as large as it may be, the same answer
+        let wd = arm(a, c.s, c.max_letters, c.min_size, widest);
+        expect(mut t, 4, wd == got, f"P4 {what}, maxSize {widest}: {wd}");
+        // P5: one more letter allowed, no fewer occurrences
+        let more = arm(a, c.s, c.max_letters + 1, c.min_size, c.max_size);
+        expect(mut t, 5, more >= got, f"P5 {what}, {c.max_letters + 1} letters: {more}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+    t.cases += 1;
+    t.check = (t.check * 131 + want) % 1000000007;
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 strings of 1 to 14 letters over the first 1 to 4 letters, so that
+    // substrings repeat, with every limit within the constraints. Every
+    // string, limit and renaming is drawn before any arm answers.
+    let mut seed = 12971;
+    let mut cases: Vec[Case] = Vec.new();
+    for _ in 0..2000 {
+        let len = 1 + next_random(mut seed) % 14;
+        let alphabet = 1 + next_random(mut seed) % 4;
+        let mut s = String.new();
+        for _ in 0..len {
+            s.push(char.try_from((97 + next_random(mut seed) % alphabet) as u32).ok().unwrap());
+        }
+        let min_size = 1 + next_random(mut seed) % len;
+        let max_size = min_size + next_random(mut seed) % (len - min_size + 1);
+        let max_letters = 1 + next_random(mut seed) % 4;
+        // a random order of the 26 letters
+        let mut rename: Vec[i64] = (0..26).collect();
+        for i in 0..26 {
+            let j = i + next_random(mut seed) % (26 - i);
+            let held = rename[i];
+            rename[i] = rename[j];
+            rename[j] = held;
+        }
+        cases.push(Case { s, max_letters, min_size, max_size, rename });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} strings: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
