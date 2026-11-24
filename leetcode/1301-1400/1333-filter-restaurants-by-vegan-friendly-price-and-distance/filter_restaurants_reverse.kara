@@ -1,0 +1,86 @@
+// LeetCode #1333: Filter Restaurants by Vegan-Friendly, Price and Distance
+// -- the reverse arm: the restaurants that pass kept as (rating, id)
+// tuples, sorted in the tuples' own order, lowest first, and read
+// backwards. O(n log n)
+
+fn filter_restaurants(restaurants: Vec[Vec[i32]], vegan_friendly: i32, max_price: i32, max_distance: i32) -> Vec[i32] {
+    let mut kept: Vec[(i32, i32)] = restaurants
+        .iter()
+        .filter(|r| vegan_friendly <= r[2] and r[3] <= max_price and r[4] <= max_distance)
+        .map(|r| (r[1], r[0]))
+        .collect();
+    kept.sort();
+    kept.iter().rev().map(|p| p.1).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn fold(check: i64, ids: Vec[i32]) -> i64 {
+    let mut c = check;
+    for id in ids.iter() {
+        c = (c * 131 + id) % 1000000007;
+    }
+    (c * 131 + 7) % 1000000007
+}
+
+// n restaurants with distinct ids from 1 to n * spread, shuffled; ratings
+// from 1 to `ratings`, prices and distances from 1 to `limit`
+fn draw(seed: mut ref i64, n: i64, spread: i64, ratings: i64, limit: i64) -> Vec[Vec[i32]] {
+    let mut ids: Vec[i64] = Vec.new();
+    for i in 0..n {
+        ids.push(i * spread + 1 + next_random(mut seed) % spread);
+    }
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        let keep = ids[i];
+        ids[i] = ids[j];
+        ids[j] = keep;
+    }
+    let mut out: Vec[Vec[i32]] = Vec.new();
+    for i in 0..n {
+        let rating = 1 + next_random(mut seed) % ratings;
+        let vegan = next_random(mut seed) % 2;
+        let price = 1 + next_random(mut seed) % limit;
+        let distance = 1 + next_random(mut seed) % limit;
+        out.push([ids[i] as i32, rating as i32, vegan as i32, price as i32, distance as i32]);
+    }
+    out
+}
+
+fn main() {
+    // LeetCode's three examples, on one list
+    let ex = [[1, 4, 1, 40, 10], [2, 8, 0, 50, 5], [3, 8, 1, 30, 4], [4, 10, 0, 10, 3], [5, 1, 1, 15, 1]];
+    println(f"{filter_restaurants(ex, 1, 50, 10)} {filter_restaurants(ex, 0, 50, 10)} {filter_restaurants(ex, 0, 30, 3)}");
+    // nothing passes; one restaurant, at the limits exactly
+    println(f"{filter_restaurants(ex, 1, 5, 5)} {filter_restaurants([[7, 3, 0, 20, 9]], 0, 20, 9)}");
+    // 10^4 restaurants, the constraints' most, with ids up to 10^5 and
+    // ratings from 1 to 50
+    let mut seed = 1333;
+    let big = draw(mut seed, 10000, 10, 50, 100000);
+    let all = filter_restaurants(big, 0, 100000, 100000);
+    let some = filter_restaurants(big, 1, 60000, 70000);
+    println(f"10^4 restaurants: {all.len()} first {all[0]}, {some.len()} vegan first {some[0]}, checksum {fold(fold(0, all), some)}");
+    // 600 random lists of 1 to 2000 restaurants, most of them short, ratings
+    // from 1 to 3 or to 10^5, prices and distances from 1 to 10 or to 10^5,
+    // and limits drawn from the same range
+    let mut check = 0;
+    let mut kept = 0;
+    for t in 0..600 {
+        let n = if t % 20 == 0 { 1 + next_random(mut seed) % 2000 } else { 1 + next_random(mut seed) % 12 };
+        let ratings = if t % 2 == 0 { 3 } else { 100000 };
+        let limit = if t % 3 == 0 { 100000 } else { 10 };
+        let list = draw(mut seed, n, 1 + t % 5, ratings, limit);
+        let vegan = (next_random(mut seed) % 2) as i32;
+        let max_price = (1 + next_random(mut seed) % limit) as i32;
+        let max_distance = (1 + next_random(mut seed) % limit) as i32;
+        let ids = filter_restaurants(list, vegan, max_price, max_distance);
+        kept += ids.len();
+        check = fold(check, ids);
+    }
+    println(f"600 random lists: {kept} kept, checksum {check}");
+}

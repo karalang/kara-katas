@@ -1,0 +1,265 @@
+// LeetCode #1333: Filter Restaurants by Vegan-Friendly, Price and Distance
+// -- differential test of the five arms against the statement read
+// literally, with five more properties.
+//
+// The statement: given the array restaurants where restaurants[i] = [id,
+// rating, veganFriendly, price, distance], filter the restaurants using
+// three filters. The veganFriendly filter will be either true (only
+// restaurants with veganFriendly set to true) or false (any restaurant).
+// The maxPrice and maxDistance filters keep the restaurants at or under
+// them. Return the ids after filtering, ordered by rating from highest to
+// lowest, and for restaurants with the same rating, by id from highest to
+// lowest.
+
+// ---- filter_restaurants.kara ----
+fn a0_filter_restaurants(restaurants: Vec[Vec[i32]], vegan_friendly: i32, max_price: i32, max_distance: i32) -> Vec[i32] {
+    let mut kept: Vec[(i32, i32)] = Vec.new();
+    for r in restaurants.iter() {
+        if (vegan_friendly == 0 or r[2] == 1) and r[3] <= max_price and r[4] <= max_distance {
+            kept.push((r[1], r[0]));
+        }
+    }
+    kept.sort_by(|a, b| b.0.cmp(a.0).then(b.1.cmp(a.1)));
+    kept.iter().map(|p| p.1).collect()
+}
+
+// ---- filter_restaurants_reverse.kara ----
+fn a1_filter_restaurants(restaurants: Vec[Vec[i32]], vegan_friendly: i32, max_price: i32, max_distance: i32) -> Vec[i32] {
+    let mut kept: Vec[(i32, i32)] = restaurants
+        .iter()
+        .filter(|r| vegan_friendly <= r[2] and r[3] <= max_price and r[4] <= max_distance)
+        .map(|r| (r[1], r[0]))
+        .collect();
+    kept.sort();
+    kept.iter().rev().map(|p| p.1).collect()
+}
+
+// ---- filter_restaurants_heap.kara ----
+fn a2_filter_restaurants(restaurants: Vec[Vec[i32]], vegan_friendly: i32, max_price: i32, max_distance: i32) -> Vec[i32] {
+    let mut queue: PriorityQueue[(i32, i32)] = PriorityQueue.max_first();
+    for r in restaurants.iter() {
+        if vegan_friendly == 1 and r[2] == 0 {
+            continue;
+        }
+        if r[3] <= max_price and r[4] <= max_distance {
+            queue.push((r[1], r[0]));
+        }
+    }
+    let mut ids: Vec[i32] = Vec.new();
+    while let Some((_, id)) = queue.pop() {
+        ids.push(id);
+    }
+    ids
+}
+
+// ---- filter_restaurants_tree.kara ----
+fn a3_filter_restaurants(restaurants: Vec[Vec[i32]], vegan_friendly: i32, max_price: i32, max_distance: i32) -> Vec[i32] {
+    let mut by_rating: SortedMap[i32, Vec[i32]] = SortedMap.new();
+    for r in restaurants.iter() {
+        if (vegan_friendly == 0 or r[2] == 1) and r[3] <= max_price and r[4] <= max_distance {
+            by_rating.entry(r[1]).or_insert(Vec.new()).push(r[0]);
+        }
+    }
+    let mut ids: Vec[i32] = Vec.new();
+    for (_, same) in by_rating.iter().rev() {
+        let mut same = same.clone();
+        same.sort_by(|a, b| b.cmp(a));
+        ids.extend(same.iter());
+    }
+    ids
+}
+
+// ---- filter_restaurants_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_filter_restaurants(restaurants: Vec[Vec[i32]], vegan_friendly: i32, max_price: i32, max_distance: i32) -> Vec[i32] {
+        let mut res: Vec[ref Vec[i32]] = restaurants
+            .iter()
+            .filter(|r| (vegan_friendly == 0 or r[2] == 1) and r[3] <= max_price and r[4] <= max_distance)
+            .collect();
+        res.sort_by(|a, b| b[1].cmp(a[1]).then(b[0].cmp(a[0])));
+        res.iter().map(|r| r[0]).collect()
+    }
+}
+
+fn a4_filter_restaurants(restaurants: Vec[Vec[i32]], vegan_friendly: i32, max_price: i32, max_distance: i32) -> Vec[i32] {
+    A4Solution.a4_filter_restaurants(restaurants, vegan_friendly, max_price, max_distance)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: a restaurant passes when the vegan filter
+// is off or it is vegan-friendly, and its price and distance are at most
+// the limits; the passing restaurant with k others ahead of it, by a
+// higher rating or the same rating and a higher id, is the k-th answer
+fn literal(list: Vec[Vec[i32]], vegan_friendly: i32, max_price: i32, max_distance: i32) -> Vec[i32] {
+    let mut passing: Vec[Vec[i32]] = Vec.new();
+    for r in list.iter() {
+        let vegan_ok = if vegan_friendly == 1 { r[2] == 1 } else { true };
+        if vegan_ok and r[3] <= max_price and r[4] <= max_distance {
+            passing.push(r.clone());
+        }
+    }
+    let mut out: Vec[i32] = Vec.filled(passing.len(), 0);
+    for r in passing.iter() {
+        let mut ahead = 0;
+        for o in passing.iter() {
+            if o[1] > r[1] or (o[1] == r[1] and o[0] > r[0]) {
+                ahead += 1;
+            }
+        }
+        out[ahead] = r[0];
+    }
+    out
+}
+
+struct Case {
+    list: Vec[Vec[i32]],
+    vegan: i32,
+    max_price: i32,
+    max_distance: i32,
+    // P4: the amount every rating is raised by
+    raise: i32,
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, list: Vec[Vec[i32]], vegan: i32, max_price: i32, max_distance: i32) -> Vec[i32] {
+    match i {
+        0 => a0_filter_restaurants(list, vegan, max_price, max_distance),
+        1 => a1_filter_restaurants(list, vegan, max_price, max_distance),
+        2 => a2_filter_restaurants(list, vegan, max_price, max_distance),
+        3 => a3_filter_restaurants(list, vegan, max_price, max_distance),
+        _ => a4_filter_restaurants(list, vegan, max_price, max_distance),
+    }
+}
+
+fn find(list: Vec[Vec[i32]], id: i32) -> Vec[i32] {
+    for r in list.iter() {
+        if r[0] == id {
+            return r.clone();
+        }
+    }
+    Vec.new()
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    t.cases += 1;
+    let want = literal(c.list, c.vegan, c.max_price, c.max_distance);
+    for id in want.iter() {
+        t.check = (t.check * 131 + id) % 1000000007;
+    }
+    t.check = (t.check * 131 + 7) % 1000000007;
+    let reversed: Vec[Vec[i32]] = c.list.iter().rev().cloned().collect();
+    let raised: Vec[Vec[i32]] = c.list.iter().map(|r| [r[0], r[1] + c.raise, r[2], r[3], r[4]]).collect();
+    let turned: Vec[Vec[i32]] = c.list.iter().map(|r| [100001 - r[0], r[1], r[2], r[3], r[4]]).collect();
+    let star = a0_filter_restaurants(c.list, c.vegan, c.max_price, c.max_distance);
+    for i in 0..5 {
+        let got = arm(i, c.list, c.vegan, c.max_price, c.max_distance);
+        let what = f"arm {i} on {c.list} {c.vegan} {c.max_price} {c.max_distance}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the list read backwards: the same answer
+        let rv = arm(i, reversed, c.vegan, c.max_price, c.max_distance);
+        expect(mut t, 2, rv == got, f"P2 {what}, backwards: {rv}");
+        // P3: the vegan filter on: the answer with it off, the restaurants
+        // that are not vegan-friendly left out
+        let on = arm(i, c.list, 1, c.max_price, c.max_distance);
+        let off: Vec[i32] = arm(i, c.list, 0, c.max_price, c.max_distance).iter().filter(|id| find(c.list, id)[2] == 1).cloned().collect();
+        expect(mut t, 3, on == off, f"P3 {what}, vegan on {on}, off and kept {off}");
+        // P4: every rating raised by one amount: the same answer
+        let up = arm(i, raised, c.vegan, c.max_price, c.max_distance);
+        expect(mut t, 4, up == got, f"P4 {what}, raised by {c.raise}: {up}");
+        // P5: every id turned over, 100001 less it: the answer's ids turned
+        // over, and each run of one rating read backwards
+        let tv = arm(i, turned, c.vegan, c.max_price, c.max_distance);
+        let mut over: Vec[i32] = Vec.new();
+        let mut k = 0;
+        while k < got.len() {
+            let rating = find(c.list, got[k])[1];
+            let mut end = k;
+            while end < got.len() and find(c.list, got[end])[1] == rating {
+                end += 1;
+            }
+            for j in (k..end).rev() {
+                over.push(100001 - got[j]);
+            }
+            k = end;
+        }
+        expect(mut t, 5, tv == over, f"P5 {what}, ids turned over: {tv}, expected {over}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 lists of 1 to 8 restaurants with distinct ids up to 30, in four
+    // kinds, 500 each: ratings from 1 to 3 and prices and distances from 1
+    // to 5; ratings, prices and distances up to 10^5; every rating the
+    // same; and limits taken from the list's own prices and distances, so
+    // some restaurants sit on them exactly. Every list, filter and amount
+    // is drawn before any arm answers.
+    let mut seed = 13331;
+    let mut cases: Vec[Case] = Vec.new();
+    for c in 0..2000 {
+        let kind = c / 500;
+        let n = 1 + next_random(mut seed) % 8;
+        let top = if kind == 1 { 100000 } else { 5 };
+        let ratings = if kind == 1 { 100000 } else if kind == 2 { 1 } else { 3 };
+        let mut ids: Vec[i64] = Vec.new();
+        while ids.len() < n {
+            let id = 1 + next_random(mut seed) % 30;
+            if not ids.contains(id) {
+                ids.push(id);
+            }
+        }
+        let mut list: Vec[Vec[i32]] = Vec.new();
+        for id in ids.iter() {
+            let rating = 1 + next_random(mut seed) % ratings;
+            let vegan = next_random(mut seed) % 2;
+            let price = 1 + next_random(mut seed) % top;
+            let distance = 1 + next_random(mut seed) % top;
+            list.push([id as i32, rating as i32, vegan as i32, price as i32, distance as i32]);
+        }
+        let vegan = (next_random(mut seed) % 2) as i32;
+        let (max_price, max_distance) = if kind == 3 {
+            (list[next_random(mut seed) % n][3], list[next_random(mut seed) % n][4])
+        } else {
+            ((1 + next_random(mut seed) % top) as i32, (1 + next_random(mut seed) % top) as i32)
+        };
+        let raise = (1 + next_random(mut seed) % 1000) as i32;
+        cases.push(Case { list, vegan, max_price, max_distance, raise });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} lists: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
