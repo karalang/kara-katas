@@ -1,0 +1,62 @@
+// LeetCode #1338: Reduce Array Size to The Half -- the ★ arm: each value
+// counted in a `Map`; the counts sorted largest first, and the values
+// taken, most frequent first, until at least half the array is gone.
+// O(n log n)
+
+fn min_set_size(arr: Vec[i32]) -> i32 {
+    let mut counts: Map[i32, i64] = Map.new();
+    for x in arr.iter() {
+        counts[x] = counts.get(x).unwrap_or(0) + 1;
+    }
+    let mut sizes: Vec[i64] = counts.values().cloned().collect();
+    sizes.sort_by(|a, b| b.cmp(a));
+    let mut removed = 0;
+    let mut chosen = 0;
+    for s in sizes.iter() {
+        if 2 * removed >= arr.len() {
+            break;
+        }
+        removed += s;
+        chosen += 1;
+    }
+    chosen
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; two values; two pairs
+    println(f"{min_set_size([3, 3, 3, 3, 5, 5, 5, 2, 2, 7])} {min_set_size([7, 7, 7, 7, 7, 7])} {min_set_size([1, 2])} {min_set_size([1, 1, 2, 2])}");
+    // 10^5 values, the constraints' longest: all different, and drawn from
+    // 1 to 10^5 at random
+    let mut seed = 1338;
+    let distinct: Vec[i32] = (1..100001).map(|x| x as i32).collect();
+    let mut drawn: Vec[i32] = Vec.new();
+    for _ in 0..100000 {
+        drawn.push((1 + next_random(mut seed) % 100000) as i32);
+    }
+    println(f"10^5 values: {min_set_size(distinct)} {min_set_size(drawn)}");
+    // 400 random arrays of 2 to 3000 values, an even count, most of them
+    // short, from 1 to 3, to 50 or to 10^5, some skewed toward small values
+    let mut check = 0;
+    for t in 0..400 {
+        let n = if t % 20 == 0 { 2 * (1 + next_random(mut seed) % 1500) } else { 2 * (1 + next_random(mut seed) % 8) };
+        let top = if t % 3 == 0 { 3 } else if t % 3 == 1 { 50 } else { 100000 };
+        let mut arr: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            let v = if t % 2 == 0 {
+                1 + next_random(mut seed) % top
+            } else {
+                1 + next_random(mut seed) % top * (next_random(mut seed) % top) / top
+            };
+            arr.push(v as i32);
+        }
+        check = (check * 131 + min_set_size(arr) + n) % 1000000007;
+    }
+    println(f"400 random arrays: checksum {check}");
+}

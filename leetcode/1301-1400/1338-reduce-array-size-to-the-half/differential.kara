@@ -1,0 +1,276 @@
+// LeetCode #1338: Reduce Array Size to The Half -- differential test of
+// the five arms against the statement read literally, with five more
+// properties.
+//
+// The statement: you are given an integer array arr of even length. You
+// can choose a set of integers and remove all the occurrences of these
+// integers in the array. Return the minimum size of the set so that at
+// least half of the integers of the array are removed.
+
+// ---- min_set_size.kara ----
+fn a0_min_set_size(arr: Vec[i32]) -> i32 {
+    let mut counts: Map[i32, i64] = Map.new();
+    for x in arr.iter() {
+        counts[x] = counts.get(x).unwrap_or(0) + 1;
+    }
+    let mut sizes: Vec[i64] = counts.values().cloned().collect();
+    sizes.sort_by(|a, b| b.cmp(a));
+    let mut removed = 0;
+    let mut chosen = 0;
+    for s in sizes.iter() {
+        if 2 * removed >= arr.len() {
+            break;
+        }
+        removed += s;
+        chosen += 1;
+    }
+    chosen
+}
+
+// ---- min_set_size_bucket.kara ----
+fn a1_min_set_size(arr: Vec[i32]) -> i32 {
+    let n = arr.len();
+    let top = arr.iter().cloned().max().unwrap();
+    let mut count: Vec[i64] = Vec.filled(top + 1, 0);
+    for x in arr.iter() {
+        count[x] += 1;
+    }
+    // how_many[c] is the number of values that occur exactly c times
+    let mut how_many: Vec[i64] = Vec.filled(n + 1, 0);
+    for c in count.iter() {
+        if c > 0 {
+            how_many[c] += 1;
+        }
+    }
+    let mut removed = 0;
+    let mut chosen = 0;
+    let mut c = n;
+    while 2 * removed < n {
+        if how_many[c] > 0 {
+            how_many[c] -= 1;
+            removed += c;
+            chosen += 1;
+        } else {
+            c -= 1;
+        }
+    }
+    chosen as i32
+}
+
+// ---- min_set_size_heap.kara ----
+fn a2_min_set_size(arr: Vec[i32]) -> i32 {
+    let mut counts: Map[i32, i64] = Map.new();
+    for x in arr.iter() {
+        *counts.entry(x).or_insert(0) += 1;
+    }
+    let mut queue = PriorityQueue.max_first_from(counts.values().cloned().collect());
+    let mut left = arr.len();
+    let mut chosen = 0;
+    while 2 * left > arr.len() {
+        left -= queue.pop().unwrap();
+        chosen += 1;
+    }
+    chosen
+}
+
+// ---- min_set_size_runs.kara ----
+fn a3_min_set_size(arr: Vec[i32]) -> i32 {
+    let mut sorted = arr.clone();
+    sorted.sort();
+    let mut runs: Vec[i64] = Vec.new();
+    let mut start = 0;
+    for i in 1..sorted.len() + 1 {
+        if i == sorted.len() or sorted[i] != sorted[start] {
+            runs.push(i - start);
+            start = i;
+        }
+    }
+    runs.sort();
+    runs.reverse();
+    let half = sorted.len() / 2;
+    let mut removed = 0;
+    let mut chosen = 0;
+    while removed < half {
+        removed += runs[chosen];
+        chosen += 1;
+    }
+    chosen as i32
+}
+
+// ---- min_set_size_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_min_set_size(arr: Vec[i32]) -> i32 {
+        let mut m: Map[i32, i32] = Map.new();
+        for x in arr.iter() {
+            *m.entry(x).or_insert(0) += 1;
+        }
+        let mut v: Vec[i32] = m.into_values().collect();
+        v.sort_by(|a, b| b.cmp(a));
+        let half = arr.len() as i32 / 2;
+        let mut total = 0;
+        for (i, c) in v.iter().enumerate() {
+            total += c;
+            if total >= half {
+                return i as i32 + 1;
+            }
+        }
+        v.len() as i32
+    }
+}
+
+fn a4_min_set_size(arr: Vec[i32]) -> i32 {
+    A4Solution.a4_min_set_size(arr)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every set of the values the array holds
+// tried, each as a bit mask over the distinct values, and the smallest set
+// whose removal takes away at least half the array kept
+fn literal(arr: Vec[i32]) -> i64 {
+    let mut values: Vec[i32] = Vec.new();
+    for x in arr.iter() {
+        if not values.contains(x) {
+            values.push(x);
+        }
+    }
+    let k = values.len();
+    let mut best = k;
+    for set in 0..(1 << k) {
+        let mut size = 0;
+        let mut removed = 0;
+        for b in 0..k {
+            if set & (1 << b) != 0 {
+                size += 1;
+                for x in arr.iter() {
+                    if x == values[b] {
+                        removed += 1;
+                    }
+                }
+            }
+        }
+        if 2 * removed >= arr.len() and size < best {
+            best = size;
+        }
+    }
+    best
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, arr: Vec[i32]) -> i32 {
+    match i {
+        0 => a0_min_set_size(arr),
+        1 => a1_min_set_size(arr),
+        2 => a2_min_set_size(arr),
+        3 => a3_min_set_size(arr),
+        _ => a4_min_set_size(arr),
+    }
+}
+
+fn check_case(t: mut ref Tally, arr: Vec[i32]) {
+    t.cases += 1;
+    let want = literal(arr);
+    t.check = (t.check * 131 + want + arr.len()) % 1000000007;
+    let reversed: Vec[i32] = arr.iter().rev().cloned().collect();
+    let top = arr.iter().cloned().max().unwrap();
+    let turned: Vec[i32] = arr.iter().map(|x| top + 1 - x).collect();
+    let mut twice = arr.clone();
+    twice.extend(arr.iter());
+    let mut flooded = arr.clone();
+    for _ in 0..arr.len() {
+        flooded.push(top + 1);
+    }
+    let star = a0_min_set_size(arr);
+    for i in 0..5 {
+        let got = arm(i, arr);
+        let what = f"arm {i} on {arr}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the array read backwards: the same answer
+        let rv = arm(i, reversed);
+        expect(mut t, 2, rv == got, f"P2 {what}, backwards: {rv}");
+        // P3: every value x made (the largest + 1 - x): the same answer
+        let tv = arm(i, turned);
+        expect(mut t, 3, tv == got, f"P3 {what}, turned: {tv}");
+        // P4: the array twice over: the same answer
+        let tw = arm(i, twice);
+        expect(mut t, 4, tw == got, f"P4 {what}, twice: {tw}");
+        // P5: as many copies of one new value added: one
+        let fl = arm(i, flooded);
+        expect(mut t, 5, fl == 1, f"P5 {what}, flooded: {fl}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 arrays of 2, 4, 6 or 8 values in four kinds, 500 each: from 1
+    // to 3; from 1 to 8; all different; and one value making up half or
+    // nearly half, the rest from 1 to 5. Every array is drawn before any
+    // arm answers.
+    let mut seed = 13381;
+    let mut cases: Vec[Vec[i32]] = Vec.new();
+    for c in 0..2000 {
+        let kind = c / 500;
+        let n = 2 * (1 + next_random(mut seed) % 4);
+        let common = 1 + next_random(mut seed) % 5;
+        let share = n / 2 - next_random(mut seed) % 2;
+        let mut arr: Vec[i32] = Vec.new();
+        for i in 0..n {
+            let x = if kind == 0 {
+                1 + next_random(mut seed) % 3
+            } else if kind == 1 {
+                1 + next_random(mut seed) % 8
+            } else if kind == 2 {
+                1 + i * 3
+            } else if i < share {
+                common
+            } else {
+                1 + next_random(mut seed) % 5
+            };
+            arr.push(x as i32);
+        }
+        // a shuffle, so equal values do not always stand together
+        for i in (1..n).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            let keep = arr[i];
+            arr[i] = arr[j];
+            arr[j] = keep;
+        }
+        cases.push(arr);
+    }
+    for arr in cases.iter() {
+        check_case(mut t, arr);
+    }
+    println(f"{t.cases} arrays: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
