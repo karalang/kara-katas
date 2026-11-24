@@ -1,0 +1,111 @@
+// LeetCode #1293: Shortest Path in a Grid with Obstacles Elimination -- the
+// layers arm: a breadth-first search over cells alone for each number of
+// eliminations used, from 0 up; layer e starts from every cell layer e - 1
+// reached, stepping into an obstacle from there, so each layer is the
+// shortest steps with at most e obstacles crossed. O(mnk)
+
+fn shortest_path(grid: Vec[Vec[i64]], k: i64) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let unseen = m * n * (k + 1) + 1;
+    // dist[r][c]: fewest steps to (r, c) crossing at most e obstacles
+    let mut dist: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, unseen));
+    for e in 0..k + 1 {
+        let mut next: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, unseen));
+        if e == 0 {
+            next[0][0] = 0;
+        } else {
+            // one more obstacle: any obstacle next to a cell reached with e - 1
+            for r in 0..m {
+                for c in 0..n {
+                    next[r][c] = dist[r][c];
+                    for (dr, dc) in [(1, 0), (-1, 0), (0, 1), (0, -1)].iter() {
+                        let pr = r + dr;
+                        let pc = c + dc;
+                        if grid[r][c] == 1 and pr >= 0 and pr < m and pc >= 0 and pc < n and dist[pr][pc] + 1 < next[r][c] {
+                            next[r][c] = dist[pr][pc] + 1;
+                        }
+                    }
+                }
+            }
+        }
+        // then relax through free cells in order of steps: a Dijkstra on the
+        // free cells with these starting distances
+        let mut queue: PriorityQueue[(i64, i64, i64)] = PriorityQueue.new();
+        for r in 0..m {
+            for c in 0..n {
+                if next[r][c] < unseen {
+                    queue.push((next[r][c], r, c));
+                }
+            }
+        }
+        while let Some((d, r, c)) = queue.pop() {
+            if d > next[r][c] {
+                continue;
+            }
+            for (dr, dc) in [(1, 0), (-1, 0), (0, 1), (0, -1)].iter() {
+                let nr = r + dr;
+                let nc = c + dc;
+                if nr >= 0 and nr < m and nc >= 0 and nc < n and grid[nr][nc] == 0 and d + 1 < next[nr][nc] {
+                    next[nr][nc] = d + 1;
+                    queue.push((d + 1, nr, nc));
+                }
+            }
+        }
+        dist = next;
+    }
+    if dist[m - 1][n - 1] < unseen { dist[m - 1][n - 1] } else { -1 }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a grid with each cell an obstacle with chance `percent` in 100, the two
+// corners clear
+fn problem(seed: mut ref i64, m: i64, n: i64, percent: i64) -> Vec[Vec[i64]] {
+    let mut grid: Vec[Vec[i64]] = Vec.new();
+    for i in 0..m {
+        let mut row: Vec[i64] = Vec.new();
+        for j in 0..n {
+            let corner = (i == 0 and j == 0) or (i == m - 1 and j == n - 1);
+            row.push(if not corner and next_random(mut seed) % 100 < percent { 1 } else { 0 });
+        }
+        grid.push(row);
+    }
+    grid
+}
+
+fn main() {
+    // LeetCode's examples, a single cell, a wall that needs every
+    // elimination, and a wall one elimination short
+    let ex1 = [[0, 0, 0], [1, 1, 0], [0, 0, 0], [0, 1, 1], [0, 0, 0]];
+    let ex2 = [[0, 1, 1], [1, 1, 1], [1, 0, 0]];
+    let wall = [[0, 1, 1, 1, 0]];
+    println(f"{shortest_path(ex1, 1)} {shortest_path(ex2, 1)} {shortest_path([[0]], 0)} {shortest_path(wall, 3)} {shortest_path(wall, 2)}");
+    // random grids up to 15 by 15 with obstacles from 10 to 70 in 100 and
+    // up to 6 eliminations; then two of 40 by 40, the constraints' largest
+    let mut seed = 1293;
+    let mut total = 0;
+    let mut unreachable = 0;
+    let mut check = 0;
+    for case in 0..402 {
+        let big = case >= 400;
+        let m = if big { 40 } else { next_random(mut seed) % 15 + 1 };
+        let n = if big { 40 } else { next_random(mut seed) % 15 + 1 };
+        let percent = if big { 45 } else { 10 + next_random(mut seed) % 61 };
+        let grid = problem(mut seed, m, n, percent);
+        let k = if big { 3 + case % 2 } else { next_random(mut seed) % 7 };
+        let steps = shortest_path(grid, k);
+        if steps < 0 {
+            unreachable += 1;
+        } else {
+            total += steps;
+        }
+        check = (check * 131 + steps + 2) % 1000000007;
+    }
+    println(f"402 random grids: {unreachable} unreachable, steps total {total}, checksum {check}");
+}

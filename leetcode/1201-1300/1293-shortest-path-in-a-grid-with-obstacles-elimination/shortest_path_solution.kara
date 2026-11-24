@@ -1,0 +1,98 @@
+// LeetCode #1293: Shortest Path in a Grid with Obstacles Elimination -- a
+// Rust solution as LeetCode's Rust users write it (a `VecDeque<(usize, usize,
+// usize, i32)>` of states, a `vec![vec![vec![false; k + 1]; n]; m]` visited
+// table, and moves through `checked_sub` on `usize`), carried to Kāra by
+// `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn shortest_path(grid: Vec[Vec[i32]], k: i32) -> i32 {
+        let (m, n, k) = (grid.len(), grid[0].len(), k as i64);
+        let mut visited = Vec.filled(m, Vec.filled(n, Vec.filled(k + 1, false)));
+        let mut q = VecDeque.new();
+        q.push_back((0, 0, k, 0i32));
+        visited[0][0][k] = true;
+        let dirs = [(0, 1), (1, 0), (0, -1), (-1, 0)];
+        while let Some((r, c, rem, steps)) = q.pop_front() {
+            if r == m - 1 and c == n - 1 {
+                return steps;
+            }
+            for (dr, dc) in dirs.iter() {
+                let nr = r as i32 + dr;
+                let nc = c as i32 + dc;
+                if nr < 0 or nc < 0 or nr >= m as i32 or nc >= n as i32 {
+                    continue;
+                }
+                if grid[nr][nc] == 1 {
+                    if rem > 0 and not visited[nr][nc][rem - 1] {
+                        visited[nr][nc][rem - 1] = true;
+                        q.push_back((nr, nc, rem - 1, steps + 1));
+                    }
+                } else if not visited[nr][nc][rem] {
+                    visited[nr][nc][rem] = true;
+                    q.push_back((nr, nc, rem, steps + 1));
+                }
+            }
+        }
+        -1
+    }
+}
+
+fn shortest_path(grid: Vec[Vec[i64]], k: i64) -> i64 {
+    let g: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|x| x as i32).collect()).collect();
+    Solution.shortest_path(g, k as i32)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a grid with each cell an obstacle with chance `percent` in 100, the two
+// corners clear
+fn problem(seed: mut ref i64, m: i64, n: i64, percent: i64) -> Vec[Vec[i64]] {
+    let mut grid: Vec[Vec[i64]] = Vec.new();
+    for i in 0..m {
+        let mut row: Vec[i64] = Vec.new();
+        for j in 0..n {
+            let corner = (i == 0 and j == 0) or (i == m - 1 and j == n - 1);
+            row.push(if not corner and next_random(mut seed) % 100 < percent { 1 } else { 0 });
+        }
+        grid.push(row);
+    }
+    grid
+}
+
+fn main() {
+    // LeetCode's examples, a single cell, a wall that needs every
+    // elimination, and a wall one elimination short
+    let ex1 = [[0, 0, 0], [1, 1, 0], [0, 0, 0], [0, 1, 1], [0, 0, 0]];
+    let ex2 = [[0, 1, 1], [1, 1, 1], [1, 0, 0]];
+    let wall = [[0, 1, 1, 1, 0]];
+    println(f"{shortest_path(ex1, 1)} {shortest_path(ex2, 1)} {shortest_path([[0]], 0)} {shortest_path(wall, 3)} {shortest_path(wall, 2)}");
+    // random grids up to 15 by 15 with obstacles from 10 to 70 in 100 and
+    // up to 6 eliminations; then two of 40 by 40, the constraints' largest
+    let mut seed = 1293;
+    let mut total = 0;
+    let mut unreachable = 0;
+    let mut check = 0;
+    for case in 0..402 {
+        let big = case >= 400;
+        let m = if big { 40 } else { next_random(mut seed) % 15 + 1 };
+        let n = if big { 40 } else { next_random(mut seed) % 15 + 1 };
+        let percent = if big { 45 } else { 10 + next_random(mut seed) % 61 };
+        let grid = problem(mut seed, m, n, percent);
+        let k = if big { 3 + case % 2 } else { next_random(mut seed) % 7 };
+        let steps = shortest_path(grid, k);
+        if steps < 0 {
+            unreachable += 1;
+        } else {
+            total += steps;
+        }
+        check = (check * 131 + steps + 2) % 1000000007;
+    }
+    println(f"402 random grids: {unreachable} unreachable, steps total {total}, checksum {check}");
+}
