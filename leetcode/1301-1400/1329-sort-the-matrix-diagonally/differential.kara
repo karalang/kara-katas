@@ -1,0 +1,366 @@
+// LeetCode #1329: Sort the Matrix Diagonally -- differential test of
+// the six arms against the statement read literally, with five more
+// properties.
+//
+// The statement: a matrix diagonal is a diagonal line of cells starting
+// from some cell in either the topmost row or leftmost column and going in
+// the bottom-right direction until reaching the matrix's end. Given an
+// m x n matrix of integers, sort each matrix diagonal in ascending order
+// and return the resulting matrix.
+
+// ---- diagonal_sort.kara ----
+fn a0_sort_from(out: mut ref Vec[Vec[i32]], i0: i64, j0: i64) {
+    let m = out.len();
+    let n = out[0].len();
+    let mut vals: Vec[i32] = Vec.new();
+    let mut k = 0;
+    while i0 + k < m and j0 + k < n {
+        vals.push(out[i0 + k][j0 + k]);
+        k += 1;
+    }
+    vals.sort();
+    for (k, v) in vals.iter().enumerate() {
+        out[i0 + k][j0 + k] = v;
+    }
+}
+
+fn a0_diagonal_sort(mat: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    let mut out = mat.clone();
+    for i in 0..mat.len() {
+        a0_sort_from(mut out, i, 0);
+    }
+    for j in 1..mat[0].len() {
+        a0_sort_from(mut out, 0, j);
+    }
+    out
+}
+
+// ---- diagonal_sort_count.kara ----
+fn a1_diagonal_sort(mat: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    let m = mat.len();
+    let n = mat[0].len();
+    let mut out = mat.clone();
+    // the diagonal of j - i = d starts at row max(0, -d), column max(0, d)
+    for d in -(m - 1)..n {
+        let mut count = [0; 101];
+        let mut i = max(0, -d);
+        let mut j = max(0, d);
+        while i < m and j < n {
+            count[mat[i][j]] += 1;
+            i += 1;
+            j += 1;
+        }
+        i = max(0, -d);
+        j = max(0, d);
+        for v in 1..=100 {
+            for _ in 0..count[v] {
+                out[i][j] = v as i32;
+                i += 1;
+                j += 1;
+            }
+        }
+    }
+    out
+}
+
+// ---- diagonal_sort_insertion.kara ----
+fn a2_diagonal_sort(mat: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    let mut out = mat.clone();
+    let m = out.len();
+    let n = out[0].len();
+    for i in 1..m {
+        for j in 1..n {
+            let v = out[i][j];
+            let mut k = 1;
+            while k <= min(i, j) and out[i - k][j - k] > v {
+                out[i - k + 1][j - k + 1] = out[i - k][j - k];
+                k += 1;
+            }
+            out[i - k + 1][j - k + 1] = v;
+        }
+    }
+    out
+}
+
+// ---- diagonal_sort_heap.kara ----
+fn a3_diagonal_sort(mat: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    let mut queues: Map[i64, PriorityQueue[i32]] = Map.new();
+    for (i, row) in mat.iter().enumerate() {
+        for (j, v) in row.iter().enumerate() {
+            queues.entry(i - j).or_insert(PriorityQueue.new()).push(v);
+        }
+    }
+    let mut out = mat.clone();
+    for i in 0..out.len() {
+        for j in 0..out[i].len() {
+            out[i][j] = queues[i - j].pop().unwrap();
+        }
+    }
+    out
+}
+
+// ---- diagonal_sort_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_diagonal_sort(mat: own Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+        let mut mat = mat;
+        let m = mat.len();
+        let n = mat[0].len();
+        let mut diags: Map[i32, Vec[i32]] = Map.new();
+        for i in 0..m {
+            for j in 0..n {
+                diags.entry(i as i32 - j as i32).or_insert_with(Vec.new).push(mat[i][j]);
+            }
+        }
+        for v in diags.values_mut() {
+            v.sort_by(|a, b| b.cmp(a));
+        }
+        for i in 0..m {
+            for j in 0..n {
+                mat[i][j] = diags.get_mut(i as i32 - j as i32).unwrap().pop().unwrap();
+            }
+        }
+        mat
+    }
+}
+
+fn a4_diagonal_sort(mat: own Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    A4Solution.a4_diagonal_sort(mat)
+}
+
+// ---- diagonal_sort_walk.kara ----
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn a5_diagonal_sort(mat: own Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+        let mut mat = mat;
+        let (m, n) = (mat.len(), mat[0].len());
+        let mut starts: Vec[(i64, i64)] = (0..m).map(|i| (i, 0)).collect();
+        starts.extend((1..n).map(|j| (0, j)));
+        for (i, j) in starts.iter() {
+            let mut diag = Vec.new();
+            let mut (r, c) = (i, j);
+            while r < m and c < n {
+                diag.push(mat[r][c]);
+                r += 1;
+                c += 1;
+            }
+            diag.sort();
+            let mut (r, c) = (i, j);
+            for v in diag {
+                mat[r][c] = v;
+                r += 1;
+                c += 1;
+            }
+        }
+        mat
+    }
+}
+
+fn a5_diagonal_sort(mat: own Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    A5Solution.a5_diagonal_sort(mat)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: a cell's diagonal is every cell with the
+// same row less column; sorted ascending, the cell holds the value whose
+// place in that order is the number of its diagonal's cells above it
+fn literal(mat: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    let m = mat.len();
+    let n = mat[0].len();
+    let mut out: Vec[Vec[i32]] = Vec.new();
+    for i in 0..m {
+        let mut row: Vec[i32] = Vec.new();
+        for j in 0..n {
+            let mut line: Vec[i32] = Vec.new();
+            let mut above = 0;
+            for r in 0..m {
+                for c in 0..n {
+                    if r - c == i - j {
+                        line.push(mat[r][c]);
+                        if r < i {
+                            above += 1;
+                        }
+                    }
+                }
+            }
+            // the value with `above` values of the line below it or equal
+            // before it and more than `above` at or below it
+            let mut got = 0;
+            for v in line.iter() {
+                let less = line.iter().filter(|w| *w < *v).count();
+                let most = line.iter().filter(|w| *w <= *v).count();
+                if less <= above and above < most {
+                    got = *v;
+                }
+            }
+            row.push(got);
+        }
+        out.push(row);
+    }
+    out
+}
+
+fn transpose(mat: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    (0..mat[0].len()).map(|j| (0..mat.len()).map(|i| mat[i][j]).collect()).collect()
+}
+
+// a row of 1 above and a column of 1 to the left, a row of 100 below and a
+// column of 100 to the right
+fn border(mat: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    let n = mat[0].len();
+    let mut out: Vec[Vec[i32]] = Vec.new();
+    out.push(Vec.filled(n + 2, 1));
+    for row in mat.iter() {
+        let mut r: Vec[i32] = [1];
+        r.extend(row.iter());
+        r.push(100);
+        out.push(r);
+    }
+    out.push(Vec.filled(n + 2, 100));
+    out[0][n + 1] = 100;
+    out
+}
+
+// every diagonal no smaller from cell to cell, and holding the same values
+// as before, by count and by sum of squares
+fn ascends_keeping(before: Vec[Vec[i32]], after: Vec[Vec[i32]]) -> bool {
+    let m = before.len();
+    let n = before[0].len();
+    if after.len() != m or after.iter().any(|r| r.len() != n) {
+        return false;
+    }
+    for d in -(m - 1)..n {
+        let mut i = max(0, -d);
+        let mut j = max(0, d);
+        let mut sum = 0;
+        let mut squares = 0;
+        let mut last = 0;
+        while i < m and j < n {
+            if after[i][j] < last {
+                return false;
+            }
+            last = after[i][j];
+            sum += after[i][j] - before[i][j];
+            squares += after[i][j] * after[i][j] - before[i][j] * before[i][j];
+            i += 1;
+            j += 1;
+        }
+        if sum != 0 or squares != 0 {
+            return false;
+        }
+    }
+    true
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, mat: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    match i {
+        0 => a0_diagonal_sort(mat),
+        1 => a1_diagonal_sort(mat),
+        2 => a2_diagonal_sort(mat),
+        3 => a3_diagonal_sort(mat),
+        4 => a4_diagonal_sort(mat.clone()),
+        _ => a5_diagonal_sort(mat.clone()),
+    }
+}
+
+fn check_case(t: mut ref Tally, mat: Vec[Vec[i32]]) {
+    t.cases += 1;
+    let want = literal(mat);
+    for row in want.iter() {
+        for v in row.iter() {
+            t.check = (t.check * 131 + v) % 1000000007;
+        }
+        t.check = (t.check * 131 + 101) % 1000000007;
+    }
+    let star = a0_diagonal_sort(mat);
+    for i in 0..6 {
+        let got = arm(i, mat);
+        let what = f"arm {i} case {t.cases} {mat}: got {got}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal {want}");
+        // P2: the matrix turned over its main diagonal: the answer turned
+        let turned = arm(i, transpose(mat));
+        expect(mut t, 2, turned == transpose(got), f"P2 {what}, turned: {turned}");
+        // P3: every diagonal ascending, with the values it held
+        expect(mut t, 3, ascends_keeping(mat, got), f"P3 {what}");
+        // P4: sorted again: no change
+        let again = arm(i, got);
+        expect(mut t, 4, again == got, f"P4 {what}, again: {again}");
+        // P5: a border of 1 above and left, 100 below and right: the answer
+        // in the same border
+        let framed = arm(i, border(mat));
+        expect(mut t, 5, framed == border(got), f"P5 {what}, framed: {framed}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 matrices of 1 to 6 rows and columns in four kinds, 500 each:
+    // values from 1 to 100; from 1 to 3; all one value; and every row
+    // counting down from a random start. Every matrix is drawn before any
+    // arm answers.
+    let mut seed = 13291;
+    let mut cases: Vec[Vec[Vec[i32]]] = Vec.new();
+    for c in 0..2000 {
+        let kind = c / 500;
+        let m = 1 + next_random(mut seed) % 6;
+        let n = 1 + next_random(mut seed) % 6;
+        let one = 1 + next_random(mut seed) % 100;
+        let mut mat: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..m {
+            let start = 7 + next_random(mut seed) % 94;
+            let mut row: Vec[i32] = Vec.new();
+            for j in 0..n {
+                let v = if kind == 0 {
+                    1 + next_random(mut seed) % 100
+                } else if kind == 1 {
+                    1 + next_random(mut seed) % 3
+                } else if kind == 2 {
+                    one
+                } else {
+                    start - j
+                };
+                row.push(v as i32);
+            }
+            mat.push(row);
+        }
+        cases.push(mat);
+    }
+    for mat in cases.iter() {
+        check_case(mut t, mat);
+    }
+    println(f"{t.cases} matrices: checksum {t.check}, {t.checks} checks over 6 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
