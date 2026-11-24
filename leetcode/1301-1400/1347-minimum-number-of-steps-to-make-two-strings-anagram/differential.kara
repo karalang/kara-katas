@@ -1,0 +1,254 @@
+// LeetCode #1347: Minimum Number of Steps to Make Two Strings Anagram --
+// differential test of the five arms against the statement read
+// literally, with five more properties.
+//
+// The statement: given two strings of the same length s and t, in one
+// step you can choose any character of t and replace it with another
+// character. Return the minimum number of steps to make t an anagram of
+// s.
+
+// ---- min_steps.kara ----
+fn a0_min_steps(s: Str, t: Str) -> i32 {
+    let mut count: Vec[i32] = Vec.filled(26, 0);
+    for b in s.bytes() {
+        count[b - b'a'] += 1;
+    }
+    for b in t.bytes() {
+        count[b - b'a'] -= 1;
+    }
+    count.iter().filter(|c| c > 0).sum()
+}
+
+// ---- min_steps_map.kara ----
+fn a1_min_steps(s: Str, t: Str) -> i32 {
+    let mut left: Map[char, i32] = Map.new();
+    for c in s.chars() {
+        left[c] = left.get(c).unwrap_or(0) + 1;
+    }
+    let mut steps = 0;
+    for c in t.chars() {
+        let have = left.get(c).unwrap_or(0);
+        if have > 0 {
+            left[c] = have - 1;
+        } else {
+            steps += 1;
+        }
+    }
+    steps
+}
+
+// ---- min_steps_sorted.kara ----
+fn a2_min_steps(s: Str, t: Str) -> i32 {
+    let mut a: Vec[u8] = s.bytes().iter().collect();
+    let mut b: Vec[u8] = t.bytes().iter().collect();
+    a.sort();
+    b.sort();
+    let mut (i, j, kept) = (0, 0, 0);
+    while i < a.len() and j < b.len() {
+        if a[i] == b[j] {
+            kept += 1;
+            i += 1;
+            j += 1;
+        } else if a[i] < b[j] {
+            i += 1;
+        } else {
+            j += 1;
+        }
+    }
+    (b.len() - kept) as i32
+}
+
+// ---- min_steps_halves.kara ----
+fn a3_letter_counts(w: Str) -> Vec[i32] {
+    let mut count: Vec[i32] = Vec.filled(26, 0);
+    for b in w.bytes() {
+        count[b - b'a'] += 1;
+    }
+    count
+}
+
+fn a3_min_steps(s: Str, t: Str) -> i32 {
+    let cs = a3_letter_counts(s);
+    let ct = a3_letter_counts(t);
+    let apart: i32 = cs.iter().zip(ct.iter()).map(|(x, y)| (x - y).abs()).sum();
+    apart / 2
+}
+
+// ---- min_steps_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_min_steps(s: String, t: String) -> i32 {
+        let mut cnt = [0i32; 26];
+        for b in s.bytes() {
+            cnt[(b - b'a') as usize] += 1;
+        }
+        for b in t.bytes() {
+            cnt[(b - b'a') as usize] -= 1;
+        }
+        cnt.iter().filter(|c| c > 0).sum()
+    }
+}
+
+fn a4_min_steps(s: Str, t: Str) -> i32 {
+    A4Solution.a4_min_steps(s.to_string(), t.to_string())
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: a letter of t can stay only if it pairs
+// with an equal letter of s that no other letter of t has taken; each
+// letter of t takes the first such letter of s, and every letter left
+// without one must be replaced
+fn literal(s: Str, t: Str) -> i32 {
+    let a: Vec[char] = s.chars().collect();
+    let mut taken: Vec[bool] = Vec.filled(a.len(), false);
+    let mut steps = 0;
+    for c in t.chars() {
+        let mut found = false;
+        for i in 0..a.len() {
+            if not taken[i] and a[i] == c {
+                taken[i] = true;
+                found = true;
+                break;
+            }
+        }
+        if not found {
+            steps += 1;
+        }
+    }
+    steps
+}
+
+// every letter moved one place on in the alphabet, z to a
+fn rotated(w: Str) -> String {
+    let mut r = String.new();
+    for b in w.bytes() {
+        r.push((b'a' + (b - b'a' + 1) % 26) as char);
+    }
+    r
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, s: Str, t: Str) -> i32 {
+    match i {
+        0 => a0_min_steps(s, t),
+        1 => a1_min_steps(s, t),
+        2 => a2_min_steps(s, t),
+        3 => a3_min_steps(s, t),
+        _ => a4_min_steps(s, t),
+    }
+}
+
+fn check_case(tl: mut ref Tally, s: Str, t: Str) {
+    tl.cases += 1;
+    let want = literal(s, t);
+    tl.check = (tl.check * 131 + want as i64 * 17 + s.len()) % 1000000007;
+    let star = a0_min_steps(s, t);
+    let rs = rotated(s);
+    let rt = rotated(t);
+    let st = f"{s}{t}";
+    let ts = f"{t}{s}";
+    let first = s.substring(0, 1);
+    let t_set = f"{first}{t.substring(1, t.len())}";
+    for i in 0..5 {
+        let got = arm(i, s, t);
+        let what = f"arm {i} on {s} {t}";
+        // P1: the statement read literally
+        expect(mut tl, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: s and t swapped: the words are the same length, so the
+        // letters t lacks and those it has too many of are equally many:
+        // the same answer
+        let sw = arm(i, t, s);
+        expect(mut tl, 2, sw == got, f"P2 {what}, swapped: {sw}");
+        // P3: both words' letters moved one place on, z to a: the same
+        // answer
+        let rr = arm(i, rs, rt);
+        expect(mut tl, 3, rr == got, f"P3 {what}, rotated: {rr}");
+        // P4: s then t against t then s: anagrams already, 0
+        let jo = arm(i, st, ts);
+        expect(mut tl, 4, jo == 0, f"P4 {what}, {st} against {ts}: {jo}");
+        // P5: t's first letter set to s's first: one letter of t changed,
+        // so within one step of the answer
+        let fs = arm(i, s, t_set);
+        expect(mut tl, 5, fs >= got - 1 and fs <= got + 1, f"P5 {what}, t as {t_set}: {fs}");
+        // P6: the ★ arm's answer
+        expect(mut tl, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+// n letters drawn from the `letters` letters after `from`
+fn random_word(seed: mut ref i64, n: i64, from: u8, letters: i64) -> String {
+    let mut w = String.new();
+    for _ in 0..n {
+        w.push((from + (next_random(mut seed) % letters) as u8) as char);
+    }
+    w
+}
+
+fn main() {
+    let mut tl = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 pairs of words of 1 to 10 letters in four kinds, 500 each: over
+    // a and b; over x, y and z, where the rotation wraps; over the whole
+    // alphabet; and t an anagram of s, the letters of s taken in a random
+    // order, with up to two of them then changed. Every pair is drawn
+    // before any arm answers.
+    let mut seed = 13471;
+    let mut pairs: Vec[(String, String)] = Vec.new();
+    for c in 0..2000 {
+        let kind = c / 500;
+        let n = 1 + next_random(mut seed) % 10;
+        let pair = if kind == 0 {
+            (random_word(mut seed, n, b'a', 2), random_word(mut seed, n, b'a', 2))
+        } else if kind == 1 {
+            (random_word(mut seed, n, b'x', 3), random_word(mut seed, n, b'x', 3))
+        } else if kind == 2 {
+            (random_word(mut seed, n, b'a', 26), random_word(mut seed, n, b'a', 26))
+        } else {
+            let s = random_word(mut seed, n, b'a', 4);
+            let mut letters: Vec[char] = s.chars().collect();
+            let mut k = letters.len() - 1;
+            while k > 0 {
+                letters.swap(k, next_random(mut seed) % (k + 1));
+                k -= 1;
+            }
+            for _ in 0..next_random(mut seed) % 3 {
+                letters[next_random(mut seed) % n] = (b'a' + (next_random(mut seed) % 6) as u8) as char;
+            }
+            let t: String = letters.iter().collect();
+            (s, t)
+        };
+        pairs.push(pair);
+    }
+    for (s, t) in pairs.iter() {
+        check_case(mut tl, s, t);
+    }
+    println(f"{tl.cases} pairs: checksum {tl.check}, {tl.checks} checks over 5 arms: {tl.failures} failures");
+    if tl.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| tl.by[p] > 0).map(|p| f"P{p} {tl.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

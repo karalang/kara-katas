@@ -1,0 +1,40 @@
+// LeetCode #1347: Minimum Number of Steps to Make Two Strings Anagram --
+// the ★ arm: one count per letter, up for each letter of s and down for
+// each of t; a letter left positive is one t lacks that many times, and
+// each lack takes one step, a letter of t replaced. O(n)
+
+fn min_steps(s: Str, t: Str) -> i32 {
+    let mut count: Vec[i32] = Vec.filled(26, 0);
+    for b in s.bytes() {
+        count[b - b'a'] += 1;
+    }
+    for b in t.bytes() {
+        count[b - b'a'] -= 1;
+    }
+    count.iter().filter(|c| c > 0).sum()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // a text of 10^6 random letters, built once; then 1000 queries, each
+    // comparing two stretches of it, the constraints' longest or nearly,
+    // placed and sized from the checksum so far
+    let mut seed = 1347;
+    let mut text = String.new();
+    for _ in 0..1000000 {
+        text.push((b'a' + (next_random(mut seed) % 26) as u8) as char);
+    }
+    let mut check: i64 = 0;
+    for q in 0..1000 {
+        let len = 40000 + check % 10001;
+        let a = check % (1000000 - len);
+        let b = (check / 7) % (1000000 - len);
+        let steps = min_steps(text[a..a + len], text[b..b + len]) as i64;
+        check = (check * 31 + steps + q) % 1000000007;
+    }
+    println(f"1000 queries over a text of 10^6: checksum {check}");
+}
