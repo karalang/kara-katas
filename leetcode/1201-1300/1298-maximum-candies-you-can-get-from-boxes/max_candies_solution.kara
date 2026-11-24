@@ -1,0 +1,140 @@
+// LeetCode #1298: Maximum Candies You Can Get from Boxes -- a Rust solution
+// as LeetCode's Rust users write it (the held boxes in a
+// `VecDeque<usize>`, a locked one sent to the back, and the walk given up
+// once a whole round of the queue finds every box locked; the keys written
+// into `status` itself, taken as `mut status`), carried to Kāra by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_candies(
+        status: own Vec[i32],
+        candies: Vec[i32],
+        keys: Vec[Vec[i32]],
+        contained_boxes: Vec[Vec[i32]],
+        initial_boxes: Vec[i32],
+    ) -> i32 {
+        let mut status = status;
+        let mut q: VecDeque[usize] = initial_boxes.iter().map(|b| b as usize).collect();
+        let mut ans: i32 = 0;
+        let mut stuck = 0;
+        while let Some(b) = q.pop_front() {
+            if status[b] == 1 {
+                stuck = 0;
+                ans += candies[b];
+                for k in ref keys[b] {
+                    status[k as usize] = 1;
+                }
+                for c in ref contained_boxes[b] {
+                    q.push_back(c as usize);
+                }
+            } else {
+                q.push_back(b);
+                stuck += 1;
+                if stuck >= q.len() {
+                    break;
+                }
+            }
+        }
+        ans
+    }
+}
+
+fn max_candies(status: Vec[i64], candies: Vec[i64], keys: Vec[Vec[i64]], contained_boxes: Vec[Vec[i64]], initial_boxes: Vec[i64]) -> i64 {
+    let narrow: Fn(ref Vec[i64]) -> Vec[i32] = |v: ref Vec[i64]| { v.iter().map(|x| x as i32).collect() };
+    Solution.max_candies(
+        narrow(status),
+        narrow(candies),
+        keys.iter().map(|v| narrow(v)).collect(),
+        contained_boxes.iter().map(|v| narrow(v)).collect(),
+        narrow(initial_boxes),
+    )
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Case {
+    status: Vec[i64],
+    candies: Vec[i64],
+    keys: Vec[Vec[i64]],
+    contained: Vec[Vec[i64]],
+    initial: Vec[i64],
+}
+
+// n boxes in a random order, each after the first put inside an earlier one
+// nest times in 100, else held at the start initial times in 100, else lost;
+// each open open times in 100, with up to max_keys distinct keys
+fn make_case(seed: mut ref i64, n: i64, open: i64, initial_in: i64, nest: i64, max_keys: i64) -> Case {
+    let mut order: Vec[i64] = (0..n).collect();
+    for i in 0..n {
+        let j = i + next_random(mut seed) % (n - i);
+        let held = order[i];
+        order[i] = order[j];
+        order[j] = held;
+    }
+    let mut status: Vec[i64] = Vec.filled(n, 0);
+    let mut candies: Vec[i64] = Vec.filled(n, 0);
+    let mut keys: Vec[Vec[i64]] = Vec.new();
+    let mut contained: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..n {
+        keys.push(Vec.new());
+        contained.push(Vec.new());
+    }
+    let mut initial: Vec[i64] = Vec.new();
+    for i in 0..n {
+        let b = order[i];
+        let roll = next_random(mut seed) % 100;
+        if i > 0 and roll < nest {
+            let parent = order[next_random(mut seed) % i];
+            contained[parent].push(b);
+        } else if next_random(mut seed) % 100 < initial_in {
+            initial.push(b);
+        }
+        if next_random(mut seed) % 100 < open {
+            status[b] = 1;
+        }
+        candies[b] = 1 + next_random(mut seed) % 1000;
+        let count = next_random(mut seed) % (max_keys + 1);
+        for _ in 0..count {
+            let k = next_random(mut seed) % n;
+            if not keys[b].contains(k) {
+                keys[b].push(k);
+            }
+        }
+    }
+    Case { status, candies, keys, contained, initial }
+}
+
+fn main() {
+    // LeetCode's two examples, nothing held at the start, a key found
+    // before its box, and a box whose key is inside it
+    let e1 = max_candies([1, 0, 1, 0], [7, 5, 4, 100], [[], [], [1], []], [[1, 2], [3], [], []], [0]);
+    let e2 = max_candies([1, 0, 0, 0, 0, 0], [1, 1, 1, 1, 1, 1], [[1, 2, 3, 4, 5], [], [], [], [], []], [[1, 2, 3, 4, 5], [], [], [], [], []], [0]);
+    let none = max_candies([1, 1], [5, 6], [[], []], [[], []], []);
+    let early = max_candies([1, 1, 0], [1, 10, 100], [[2], [], []], [[1], [2], []], [0]);
+    let inside = max_candies([1, 0], [1, 10], [[], [1]], [[1], []], [0]);
+    println(f"{e1} {e2} {none} {early} {inside}");
+    // random cases of 1 to 60 boxes, with every kind of mix of open boxes,
+    // boxes held at the start, nesting and keys; then two of 1000 boxes, the
+    // constraints' largest
+    let mut seed = 1298;
+    let mut total = 0;
+    let mut check = 0;
+    for i in 0..3002 {
+        let n = if i < 3000 { 1 + next_random(mut seed) % 60 } else { 1000 };
+        let open = next_random(mut seed) % 101;
+        let initial_in = next_random(mut seed) % 101;
+        let nest = next_random(mut seed) % 101;
+        let max_keys = next_random(mut seed) % 6;
+        let c = make_case(mut seed, n, open, initial_in, nest, max_keys);
+        let got = max_candies(c.status, c.candies, c.keys, c.contained, c.initial);
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"3002 random cases: candies total {total}, checksum {check}");
+}

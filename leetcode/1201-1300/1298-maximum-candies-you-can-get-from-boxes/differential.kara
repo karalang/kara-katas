@@ -1,0 +1,456 @@
+// LeetCode #1298: Maximum Candies You Can Get from Boxes -- differential
+// test of the five arms against the statement read literally, with five more
+// properties.
+//
+// The statement: each box has candies, keys to other boxes and boxes inside
+// it; you start with initialBoxes, can take the candies of any open box you
+// have, use the keys found to open boxes and the boxes found inside; return
+// the most candies you can get following the rules.
+
+// ---- max_candies.kara ----
+fn a0_max_candies(status: Vec[i64], candies: Vec[i64], keys: Vec[Vec[i64]], contained_boxes: Vec[Vec[i64]], initial_boxes: Vec[i64]) -> i64 {
+    let n = status.len();
+    let mut open: Vec[bool] = status.iter().map(|s| s == 1).collect();
+    let mut held: Vec[bool] = Vec.filled(n, false);
+    let mut queued: Vec[bool] = Vec.filled(n, false);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    for b in initial_boxes.iter() {
+        held[b] = true;
+        if open[b] and not queued[b] {
+            queued[b] = true;
+            queue.push_back(b);
+        }
+    }
+    let mut total = 0;
+    while let Some(b) = queue.pop_front() {
+        total += candies[b];
+        for k in keys[b].iter() {
+            open[k] = true;
+            if held[k] and not queued[k] {
+                queued[k] = true;
+                queue.push_back(k);
+            }
+        }
+        for c in contained_boxes[b].iter() {
+            held[c] = true;
+            if open[c] and not queued[c] {
+                queued[c] = true;
+                queue.push_back(c);
+            }
+        }
+    }
+    total
+}
+
+// ---- max_candies_sweep.kara ----
+fn a1_max_candies(status: Vec[i64], candies: Vec[i64], keys: Vec[Vec[i64]], contained_boxes: Vec[Vec[i64]], initial_boxes: Vec[i64]) -> i64 {
+    let n = status.len();
+    let mut open: Vec[bool] = status.iter().map(|s| s == 1).collect();
+    let mut held: Vec[bool] = Vec.filled(n, false);
+    let mut done: Vec[bool] = Vec.filled(n, false);
+    for b in initial_boxes.iter() {
+        held[b] = true;
+    }
+    let mut total = 0;
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for b in 0..n {
+            if held[b] and open[b] and not done[b] {
+                done[b] = true;
+                changed = true;
+                total += candies[b];
+                for k in keys[b].iter() {
+                    open[k] = true;
+                }
+                for c in contained_boxes[b].iter() {
+                    held[c] = true;
+                }
+            }
+        }
+    }
+    total
+}
+
+// ---- max_candies_dfs.kara ----
+struct A2Boxes {
+    open: Vec[bool],
+    held: Vec[bool],
+    done: Vec[bool],
+    total: i64,
+}
+
+fn a2_try_open(b: i64, at: mut ref A2Boxes, candies: Vec[i64], keys: Vec[Vec[i64]], contained_boxes: Vec[Vec[i64]]) {
+    if at.done[b] or not at.held[b] or not at.open[b] {
+        return;
+    }
+    at.done[b] = true;
+    at.total += candies[b];
+    for k in keys[b].iter() {
+        at.open[k] = true;
+        a2_try_open(k, mut at, candies, keys, contained_boxes);
+    }
+    for c in contained_boxes[b].iter() {
+        at.held[c] = true;
+        a2_try_open(c, mut at, candies, keys, contained_boxes);
+    }
+}
+
+fn a2_max_candies(status: Vec[i64], candies: Vec[i64], keys: Vec[Vec[i64]], contained_boxes: Vec[Vec[i64]], initial_boxes: Vec[i64]) -> i64 {
+    let n = status.len();
+    let mut at = A2Boxes {
+        open: status.iter().map(|s| s == 1).collect(),
+        held: Vec.filled(n, false),
+        done: Vec.filled(n, false),
+        total: 0,
+    };
+    for b in initial_boxes.iter() {
+        at.held[b] = true;
+        a2_try_open(b, mut at, candies, keys, contained_boxes);
+    }
+    at.total
+}
+
+// ---- max_candies_waiting.kara ----
+fn a3_max_candies(status: Vec[i64], candies: Vec[i64], keys: Vec[Vec[i64]], contained_boxes: Vec[Vec[i64]], initial_boxes: Vec[i64]) -> i64 {
+    let mut found: Set[i64] = Set.new();
+    let mut waiting: Set[i64] = Set.new();
+    let mut opened: Set[i64] = Set.new();
+    let mut ready: Vec[i64] = Vec.new();
+    for b in initial_boxes.iter() {
+        if status[b] == 1 {
+            ready.push(b);
+        } else {
+            waiting.insert(b);
+        }
+    }
+    let mut total = 0;
+    while let Some(b) = ready.pop() {
+        if not opened.insert(b) {
+            continue;
+        }
+        total += candies[b];
+        for k in keys[b].iter() {
+            found.insert(k);
+            if waiting.remove(k) {
+                ready.push(k);
+            }
+        }
+        for c in contained_boxes[b].iter() {
+            if status[c] == 1 or found.contains(c) {
+                ready.push(c);
+            } else {
+                waiting.insert(c);
+            }
+        }
+    }
+    total
+}
+
+// ---- max_candies_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_max_candies(
+        status: own Vec[i32],
+        candies: Vec[i32],
+        keys: Vec[Vec[i32]],
+        contained_boxes: Vec[Vec[i32]],
+        initial_boxes: Vec[i32],
+    ) -> i32 {
+        let mut status = status;
+        let mut q: VecDeque[usize] = initial_boxes.iter().map(|b| b as usize).collect();
+        let mut ans: i32 = 0;
+        let mut stuck = 0;
+        while let Some(b) = q.pop_front() {
+            if status[b] == 1 {
+                stuck = 0;
+                ans += candies[b];
+                for k in ref keys[b] {
+                    status[k as usize] = 1;
+                }
+                for c in ref contained_boxes[b] {
+                    q.push_back(c as usize);
+                }
+            } else {
+                q.push_back(b);
+                stuck += 1;
+                if stuck >= q.len() {
+                    break;
+                }
+            }
+        }
+        ans
+    }
+}
+
+fn a4_max_candies(status: Vec[i64], candies: Vec[i64], keys: Vec[Vec[i64]], contained_boxes: Vec[Vec[i64]], initial_boxes: Vec[i64]) -> i64 {
+    let narrow: Fn(ref Vec[i64]) -> Vec[i32] = |v: ref Vec[i64]| { v.iter().map(|x| x as i32).collect() };
+    A4Solution.a4_max_candies(
+        narrow(status),
+        narrow(candies),
+        keys.iter().map(|v| narrow(v)).collect(),
+        contained_boxes.iter().map(|v| narrow(v)).collect(),
+        narrow(initial_boxes),
+    )
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// The most candies from here: every held, open box not yet emptied is tried
+// as the next one to empty, in every order. What is held and what is open
+// follow from which boxes have been emptied, so the best from each set of
+// emptied boxes is remembered, as a bit mask.
+fn literal_from(done: i64, memo: mut ref Vec[i64], status: Vec[i64], candies: Vec[i64], keys: Vec[Vec[i64]], contained_boxes: Vec[Vec[i64]], initial_boxes: Vec[i64]) -> i64 {
+    if memo[done] >= 0 {
+        return memo[done];
+    }
+    let n = status.len();
+    let mut held: Vec[bool] = Vec.filled(n, false);
+    let mut open: Vec[bool] = Vec.filled(n, false);
+    for b in initial_boxes.iter() {
+        held[b] = true;
+    }
+    for b in 0..n {
+        if status[b] == 1 {
+            open[b] = true;
+        }
+        if (done >> b) & 1 == 1 {
+            for k in keys[b].iter() {
+                open[k] = true;
+            }
+            for c in contained_boxes[b].iter() {
+                held[c] = true;
+            }
+        }
+    }
+    let mut best = 0;
+    for b in 0..n {
+        if (done >> b) & 1 == 0 and held[b] and open[b] {
+            let got = candies[b] + literal_from(done | (1 << b), mut memo, status, candies, keys, contained_boxes, initial_boxes);
+            if got > best {
+                best = got;
+            }
+        }
+    }
+    memo[done] = best;
+    best
+}
+
+fn literal(status: Vec[i64], candies: Vec[i64], keys: Vec[Vec[i64]], contained_boxes: Vec[Vec[i64]], initial_boxes: Vec[i64]) -> i64 {
+    let mut memo: Vec[i64] = Vec.filled(1 << status.len(), -1);
+    literal_from(0, mut memo, status, candies, keys, contained_boxes, initial_boxes)
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Case {
+    status: Vec[i64],
+    candies: Vec[i64],
+    keys: Vec[Vec[i64]],
+    contained: Vec[Vec[i64]],
+    initial: Vec[i64],
+    // P2's renumbering: box b becomes rename[b]
+    rename: Vec[i64],
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, status: Vec[i64], candies: Vec[i64], keys: Vec[Vec[i64]], contained_boxes: Vec[Vec[i64]], initial_boxes: Vec[i64]) -> i64 {
+    match i {
+        0 => a0_max_candies(status, candies, keys, contained_boxes, initial_boxes),
+        1 => a1_max_candies(status, candies, keys, contained_boxes, initial_boxes),
+        2 => a2_max_candies(status, candies, keys, contained_boxes, initial_boxes),
+        3 => a3_max_candies(status, candies, keys, contained_boxes, initial_boxes),
+        _ => a4_max_candies(status, candies, keys, contained_boxes, initial_boxes),
+    }
+}
+
+fn reversed(v: Vec[i64]) -> Vec[i64] {
+    let mut r: Vec[i64] = Vec.new();
+    for i in 0..v.len() {
+        r.push(v[v.len() - 1 - i]);
+    }
+    r
+}
+
+fn renamed(v: Vec[i64], rename: Vec[i64]) -> Vec[i64] {
+    v.iter().map(|b| rename[b]).collect()
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    let n = c.status.len();
+    let want = literal(c.status, c.candies, c.keys, c.contained, c.initial);
+    t.cases += 1;
+    t.check = (t.check * 131 + want) % 1000000007;
+    // P2: every box renumbered
+    let mut r_status: Vec[i64] = Vec.filled(n, 0);
+    let mut r_candies: Vec[i64] = Vec.filled(n, 0);
+    let mut r_keys: Vec[Vec[i64]] = Vec.new();
+    let mut r_contained: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..n {
+        r_keys.push(Vec.new());
+        r_contained.push(Vec.new());
+    }
+    for b in 0..n {
+        let to = c.rename[b];
+        r_status[to] = c.status[b];
+        r_candies[to] = c.candies[b];
+        r_keys[to] = renamed(c.keys[b], c.rename);
+        r_contained[to] = renamed(c.contained[b], c.rename);
+    }
+    let r_initial = renamed(c.initial, c.rename);
+    // P3: every list read back to front
+    let v_keys: Vec[Vec[i64]] = c.keys.iter().map(|v| reversed(v)).collect();
+    let v_contained: Vec[Vec[i64]] = c.contained.iter().map(|v| reversed(v)).collect();
+    let v_initial = reversed(c.initial);
+    // P4: every box open
+    let all_open: Vec[i64] = Vec.filled(n, 1);
+    // P5: a new open box n with 1 candy, holding the boxes held at the start,
+    // held at the start alone
+    let mut w_status = c.status.clone();
+    w_status.push(1);
+    let mut w_candies = c.candies.clone();
+    w_candies.push(1);
+    let mut w_keys = c.keys.clone();
+    w_keys.push(Vec.new());
+    let mut w_contained = c.contained.clone();
+    w_contained.push(c.initial.clone());
+    let w_initial: Vec[i64] = [n];
+    let star = a0_max_candies(c.status, c.candies, c.keys, c.contained, c.initial);
+    for i in 0..5 {
+        let got = arm(i, c.status, c.candies, c.keys, c.contained, c.initial);
+        let what = f"arm {i} case {t.cases} n {n}: got {got}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal {want}");
+        // P2: the boxes renumbered, the same answer
+        let rn = arm(i, r_status, r_candies, r_keys, r_contained, r_initial);
+        expect(mut t, 2, rn == got, f"P2 {what}, renumbered: {rn}");
+        // P3: every list reversed, the same answer
+        let rv = arm(i, c.status, c.candies, v_keys, v_contained, v_initial);
+        expect(mut t, 3, rv == got, f"P3 {what}, reversed: {rv}");
+        // P4: every box open, no fewer candies
+        let op = arm(i, all_open, c.candies, c.keys, c.contained, c.initial);
+        expect(mut t, 4, op >= got, f"P4 {what}, all open: {op}");
+        // P5: wrapped in one more open box of 1 candy, one more
+        let wr = arm(i, w_status, w_candies, w_keys, w_contained, w_initial);
+        expect(mut t, 5, wr == got + 1, f"P5 {what}, wrapped: {wr}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+// n boxes in a random order, each after the first put inside an earlier one
+// nest times in 100, else held at the start initial_in times in 100, else
+// lost; each open open times in 100, with up to max_keys distinct keys
+fn make_case(seed: mut ref i64, n: i64, open: i64, initial_in: i64, nest: i64, max_keys: i64) -> Case {
+    let mut order: Vec[i64] = (0..n).collect();
+    for i in 0..n {
+        let j = i + next_random(mut seed) % (n - i);
+        let held = order[i];
+        order[i] = order[j];
+        order[j] = held;
+    }
+    let mut status: Vec[i64] = Vec.filled(n, 0);
+    let mut candies: Vec[i64] = Vec.filled(n, 0);
+    let mut keys: Vec[Vec[i64]] = Vec.new();
+    let mut contained: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..n {
+        keys.push(Vec.new());
+        contained.push(Vec.new());
+    }
+    let mut initial: Vec[i64] = Vec.new();
+    for i in 0..n {
+        let b = order[i];
+        let roll = next_random(mut seed) % 100;
+        if i > 0 and roll < nest {
+            let parent = order[next_random(mut seed) % i];
+            contained[parent].push(b);
+        } else if next_random(mut seed) % 100 < initial_in {
+            initial.push(b);
+        }
+        if next_random(mut seed) % 100 < open {
+            status[b] = 1;
+        }
+        candies[b] = 1 + next_random(mut seed) % 20;
+        let count = next_random(mut seed) % (max_keys + 1);
+        for _ in 0..count {
+            let k = next_random(mut seed) % n;
+            if not keys[b].contains(k) {
+                keys[b].push(k);
+            }
+        }
+    }
+    let mut rename: Vec[i64] = (0..n).collect();
+    for i in 0..n {
+        let j = i + next_random(mut seed) % (n - i);
+        let held = rename[i];
+        rename[i] = rename[j];
+        rename[j] = held;
+    }
+    Case { status, candies, keys, contained, initial, rename }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 cases of 1 to 9 boxes in four kinds, 500 each: any mix; deep
+    // nesting with few boxes open, so that most boxes wait on a key found
+    // elsewhere; everything held at the start and mostly locked, the keys
+    // deciding; and up to n keys in a box. Every case and renumbering is drawn before any
+    // arm answers.
+    let mut seed = 12981;
+    let mut cases: Vec[Case] = Vec.new();
+    for i in 0..2000 {
+        let kind = i / 500;
+        let n = 1 + next_random(mut seed) % 9;
+        let a = next_random(mut seed) % 101;
+        let b = next_random(mut seed) % 101;
+        let c = next_random(mut seed) % 101;
+        let k = next_random(mut seed) % 4;
+        let mut case = if kind == 0 {
+            make_case(mut seed, n, 20 + a % 81, 20 + b % 81, c, k)
+        } else if kind == 1 {
+            make_case(mut seed, n, a / 4, 100, 70 + c % 31, 1 + k)
+        } else if kind == 2 {
+            make_case(mut seed, n, a / 3, 100, 0, 1 + k)
+        } else {
+            make_case(mut seed, n, 20 + a % 81, 20 + b % 81, c, n)
+        };
+        // past the first kind, the first box held at the start is open, so
+        // that the walk gets going
+        if kind > 0 and case.initial.len() > 0 {
+            case.status[case.initial[0]] = 1;
+        }
+        cases.push(case);
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
