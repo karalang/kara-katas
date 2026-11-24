@@ -34,7 +34,11 @@ checksum 189474389`). `find_numbers.py` mirrors the ★ arm, and its output
 is byte-identical. Every arm gives the same output under `karac
 __mir-run`, `karac run` and `karac __mir-llvm-run`.
 
-The Mend loop: the five Kāra arms checked clean as first written. The two
+The Mend loop: the five Kāra arms checked clean as first written. The
+integer logarithm the log arm calls, `ilog10`, was missing from Kāra
+(`E0236` "no method") when an earlier draft of this kata first used it,
+and was added then (B-2026-11-21-58); that draft was lost, and this one
+was written after the fix. The two
 Rust arms each take one round, 8 fixes and 10 by `karac fix`'s count:
 `Vec<..>` to `Vec[..]`, `struct Solution;` to `struct Solution {}`, `::`
 to `.`, the wrapper's `|&x|` to `|x|` and its `as i64` dropped as a
