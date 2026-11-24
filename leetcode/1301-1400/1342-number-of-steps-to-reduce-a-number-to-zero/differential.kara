@@ -1,0 +1,186 @@
+// LeetCode #1342: Number of Steps to Reduce a Number to Zero --
+// differential test of the five arms against the statement read
+// literally, with five more properties.
+//
+// The statement: given an integer num, return the number of steps to
+// reduce it to zero. In one step, if the current number is even, you
+// have to divide it by 2, otherwise, you have to subtract 1 from it.
+
+// ---- number_of_steps.kara ----
+fn a0_number_of_steps(num: i32) -> i32 {
+    let mut n = num;
+    let mut steps = 0;
+    while n > 0 {
+        if n % 2 == 0 {
+            n /= 2;
+        } else {
+            n -= 1;
+        }
+        steps += 1;
+    }
+    steps
+}
+
+// ---- number_of_steps_bits.kara ----
+fn a1_number_of_steps(num: i32) -> i32 {
+    if num == 0 {
+        return 0;
+    }
+    num.count_ones() as i32 + (31 - num.leading_zeros() as i32)
+}
+
+// ---- number_of_steps_recursive.kara ----
+fn a2_number_of_steps(num: i32) -> i32 {
+    match (num, num % 2) {
+        (0, _) => 0,
+        (_, 0) => 1 + a2_number_of_steps(num / 2),
+        _ => 1 + a2_number_of_steps(num - 1),
+    }
+}
+
+// ---- number_of_steps_shift.kara ----
+fn a3_number_of_steps(num: i32) -> i32 {
+    if num == 0 {
+        return 0;
+    }
+    let mut n = num;
+    let mut steps = 0;
+    while n > 0 {
+        steps += if n & 1 == 1 { 2 } else { 1 };
+        n >>= 1;
+    }
+    steps - 1
+}
+
+// ---- number_of_steps_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_number_of_steps(num: i32) -> i32 {
+        let mut num = num;
+        let mut steps = 0;
+        while num != 0 {
+            if num % 2 == 0 {
+                num /= 2;
+            } else {
+                num -= 1;
+            }
+            steps += 1;
+        }
+        steps
+    }
+}
+
+fn a4_number_of_steps(num: i32) -> i32 {
+    A4Solution.a4_number_of_steps(num)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every number on the way written down,
+// each the one before halved if even and less one if not, until zero;
+// the steps are the numbers after the first
+fn literal(num: i32) -> i32 {
+    let mut trail: Vec[i32] = [num];
+    while trail[trail.len() - 1] != 0 {
+        let now = trail[trail.len() - 1];
+        let even = now % 2 == 0;
+        trail.push(if even { now / 2 } else { now - 1 });
+    }
+    (trail.len() - 1) as i32
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, num: i32) -> i32 {
+    match i {
+        0 => a0_number_of_steps(num),
+        1 => a1_number_of_steps(num),
+        2 => a2_number_of_steps(num),
+        3 => a3_number_of_steps(num),
+        _ => a4_number_of_steps(num),
+    }
+}
+
+fn check_case(t: mut ref Tally, num: i32) {
+    t.cases += 1;
+    let want = literal(num);
+    t.check = (t.check * 131 + want) % 1000000007;
+    let star = a0_number_of_steps(num);
+    // the largest power of two not above num
+    let mut top: i32 = 1;
+    while top * 2 <= num {
+        top *= 2;
+    }
+    for i in 0..5 {
+        let got = arm(i, num);
+        let what = f"arm {i} on {num}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: twice the number, when it is not zero: one more step, the
+        // halving back
+        if num > 0 {
+            let twice = arm(i, 2 * num);
+            expect(mut t, 2, twice == got + 1, f"P2 {what}, twice: {twice}");
+        }
+        // P3: twice the number and one more, when it is not zero: two more
+        // steps, the subtraction and the halving
+        if num > 0 {
+            let odd = arm(i, 2 * num + 1);
+            expect(mut t, 3, odd == got + 2, f"P3 {what}, 2n + 1: {odd}");
+        }
+        // P4: an odd number: one step more than the even number below it
+        if num % 2 == 1 {
+            let below = arm(i, num - 1);
+            expect(mut t, 4, got == below + 1, f"P4 {what}, num - 1: {below}");
+        }
+        // P5: the top bit moved one place up, when there is one: the same
+        // 1 bits and one more place, so one more step
+        if num > 0 {
+            let up = arm(i, num + top);
+            expect(mut t, 5, up == got + 1, f"P5 {what}, + {top}: {up}");
+        }
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // every number from 0 to 1999, then 2000 drawn from 0 to 10^6, every
+    // one drawn before any arm answers
+    let mut seed = 13421;
+    let mut cases: Vec[i32] = (0..2000).map(|x| x as i32).collect();
+    for _ in 0..2000 {
+        cases.push(((next_random(mut seed) * 32768 + next_random(mut seed)) % 1000001) as i32);
+    }
+    for num in cases.iter() {
+        check_case(mut t, num);
+    }
+    println(f"{t.cases} numbers: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
