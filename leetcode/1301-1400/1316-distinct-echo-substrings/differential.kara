@@ -1,0 +1,290 @@
+// LeetCode #1316: Distinct Echo Substrings -- differential test of the
+// five arms against the statement read literally, with five more
+// properties.
+//
+// The statement: return the number of distinct non-empty substrings of
+// text that can be written as the concatenation of some string with itself
+// (a + a for some string a).
+
+// ---- distinct_echo_substrings.kara ----
+fn a0_distinct_echo_substrings(text: String) -> i32 {
+    let s = text.bytes();
+    let n = s.len();
+    // agree[i][j]: how many letters the suffixes from i and from j share
+    let mut agree: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.filled(n + 1, 0));
+    for i in (0..n).rev() {
+        for j in (i + 1..n).rev() {
+            if s[i] == s[j] {
+                agree[i][j] = agree[i + 1][j + 1] + 1;
+            }
+        }
+    }
+    // earlier[j]: the longest piece from j that also starts somewhere before j
+    let mut earlier: Vec[i64] = Vec.filled(n, 0);
+    for i in 0..n {
+        for j in i + 1..n {
+            earlier[j] = earlier[j].max(agree[i][j]);
+        }
+    }
+    let mut count = 0;
+    for i in 0..n {
+        for h in 1..=(n - i) / 2 {
+            if agree[i][i + h] >= h and 2 * h > earlier[i] {
+                count += 1;
+            }
+        }
+    }
+    count as i32
+}
+
+// ---- distinct_echo_substrings_runs.kara ----
+fn a1_distinct_echo_substrings(text: String) -> i32 {
+    let s = text.bytes();
+    let n = s.len();
+    let mut echoes: Vec[String] = Vec.new();
+    for h in 1..=n / 2 {
+        let mut run = 0;
+        for i in (0..n - h).rev() {
+            run = if s[i] == s[i + h] { run + 1 } else { 0 };
+            if run >= h and i + 2 * h <= n {
+                echoes.push(text[i..i + 2 * h].to_string());
+            }
+        }
+    }
+    echoes.sort();
+    echoes.dedup();
+    echoes.len() as i32
+}
+
+// ---- distinct_echo_substrings_pieces.kara ----
+fn a2_distinct_echo_substrings(text: String) -> i32 {
+    let s = text.bytes();
+    let n = s.len();
+    let mut found: Set[Vec[u8]] = Set.new();
+    for i in 0..n {
+        for h in 1..=(n - i) / 2 {
+            if s[i..i + h] == s[i + h..i + 2 * h] {
+                found.insert(s[i..i + 2 * h].to_vec());
+            }
+        }
+    }
+    found.len() as i32
+}
+
+// ---- distinct_echo_substrings_hash.kara ----
+fn a3_distinct_echo_substrings(text: String) -> i32 {
+    let s = text.bytes();
+    let n = s.len();
+    let mods = [1000000007, 998244353];
+    let base = 131;
+    let mut pre: Vec[Vec[i64]] = Vec.new();
+    let mut pow: Vec[Vec[i64]] = Vec.new();
+    for m in mods {
+        let mut p: Vec[i64] = Vec.filled(n + 1, 0);
+        let mut w: Vec[i64] = Vec.filled(n + 1, 1);
+        for i in 0..n {
+            p[i + 1] = (p[i] * base + s[i]) % m;
+            w[i + 1] = w[i] * base % m;
+        }
+        pre.push(p);
+        pow.push(w);
+    }
+    let mut found: Set[(i64, i64, i64)] = Set.new();
+    for h in 1..=n / 2 {
+        for i in 0..=n - 2 * h {
+            let mut hs = [0, 0, 0, 0];
+            for k in 0..2 {
+                let m = mods[k];
+                let first = (pre[k][i + h] - pre[k][i] * pow[k][h] % m + m) % m;
+                let second = (pre[k][i + 2 * h] - pre[k][i + h] * pow[k][h] % m + m) % m;
+                hs[2 * k] = first;
+                hs[2 * k + 1] = second;
+            }
+            if hs[0] == hs[1] and hs[2] == hs[3] {
+                let whole0 = (hs[0] * pow[0][h] + hs[1]) % mods[0];
+                let whole1 = (hs[2] * pow[1][h] + hs[3]) % mods[1];
+                found.insert((whole0, whole1, h));
+            }
+        }
+    }
+    found.len() as i32
+}
+
+// ---- distinct_echo_substrings_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_distinct_echo_substrings(text: String) -> i32 {
+        let n = text.len();
+        let mut set = Set.new();
+        for len in 1..=n / 2 {
+            for i in 0..=n - 2 * len {
+                if text[i..i + len] == text[i + len..i + 2 * len] {
+                    set.insert(text[i..i + 2 * len]);
+                }
+            }
+        }
+        set.len() as i32
+    }
+}
+
+fn a4_distinct_echo_substrings(text: String) -> i32 {
+    A4Solution.a4_distinct_echo_substrings(text)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every piece of the string looked at, and
+// when its length is even and its first half is its second, it is kept
+// unless an equal piece was kept already
+fn literal(s: String) -> i64 {
+    let c: Vec[char] = s.chars().collect();
+    let n = c.len();
+    let mut found: Vec[String] = Vec.new();
+    for i in 0..n {
+        for j in i + 1..=n {
+            if (j - i) % 2 == 0 {
+                let h = (j - i) / 2;
+                let mut same = true;
+                for k in 0..h {
+                    if c[i + k] != c[i + h + k] {
+                        same = false;
+                    }
+                }
+                if same {
+                    let piece: String = c[i..j].iter().collect();
+                    if not found.contains(piece) {
+                        found.push(piece);
+                    }
+                }
+            }
+        }
+    }
+    found.len()
+}
+
+struct Case {
+    s: String,
+    // P3: how far every letter moves round the alphabet
+    by: i64,
+    // P4: a letter the string does not have
+    absent: char,
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, s: String) -> i64 {
+    let got = match i {
+        0 => a0_distinct_echo_substrings(s),
+        1 => a1_distinct_echo_substrings(s),
+        2 => a2_distinct_echo_substrings(s),
+        3 => a3_distinct_echo_substrings(s),
+        _ => a4_distinct_echo_substrings(s),
+    };
+    got
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    t.cases += 1;
+    let want = literal(c.s);
+    t.check = (t.check * 31 + want) % 1000000007;
+    let n = c.s.len();
+    let reversed: String = c.s.chars().rev().collect();
+    let renamed: String = c.s.chars().map(|ch| (((ch as i64) - 97 + c.by) % 26 + 97) as u8 as char).collect();
+    let around = f"{c.s}{c.absent}{c.s}";
+    let shorter: String = c.s.chars().take(n - 1).collect();
+    let star = a0_distinct_echo_substrings(c.s) as i64;
+    for i in 0..5 {
+        let got = arm(i, c.s);
+        let what = f"arm {i} case {t.cases} \"{c.s}\": got {got}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal {want}");
+        // P2: the string reversed, the same answer, since an echo reversed
+        // is an echo
+        let rv = arm(i, reversed);
+        expect(mut t, 2, rv == got, f"P2 {what}, reversed: {rv}");
+        // P3: the letters renamed one for one, the same answer
+        let rn = arm(i, renamed);
+        expect(mut t, 3, rn == got, f"P3 {what}, renamed: {rn}");
+        // P4: the string twice with a new letter between, the same answer,
+        // since no echo can hold a letter found only once
+        let ar = arm(i, around);
+        expect(mut t, 4, ar == got, f"P4 {what}, twice round {c.absent}: {ar}");
+        // P5: the last letter dropped: no echo gained, and at most one lost
+        // for each half length, the ones that end at that letter
+        let sh = arm(i, shorter);
+        expect(mut t, 5, sh <= got and sh >= got - n / 2, f"P5 {what}, last letter dropped: {sh}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 strings of 1 to 12 letters in four kinds, 500 each: over 2
+    // letters, over 3, and over all 26; and a block of 1 to 3 letters over
+    // 3 said over and over, one letter changed every other time. Every
+    // string, renaming and new letter is drawn before any arm answers.
+    let letters = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'];
+    let mut seed = 13161;
+    let mut cases: Vec[Case] = Vec.new();
+    for i in 0..2000 {
+        let kind = i / 500;
+        let n = 1 + next_random(mut seed) % 12;
+        let k = if kind == 0 { 2 } else if kind == 2 { 26 } else { 3 };
+        let mut chars: Vec[char] = Vec.new();
+        if kind == 3 {
+            let b = 1 + next_random(mut seed) % 3;
+            let mut block: Vec[char] = Vec.new();
+            for _ in 0..b {
+                block.push(letters[next_random(mut seed) % k]);
+            }
+            for j in 0..n {
+                chars.push(block[j % b]);
+            }
+            if i % 2 == 0 {
+                let at = next_random(mut seed) % n;
+                chars[at] = letters[next_random(mut seed) % k];
+            }
+        } else {
+            for _ in 0..n {
+                chars.push(letters[next_random(mut seed) % k]);
+            }
+        }
+        let by = 1 + next_random(mut seed) % 25;
+        let missing: Vec[char] = letters.iter().filter(|l| not chars.contains(l)).collect();
+        let absent = missing[next_random(mut seed) % missing.len()];
+        let s: String = chars.iter().collect();
+        cases.push(Case { s, by, absent });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} strings: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

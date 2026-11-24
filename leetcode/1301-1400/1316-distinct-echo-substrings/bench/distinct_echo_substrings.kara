@@ -1,0 +1,75 @@
+// LeetCode #1316 bench: the ★ arm (a table of how far every two suffixes
+// agree, each echo counted at the first place it starts) on 4 strings of
+// 2000 letters, the constraints' longest, built once: over 2 letters, over
+// 3, over 26, and a block of 3 letters said over and over; then 5 passes,
+// each setting one letter of every string from the checksum so far, so no
+// answer carries over, answering it and folding the count plus the pass
+// into the checksum.
+
+fn distinct_echo_substrings(text: String) -> i32 {
+    let s = text.bytes();
+    let n = s.len();
+    // agree[i][j]: how many letters the suffixes from i and from j share
+    let mut agree: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.filled(n + 1, 0));
+    for i in (0..n).rev() {
+        for j in (i + 1..n).rev() {
+            if s[i] == s[j] {
+                agree[i][j] = agree[i + 1][j + 1] + 1;
+            }
+        }
+    }
+    // earlier[j]: the longest piece from j that also starts somewhere before j
+    let mut earlier: Vec[i64] = Vec.filled(n, 0);
+    for i in 0..n {
+        for j in i + 1..n {
+            earlier[j] = earlier[j].max(agree[i][j]);
+        }
+    }
+    let mut count = 0;
+    for i in 0..n {
+        for h in 1..=(n - i) / 2 {
+            if agree[i][i + h] >= h and 2 * h > earlier[i] {
+                count += 1;
+            }
+        }
+    }
+    count as i32
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let n = 2000;
+    let letters = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'];
+    let mut seed = 1316;
+    let mut strings: Vec[Vec[char]] = Vec.new();
+    for t in 0..4 {
+        let mut chars: Vec[char] = Vec.new();
+        if t == 3 {
+            let block = [letters[next_random(mut seed) % 26], letters[next_random(mut seed) % 26], letters[next_random(mut seed) % 26]];
+            for i in 0..n {
+                chars.push(block[i % 3]);
+            }
+        } else {
+            let k = if t == 0 { 2 } else if t == 1 { 3 } else { 26 };
+            for _ in 0..n {
+                chars.push(letters[next_random(mut seed) % k]);
+            }
+        }
+        strings.push(chars);
+    }
+    let mut check: i64 = 0;
+    for pass in 0..5 {
+        for t in 0..4 {
+            let chars = mut ref strings[t];
+            chars[check % n] = letters[(check / 7) % 26];
+            let s: String = chars.iter().collect();
+            let count = distinct_echo_substrings(s) as i64;
+            check = (check * 31 + count + pass) % 1000000007;
+        }
+    }
+    println(f"5 passes over 4 strings of 2000: checksum {check}");
+}
