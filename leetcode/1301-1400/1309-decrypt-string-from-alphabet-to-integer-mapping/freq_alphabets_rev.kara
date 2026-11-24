@@ -1,0 +1,72 @@
+// LeetCode #1309: Decrypt String from Alphabet to Integer Mapping -- a second
+// Rust solution as LeetCode's Rust users write it (an iterator over
+// `s.bytes().rev()` stepped by `while let Some(c) = it.next()`, a `#` pulling
+// the two digits before it with `it.next().unwrap()`, the bytes collected
+// back to front, reversed and made a `String` with `String::from_utf8`),
+// carried to Kāra by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn freq_alphabets(s: String) -> String {
+        let mut it = s.bytes().iter().rev();
+        let mut out = Vec.new();
+        while let Some(c) = it.next() {
+            if c == b'#' {
+                let lo = it.next().unwrap() - b'0';
+                let hi = it.next().unwrap() - b'0';
+                out.push(b'a' + hi * 10 + lo - 1);
+            } else {
+                out.push(b'a' + c - b'1');
+            }
+        }
+        out.reverse();
+        String.from_utf8(out).unwrap()
+    }
+}
+
+fn freq_alphabets(s: String) -> String {
+    Solution.freq_alphabets(s)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples, every letter once in order, one letter alone
+    // at each end of the alphabet, and a run of 1s with a 10# at the end
+    let every = "12345678910#11#12#13#14#15#16#17#18#19#20#21#22#23#24#25#26#";
+    println(f"{freq_alphabets("10#11#12")} {freq_alphabets("1326#")} {freq_alphabets(every)} {freq_alphabets("1")} {freq_alphabets("26#")} {freq_alphabets("11110#")}");
+    // 3000 random texts of 1 to 300 letters, from the first 2, 10 or all 26
+    // letters, written in the code and read back
+    let mut seed = 1309;
+    let mut same = 0;
+    let mut check = 0;
+    for i in 0..3000 {
+        let span = if i % 3 == 0 { 2 } else if i % 3 == 1 { 10 } else { 26 };
+        let len = 1 + next_random(mut seed) % 300;
+        let mut text = String.new();
+        let mut code = String.new();
+        for _ in 0..len {
+            let k = next_random(mut seed) % span;
+            text.push(char.try_from(('a' as i64 + k) as u32).ok().unwrap());
+            if k < 9 {
+                code.push_str(f"{k + 1}");
+            } else {
+                code.push_str(f"{k + 1}#");
+            }
+        }
+        let got = freq_alphabets(code);
+        if got == text {
+            same += 1;
+        }
+        for c in got.chars() {
+            check = (check * 31 + c as i64) % 1000000007;
+        }
+    }
+    println(f"3000 random texts: {same} read back, checksum {check}");
+}

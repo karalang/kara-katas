@@ -1,0 +1,272 @@
+// LeetCode #1309: Decrypt String from Alphabet to Integer Mapping --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+//
+// The statement: you are given a string s formed by digits and '#'. Map s to
+// English lowercase characters: 'a' to 'i' are represented by '1' to '9',
+// and 'j' to 'z' by '10#' to '26#'. Return the string formed after mapping;
+// the mapping is unique.
+
+// ---- freq_alphabets.kara ----
+fn a0_freq_alphabets(s: String) -> String {
+    let b = s.bytes();
+    let mut letters: Vec[char] = Vec.new();
+    let mut i = b.len() - 1;
+    while i >= 0 {
+        let number = if b[i] == b'#' {
+            i -= 3;
+            (b[i + 1] - b'0') * 10 + (b[i + 2] - b'0')
+        } else {
+            i -= 1;
+            b[i + 1] - b'0'
+        };
+        letters.push((b'a' + number - 1) as char);
+    }
+    letters.reverse();
+    letters.iter().collect()
+}
+
+// ---- freq_alphabets_replace.kara ----
+fn a1_freq_alphabets(s: String) -> String {
+    let mut text = s.clone();
+    for n in (10..27).rev() {
+        let letter = (b'a' + n as u8 - 1) as char;
+        text = text.replace(f"{n}#", f"{letter}");
+    }
+    for n in 1..10 {
+        let letter = (b'a' + n as u8 - 1) as char;
+        text = text.replace(f"{n}", f"{letter}");
+    }
+    text
+}
+
+// ---- freq_alphabets_split.kara ----
+fn a2_freq_alphabets(s: String) -> String {
+    let pieces: Vec[Str] = s.split("#").collect();
+    let mut out = String.new();
+    for k in 0..pieces.len() {
+        let digits: Vec[u8] = pieces[k].bytes().iter().collect();
+        let singles = if k + 1 < pieces.len() { digits.len() - 2 } else { digits.len() };
+        for d in digits[0..singles].iter() {
+            out.push((b'a' + d - b'1') as char);
+        }
+        if k + 1 < pieces.len() {
+            let n = (digits[singles] - b'0') * 10 + (digits[singles + 1] - b'0');
+            out.push((b'a' + n - 1) as char);
+        }
+    }
+    out
+}
+
+// ---- freq_alphabets_solution.kara ----
+struct A3Solution {}
+
+impl A3Solution {
+    pub fn a3_freq_alphabets(s: String) -> String {
+        let b = s.bytes();
+        let mut res = String.new();
+        let mut i = 0;
+        while i < b.len() {
+            if i + 2 < b.len() and b[i + 2] == b'#' {
+                let n = (b[i] - b'0') * 10 + (b[i + 1] - b'0');
+                res.push((b'a' + n - 1) as char);
+                i += 3;
+            } else {
+                res.push((b'a' + b[i] - b'1') as char);
+                i += 1;
+            }
+        }
+        res
+    }
+}
+
+fn a3_freq_alphabets(s: String) -> String {
+    A3Solution.a3_freq_alphabets(s)
+}
+
+// ---- freq_alphabets_rev.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_freq_alphabets(s: String) -> String {
+        let mut it = s.bytes().iter().rev();
+        let mut out = Vec.new();
+        while let Some(c) = it.next() {
+            if c == b'#' {
+                let lo = it.next().unwrap() - b'0';
+                let hi = it.next().unwrap() - b'0';
+                out.push(b'a' + hi * 10 + lo - 1);
+            } else {
+                out.push(b'a' + c - b'1');
+            }
+        }
+        out.reverse();
+        String.from_utf8(out).unwrap()
+    }
+}
+
+fn a4_freq_alphabets(s: String) -> String {
+    A4Solution.a4_freq_alphabets(s)
+}
+// ---- the statement read literally -----------------------------------------
+
+// the code of each letter, a first
+fn codes() -> Vec[String] {
+    (1..27).map(|n| if n < 10 { f"{n}" } else { f"{n}#" }).collect()
+}
+
+// the text whose code is s from place `at` on: every letter whose code
+// starts there tried in turn, and the first that leaves a rest that can be
+// read taken (the mapping is unique, so there is at most one)
+fn parse(s: String, at: i64, codes: Vec[String]) -> Option[String] {
+    if at == s.len() {
+        return Some(String.new());
+    }
+    for k in 0..26 {
+        let code = ref codes[k];
+        if at + code.len() <= s.len() and s[at..at + code.len()] == code {
+            if let Some(rest) = parse(s, at + code.len(), codes) {
+                let mut text = String.new();
+                text.push((b'a' + k as u8) as char);
+                text.push_str(rest);
+                return Some(text);
+            }
+        }
+    }
+    None
+}
+
+fn literal(s: String) -> String {
+    parse(s, 0, codes()).unwrap()
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn encode(text: String) -> String {
+    let mut code = String.new();
+    for c in text.chars() {
+        let n = c as i64 - 'a' as i64 + 1;
+        if n < 10 {
+            code.push_str(f"{n}");
+        } else {
+            code.push_str(f"{n}#");
+        }
+    }
+    code
+}
+
+struct Case {
+    code: String,
+    // P3: a second code to join on
+    other: String,
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, s: String) -> String {
+    match i {
+        0 => a0_freq_alphabets(s),
+        1 => a1_freq_alphabets(s),
+        2 => a2_freq_alphabets(s),
+        3 => a3_freq_alphabets(s),
+        _ => a4_freq_alphabets(s),
+    }
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    t.cases += 1;
+    let want = literal(c.code);
+    for ch in want.chars() {
+        t.check = (t.check * 31 + ch as i64) % 1000000007;
+    }
+    let hashes = c.code.chars().filter(|ch| ch == '#').count();
+    let joined = f"{c.code}{c.other}";
+    let star = a0_freq_alphabets(c.code);
+    for i in 0..5 {
+        let got = arm(i, c.code);
+        let what = f"arm {i} code {c.code}: got {got}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal {want}");
+        // P2: the answer written in the code again, the code itself
+        let back = encode(got);
+        expect(mut t, 2, back == c.code, f"P2 {what}, written back: {back}");
+        // P3: two codes joined, the two answers joined
+        let jn = arm(i, joined);
+        let both = f"{got}{arm(i, c.other)}";
+        expect(mut t, 3, jn == both, f"P3 {what}, joined with {c.other}: {jn}");
+        // P4: a letter for each digit, less two for each `#`
+        expect(mut t, 4, got.len() == c.code.len() - 2 * hashes, f"P4 {what}, {got.len()} letters");
+        // P5: as many letters from j to z as there are `#`s
+        let late = got.chars().filter(|ch| ch >= 'j').count();
+        expect(mut t, 5, late == hashes, f"P5 {what}, {late} letters from j");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn draw(seed: mut ref i64, kind: i64) -> String {
+    let len = 1 + next_random(mut seed) % 12;
+    let mut text = String.new();
+    for _ in 0..len {
+        // a, b, c, j, k, l and t, whose codes begin alike; any letter; a to
+        // i only, so no `#`; j to z only
+        let k = if kind == 0 {
+            [0, 1, 2, 9, 10, 11, 19][next_random(mut seed) % 7]
+        } else if kind == 1 {
+            next_random(mut seed) % 26
+        } else if kind == 2 {
+            next_random(mut seed) % 9
+        } else {
+            9 + next_random(mut seed) % 17
+        };
+        text.push((b'a' + k as u8) as char);
+    }
+    encode(text)
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 codes of texts of 1 to 12 letters in four kinds, 500 each: from a,
+    // b, c, j, k, l and t, whose codes begin alike; from any letter; from a
+    // to i only, so with no `#`; and from j to z only. Every code, and the
+    // code joined to it, is drawn before any arm answers.
+    let mut seed = 13091;
+    let mut cases: Vec[Case] = Vec.new();
+    for i in 0..2000 {
+        let kind = i / 500;
+        let code = draw(mut seed, kind);
+        let other_kind = next_random(mut seed) % 4;
+        let other = draw(mut seed, other_kind);
+        cases.push(Case { code, other });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} codes: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
