@@ -1,0 +1,539 @@
+// LeetCode #1307: Verbal Arithmetic Puzzle -- differential test of the four
+// arms against the statement read literally, with five more properties.
+//
+// The statement: given an equation, represented by words on the left side
+// and the result on the right side, decide if the equation is solvable under
+// the rules: each character is decoded as one digit (0 - 9); no two
+// characters can map to the same digit; each words[i] and result are decoded
+// as one number without leading zeros; the sum of numbers on the left side
+// (words) will equal the number on the right side (result).
+
+// ---- is_solvable.kara ----
+struct A0Puzzle {
+    // each word and the result as letter numbers, rightmost first
+    words: Vec[Vec[i64]],
+    result: Vec[i64],
+    // a letter that leads a number of more than one digit
+    leads: Vec[bool],
+    // the digit of each letter, -1 while it has none, and the digits taken
+    digit: Vec[i64],
+    taken: Vec[bool],
+}
+
+fn a0_solve(p: mut ref A0Puzzle, col: i64, row: i64, sum: i64) -> bool {
+    if col == p.result.len() {
+        return sum == 0;
+    }
+    if row == p.words.len() {
+        let letter = p.result[col];
+        let d = sum % 10;
+        if p.digit[letter] >= 0 {
+            return p.digit[letter] == d and a0_solve(mut p, col + 1, 0, sum / 10);
+        }
+        if p.taken[d] or (d == 0 and p.leads[letter]) {
+            return false;
+        }
+        p.digit[letter] = d;
+        p.taken[d] = true;
+        let ok = a0_solve(mut p, col + 1, 0, sum / 10);
+        p.digit[letter] = -1;
+        p.taken[d] = false;
+        return ok;
+    }
+    if col >= p.words[row].len() {
+        return a0_solve(mut p, col, row + 1, sum);
+    }
+    let letter = p.words[row][col];
+    if p.digit[letter] >= 0 {
+        return a0_solve(mut p, col, row + 1, sum + p.digit[letter]);
+    }
+    for d in 0..10 {
+        if p.taken[d] or (d == 0 and p.leads[letter]) {
+            continue;
+        }
+        p.digit[letter] = d;
+        p.taken[d] = true;
+        let ok = a0_solve(mut p, col, row + 1, sum + d);
+        p.digit[letter] = -1;
+        p.taken[d] = false;
+        if ok {
+            return true;
+        }
+    }
+    false
+}
+
+fn a0_is_solvable(words: Vec[String], result: String) -> bool {
+    // a word longer than the result cannot add up to it
+    if words.iter().any(|w| w.len() > result.len()) {
+        return false;
+    }
+    let mut number: Vec[i64] = Vec.filled(26, -1);
+    let mut letters = 0;
+    let mut leads: Vec[bool] = Vec.new();
+    let mut texts = words.clone();
+    texts.push(result.clone());
+    let mut rows: Vec[Vec[i64]] = Vec.new();
+    for text in texts.iter() {
+        let mut row: Vec[i64] = Vec.new();
+        for c in text.chars() {
+            let k = c as i64 - 'A' as i64;
+            if number[k] < 0 {
+                number[k] = letters;
+                letters += 1;
+                leads.push(false);
+            }
+            row.push(number[k]);
+        }
+        if row.len() > 1 {
+            leads[row[0]] = true;
+        }
+        row.reverse();
+        rows.push(row);
+    }
+    let result_row = rows.pop().unwrap();
+    let mut p = A0Puzzle { words: rows, result: result_row, leads, digit: Vec.filled(letters, -1), taken: Vec.filled(10, false) };
+    a0_solve(mut p, 0, 0, 0)
+}
+
+// ---- is_solvable_bound.kara ----
+struct A1Search {
+    weight: Vec[i64],
+    lead: Vec[bool],
+    // the least and the most the letters from each place on can add
+    low: Vec[i64],
+    high: Vec[i64],
+    taken: Vec[bool],
+}
+
+fn a1_search(s: mut ref A1Search, i: i64, sum: i64) -> bool {
+    if i == s.weight.len() {
+        return sum == 0;
+    }
+    if sum + s.low[i] > 0 or sum + s.high[i] < 0 {
+        return false;
+    }
+    let first = if s.lead[i] { 1 } else { 0 };
+    for d in first..10 {
+        if s.taken[d] {
+            continue;
+        }
+        s.taken[d] = true;
+        let ok = a1_search(mut s, i + 1, sum + s.weight[i] * d);
+        s.taken[d] = false;
+        if ok {
+            return true;
+        }
+    }
+    false
+}
+
+fn a1_is_solvable(words: Vec[String], result: String) -> bool {
+    let mut weight: Vec[i64] = Vec.filled(26, 0);
+    let mut seen: Vec[bool] = Vec.filled(26, false);
+    let mut lead: Vec[bool] = Vec.filled(26, false);
+    let mut texts = words.clone();
+    texts.push(result.clone());
+    for t in 0..texts.len() {
+        let sign = if t == texts.len() - 1 { -1 } else { 1 };
+        let chars: Vec[char] = texts[t].chars().collect();
+        let mut place = 1;
+        for k in (0..chars.len()).rev() {
+            let c = chars[k] as i64 - 'A' as i64;
+            weight[c] += sign * place;
+            seen[c] = true;
+            place *= 10;
+        }
+        if chars.len() > 1 {
+            lead[chars[0] as i64 - 'A' as i64] = true;
+        }
+    }
+    let mut order: Vec[i64] = (0..26).filter(|c| seen[c]).collect();
+    order.sort_by_key(|c| -weight[c].abs());
+    let n = order.len();
+    let mut s = A1Search { weight: Vec.new(), lead: Vec.new(), low: Vec.filled(n + 1, 0), high: Vec.filled(n + 1, 0), taken: Vec.filled(10, false) };
+    for c in order.iter() {
+        s.weight.push(weight[c]);
+        s.lead.push(lead[c]);
+    }
+    for i in (0..n).rev() {
+        let least = if s.lead[i] { 1 } else { 0 };
+        let a = s.weight[i] * least;
+        let b = s.weight[i] * 9;
+        s.low[i] = s.low[i + 1] + a.min(b);
+        s.high[i] = s.high[i + 1] + a.max(b);
+    }
+    a1_search(mut s, 0, 0)
+}
+
+// ---- is_solvable_modular.kara ----
+struct A2Search {
+    weight: Vec[i64],
+    lead: Vec[bool],
+    // after letter i, the sum so far must be a multiple of this (1 when no
+    // column is finished there)
+    modulus: Vec[i64],
+    taken: Vec[bool],
+}
+
+fn a2_search(s: mut ref A2Search, i: i64, sum: i64) -> bool {
+    if i == s.weight.len() {
+        return sum == 0;
+    }
+    let first = if s.lead[i] { 1 } else { 0 };
+    for d in first..10 {
+        if s.taken[d] {
+            continue;
+        }
+        let next = sum + s.weight[i] * d;
+        if next % s.modulus[i] != 0 {
+            continue;
+        }
+        s.taken[d] = true;
+        let ok = a2_search(mut s, i + 1, next);
+        s.taken[d] = false;
+        if ok {
+            return true;
+        }
+    }
+    false
+}
+
+fn a2_is_solvable(words: Vec[String], result: String) -> bool {
+    let mut texts: Vec[Vec[char]] = words.iter().map(|w| w.chars().collect()).collect();
+    texts.push(result.chars().collect());
+    let columns = texts.iter().map(|t| t.len()).max().unwrap();
+    let mut index: Vec[i64] = Vec.filled(26, -1);
+    let mut s = A2Search { weight: Vec.new(), lead: Vec.new(), modulus: Vec.new(), taken: Vec.filled(10, false) };
+    let mut place = 1;
+    for col in 0..columns {
+        for t in 0..texts.len() {
+            let text = ref texts[t];
+            if col >= text.len() {
+                continue;
+            }
+            let c = text[text.len() - 1 - col] as i64 - 'A' as i64;
+            if index[c] < 0 {
+                index[c] = s.weight.len();
+                s.weight.push(0);
+                s.lead.push(false);
+                s.modulus.push(1);
+            }
+            let sign = if t == texts.len() - 1 { -1 } else { 1 };
+            s.weight[index[c]] += sign * place;
+        }
+        // the last letter met by the end of this column finishes it
+        let last = s.weight.len() - 1;
+        s.modulus[last] = place * 10;
+        place *= 10;
+    }
+    for text in texts.iter() {
+        if text.len() > 1 {
+            s.lead[index[text[0] as i64 - 'A' as i64]] = true;
+        }
+    }
+    a2_search(mut s, 0, 0)
+}
+
+// ---- is_solvable_solution.kara ----
+struct A3Solution {}
+
+fn a3_dfs(i: i64, letters: ref Vec[(u8, i64)], lead: ref Array[bool, 26], used: mut ref Array[bool, 10], sum: i64) -> bool {
+    if i == letters.len() {
+        return sum == 0;
+    }
+    let (c, w) = letters[i];
+    for d in 0..10 {
+        if used[d] or (d == 0 and lead[c - b'A']) {
+            continue;
+        }
+        used[d] = true;
+        if a3_dfs(i + 1, letters, lead, mut used, sum + w * d) {
+            return true;
+        }
+        used[d] = false;
+    }
+    false
+}
+
+impl A3Solution {
+    pub fn a3_is_solvable(words: Vec[String], result: String) -> bool {
+        let max_len = words.iter().map(|w| w.len()).max().unwrap();
+        if max_len > result.len() {
+            return false;
+        }
+        let mut weight: Map[u8, i64] = Map.new();
+        let mut lead = [false; 26];
+        for w in ref words {
+            let b = w.bytes();
+            if b.len() > 1 {
+                lead[b[0] - b'A'] = true;
+            }
+            let mut p = 1;
+            for c in b.iter().rev() {
+                *weight.entry(c).or_insert(0) += p;
+                p *= 10;
+            }
+        }
+        let b = result.bytes();
+        if b.len() > 1 {
+            lead[b[0] - b'A'] = true;
+        }
+        let mut p = 1;
+        for c in b.iter().rev() {
+            *weight.entry(c).or_insert(0) -= p;
+            p *= 10;
+        }
+        let mut letters: Vec[(u8, i64)] = weight.into_iter().collect();
+        letters.sort_by_key(|(_, w)| -w.abs());
+        let mut used = [false; 10];
+        a3_dfs(0, letters, lead, mut used, 0)
+    }
+}
+
+fn a3_is_solvable(words: Vec[String], result: String) -> bool {
+    A3Solution.a3_is_solvable(words, result)
+}
+// ---- the statement read literally -----------------------------------------
+
+// the number a text stands for under the digits given, or -1 when it has a
+// leading zero
+fn decode(text: String, letters: Vec[char], digits: Vec[i64]) -> i64 {
+    let chars: Vec[char] = text.chars().collect();
+    let mut value = 0;
+    for k in 0..chars.len() {
+        let mut d = 0;
+        for i in 0..letters.len() {
+            if letters[i] == chars[k] {
+                d = digits[i];
+            }
+        }
+        if k == 0 and d == 0 and chars.len() > 1 {
+            return -1;
+        }
+        value = value * 10 + d;
+    }
+    value
+}
+
+// every way to give the letters, from the first, different digits; true when
+// one decodes every word and the result with no leading zero and the words
+// add up to the result
+fn assign(words: Vec[String], result: String, letters: Vec[char], digits: mut ref Vec[i64]) -> bool {
+    if digits.len() == letters.len() {
+        let target = decode(result, letters, digits);
+        if target < 0 {
+            return false;
+        }
+        let mut sum = 0;
+        for w in words.iter() {
+            let v = decode(w, letters, digits);
+            if v < 0 {
+                return false;
+            }
+            sum += v;
+        }
+        return sum == target;
+    }
+    for d in 0..10 {
+        if digits.contains(d) {
+            continue;
+        }
+        digits.push(d);
+        let ok = assign(words, result, letters, mut digits);
+        digits.pop();
+        if ok {
+            return true;
+        }
+    }
+    false
+}
+
+fn literal(words: Vec[String], result: String) -> bool {
+    let mut letters: Vec[char] = Vec.new();
+    for text in words.iter().chain([result].iter()) {
+        for c in text.chars() {
+            if not letters.contains(c) {
+                letters.push(c);
+            }
+        }
+    }
+    let mut digits: Vec[i64] = Vec.new();
+    assign(words, result, letters, mut digits)
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// each letter moved `by` places round the ten letters A to J
+fn renamed(text: String, by: i64) -> String {
+    let mut out = String.new();
+    for c in text.chars() {
+        let k = (c as i64 - 'A' as i64 + by) % 10;
+        out.push(char.try_from(('A' as i64 + k) as u32).ok().unwrap());
+    }
+    out
+}
+
+struct Case {
+    words: Vec[String],
+    result: String,
+    // built from a true sum
+    built: bool,
+    // P3: how far the letters move
+    by: i64,
+    // P5: the letters of the word longer than the result
+    longer: String,
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, words: Vec[String], result: String) -> bool {
+    match i {
+        0 => a0_is_solvable(words, result),
+        1 => a1_is_solvable(words, result),
+        2 => a2_is_solvable(words, result),
+        _ => a3_is_solvable(words, result),
+    }
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    t.cases += 1;
+    let want = literal(c.words, c.result);
+    t.check = (t.check * 3 + if want { 1 } else { 0 }) % 1000000007;
+    let reordered: Vec[String] = c.words.iter().rev().map(|w| w.clone()).collect();
+    let moved: Vec[String] = c.words.iter().map(|w| renamed(w, c.by)).collect();
+    let moved_result = renamed(c.result, c.by);
+    let mut grown = c.words.clone();
+    grown.push(c.longer.clone());
+    let star = a0_is_solvable(c.words, c.result);
+    for i in 0..4 {
+        let got = arm(i, c.words, c.result);
+        let what = f"arm {i} case {t.cases} {c.words.join("+")}={c.result}: got {got}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal {want}");
+        // P2: the words in the reverse order, the same answer
+        let ro = arm(i, reordered, c.result);
+        expect(mut t, 2, ro == got, f"P2 {what}, reordered: {ro}");
+        // P3: the letters renamed one for one, the same answer
+        let mv = arm(i, moved, moved_result);
+        expect(mut t, 3, mv == got, f"P3 {what}, moved by {c.by}: {mv}");
+        // P4: a true sum written in letters, true
+        if c.built {
+            expect(mut t, 4, got, f"P4 {what}, built from a true sum");
+        }
+        // P5: one more word a digit longer than the result, false
+        let gr = arm(i, grown, c.result);
+        expect(mut t, 5, not gr, f"P5 {what}, with {c.longer}: {gr}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 puzzles of 2 or 3 words of 1 to 3 letters, over 1 to 4 letters, in
+    // four kinds, 500 each: a true sum of numbers written with a letter for
+    // each digit it uses; random words and result over 2 letters; over 3
+    // letters; and over 4 letters. Every puzzle, renaming and longer word is
+    // drawn before any arm answers.
+    let letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+    let mut seed = 13071;
+    let mut cases: Vec[Case] = Vec.new();
+    for i in 0..2000 {
+        let kind = i / 500;
+        let count = 2 + next_random(mut seed) % 2;
+        let mut words: Vec[String] = Vec.new();
+        let mut result = String.new();
+        if kind == 0 {
+            let mut texts: Vec[String] = Vec.new();
+            let mut digits: Vec[char] = Vec.new();
+            loop {
+                texts = Vec.new();
+                let mut sum = 0;
+                for _ in 0..count {
+                    let len = 1 + next_random(mut seed) % 2;
+                    let value = if len == 1 { next_random(mut seed) % 10 } else { 10 + next_random(mut seed) % 90 };
+                    texts.push(f"{value}");
+                    sum += value;
+                }
+                texts.push(f"{sum}");
+                digits = Vec.new();
+                for text in texts.iter() {
+                    for c in text.chars() {
+                        if not digits.contains(c) {
+                            digits.push(c);
+                        }
+                    }
+                }
+                if digits.len() <= 4 {
+                    break;
+                }
+            }
+            let mut written: Vec[String] = Vec.new();
+            for text in texts.iter() {
+                let mut word = String.new();
+                for c in text.chars() {
+                    let mut at = 0;
+                    while digits[at] != c {
+                        at += 1;
+                    }
+                    word.push(letters[at]);
+                }
+                written.push(word);
+            }
+            result = written.pop().unwrap();
+            words = written;
+        } else {
+            let k = kind + 1;
+            for _ in 0..count {
+                let len = 1 + next_random(mut seed) % 3;
+                let mut word = String.new();
+                for _ in 0..len {
+                    word.push(letters[next_random(mut seed) % k]);
+                }
+                words.push(word);
+            }
+            let len = 1 + next_random(mut seed) % 3;
+            for _ in 0..len {
+                result.push(letters[next_random(mut seed) % k]);
+            }
+        }
+        let by = 1 + next_random(mut seed) % 9;
+        let mut longer = String.new();
+        let pool: Vec[char] = result.chars().collect();
+        for _ in 0..result.len() + 1 {
+            longer.push(pool[next_random(mut seed) % pool.len()]);
+        }
+        cases.push(Case { words, result, built: kind == 0, by, longer });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} puzzles: checksum {t.check}, {t.checks} checks over 4 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

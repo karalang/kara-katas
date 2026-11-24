@@ -1,0 +1,150 @@
+// LeetCode #1307 bench: the ★ arm (the sum done a column at a time from the
+// right with its carry, the result's letter fixed by each column's sum) on
+// 40 passes of 50 puzzles, each pass's puzzles drawn from a generator seeded
+// by the checksum so far, so no answer carries over: 2 to 5 numbers of 1 to
+// 6 digits and their sum, written with the ten letters A to J shuffled for
+// the ten digits, and every other puzzle's result with one letter changed;
+// the count of solvable puzzles and the pass folded into the checksum.
+
+struct Puzzle {
+    // each word and the result as letter numbers, rightmost first
+    words: Vec[Vec[i64]],
+    result: Vec[i64],
+    // a letter that leads a number of more than one digit
+    leads: Vec[bool],
+    // the digit of each letter, -1 while it has none, and the digits taken
+    digit: Vec[i64],
+    taken: Vec[bool],
+}
+
+// the column `col`, at word `row`, with `sum` added up so far (the carry in,
+// and the column's digits of the words before `row`)
+fn solve(p: mut ref Puzzle, col: i64, row: i64, sum: i64) -> bool {
+    if col == p.result.len() {
+        return sum == 0;
+    }
+    if row == p.words.len() {
+        let letter = p.result[col];
+        let d = sum % 10;
+        if p.digit[letter] >= 0 {
+            return p.digit[letter] == d and solve(mut p, col + 1, 0, sum / 10);
+        }
+        if p.taken[d] or (d == 0 and p.leads[letter]) {
+            return false;
+        }
+        p.digit[letter] = d;
+        p.taken[d] = true;
+        let ok = solve(mut p, col + 1, 0, sum / 10);
+        p.digit[letter] = -1;
+        p.taken[d] = false;
+        return ok;
+    }
+    if col >= p.words[row].len() {
+        return solve(mut p, col, row + 1, sum);
+    }
+    let letter = p.words[row][col];
+    if p.digit[letter] >= 0 {
+        return solve(mut p, col, row + 1, sum + p.digit[letter]);
+    }
+    for d in 0..10 {
+        if p.taken[d] or (d == 0 and p.leads[letter]) {
+            continue;
+        }
+        p.digit[letter] = d;
+        p.taken[d] = true;
+        let ok = solve(mut p, col, row + 1, sum + d);
+        p.digit[letter] = -1;
+        p.taken[d] = false;
+        if ok {
+            return true;
+        }
+    }
+    false
+}
+
+fn is_solvable(words: Vec[String], result: String) -> bool {
+    // a word longer than the result cannot add up to it
+    if words.iter().any(|w| w.len() > result.len()) {
+        return false;
+    }
+    let mut number: Vec[i64] = Vec.filled(26, -1);
+    let mut letters = 0;
+    let mut leads: Vec[bool] = Vec.new();
+    let mut texts = words.clone();
+    texts.push(result.clone());
+    let mut rows: Vec[Vec[i64]] = Vec.new();
+    for text in texts.iter() {
+        let mut row: Vec[i64] = Vec.new();
+        for c in text.chars() {
+            let k = c as i64 - 'A' as i64;
+            if number[k] < 0 {
+                number[k] = letters;
+                letters += 1;
+                leads.push(false);
+            }
+            row.push(number[k]);
+        }
+        if row.len() > 1 {
+            leads[row[0]] = true;
+        }
+        row.reverse();
+        rows.push(row);
+    }
+    let result_row = rows.pop().unwrap();
+    let mut p = Puzzle { words: rows, result: result_row, leads, digit: Vec.filled(letters, -1), taken: Vec.filled(10, false) };
+    solve(mut p, 0, 0, 0)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut check: i64 = 0;
+    for pass in 0..40 {
+        let mut seed = check;
+        let mut solvable = 0;
+        for p in 0..50 {
+            // the letter for each digit
+            let mut letter: Vec[char] = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+            for k in (1..10).rev() {
+                let j = next_random(mut seed) % (k + 1);
+                letter.swap(k, j);
+            }
+            let count = 2 + next_random(mut seed) % 4;
+            let mut numbers: Vec[i64] = Vec.new();
+            for _ in 0..count {
+                let digits = 1 + next_random(mut seed) % 6;
+                let mut low = 1;
+                for _ in 1..digits {
+                    low *= 10;
+                }
+                let value = if digits == 1 { next_random(mut seed) % 10 } else { low + next_random(mut seed) % (9 * low) };
+                numbers.push(value);
+            }
+            let total: i64 = numbers.iter().sum();
+            numbers.push(total);
+            let mut texts: Vec[String] = Vec.new();
+            for v in numbers.iter() {
+                let mut word = String.new();
+                for c in f"{v}".chars() {
+                    word.push(letter[c as i64 - '0' as i64]);
+                }
+                texts.push(word);
+            }
+            let mut result = texts.pop().unwrap();
+            if p % 2 == 1 {
+                let mut chars: Vec[char] = result.chars().collect();
+                let at = next_random(mut seed) % chars.len();
+                chars[at] = letter[next_random(mut seed) % 10];
+                result = chars.iter().collect();
+            }
+            if is_solvable(texts, result) {
+                solvable += 1;
+            }
+        }
+        check = (check * 31 + solvable + pass) % 1000000007;
+    }
+    println(f"40 passes of 50 puzzles: checksum {check}");
+}

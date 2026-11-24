@@ -1,0 +1,163 @@
+// LeetCode #1307: Verbal Arithmetic Puzzle -- a Rust solution as LeetCode's
+// Rust users write it (each letter's weight summed in a `HashMap<u8, i64>`
+// through `*weight.entry(c).or_insert(0) += p`, the letters sorted heaviest
+// first by `sort_by_key(|&(_, w)| -w.abs())`, and a `fn dfs` nested in the
+// method trying every free digit for each letter in turn, the sum checked
+// only at the end), carried to Kāra by `karac fix`.
+
+struct Solution {}
+
+fn dfs(i: i64, letters: ref Vec[(u8, i64)], lead: ref Array[bool, 26], used: mut ref Array[bool, 10], sum: i64) -> bool {
+    if i == letters.len() {
+        return sum == 0;
+    }
+    let (c, w) = letters[i];
+    for d in 0..10 {
+        if used[d] or (d == 0 and lead[c - b'A']) {
+            continue;
+        }
+        used[d] = true;
+        if dfs(i + 1, letters, lead, mut used, sum + w * d) {
+            return true;
+        }
+        used[d] = false;
+    }
+    false
+}
+
+impl Solution {
+    pub fn is_solvable(words: Vec[String], result: String) -> bool {
+        let max_len = words.iter().map(|w| w.len()).max().unwrap();
+        if max_len > result.len() {
+            return false;
+        }
+        let mut weight: Map[u8, i64] = Map.new();
+        let mut lead = [false; 26];
+        for w in ref words {
+            let b = w.bytes();
+            if b.len() > 1 {
+                lead[b[0] - b'A'] = true;
+            }
+            let mut p = 1;
+            for c in b.iter().rev() {
+                *weight.entry(c).or_insert(0) += p;
+                p *= 10;
+            }
+        }
+        let b = result.bytes();
+        if b.len() > 1 {
+            lead[b[0] - b'A'] = true;
+        }
+        let mut p = 1;
+        for c in b.iter().rev() {
+            *weight.entry(c).or_insert(0) -= p;
+            p *= 10;
+        }
+        let mut letters: Vec[(u8, i64)] = weight.into_iter().collect();
+        letters.sort_by_key(|(_, w)| -w.abs());
+        let mut used = [false; 10];
+        dfs(0, letters, lead, mut used, 0)
+    }
+}
+
+fn is_solvable(words: Vec[String], result: String) -> bool {
+    Solution.is_solvable(words, result)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn puzzle(words: Vec[Str], result: Str) -> bool {
+    is_solvable(words.iter().map(|w| w.to_string()).collect(), result.to_string())
+}
+
+fn main() {
+    // LeetCode's three examples; a one-letter word may be 0 (A + B = A, with
+    // B = 0); a result shorter than a word; a letter on both sides (A + A =
+    // B); and two words whose first letters may not be 0
+    let e1 = puzzle(["SEND", "MORE"], "MONEY");
+    let e2 = puzzle(["SIX", "SEVEN", "SEVEN"], "TWENTY");
+    let e3 = puzzle(["LEET", "CODE"], "POINT");
+    let zero = puzzle(["A", "B"], "A");
+    let short = puzzle(["AB", "CD"], "E");
+    let twice = puzzle(["A", "A"], "B");
+    let lead = puzzle(["AB", "BA"], "CC");
+    println(f"{e1} {e2} {e3} {zero} {short} {twice} {lead}");
+    // 600 random puzzles: half of them a true sum of 2 to 4 numbers of 1 to 3
+    // digits, written with a letter for each digit it uses, no more than 6;
+    // half 2 to 4 words over 2 to 5 letters with a result of random letters
+    let letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+    let mut seed = 1307;
+    let mut solvable = 0;
+    let mut check = 0;
+    for p in 0..600 {
+        let count = 2 + next_random(mut seed) % 3;
+        let mut words: Vec[String] = Vec.new();
+        let mut result = String.new();
+        if p % 2 == 0 {
+            let mut texts: Vec[String] = Vec.new();
+            let mut digits: Vec[char] = Vec.new();
+            loop {
+                texts = Vec.new();
+                let mut sum = 0;
+                for _ in 0..count {
+                    let len = 1 + next_random(mut seed) % 3;
+                    let low = if len == 1 { 0 } else if len == 2 { 10 } else { 100 };
+                    let value = low + next_random(mut seed) % (10 * (if low == 0 { 1 } else { low }) - low);
+                    texts.push(f"{value}");
+                    sum += value;
+                }
+                texts.push(f"{sum}");
+                digits = Vec.new();
+                for text in texts.iter() {
+                    for c in text.chars() {
+                        if not digits.contains(c) {
+                            digits.push(c);
+                        }
+                    }
+                }
+                if digits.len() <= 6 {
+                    break;
+                }
+            }
+            let mut written: Vec[String] = Vec.new();
+            for text in texts.iter() {
+                let mut word = String.new();
+                for c in text.chars() {
+                    let mut at = 0;
+                    while digits[at] != c {
+                        at += 1;
+                    }
+                    word.push(letters[at]);
+                }
+                written.push(word);
+            }
+            result = written.pop().unwrap();
+            words = written;
+        } else {
+            let k = 2 + next_random(mut seed) % 4;
+            for _ in 0..count {
+                let len = 1 + next_random(mut seed) % 3;
+                let mut word = String.new();
+                for _ in 0..len {
+                    word.push(letters[next_random(mut seed) % k]);
+                }
+                words.push(word);
+            }
+            let len = 1 + next_random(mut seed) % 4;
+            for _ in 0..len {
+                result.push(letters[next_random(mut seed) % k]);
+            }
+        }
+        let got = is_solvable(words, result);
+        if got {
+            solvable += 1;
+        }
+        check = (check * 3 + if got { 1 } else { 0 }) % 1000000007;
+    }
+    println(f"600 random puzzles: {solvable} solvable, checksum {check}");
+}
