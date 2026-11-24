@@ -1,0 +1,297 @@
+// LeetCode #1326: Minimum Number of Taps to Open to Water a Garden -- differential test of the
+// five arms against the statement read literally, with five more
+// properties.
+//
+// The statement: there is a one-dimensional garden on the x-axis from 0
+// to n, with taps at the points 0, 1, ..., n. Tap i, if opened, waters the
+// area [i - ranges[i], i + ranges[i]]. Return the minimum number of taps
+// that should be open to water the whole garden, or -1 if it cannot be
+// watered.
+
+// ---- min_taps.kara ----
+fn a0_min_taps(n: i32, ranges: Vec[i32]) -> i32 {
+    let n = n as i64;
+    let mut farthest: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..=n {
+        let r = ranges[i] as i64;
+        let left = (i - r).max(0);
+        let right = (i + r).min(n);
+        farthest[left] = farthest[left].max(right);
+    }
+    let mut taps = 0;
+    let mut watered = 0;
+    let mut next = 0;
+    for x in 0..n {
+        next = next.max(farthest[x]);
+        if x == watered {
+            if next <= x {
+                return -1;
+            }
+            taps += 1;
+            watered = next;
+        }
+    }
+    taps
+}
+
+// ---- min_taps_dp.kara ----
+fn a1_min_taps(n: i32, ranges: Vec[i32]) -> i32 {
+    let n = n as i64;
+    let none = n + 2;
+    let mut least: Vec[i64] = Vec.filled(n + 1, none);
+    least[0] = 0;
+    for i in 0..=n {
+        let r = ranges[i] as i64;
+        let left = (i - r).max(0);
+        let right = (i + r).min(n);
+        for x in left..right {
+            if least[x] + 1 < least[right] {
+                least[right] = least[x] + 1;
+            }
+        }
+    }
+    if least[n] == none { -1 } else { least[n] as i32 }
+}
+
+// ---- min_taps_sorted.kara ----
+fn a2_min_taps(n: i32, ranges: Vec[i32]) -> i32 {
+    let mut spans: Vec[(i32, i32)] = Vec.new();
+    for i in 0..ranges.len() {
+        let r = ranges[i];
+        if r > 0 {
+            let at = i as i32;
+            spans.push(((at - r).max(0), (at + r).min(n)));
+        }
+    }
+    spans.sort();
+    let mut taps = 0;
+    let mut watered = 0;
+    let mut k = 0;
+    while watered < n {
+        let mut best = watered;
+        while k < spans.len() and spans[k].0 <= watered {
+            best = best.max(spans[k].1);
+            k += 1;
+        }
+        if best == watered {
+            return -1;
+        }
+        taps += 1;
+        watered = best;
+    }
+    taps
+}
+
+// ---- min_taps_solution.kara ----
+struct A3Solution {}
+
+impl A3Solution {
+    pub fn a3_min_taps(n: i32, ranges: Vec[i32]) -> i32 {
+        let n = n as i64;
+        let mut max_reach = Vec.filled(n + 1, 0);
+        for (i, r) in ranges.iter().enumerate() {
+            let r = r as i64;
+            let left = i.saturating_sub(r).max(0);
+            let right = (i + r).min(n);
+            max_reach[left] = max_reach[left].max(right);
+        }
+        let mut taps = 0;
+        let mut cur_end = 0;
+        let mut next_end = 0;
+        for i in 0..=n {
+            if i > next_end {
+                return -1;
+            }
+            if i > cur_end {
+                taps += 1;
+                cur_end = next_end;
+            }
+            next_end = next_end.max(max_reach[i]);
+        }
+        taps
+    }
+}
+
+fn a3_min_taps(n: i32, ranges: Vec[i32]) -> i32 {
+    A3Solution.a3_min_taps(n, ranges)
+}
+
+// ---- min_taps_table.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_min_taps(n: i32, ranges: Vec[i32]) -> i32 {
+        let n = n as i64;
+        let mut dp = Vec.filled(n + 1, i32.MAX);
+        dp[0] = 0;
+        for i in 0..=n {
+            let left = if i as i32 - ranges[i] < 0 { 0 } else { i - ranges[i] };
+            let right = min(n, i + ranges[i]);
+            for j in left..right {
+                if dp[j] != i32.MAX {
+                    dp[right] = dp[right].min(dp[j] + 1);
+                }
+            }
+        }
+        if dp[n] == i32.MAX { -1 } else { dp[n] }
+    }
+}
+
+fn a4_min_taps(n: i32, ranges: Vec[i32]) -> i32 {
+    A4Solution.a4_min_taps(n, ranges)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every set of taps tried, and a set waters
+// the garden when each stretch from x to x + 1 lies inside what one of its
+// taps waters; the fewest taps of any set that does, or -1
+fn literal(n: i64, ranges: Vec[i64]) -> i64 {
+    let taps = n + 1;
+    let mut best = -1;
+    for set in 0..1 << taps {
+        let mut all = true;
+        for x in 0..n {
+            let mut inside = false;
+            for i in 0..taps {
+                if (set >> i) & 1 == 1 and i - ranges[i] <= x and x + 1 <= i + ranges[i] {
+                    inside = true;
+                }
+            }
+            if not inside {
+                all = false;
+            }
+        }
+        if all {
+            let size = (0..taps).filter(|i| (set >> i) & 1 == 1).count();
+            if best < 0 or size < best {
+                best = size;
+            }
+        }
+    }
+    best
+}
+
+// -1 read as more taps than any garden can need
+fn rank(taps: i64) -> i64 {
+    if taps < 0 { 1000000 } else { taps }
+}
+
+struct Case {
+    n: i64,
+    ranges: Vec[i64],
+    // P4: the tap that is shut
+    shut: i64,
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, n: i64, ranges: Vec[i64]) -> i64 {
+    let r: Vec[i32] = ranges.iter().map(|x| *x as i32).collect();
+    let got = match i {
+        0 => a0_min_taps(n as i32, r),
+        1 => a1_min_taps(n as i32, r),
+        2 => a2_min_taps(n as i32, r),
+        3 => a3_min_taps(n as i32, r),
+        _ => a4_min_taps(n as i32, r),
+    };
+    got
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    t.cases += 1;
+    let want = literal(c.n, c.ranges);
+    t.check = (t.check * 131 + want + 1) % 1000000007;
+    let reversed: Vec[i64] = c.ranges.iter().rev().cloned().collect();
+    let wider: Vec[i64] = c.ranges.iter().map(|r| *r + 1).collect();
+    let mut fewer = c.ranges.clone();
+    fewer[c.shut] = 0;
+    let mut doubled: Vec[i64] = Vec.filled(2 * c.n + 1, 0);
+    for i in 0..=c.n {
+        doubled[2 * i] = 2 * c.ranges[i];
+    }
+    let star = a0_min_taps(c.n as i32, c.ranges.iter().map(|x| *x as i32).collect()) as i64;
+    for i in 0..5 {
+        let got = arm(i, c.n, c.ranges);
+        let what = f"arm {i} case {t.cases} n {c.n} {c.ranges}: got {got}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal {want}");
+        // P2: the garden turned round: the same answer
+        let rv = arm(i, c.n, reversed);
+        expect(mut t, 2, rv == got, f"P2 {what}, reversed: {rv}");
+        // P3: every tap reaching one further: no more taps, and -1 only if
+        // the narrower garden had it too
+        let wd = arm(i, c.n, wider);
+        expect(mut t, 3, rank(wd) <= rank(got), f"P3 {what}, one wider: {wd}");
+        // P4: one tap shut: no fewer taps
+        let fw = arm(i, c.n, fewer);
+        expect(mut t, 4, rank(fw) >= rank(got), f"P4 {what}, tap {c.shut} shut: {fw}");
+        // P5: the garden stretched to twice its length, every tap twice as
+        // far apart and reaching twice as far, a shut tap between each two:
+        // the same answer
+        let db = arm(i, 2 * c.n, doubled);
+        expect(mut t, 5, db == got, f"P5 {what}, stretched: {db}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 gardens of 1 to 8 in four kinds, 500 each: every tap reaching 0
+    // or 1; 0 to 2; 0 to 4; and three taps in four shut, the rest reaching
+    // 1 to 3. Every garden and shut tap is drawn before any arm answers.
+    let mut seed = 13261;
+    let mut cases: Vec[Case] = Vec.new();
+    for i in 0..2000 {
+        let kind = i / 500;
+        let n = 1 + next_random(mut seed) % 8;
+        let mut ranges: Vec[i64] = Vec.new();
+        for _ in 0..=n {
+            let r = if kind == 0 {
+                next_random(mut seed) % 2
+            } else if kind == 1 {
+                next_random(mut seed) % 3
+            } else if kind == 2 {
+                next_random(mut seed) % 5
+            } else if next_random(mut seed) % 4 == 0 {
+                1 + next_random(mut seed) % 3
+            } else {
+                0
+            };
+            ranges.push(r);
+        }
+        let shut = next_random(mut seed) % (n + 1);
+        cases.push(Case { n, ranges, shut });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} gardens: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
