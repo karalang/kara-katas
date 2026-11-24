@@ -1,0 +1,66 @@
+// LeetCode #1330: Reverse Subarray To Maximize Array Value -- the ★ arm:
+// a reversal changes only the two neighbour pairs at its ends. Reversing a
+// prefix or a suffix changes one pair, tried at every place; reversing
+// from inside to inside gains at best twice the gap between the largest
+// smaller value of any pair and the smallest larger value of any pair.
+// O(n)
+
+fn max_value_after_reverse(nums: Vec[i32]) -> i32 {
+    let n = nums.len();
+    let mut total: i32 = 0;
+    let mut gain: i32 = 0;
+    let mut high_low = i32.MIN;
+    let mut low_high = i32.MAX;
+    for i in 0..n - 1 {
+        let a = nums[i];
+        let b = nums[i + 1];
+        let d = (a - b).abs();
+        total += d;
+        // the prefix through a reversed, so nums[0] meets b
+        gain = max(gain, (nums[0] - b).abs() - d);
+        // the suffix from b reversed, so a meets the last value
+        gain = max(gain, (nums[n - 1] - a).abs() - d);
+        high_low = max(high_low, min(a, b));
+        low_high = min(low_high, max(a, b));
+    }
+    if n > 1 {
+        gain = max(gain, 2 * (high_low - low_high));
+    }
+    total + gain
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; one value; two; all equal; a rise that a
+    // reversal of a prefix helps; and 400 values swinging between the
+    // constraints' extremes
+    let swing: Vec[i32] = (0..400).map(|i| if i % 2 == 0 { 100000 } else { -100000 }).collect();
+    let mut climb: Vec[i32] = Vec.new();
+    for i in 0..400 {
+        climb.push((i * 495 - 99000) as i32);
+    }
+    println(f"{max_value_after_reverse([2, 3, 1, 5, 4])} {max_value_after_reverse([2, 4, 9, 24, 2, 1, 10])} {max_value_after_reverse([5])} {max_value_after_reverse([1, 9])} {max_value_after_reverse([7, 7, 7, 7])} {max_value_after_reverse([1, 2, 3, 10])} {max_value_after_reverse(swing)} {max_value_after_reverse(climb)}");
+    // 600 random arrays of 1 to 400 values, most of them short, the
+    // values within 10, 1000 or 100000 either side of 0
+    let mut seed = 1330;
+    let mut check = 0;
+    let mut total = 0;
+    for t in 0..600 {
+        let n = if t % 20 == 0 { 1 + next_random(mut seed) % 400 } else { 1 + next_random(mut seed) % 12 };
+        let reach = if t % 3 == 0 { 10 } else if t % 3 == 1 { 1000 } else { 100000 };
+        let mut nums: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            nums.push((next_random(mut seed) % (2 * reach + 1) - reach) as i32);
+        }
+        let got = max_value_after_reverse(nums);
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"600 random arrays: values total {total}, checksum {check}");
+}

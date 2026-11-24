@@ -1,0 +1,260 @@
+// LeetCode #1330: Reverse Subarray To Maximize Array Value --
+// differential test of the five arms against the statement read
+// literally, with five more properties.
+//
+// The statement: the value of an array is the sum of |nums[i] -
+// nums[i + 1]| for all 0 <= i < nums.length - 1. You are allowed to select
+// any subarray of the given array and reverse it, only once. Find the
+// maximum possible value of the final array.
+
+// ---- max_value_after_reverse.kara ----
+fn a0_max_value_after_reverse(nums: Vec[i32]) -> i32 {
+    let n = nums.len();
+    let mut total: i32 = 0;
+    let mut gain: i32 = 0;
+    let mut high_low = i32.MIN;
+    let mut low_high = i32.MAX;
+    for i in 0..n - 1 {
+        let a = nums[i];
+        let b = nums[i + 1];
+        let d = (a - b).abs();
+        total += d;
+        // the prefix through a reversed, so nums[0] meets b
+        gain = max(gain, (nums[0] - b).abs() - d);
+        // the suffix from b reversed, so a meets the last value
+        gain = max(gain, (nums[n - 1] - a).abs() - d);
+        high_low = max(high_low, min(a, b));
+        low_high = min(low_high, max(a, b));
+    }
+    if n > 1 {
+        gain = max(gain, 2 * (high_low - low_high));
+    }
+    total + gain
+}
+
+// ---- max_value_after_reverse_signs.kara ----
+fn a1_max_value_after_reverse(nums: Vec[i32]) -> i32 {
+    let n = nums.len();
+    let v: Vec[i64] = nums.iter().map(|x| x as i64).collect();
+    let mut total = 0;
+    let mut gain = 0;
+    let mut best: Vec[Option[i64]] = Vec.filled(4, None);
+    for j in 0..n - 1 {
+        let c = v[j];
+        let d = v[j + 1];
+        let gap = (c - d).abs();
+        total += gap;
+        gain = max(gain, (v[0] - d).abs() - gap);
+        gain = max(gain, (v[n - 1] - c).abs() - gap);
+        for k in 0..4 {
+            let s = if k % 2 == 0 { 1 } else { -1 };
+            let t = if k / 2 == 0 { 1 } else { -1 };
+            if let Some(left) = best[k] {
+                gain = max(gain, left - s * c - t * d - gap);
+            }
+            let here = s * c + t * d - gap;
+            best[k] = Some(match best[k] {
+                Some(left) => max(left, here),
+                None => here,
+            });
+        }
+    }
+    (total + gain) as i32
+}
+
+// ---- max_value_after_reverse_pairs.kara ----
+fn a2_gap(a: i32, b: i32) -> i32 {
+    (a - b).abs()
+}
+
+fn a2_max_value_after_reverse(nums: Vec[i32]) -> i32 {
+    let n = nums.len();
+    let mut total: i32 = 0;
+    for i in 1..n {
+        total += a2_gap(nums[i - 1], nums[i]);
+    }
+    let mut gain: i32 = 0;
+    for l in 0..n {
+        for r in l + 1..n {
+            let mut g: i32 = 0;
+            if l > 0 {
+                g += a2_gap(nums[l - 1], nums[r]) - a2_gap(nums[l - 1], nums[l]);
+            }
+            if r + 1 < n {
+                g += a2_gap(nums[l], nums[r + 1]) - a2_gap(nums[r], nums[r + 1]);
+            }
+            gain = max(gain, g);
+        }
+    }
+    total + gain
+}
+
+// ---- max_value_after_reverse_iter.kara ----
+fn a3_max_value_after_reverse(nums: Vec[i32]) -> i32 {
+    let first = nums[0];
+    let last = nums[nums.len() - 1];
+    let pairs: Vec[(i32, i32)] = nums.iter().zip(nums[1..].iter()).collect();
+    let total: i32 = pairs.iter().map(|(a, b)| (a - b).abs()).sum();
+    let ends = pairs
+        .iter()
+        .map(|(a, b)| max((first - b).abs(), (last - a).abs()) - (a - b).abs())
+        .max()
+        .unwrap_or(0);
+    let high_low = pairs.iter().map(|(a, b)| min(a, b)).max().unwrap_or(0);
+    let low_high = pairs.iter().map(|(a, b)| max(a, b)).min().unwrap_or(0);
+    total + max(0, max(ends, 2 * (high_low - low_high)))
+}
+
+// ---- max_value_after_reverse_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_max_value_after_reverse(nums: Vec[i32]) -> i32 {
+        let n = nums.len();
+        if n == 1 {
+            return 0;
+        }
+        let mut total: i32 = 0;
+        let mut res: i32 = 0;
+        let mut (mx, mn) = (i32.MIN, i32.MAX);
+        for w in nums.windows(2) {
+            let (a, b) = (w[0], w[1]);
+            total += (a - b).abs();
+            res = res.max((nums[0] - b).abs() - (a - b).abs());
+            res = res.max((nums[n - 1] - a).abs() - (a - b).abs());
+            mx = mx.max(a.min(b));
+            mn = mn.min(a.max(b));
+        }
+        total + res.max(2 * (mx - mn))
+    }
+}
+
+fn a4_max_value_after_reverse(nums: Vec[i32]) -> i32 {
+    A4Solution.a4_max_value_after_reverse(nums)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every subarray reversed in a copy, the
+// copy's value summed, and the largest value kept
+fn literal(nums: Vec[i32]) -> i64 {
+    let n = nums.len();
+    let mut best = 0;
+    for l in 0..n {
+        for r in l..n {
+            let mut copy = nums.clone();
+            copy[l..=r].reverse();
+            let mut value = 0;
+            for i in 0..n - 1 {
+                value += (copy[i] - copy[i + 1]).abs();
+            }
+            best = max(best, value);
+        }
+    }
+    best
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, nums: Vec[i32]) -> i64 {
+    let got = match i {
+        0 => a0_max_value_after_reverse(nums),
+        1 => a1_max_value_after_reverse(nums),
+        2 => a2_max_value_after_reverse(nums),
+        3 => a3_max_value_after_reverse(nums),
+        _ => a4_max_value_after_reverse(nums),
+    };
+    got
+}
+
+fn check_case(t: mut ref Tally, nums: Vec[i32], shift: i32) {
+    t.cases += 1;
+    let want = literal(nums);
+    t.check = (t.check * 131 + want) % 1000000007;
+    let reversed: Vec[i32] = nums.iter().rev().cloned().collect();
+    let negated: Vec[i32] = nums.iter().map(|x| -x).collect();
+    let shifted: Vec[i32] = nums.iter().map(|x| x + shift).collect();
+    let doubled: Vec[i32] = nums.iter().map(|x| 2 * x).collect();
+    let star = arm(0, nums);
+    for i in 0..5 {
+        let got = arm(i, nums);
+        let what = f"arm {i} case {t.cases} {nums}: got {got}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal {want}");
+        // P2: the array read backwards: the same answer
+        let rv = arm(i, reversed);
+        expect(mut t, 2, rv == got, f"P2 {what}, backwards: {rv}");
+        // P3: every value negated: the same answer
+        let ng = arm(i, negated);
+        expect(mut t, 3, ng == got, f"P3 {what}, negated: {ng}");
+        // P4: every value moved by one amount: the same answer
+        let sh = arm(i, shifted);
+        expect(mut t, 4, sh == got, f"P4 {what}, moved by {shift}: {sh}");
+        // P5: every value doubled: twice the answer
+        let db = arm(i, doubled);
+        expect(mut t, 5, db == 2 * got, f"P5 {what}, doubled: {db}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 arrays of 1 to 8 values in four kinds, 500 each: values within
+    // 3 of 0; within 20; within 1000; and rising by 0 to 9 from a start
+    // within 50. Every array and the amount each is moved by are drawn
+    // before any arm answers.
+    let mut seed = 13301;
+    let mut cases: Vec[(Vec[i32], i32)] = Vec.new();
+    for c in 0..2000 {
+        let kind = c / 500;
+        let n = 1 + next_random(mut seed) % 8;
+        let mut nums: Vec[i32] = Vec.new();
+        let mut v = next_random(mut seed) % 101 - 50;
+        for _ in 0..n {
+            let x = if kind == 0 {
+                next_random(mut seed) % 7 - 3
+            } else if kind == 1 {
+                next_random(mut seed) % 41 - 20
+            } else if kind == 2 {
+                next_random(mut seed) % 2001 - 1000
+            } else {
+                v += next_random(mut seed) % 10;
+                v
+            };
+            nums.push(x as i32);
+        }
+        let shift = (next_random(mut seed) % 2001 - 1000) as i32;
+        cases.push((nums, shift));
+    }
+    for (nums, shift) in cases.iter() {
+        check_case(mut t, nums, shift);
+    }
+    println(f"{t.cases} arrays: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

@@ -1,0 +1,56 @@
+// LeetCode #1330 bench: the ★ arm (the prefix, suffix and inside
+// reversals' best gains in one pass) on 20 arrays of 3 * 10^4 values, the
+// constraints' longest, within 30000 of 0, built once. Then 75 passes,
+// each setting one value of every array from the checksum so far,
+// answering it and folding the answer plus the pass into the checksum.
+
+fn max_value_after_reverse(nums: Vec[i32]) -> i32 {
+    let n = nums.len();
+    let mut total: i32 = 0;
+    let mut gain: i32 = 0;
+    let mut high_low = i32.MIN;
+    let mut low_high = i32.MAX;
+    for i in 0..n - 1 {
+        let a = nums[i];
+        let b = nums[i + 1];
+        let d = (a - b).abs();
+        total += d;
+        // the prefix through a reversed, so nums[0] meets b
+        gain = max(gain, (nums[0] - b).abs() - d);
+        // the suffix from b reversed, so a meets the last value
+        gain = max(gain, (nums[n - 1] - a).abs() - d);
+        high_low = max(high_low, min(a, b));
+        low_high = min(low_high, max(a, b));
+    }
+    if n > 1 {
+        gain = max(gain, 2 * (high_low - low_high));
+    }
+    total + gain
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let n = 30000;
+    let mut seed = 1330;
+    let mut arrays: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..20 {
+        let mut nums: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            nums.push((next_random(mut seed) % 60001 - 30000) as i32);
+        }
+        arrays.push(nums);
+    }
+    let mut check: i64 = 0;
+    for pass in 0..75 {
+        for t in 0..20 {
+            arrays[t][check % n] = ((check / 7) % 60001 - 30000) as i32;
+            let got = max_value_after_reverse(arrays[t]);
+            check = (check * 31 + got + pass) % 1000000007;
+        }
+    }
+    println(f"75 passes over 20 arrays of 3 * 10^4: checksum {check}");
+}
