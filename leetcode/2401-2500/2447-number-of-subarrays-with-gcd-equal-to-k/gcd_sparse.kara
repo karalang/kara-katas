@@ -1,0 +1,136 @@
+// LeetCode #2447: Number of Subarrays With GCD Equal to K -- a sparse
+// table of GCDs over spans of 2^p values, so any range's GCD is two
+// lookups; from each start the GCD only divides down as the end moves
+// right, so the ends where it is `k` are one run, found by two binary
+// searches: the first end whose GCD is `k` or no multiple of `k`, and the
+// first whose GCD is no multiple. O(n log n log V).
+
+fn gcd(a: i64, b: i64) -> i64 {
+    let mut x = a;
+    let mut y = b;
+    while y != 0 {
+        let r = x % y;
+        x = y;
+        y = r;
+    }
+    x
+}
+
+struct Sparse {
+    table: Vec[Vec[i64]],
+}
+
+impl Sparse {
+    fn new(nums: Vec[i64]) -> Sparse {
+        let n = nums.len();
+        let mut table: Vec[Vec[i64]] = [nums.clone()].to_vec();
+        let mut span = 1;
+        while 2 * span <= n {
+            let below = table[table.len() - 1].clone();
+            let mut row: Vec[i64] = Vec.new();
+            for i in 0..n - 2 * span + 1 {
+                row.push(gcd(below[i], below[i + span]));
+            }
+            table.push(row);
+            span *= 2;
+        }
+        Sparse { table: table }
+    }
+
+    // the GCD of `nums[l..=r]`
+    fn query(self, l: i64, r: i64) -> i64 {
+        let mut p = 0;
+        while (2 << p) <= r - l + 1 {
+            p += 1;
+        }
+        gcd(self.table[p][l], self.table[p][r + 1 - (1 << p)])
+    }
+}
+
+// the first end `j` from `i` with `stop(gcd(nums[i..=j]))`, or `n`
+fn first_end(sparse: Sparse, i: i64, n: i64, k: i64, exact: bool) -> i64 {
+    let mut lo = i;
+    let mut hi = n;
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        let g = sparse.query(i, mid);
+        let stop = g % k != 0 or (exact and g == k);
+        if stop {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    lo
+}
+
+fn subarray_gcd(nums: Vec[i64], k: i64) -> i64 {
+    let n = nums.len();
+    let sparse = Sparse.new(nums);
+    let mut count = 0;
+    for i in 0..n {
+        let first = first_end(sparse, i, n, k, true);
+        let past = first_end(sparse, i, n, k, false);
+        count += past - first;
+    }
+    count
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; one value equal to k; k larger than every
+    // value; k of 10^9
+    println(f"example 1: {subarray_gcd([9, 3, 1, 2, 6, 3].to_vec(), 3)}");
+    println(f"example 2: {subarray_gcd([4].to_vec(), 7)}");
+    println(f"one value: {subarray_gcd([5].to_vec(), 5)}");
+    println(f"k too large: {subarray_gcd([6, 12, 18].to_vec(), 36)}");
+    println(f"k of 10^9: {subarray_gcd([1000000000, 1000000000, 999999999].to_vec(), 1000000000)}");
+    // 1000 values, the constraints' most: all equal to k; random
+    // multiples of 6 up to 6000 against 6; random from 1 to 10^9 against
+    // 1; and multiples of 12 with every 100th place 18, against 6
+    let n = 1000;
+    let same: Vec[i64] = Vec.filled(n, 1000000000);
+    println(f"all equal: {subarray_gcd(same, 1000000000)}");
+    let mut seed = 2447;
+    let mut sixes: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        sixes.push(6 * (1 + next_random(mut seed) % 1000));
+    }
+    println(f"multiples of 6: {subarray_gcd(sixes, 6)}");
+    let mut wide: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        wide.push(1 + wide_random(mut seed) % 1000000000);
+    }
+    println(f"wide against 1: {subarray_gcd(wide, 1)}");
+    let mut twelves: Vec[i64] = Vec.new();
+    for i in 0..n {
+        twelves.push(if i % 100 == 99 { 18 } else { 12 * (1 + next_random(mut seed) % 1000) });
+    }
+    println(f"twelves and eighteens: {subarray_gcd(twelves, 6)}");
+    // 3000 random arrays of 1 to 12 values from 1 to 12, k from 1 to 6: a
+    // checksum and the total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let len = 1 + next_random(mut seed) % 12;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..len {
+            nums.push(1 + next_random(mut seed) % 12);
+        }
+        let k = 1 + next_random(mut seed) % 6;
+        let answer = subarray_gcd(nums, k);
+        check = (check * 31 + answer) % 1000000007;
+        total += answer;
+    }
+    println(f"3000 random: checksum {check}, total {total}");
+}

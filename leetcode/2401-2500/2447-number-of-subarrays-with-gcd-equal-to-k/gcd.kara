@@ -1,0 +1,92 @@
+// LeetCode #2447: Number of Subarrays With GCD Equal to K -- the ★ arm:
+// from each start, the GCD of the subarray kept as it grows; it only
+// divides down, so once it is no longer a multiple of `k` no longer
+// subarray from that start can reach `k`, and the walk stops there.
+// O(n^2 log V) at worst.
+
+fn gcd(a: i64, b: i64) -> i64 {
+    let mut x = a;
+    let mut y = b;
+    while y != 0 {
+        let r = x % y;
+        x = y;
+        y = r;
+    }
+    x
+}
+
+fn subarray_gcd(nums: Vec[i64], k: i64) -> i64 {
+    let mut count = 0;
+    for i in 0..nums.len() {
+        let mut g = 0;
+        for j in i..nums.len() {
+            g = gcd(g, nums[j]);
+            if g % k != 0 {
+                break;
+            }
+            if g == k {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; one value equal to k; k larger than every
+    // value; k of 10^9
+    println(f"example 1: {subarray_gcd([9, 3, 1, 2, 6, 3].to_vec(), 3)}");
+    println(f"example 2: {subarray_gcd([4].to_vec(), 7)}");
+    println(f"one value: {subarray_gcd([5].to_vec(), 5)}");
+    println(f"k too large: {subarray_gcd([6, 12, 18].to_vec(), 36)}");
+    println(f"k of 10^9: {subarray_gcd([1000000000, 1000000000, 999999999].to_vec(), 1000000000)}");
+    // 1000 values, the constraints' most: all equal to k; random
+    // multiples of 6 up to 6000 against 6; random from 1 to 10^9 against
+    // 1; and multiples of 12 with every 100th place 18, against 6
+    let n = 1000;
+    let same: Vec[i64] = Vec.filled(n, 1000000000);
+    println(f"all equal: {subarray_gcd(same, 1000000000)}");
+    let mut seed = 2447;
+    let mut sixes: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        sixes.push(6 * (1 + next_random(mut seed) % 1000));
+    }
+    println(f"multiples of 6: {subarray_gcd(sixes, 6)}");
+    let mut wide: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        wide.push(1 + wide_random(mut seed) % 1000000000);
+    }
+    println(f"wide against 1: {subarray_gcd(wide, 1)}");
+    let mut twelves: Vec[i64] = Vec.new();
+    for i in 0..n {
+        twelves.push(if i % 100 == 99 { 18 } else { 12 * (1 + next_random(mut seed) % 1000) });
+    }
+    println(f"twelves and eighteens: {subarray_gcd(twelves, 6)}");
+    // 3000 random arrays of 1 to 12 values from 1 to 12, k from 1 to 6: a
+    // checksum and the total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let len = 1 + next_random(mut seed) % 12;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..len {
+            nums.push(1 + next_random(mut seed) % 12);
+        }
+        let k = 1 + next_random(mut seed) % 6;
+        let answer = subarray_gcd(nums, k);
+        check = (check * 31 + answer) % 1000000007;
+        total += answer;
+    }
+    println(f"3000 random: checksum {check}, total {total}");
+}
