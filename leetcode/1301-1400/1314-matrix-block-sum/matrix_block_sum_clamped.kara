@@ -1,0 +1,88 @@
+// LeetCode #1314: Matrix Block Sum -- a second Rust solution as LeetCode's
+// Rust users write it (the prefix table and the loops in `i32`, each corner
+// clamped by `(i - k).max(0)` and `(i + k).min(m - 1)` and cast `as usize`
+// only to index), carried to Kāra by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn matrix_block_sum(mat: Vec[Vec[i32]], k: i32) -> Vec[Vec[i32]] {
+        let m = mat.len() as i32;
+        let n = mat[0].len() as i32;
+        let mut pre = Vec.filled(m as i64 + 1, Vec.filled(n as i64 + 1, 0i32));
+        for i in 1..=m as i64 {
+            for j in 1..=n as i64 {
+                pre[i][j] = pre[i - 1][j] + pre[i][j - 1] - pre[i - 1][j - 1] + mat[i - 1][j - 1];
+            }
+        }
+        let mut res = Vec.filled(m, Vec.filled(n, 0i32));
+        for i in 0..m {
+            for j in 0..n {
+                let r1 = (i - k).max(0) as i64;
+                let c1 = (j - k).max(0) as i64;
+                let r2 = (i + k).min(m - 1) as i64 + 1;
+                let c2 = (j + k).min(n - 1) as i64 + 1;
+                res[i][j] = pre[r2][c2] - pre[r1][c2] - pre[r2][c1] + pre[r1][c1];
+            }
+        }
+        res
+    }
+}
+
+fn matrix_block_sum(mat: Vec[Vec[i64]], k: i64) -> Vec[Vec[i64]] {
+    let mat: Vec[Vec[i32]] = mat.iter().map(|r| r.iter().map(|x| x as i32).collect()).collect();
+    Solution.matrix_block_sum(mat, k as i32).iter().map(|r| r.iter().map(|x| x as i64).collect()).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(grid: Vec[Vec[i64]]) -> String {
+    let rows: Vec[String] = grid.iter().map(|row| {
+        let cells: Vec[String] = row.iter().map(|x| f"{x}").collect();
+        cells.join(",")
+    }).collect();
+    rows.join("/")
+}
+
+fn main() {
+    // LeetCode's two examples; one cell; a single row with k past its ends;
+    // and a single column
+    let three = [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
+    let e1 = matrix_block_sum(three, 1);
+    let e2 = matrix_block_sum(three, 2);
+    let one = matrix_block_sum([[5]], 3);
+    let row = matrix_block_sum([[1, 2, 3, 4, 5]], 1);
+    let column = matrix_block_sum([[1], [2], [3], [4]], 2);
+    println(f"{show(e1)} {show(e2)} {show(one)} {show(row)} {show(column)}");
+    // 600 random matrices of 1 to 100 rows and columns, the constraints'
+    // most, with values from 1 to 100 and k from 1 to 100, most of it small
+    let mut seed = 1314;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..600 {
+        let m = 1 + next_random(mut seed) % 100;
+        let n = 1 + next_random(mut seed) % 100;
+        let k = if next_random(mut seed) % 4 == 0 { 1 + next_random(mut seed) % 100 } else { 1 + next_random(mut seed) % 5 };
+        let mut mat: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..m {
+            let mut r: Vec[i64] = Vec.new();
+            for _ in 0..n {
+                r.push(1 + next_random(mut seed) % 100);
+            }
+            mat.push(r);
+        }
+        let got = matrix_block_sum(mat, k);
+        for r in got.iter() {
+            for x in r.iter() {
+                total += x;
+                check = (check * 31 + x) % 1000000007;
+            }
+        }
+    }
+    println(f"600 random matrices: sum of answers {total}, checksum {check}");
+}

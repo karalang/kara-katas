@@ -1,0 +1,84 @@
+// LeetCode #1314: Matrix Block Sum -- the row arm: a running sum along each
+// row on its own, so that a block's slice of one row is two lookups; each
+// cell's block then added up a row at a time. O(m n min(2k + 1, m))
+
+fn matrix_block_sum(mat: Vec[Vec[i64]], k: i64) -> Vec[Vec[i64]] {
+    let m = mat.len();
+    let n = mat[0].len();
+    let mut along: Vec[Vec[i64]] = Vec.new();
+    for row in mat.iter() {
+        let mut running: Vec[i64] = [0];
+        for x in row.iter() {
+            running.push(running[running.len() - 1] + x);
+        }
+        along.push(running);
+    }
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    for i in 0..m {
+        let mut line: Vec[i64] = Vec.new();
+        for j in 0..n {
+            let left = (j - k).max(0);
+            let right = (j + k + 1).min(n);
+            let mut sum = 0;
+            for r in (i - k).max(0)..(i + k + 1).min(m) {
+                sum += along[r][right] - along[r][left];
+            }
+            line.push(sum);
+        }
+        out.push(line);
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(grid: Vec[Vec[i64]]) -> String {
+    let rows: Vec[String] = grid.iter().map(|row| {
+        let cells: Vec[String] = row.iter().map(|x| f"{x}").collect();
+        cells.join(",")
+    }).collect();
+    rows.join("/")
+}
+
+fn main() {
+    // LeetCode's two examples; one cell; a single row with k past its ends;
+    // and a single column
+    let three = [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
+    let e1 = matrix_block_sum(three, 1);
+    let e2 = matrix_block_sum(three, 2);
+    let one = matrix_block_sum([[5]], 3);
+    let row = matrix_block_sum([[1, 2, 3, 4, 5]], 1);
+    let column = matrix_block_sum([[1], [2], [3], [4]], 2);
+    println(f"{show(e1)} {show(e2)} {show(one)} {show(row)} {show(column)}");
+    // 600 random matrices of 1 to 100 rows and columns, the constraints'
+    // most, with values from 1 to 100 and k from 1 to 100, most of it small
+    let mut seed = 1314;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..600 {
+        let m = 1 + next_random(mut seed) % 100;
+        let n = 1 + next_random(mut seed) % 100;
+        let k = if next_random(mut seed) % 4 == 0 { 1 + next_random(mut seed) % 100 } else { 1 + next_random(mut seed) % 5 };
+        let mut mat: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..m {
+            let mut r: Vec[i64] = Vec.new();
+            for _ in 0..n {
+                r.push(1 + next_random(mut seed) % 100);
+            }
+            mat.push(r);
+        }
+        let got = matrix_block_sum(mat, k);
+        for r in got.iter() {
+            for x in r.iter() {
+                total += x;
+                check = (check * 31 + x) % 1000000007;
+            }
+        }
+    }
+    println(f"600 random matrices: sum of answers {total}, checksum {check}");
+}

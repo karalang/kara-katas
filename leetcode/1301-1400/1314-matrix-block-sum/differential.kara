@@ -1,0 +1,338 @@
+// LeetCode #1314: Matrix Block Sum -- differential test of the five arms
+// against the statement read literally, with five more properties.
+//
+// The statement: given an m x n matrix mat and an integer k, return a
+// matrix answer where each answer[i][j] is the sum of all mat[r][c] for
+// i - k <= r <= i + k, j - k <= c <= j + k, and (r, c) a valid position in
+// the matrix.
+
+// ---- matrix_block_sum.kara ----
+fn a0_matrix_block_sum(mat: Vec[Vec[i64]], k: i64) -> Vec[Vec[i64]] {
+    let m = mat.len();
+    let n = mat[0].len();
+    let mut sums: Vec[Vec[i64]] = Vec.filled(m + 1, Vec.filled(n + 1, 0));
+    for i in 0..m {
+        for j in 0..n {
+            sums[i + 1][j + 1] = mat[i][j] + sums[i][j + 1] + sums[i + 1][j] - sums[i][j];
+        }
+    }
+    let mut out: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, 0));
+    for i in 0..m {
+        let top = (i - k).max(0);
+        let bottom = (i + k + 1).min(m);
+        for j in 0..n {
+            let left = (j - k).max(0);
+            let right = (j + k + 1).min(n);
+            out[i][j] = sums[bottom][right] - sums[top][right] - sums[bottom][left] + sums[top][left];
+        }
+    }
+    out
+}
+
+// ---- matrix_block_sum_rows.kara ----
+fn a1_matrix_block_sum(mat: Vec[Vec[i64]], k: i64) -> Vec[Vec[i64]] {
+    let m = mat.len();
+    let n = mat[0].len();
+    let mut along: Vec[Vec[i64]] = Vec.new();
+    for row in mat.iter() {
+        let mut running: Vec[i64] = [0];
+        for x in row.iter() {
+            running.push(running[running.len() - 1] + x);
+        }
+        along.push(running);
+    }
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    for i in 0..m {
+        let mut line: Vec[i64] = Vec.new();
+        for j in 0..n {
+            let left = (j - k).max(0);
+            let right = (j + k + 1).min(n);
+            let mut sum = 0;
+            for r in (i - k).max(0)..(i + k + 1).min(m) {
+                sum += along[r][right] - along[r][left];
+            }
+            line.push(sum);
+        }
+        out.push(line);
+    }
+    out
+}
+
+// ---- matrix_block_sum_sliding.kara ----
+fn a2_slide(line: Vec[i64], k: i64) -> Vec[i64] {
+    let len = line.len();
+    let mut window = 0;
+    for x in line.iter().take(k) {
+        window += x;
+    }
+    let mut out: Vec[i64] = Vec.new();
+    for j in 0..len {
+        if j + k < len {
+            window += line[j + k];
+        }
+        if j - k - 1 >= 0 {
+            window -= line[j - k - 1];
+        }
+        out.push(window);
+    }
+    out
+}
+
+fn a2_matrix_block_sum(mat: Vec[Vec[i64]], k: i64) -> Vec[Vec[i64]] {
+    let m = mat.len();
+    let n = mat[0].len();
+    let across: Vec[Vec[i64]] = mat.iter().map(|row| a2_slide(row, k)).collect();
+    let mut out: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, 0));
+    for j in 0..n {
+        let column: Vec[i64] = across.iter().map(|row| row[j]).collect();
+        let down = a2_slide(column, k);
+        for i in 0..m {
+            out[i][j] = down[i];
+        }
+    }
+    out
+}
+
+// ---- matrix_block_sum_solution.kara ----
+struct A3Solution {}
+
+impl A3Solution {
+    pub fn a3_matrix_block_sum(mat: Vec[Vec[i32]], k: i32) -> Vec[Vec[i32]] {
+        let (m, n) = (mat.len(), mat[0].len());
+        let k = k as i64;
+        let mut p = Vec.filled(m + 1, Vec.filled(n + 1, 0i32));
+        for i in 0..m {
+            for j in 0..n {
+                p[i + 1][j + 1] = mat[i][j] + p[i][j + 1] + p[i + 1][j] - p[i][j];
+            }
+        }
+        let mut ans = Vec.filled(m, Vec.filled(n, 0i32));
+        for i in 0..m {
+            for j in 0..n {
+                let r1 = i.saturating_sub(k).max(0);
+                let c1 = j.saturating_sub(k).max(0);
+                let r2 = (i + k + 1).min(m);
+                let c2 = (j + k + 1).min(n);
+                ans[i][j] = p[r2][c2] - p[r1][c2] - p[r2][c1] + p[r1][c1];
+            }
+        }
+        ans
+    }
+}
+
+fn a3_matrix_block_sum(mat: Vec[Vec[i64]], k: i64) -> Vec[Vec[i64]] {
+    let mat: Vec[Vec[i32]] = mat.iter().map(|r| r.iter().map(|x| x as i32).collect()).collect();
+    A3Solution.a3_matrix_block_sum(mat, k as i32).iter().map(|r| r.iter().map(|x| x as i64).collect()).collect()
+}
+
+// ---- matrix_block_sum_clamped.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_matrix_block_sum(mat: Vec[Vec[i32]], k: i32) -> Vec[Vec[i32]] {
+        let m = mat.len() as i32;
+        let n = mat[0].len() as i32;
+        let mut pre = Vec.filled(m as i64 + 1, Vec.filled(n as i64 + 1, 0i32));
+        for i in 1..=m as i64 {
+            for j in 1..=n as i64 {
+                pre[i][j] = pre[i - 1][j] + pre[i][j - 1] - pre[i - 1][j - 1] + mat[i - 1][j - 1];
+            }
+        }
+        let mut res = Vec.filled(m, Vec.filled(n, 0i32));
+        for i in 0..m {
+            for j in 0..n {
+                let r1 = (i - k).max(0) as i64;
+                let c1 = (j - k).max(0) as i64;
+                let r2 = (i + k).min(m - 1) as i64 + 1;
+                let c2 = (j + k).min(n - 1) as i64 + 1;
+                res[i][j] = pre[r2][c2] - pre[r1][c2] - pre[r2][c1] + pre[r1][c1];
+            }
+        }
+        res
+    }
+}
+
+fn a4_matrix_block_sum(mat: Vec[Vec[i64]], k: i64) -> Vec[Vec[i64]] {
+    let mat: Vec[Vec[i32]] = mat.iter().map(|r| r.iter().map(|x| x as i32).collect()).collect();
+    A4Solution.a4_matrix_block_sum(mat, k as i32).iter().map(|r| r.iter().map(|x| x as i64).collect()).collect()
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// for every cell, every position of the matrix looked at, and its number
+// added when both its row and its column are within k
+fn literal(mat: Vec[Vec[i64]], k: i64) -> Vec[Vec[i64]] {
+    let m = mat.len();
+    let n = mat[0].len();
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    for i in 0..m {
+        let mut line: Vec[i64] = Vec.new();
+        for j in 0..n {
+            let mut sum = 0;
+            for r in 0..m {
+                for c in 0..n {
+                    if i - k <= r and r <= i + k and j - k <= c and c <= j + k {
+                        sum += mat[r][c];
+                    }
+                }
+            }
+            line.push(sum);
+        }
+        out.push(line);
+    }
+    out
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(grid: Vec[Vec[i64]]) -> String {
+    let rows: Vec[String] = grid.iter().map(|row| {
+        let cells: Vec[String] = row.iter().map(|x| f"{x}").collect();
+        cells.join(",")
+    }).collect();
+    rows.join("/")
+}
+
+fn transpose(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    for j in 0..grid[0].len() {
+        out.push(grid.iter().map(|row| row[j]).collect());
+    }
+    out
+}
+
+struct Case {
+    mat: Vec[Vec[i64]],
+    k: i64,
+    // P4: how much every number is raised
+    raise: i64,
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, mat: Vec[Vec[i64]], k: i64) -> Vec[Vec[i64]] {
+    match i {
+        0 => a0_matrix_block_sum(mat, k),
+        1 => a1_matrix_block_sum(mat, k),
+        2 => a2_matrix_block_sum(mat, k),
+        3 => a3_matrix_block_sum(mat, k),
+        _ => a4_matrix_block_sum(mat, k),
+    }
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    t.cases += 1;
+    let m = c.mat.len();
+    let n = c.mat[0].len();
+    let want = literal(c.mat, c.k);
+    for row in want.iter() {
+        for x in row.iter() {
+            t.check = (t.check * 31 + x) % 1000000007;
+        }
+    }
+    let flipped: Vec[Vec[i64]] = c.mat.iter().rev().map(|row| row.clone()).collect();
+    let raised: Vec[Vec[i64]] = c.mat.iter().map(|row| row.iter().map(|x| x + c.raise).collect()).collect();
+    let mut whole = 0;
+    for row in c.mat.iter() {
+        for x in row.iter() {
+            whole += x;
+        }
+    }
+    let star = a0_matrix_block_sum(c.mat, c.k);
+    for i in 0..5 {
+        let got = arm(i, c.mat, c.k);
+        let what = f"arm {i} case {t.cases} k {c.k} [{show(c.mat)}]: got [{show(got)}]";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal [{show(want)}]");
+        // P2: the matrix turned on its side, the answer with it
+        let tr = arm(i, transpose(c.mat), c.k);
+        expect(mut t, 2, tr == transpose(got), f"P2 {what}, transposed: [{show(tr)}]");
+        // P3: the rows in the reverse order, the answer's rows with them
+        let fl: Vec[Vec[i64]] = arm(i, flipped, c.k).iter().rev().map(|row| row.clone()).collect();
+        expect(mut t, 3, fl == got, f"P3 {what}, upside down, turned back: [{show(fl)}]");
+        // P4: every number raised, each answer raised that much for every
+        // cell of its block
+        let rs = arm(i, raised, c.k);
+        let mut ok = true;
+        for r in 0..m {
+            for col in 0..n {
+                let rows = (r + c.k + 1).min(m) - (r - c.k).max(0);
+                let cols = (col + c.k + 1).min(n) - (col - c.k).max(0);
+                if rs[r][col] != got[r][col] + c.raise * rows * cols {
+                    ok = false;
+                }
+            }
+        }
+        expect(mut t, 4, ok, f"P4 {what}, raised by {c.raise}: [{show(rs)}]");
+        // P5: k as large as the matrix, every answer the whole sum
+        let all = arm(i, c.mat, m.max(n));
+        expect(mut t, 5, all.iter().all(|row| row.iter().all(|x| x == whole)), f"P5 {what}, k {m.max(n)}: [{show(all)}]");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: [{show(star)}]");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 matrices of 1 to 8 rows and 1 to 8 columns, k from 1 to 9, in
+    // four kinds, 500 each: numbers up to 3; up to 100; one number
+    // throughout; and a single row or a single column. Every matrix and
+    // raise is drawn before any arm answers.
+    let mut seed = 13141;
+    let mut cases: Vec[Case] = Vec.new();
+    for i in 0..2000 {
+        let kind = i / 500;
+        let mut m = 1 + next_random(mut seed) % 8;
+        let mut n = 1 + next_random(mut seed) % 8;
+        if kind == 3 {
+            if next_random(mut seed) % 2 == 0 {
+                m = 1;
+            } else {
+                n = 1;
+            }
+        }
+        let k = 1 + next_random(mut seed) % 9;
+        let same = 1 + next_random(mut seed) % 100;
+        let mut mat: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..m {
+            let mut row: Vec[i64] = Vec.new();
+            for _ in 0..n {
+                let x = next_random(mut seed);
+                row.push(if kind == 0 { 1 + x % 3 } else if kind == 2 { same } else { 1 + x % 100 });
+            }
+            mat.push(row);
+        }
+        let raise = 1 + next_random(mut seed) % 10;
+        cases.push(Case { mat, k, raise });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} matrices: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
