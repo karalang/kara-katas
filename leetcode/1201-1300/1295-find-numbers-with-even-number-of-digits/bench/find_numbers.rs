@@ -1,0 +1,54 @@
+// LeetCode #1295 bench: the ★ arm over 200 arrays of 500 numbers up to 10^5,
+// built once; then 500 passes, each setting one number of every array from
+// the checksum so far and answering it.
+
+fn find_numbers(nums: &[i64]) -> i64 {
+    let mut even = 0;
+    for &x in nums.iter() {
+        let mut digits = 0;
+        let mut rest = x;
+        while rest > 0 {
+            digits += 1;
+            rest /= 10;
+        }
+        if digits % 2 == 0 {
+            even += 1;
+        }
+    }
+    even
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1295;
+    let mut arrays: Vec<Vec<i64>> = Vec::new();
+    for _ in 0..200 {
+        let mut nums = Vec::new();
+        for _ in 0..500 {
+            let digits = next_random(&mut seed) % 6 + 1;
+            let mut low = 1;
+            for _ in 1..digits {
+                low *= 10;
+            }
+            nums.push(if digits == 6 {
+                100000
+            } else {
+                let a = next_random(&mut seed);
+                low + (a * 32768 + next_random(&mut seed)) % (9 * low)
+            });
+        }
+        arrays.push(nums);
+    }
+    let mut check: i64 = 0;
+    for p in 0..500 {
+        for a in 0..arrays.len() {
+            arrays[a][(check % 500) as usize] = 1 + check % 100000;
+            check = (check * 31 + find_numbers(&arrays[a]) + p) % 1000000007;
+        }
+    }
+    println!("500 passes over 200 arrays of 500: checksum {}", check);
+}

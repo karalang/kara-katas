@@ -1,0 +1,244 @@
+// LeetCode #1295: Find Numbers with Even Number of Digits -- differential
+// test of the seven arms against the statement read literally, with five
+// more properties.
+//
+// The statement: given an array nums of integers, return how many of them
+// contain an even number of digits.
+
+// ---- find_numbers.kara ----
+fn a0_find_numbers(nums: Vec[i64]) -> i64 {
+    let mut even = 0;
+    for x in nums.iter() {
+        let mut digits = 0;
+        let mut rest = x;
+        while rest > 0 {
+            digits += 1;
+            rest /= 10;
+        }
+        if digits % 2 == 0 {
+            even += 1;
+        }
+    }
+    even
+}
+
+// ---- find_numbers_string.kara ----
+fn a1_find_numbers(nums: Vec[i64]) -> i64 {
+    nums.iter().filter(|x| f"{x}".len() % 2 == 0).count()
+}
+
+// ---- find_numbers_range.kara ----
+fn a2_find_numbers(nums: Vec[i64]) -> i64 {
+    let mut even = 0;
+    for x in nums.iter() {
+        match x {
+            10..=99 | 1000..=9999 | 100000 => even += 1,
+            _ => {}
+        }
+    }
+    even
+}
+
+// ---- find_numbers_log.kara ----
+fn a3_find_numbers(nums: Vec[i64]) -> i64 {
+    let mut even = 0;
+    for x in nums.iter() {
+        if (x.ilog10() + 1) % 2 == 0 {
+            even += 1;
+        }
+    }
+    even
+}
+
+// ---- find_numbers_recursive.kara ----
+fn a4_digit_count(x: i64) -> i64 {
+    if x < 10 { 1 } else { 1 + a4_digit_count(x / 10) }
+}
+
+fn a4_find_numbers(nums: Vec[i64]) -> i64 {
+    nums.iter().fold(0, |even, x| if a4_digit_count(x) % 2 == 0 { even + 1 } else { even })
+}
+
+// ---- find_numbers_solution.kara ----
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn find_numbers(nums: Vec[i32]) -> i32 {
+        nums.iter().filter(|n| n.to_string().len() % 2 == 0).count() as i32
+    }
+}
+
+fn a5_find_numbers(nums: Vec[i64]) -> i64 {
+    A5Solution.find_numbers(nums.iter().map(|x| x as i32).collect())
+}
+
+// ---- find_numbers_loop.kara ----
+struct A6Solution {}
+
+impl A6Solution {
+    pub fn find_numbers(nums: Vec[i32]) -> i32 {
+        let mut ans = 0;
+        for n in nums {
+            let mut n = n;
+            let mut d = 0;
+            while n > 0 {
+                d += 1;
+                n /= 10;
+            }
+            if d % 2 == 0 {
+                ans += 1;
+            }
+        }
+        ans
+    }
+}
+
+fn a6_find_numbers(nums: Vec[i64]) -> i64 {
+    A6Solution.find_numbers(nums.iter().map(|x| x as i32).collect())
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(w: i64, nums: Vec[i64]) -> i64 {
+    match w {
+        0 => a0_find_numbers(nums),
+        1 => a1_find_numbers(nums),
+        2 => a2_find_numbers(nums),
+        3 => a3_find_numbers(nums),
+        4 => a4_find_numbers(nums),
+        5 => a5_find_numbers(nums),
+        _ => a6_find_numbers(nums),
+    }
+}
+
+// The statement read literally: a number has d digits when it is at least
+// 10^(d - 1) and below 10^d; count those whose d is even.
+fn literal(nums: Vec[i64]) -> i64 {
+    let mut even = 0;
+    for x in nums.iter() {
+        let mut d = 1;
+        let mut power = 10;
+        while x >= power {
+            d += 1;
+            power *= 10;
+        }
+        if d % 2 == 0 {
+            even += 1;
+        }
+    }
+    even
+}
+
+struct Case {
+    nums: Vec[i64],
+    // P4's split point, 0 to len
+    split: i64,
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: String) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 10 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    let nums = ref c.nums;
+    let reversed: Vec[i64] = nums.iter().rev().cloned().collect();
+    let small: Vec[i64] = nums.iter().filter(|x| x < 10000).cloned().collect();
+    let tenfold: Vec[i64] = small.iter().map(|x| 10 * x).collect();
+    let front: Vec[i64] = nums.iter().take(c.split).cloned().collect();
+    let back: Vec[i64] = nums.iter().skip(c.split).cloned().collect();
+    let mut padded = nums.clone();
+    padded.push(10);
+    padded.push(100);
+    let want = literal(nums);
+    let star = arm(0, nums);
+    for a in 0..7 {
+        let got = arm(a, nums);
+        let what = f"arm {a}, case {t.cases} {nums} -> {got}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal {want}");
+        // P2: the array reversed, the same count
+        let rv = arm(a, reversed);
+        expect(mut t, 2, rv == got, f"P2 {what}, reversed: {rv}");
+        // P3: the numbers below 10^4 times 10, each one digit longer: those
+        // that were odd are now even
+        let tf = arm(a, tenfold);
+        let sm = arm(a, small);
+        expect(mut t, 3, tf == small.len() - sm, f"P3 {what}, below 10^4 {sm}, times 10: {tf}");
+        // P4: split anywhere, the two counts add up
+        let f = arm(a, front);
+        let b = arm(a, back);
+        expect(mut t, 4, f + b == got, f"P4 {what}, split at {c.split}: {f} + {b}");
+        // P5: 10 and 100 appended, one more
+        let pd = arm(a, padded);
+        expect(mut t, 5, pd == got + 1, f"P5 {what}, with 10 and 100: {pd}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+    t.cases += 1;
+    t.check = (t.check * 131 + want) % 1000000007;
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 arrays of 1 to 30 numbers in four kinds, 500 each: the number of
+    // digits drawn first, from 1 to 6; any number up to 10^5; only the
+    // numbers next to a power of ten (9, 10, 11, 99, 100, 101, ...); and a
+    // single digit count throughout. Every array and split is drawn before
+    // any arm answers.
+    let mut seed = 12951;
+    let mut cases: Vec[Case] = Vec.new();
+    for i in 0..2000 {
+        let kind = i % 4;
+        let len = 1 + next_random(mut seed) % 30;
+        let fixed = 1 + next_random(mut seed) % 5;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..len {
+            let digits = if kind == 3 { fixed } else { 1 + next_random(mut seed) % 6 };
+            let mut low = 1;
+            for _ in 1..digits {
+                low *= 10;
+            }
+            let x = if kind == 1 {
+                1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000
+            } else if kind == 2 {
+                let near = low - 1 + next_random(mut seed) % 3;
+                if near < 1 { 1 } else if near > 100000 { 100000 } else { near }
+            } else if digits == 6 {
+                100000
+            } else {
+                low + (next_random(mut seed) * 32768 + next_random(mut seed)) % (9 * low)
+            };
+            nums.push(x);
+        }
+        let split = next_random(mut seed) % (len + 1);
+        cases.push(Case { nums, split });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} arrays: checksum {t.check}, {t.checks} checks over 7 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

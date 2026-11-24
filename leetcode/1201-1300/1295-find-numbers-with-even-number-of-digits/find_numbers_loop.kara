@@ -1,0 +1,64 @@
+// LeetCode #1295: Find Numbers with Even Number of Digits -- a second Rust
+// solution as LeetCode's Rust users write it (`for mut n in nums`, the
+// digits counted by `n /= 10` on the moved number), carried to Kāra by
+// `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn find_numbers(nums: Vec[i32]) -> i32 {
+        let mut ans = 0;
+        for n in nums {
+            let mut n = n;
+            let mut d = 0;
+            while n > 0 {
+                d += 1;
+                n /= 10;
+            }
+            if d % 2 == 0 {
+                ans += 1;
+            }
+        }
+        ans
+    }
+}
+
+fn find_numbers(nums: Vec[i64]) -> i64 {
+    Solution.find_numbers(nums.iter().map(|x| x as i32).collect())
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's examples, and every edge between a number of digits
+    // and the next
+    let edges = [1, 9, 10, 99, 100, 999, 1000, 9999, 10000, 99999, 100000];
+    println(f"{find_numbers([12, 345, 2, 6, 7896])} {find_numbers([555, 901, 482, 1771])} {find_numbers(edges)} {find_numbers([100000])} {find_numbers([10])}");
+    // random arrays of 1 to 500 numbers, each up to 10^5, the number of
+    // digits drawn first so that every length comes up as often
+    let mut seed = 1295;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let len = next_random(mut seed) % 500 + 1;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..len {
+            let digits = next_random(mut seed) % 6 + 1;
+            let mut low = 1;
+            for _ in 1..digits {
+                low *= 10;
+            }
+            let x = if digits == 6 { 100000 } else { low + (next_random(mut seed) * 32768 + next_random(mut seed)) % (9 * low) };
+            nums.push(x);
+        }
+        let even = find_numbers(nums);
+        total += even;
+        check = (check * 131 + even) % 1000000007;
+    }
+    println(f"3000 random arrays: {total} with an even number of digits, checksum {check}");
+}
