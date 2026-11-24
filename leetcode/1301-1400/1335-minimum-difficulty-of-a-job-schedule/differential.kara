@@ -1,0 +1,312 @@
+// LeetCode #1335: Minimum Difficulty of a Job Schedule -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+//
+// The statement: you want to schedule a list of jobs in d days. Jobs are
+// dependent (to work on the i-th job, you have to finish all the jobs j
+// where 0 <= j < i). You have to finish at least one task every day. The
+// difficulty of a job schedule is the sum of difficulties of each day of
+// the d days. The difficulty of a day is the maximum difficulty of a job
+// done on that day. Return the minimum difficulty of a job schedule; if
+// you cannot find a schedule for the jobs, return -1.
+
+// ---- min_difficulty.kara ----
+fn a0_min_difficulty(job_difficulty: Vec[i32], d: i32) -> i32 {
+    let n = job_difficulty.len();
+    let days = d as i64;
+    if n < days {
+        return -1;
+    }
+    let far = i64.MAX / 2;
+    // best[i] is the least difficulty of the first i jobs in the days so far
+    let mut best: Vec[i64] = Vec.filled(n + 1, far);
+    best[0] = 0;
+    for day in 1..days + 1 {
+        let mut next: Vec[i64] = Vec.filled(n + 1, far);
+        for i in day..n + 1 {
+            let mut hardest: i64 = 0;
+            for j in (day - 1..i).rev() {
+                hardest = max(hardest, job_difficulty[j]);
+                next[i] = min(next[i], best[j] + hardest);
+            }
+        }
+        best = next;
+    }
+    best[n] as i32
+}
+
+// ---- min_difficulty_stack.kara ----
+fn a1_min_difficulty(job_difficulty: Vec[i32], d: i32) -> i32 {
+    let n = job_difficulty.len();
+    if n < d {
+        return -1;
+    }
+    let far = i64.MAX / 2;
+    let mut before: Vec[i64] = Vec.filled(n + 1, far);
+    before[0] = 0;
+    for _ in 0..d {
+        let mut now: Vec[i64] = Vec.filled(n + 1, far);
+        // (job, the least cost of the days before a day whose hardest job
+        // it is)
+        let mut stack: Vec[(i64, i64)] = Vec.new();
+        for i in 0..n {
+            let mut least = before[i];
+            while stack.len() > 0 and job_difficulty[stack[stack.len() - 1].0] <= job_difficulty[i] {
+                least = min(least, stack[stack.len() - 1].1);
+                stack.pop();
+            }
+            let mut here = least + job_difficulty[i];
+            if stack.len() > 0 {
+                here = min(here, now[stack[stack.len() - 1].0 + 1]);
+            }
+            now[i + 1] = here;
+            stack.push((i, least));
+        }
+        before = now;
+    }
+    before[n] as i32
+}
+
+// ---- min_difficulty_memo.kara ----
+fn a2_least(jobs: Vec[i32], start: i64, days: i64, memo: mut ref Map[(i64, i64), i64]) -> i64 {
+    if let Some(known) = memo.get((start, days)) {
+        return *known;
+    }
+    let n = jobs.len();
+    let mut answer = i64.MAX;
+    let mut hardest: i64 = 0;
+    if days == 1 {
+        for j in start..n {
+            hardest = max(hardest, jobs[j]);
+        }
+        answer = hardest;
+    } else {
+        for end in start..n - days + 1 {
+            hardest = max(hardest, jobs[end]);
+            answer = min(answer, hardest + a2_least(jobs, end + 1, days - 1, mut memo));
+        }
+    }
+    memo.insert((start, days), answer);
+    answer
+}
+
+fn a2_min_difficulty(job_difficulty: Vec[i32], d: i32) -> i32 {
+    if job_difficulty.len() < d {
+        return -1;
+    }
+    let mut memo: Map[(i64, i64), i64] = Map.new();
+    a2_least(job_difficulty, 0, d, mut memo) as i32
+}
+
+// ---- min_difficulty_scan.kara ----
+fn a3_min_difficulty(job_difficulty: Vec[i32], d: i32) -> i32 {
+    let n = job_difficulty.len();
+    let days = d as i64;
+    if n < days {
+        return -1;
+    }
+    let far = i64.MAX / 2;
+    let mut best: Vec[i64] = Vec.filled(n + 1, far);
+    best[0] = 0;
+    for day in 1..days + 1 {
+        let mut next: Vec[i64] = Vec.filled(n + 1, far);
+        for i in day..n + 1 {
+            next[i] = (day - 1..i)
+                .rev()
+                .scan(0, |hardest, j| {
+                    let hardest = max(hardest, job_difficulty[j] as i64);
+                    Some((hardest, best[j] + hardest))
+                })
+                .min()
+                .unwrap();
+        }
+        best = next;
+    }
+    best[n] as i32
+}
+
+// ---- min_difficulty_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_min_difficulty(job_difficulty: Vec[i32], d: i32) -> i32 {
+        let n = job_difficulty.len();
+        let d = d as i64;
+        if n < d {
+            return -1;
+        }
+        let mut dp = Vec.filled(d + 1, Vec.filled(n + 1, i32.MAX));
+        dp[0][0] = 0;
+        for k in 1..=d {
+            for i in k..=n {
+                let mut mx: i32 = 0;
+                for j in (k..=i).rev() {
+                    mx = mx.max(job_difficulty[j - 1]);
+                    if dp[k - 1][j - 1] != i32.MAX {
+                        dp[k][i] = dp[k][i].min(dp[k - 1][j - 1] + mx);
+                    }
+                }
+            }
+        }
+        dp[d][n]
+    }
+}
+
+fn a4_min_difficulty(job_difficulty: Vec[i32], d: i32) -> i32 {
+    A4Solution.a4_min_difficulty(job_difficulty, d)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every way to cut the jobs, in order, into
+// d days of at least one job each, chosen as d - 1 of the n - 1 places
+// between two jobs; each day's hardest job summed, and the least sum kept
+fn literal(jobs: Vec[i32], d: i64) -> i64 {
+    let n = jobs.len();
+    if n < d {
+        return -1;
+    }
+    let mut least = -1;
+    for cuts in 0..(1 << (n - 1)) {
+        let mut count = 0;
+        for place in 0..n - 1 {
+            if cuts & (1 << place) != 0 {
+                count += 1;
+            }
+        }
+        if count != d - 1 {
+            continue;
+        }
+        let mut total = 0;
+        let mut hardest = 0;
+        for i in 0..n {
+            hardest = max(hardest, jobs[i] as i64);
+            if i == n - 1 or cuts & (1 << i) != 0 {
+                total += hardest;
+                hardest = 0;
+            }
+        }
+        if least < 0 or total < least {
+            least = total;
+        }
+    }
+    least
+}
+
+struct Case {
+    jobs: Vec[i32],
+    d: i32,
+    // P3: the amount every difficulty is raised by
+    raise: i32,
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, jobs: Vec[i32], d: i32) -> i32 {
+    match i {
+        0 => a0_min_difficulty(jobs, d),
+        1 => a1_min_difficulty(jobs, d),
+        2 => a2_min_difficulty(jobs, d),
+        3 => a3_min_difficulty(jobs, d),
+        _ => a4_min_difficulty(jobs, d),
+    }
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    t.cases += 1;
+    let want = literal(c.jobs, c.d);
+    t.check = (t.check * 131 + want + 7) % 1000000007;
+    let reversed: Vec[i32] = c.jobs.iter().rev().cloned().collect();
+    let raised: Vec[i32] = c.jobs.iter().map(|x| x + c.raise).collect();
+    let doubled: Vec[i32] = c.jobs.iter().map(|x| 2 * x).collect();
+    let hardest = c.jobs.iter().cloned().max().unwrap();
+    let star = a0_min_difficulty(c.jobs, c.d);
+    for i in 0..5 {
+        let got = arm(i, c.jobs, c.d);
+        let what = f"arm {i} on {c.jobs} in {c.d} days";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the jobs in the other order: the same answer
+        let rv = arm(i, reversed, c.d);
+        expect(mut t, 2, rv == got, f"P2 {what}, backwards: {rv}");
+        // P3: every difficulty raised by one amount: the answer raised by
+        // that amount for each day, or still -1
+        let up = arm(i, raised, c.d);
+        let up_want = if got < 0 { -1 } else { got + c.d * c.raise };
+        expect(mut t, 3, up == up_want, f"P3 {what}, raised by {c.raise}: {up}");
+        // P4: one day: the hardest job
+        let one = arm(i, c.jobs, 1);
+        expect(mut t, 4, one == hardest, f"P4 {what}, one day: {one}");
+        // P5: every difficulty doubled: twice the answer, or still -1
+        let db = arm(i, doubled, c.d);
+        let db_want = if got < 0 { -1 } else { 2 * got };
+        expect(mut t, 5, db == db_want, f"P5 {what}, doubled: {db}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 schedules of 1 to 8 jobs in 1 to 9 days, in four kinds, 500
+    // each: difficulties from 0 to 2; from 0 to 1000; every job alike; and
+    // rising or falling by 0 to 5 from a start up to 50. Every schedule
+    // and amount is drawn before any arm answers.
+    let mut seed = 13351;
+    let mut cases: Vec[Case] = Vec.new();
+    for k in 0..2000 {
+        let kind = k / 500;
+        let n = 1 + next_random(mut seed) % 8;
+        let same = next_random(mut seed) % 1001;
+        let falling = next_random(mut seed) % 2 == 0;
+        let mut at = next_random(mut seed) % 51;
+        let mut jobs: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            let x = if kind == 0 {
+                next_random(mut seed) % 3
+            } else if kind == 1 {
+                next_random(mut seed) % 1001
+            } else if kind == 2 {
+                same
+            } else {
+                let step = next_random(mut seed) % 6;
+                at = if falling { max(at - step, 0) } else { at + step };
+                at
+            };
+            jobs.push(x as i32);
+        }
+        let d = (1 + next_random(mut seed) % 9) as i32;
+        let raise = (next_random(mut seed) % 1001) as i32;
+        cases.push(Case { jobs, d, raise });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} schedules: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

@@ -1,0 +1,70 @@
+// LeetCode #1335: Minimum Difficulty of a Job Schedule -- the ★ arm: the
+// least difficulty of the first i jobs in so many days, one day at a time;
+// a day that ends after job i starts at each earlier job j, its hardest
+// job kept as j walks back. O(d n^2)
+
+fn min_difficulty(job_difficulty: Vec[i32], d: i32) -> i32 {
+    let n = job_difficulty.len();
+    let days = d as i64;
+    if n < days {
+        return -1;
+    }
+    let far = i64.MAX / 2;
+    // best[i] is the least difficulty of the first i jobs in the days so far
+    let mut best: Vec[i64] = Vec.filled(n + 1, far);
+    best[0] = 0;
+    for day in 1..days + 1 {
+        let mut next: Vec[i64] = Vec.filled(n + 1, far);
+        for i in day..n + 1 {
+            let mut hardest: i64 = 0;
+            for j in (day - 1..i).rev() {
+                hardest = max(hardest, job_difficulty[j]);
+                next[i] = min(next[i], best[j] + hardest);
+            }
+        }
+        best = next;
+    }
+    best[n] as i32
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples; one job; more days than jobs
+    let ex = [min_difficulty([6, 5, 4, 3, 2, 1], 2), min_difficulty([9, 9, 9], 4), min_difficulty([1, 1, 1], 3)];
+    println(f"{ex[0]} {ex[1]} {ex[2]} {min_difficulty([7], 1)} {min_difficulty([0, 0], 1)}");
+    // 300 jobs, the constraints' most, in 10 days and in 1, and 300 jobs
+    // rising from 0
+    let mut seed = 1335;
+    let mut jobs: Vec[i32] = Vec.new();
+    let mut rising: Vec[i32] = Vec.new();
+    for i in 0..300 {
+        jobs.push((next_random(mut seed) % 1001) as i32);
+        rising.push((i * 3) as i32);
+    }
+    println(f"300 jobs: {min_difficulty(jobs, 10)} {min_difficulty(jobs, 1)}, rising {min_difficulty(rising, 10)}");
+    // 300 random schedules of 1 to 300 jobs, most of them short, with
+    // difficulties up to 5 or 1000 and 1 to 10 days
+    let mut check = 0;
+    let mut impossible = 0;
+    for t in 0..300 {
+        let n = if t % 25 == 0 { 1 + next_random(mut seed) % 300 } else { 1 + next_random(mut seed) % 15 };
+        let top = if t % 2 == 0 { 6 } else { 1001 };
+        let mut job_difficulty: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            job_difficulty.push((next_random(mut seed) % top) as i32);
+        }
+        let d = (1 + next_random(mut seed) % 10) as i32;
+        let answer = min_difficulty(job_difficulty, d);
+        if answer < 0 {
+            impossible += 1;
+        }
+        check = (check * 131 + answer + 7) % 1000000007;
+    }
+    println(f"300 random schedules: {impossible} impossible, checksum {check}");
+}
