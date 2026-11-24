@@ -1,0 +1,433 @@
+// LeetCode #1301: Number of Paths with Max Score -- differential test of the
+// five arms against the statement read literally, with five more properties.
+//
+// The statement: on a square board, start at the bottom-right 'S' and reach
+// the top-left 'E', moving up, left, or up-left, never onto an 'X'; the
+// numbered squares on the way add to the score. Return the maximum score and
+// the number of paths that take it, modulo 10^9 + 7, or [0, 0] when there is
+// no path.
+
+// ---- paths_with_max_score.kara ----
+fn a0_paths_with_max_score(board: Vec[String]) -> Vec[i64] {
+    let grid: Vec[Vec[char]] = board.iter().map(|row| row.chars().collect()).collect();
+    let n = grid.len();
+    let modulus = 1000000007;
+    let mut best: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, -1));
+    let mut ways: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, 0));
+    best[n - 1][n - 1] = 0;
+    ways[n - 1][n - 1] = 1;
+    for i in (0..n).rev() {
+        for j in (0..n).rev() {
+            if grid[i][j] == 'X' or (i == n - 1 and j == n - 1) {
+                continue;
+            }
+            let mut top = -1;
+            let mut count = 0;
+            for (a, b) in [(i + 1, j), (i, j + 1), (i + 1, j + 1)] {
+                if a < n and b < n and best[a][b] >= 0 {
+                    if best[a][b] > top {
+                        top = best[a][b];
+                        count = ways[a][b];
+                    } else if best[a][b] == top {
+                        count = (count + ways[a][b]) % modulus;
+                    }
+                }
+            }
+            if top >= 0 {
+                let points = match grid[i][j].to_digit(10) {
+                    Some(d) => d as i64,
+                    None => 0,
+                };
+                best[i][j] = top + points;
+                ways[i][j] = count;
+            }
+        }
+    }
+    if best[0][0] < 0 {
+        [0, 0]
+    } else {
+        [best[0][0], ways[0][0]]
+    }
+}
+
+// ---- paths_with_max_score_forward.kara ----
+fn a1_paths_with_max_score(board: Vec[String]) -> Vec[i64] {
+    let grid: Vec[Vec[char]] = board.iter().map(|row| row.chars().collect()).collect();
+    let n = grid.len();
+    let modulus = 1000000007;
+    let mut best: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, -1));
+    let mut ways: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, 0));
+    best[0][0] = 0;
+    ways[0][0] = 1;
+    for i in 0..n {
+        for j in 0..n {
+            if grid[i][j] == 'X' or (i == 0 and j == 0) {
+                continue;
+            }
+            let mut top = -1;
+            let mut count = 0;
+            if i > 0 and best[i - 1][j] >= 0 {
+                top = best[i - 1][j];
+                count = ways[i - 1][j];
+            }
+            if j > 0 and best[i][j - 1] >= 0 {
+                if best[i][j - 1] > top {
+                    top = best[i][j - 1];
+                    count = ways[i][j - 1];
+                } else if best[i][j - 1] == top {
+                    count = (count + ways[i][j - 1]) % modulus;
+                }
+            }
+            if i > 0 and j > 0 and best[i - 1][j - 1] >= 0 {
+                if best[i - 1][j - 1] > top {
+                    top = best[i - 1][j - 1];
+                    count = ways[i - 1][j - 1];
+                } else if best[i - 1][j - 1] == top {
+                    count = (count + ways[i - 1][j - 1]) % modulus;
+                }
+            }
+            if top >= 0 {
+                let points = if grid[i][j].is_ascii_digit() { (grid[i][j] as i64) - ('0' as i64) } else { 0 };
+                best[i][j] = top + points;
+                ways[i][j] = count;
+            }
+        }
+    }
+    if best[n - 1][n - 1] < 0 {
+        [0, 0]
+    } else {
+        [best[n - 1][n - 1], ways[n - 1][n - 1]]
+    }
+}
+
+// ---- paths_with_max_score_memo.kara ----
+fn a2_from_start(i: i64, j: i64, grid: Vec[Vec[char]], memo: mut ref Map[(i64, i64), (i64, i64)]) -> (i64, i64) {
+    let n = grid.len();
+    if i >= n or j >= n or grid[i][j] == 'X' {
+        return (-1, 0);
+    }
+    if i == n - 1 and j == n - 1 {
+        return (0, 1);
+    }
+    if let Some(known) = memo.get((i, j)) {
+        return known;
+    }
+    let mut top = -1;
+    let mut count = 0;
+    for (a, b) in [(i + 1, j), (i, j + 1), (i + 1, j + 1)] {
+        let (score, paths) = a2_from_start(a, b, grid, mut memo);
+        if score > top {
+            top = score;
+            count = paths;
+        } else if score == top and score >= 0 {
+            count = (count + paths) % 1000000007;
+        }
+    }
+    let result = if top < 0 {
+        (-1, 0)
+    } else {
+        let points = match grid[i][j].to_digit(10) {
+            Some(d) => d as i64,
+            None => 0,
+        };
+        (top + points, count)
+    };
+    memo.insert((i, j), result);
+    result
+}
+
+fn a2_paths_with_max_score(board: Vec[String]) -> Vec[i64] {
+    let grid: Vec[Vec[char]] = board.iter().map(|row| row.chars().collect()).collect();
+    let mut memo: Map[(i64, i64), (i64, i64)] = Map.new();
+    let (score, paths) = a2_from_start(0, 0, grid, mut memo);
+    if score < 0 {
+        [0, 0]
+    } else {
+        [score, paths]
+    }
+}
+
+// ---- paths_with_max_score_kahn.kara ----
+fn a3_paths_with_max_score(board: Vec[String]) -> Vec[i64] {
+    let grid: Vec[Vec[char]] = board.iter().map(|row| row.chars().collect()).collect();
+    let n = grid.len();
+    let open = |i: i64, j: i64| i >= 0 and j >= 0 and i < n and j < n and grid[i][j] != 'X';
+    let mut waiting: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, 0));
+    for i in 0..n {
+        for j in 0..n {
+            if open(i, j) {
+                for (a, b) in [(i + 1, j), (i, j + 1), (i + 1, j + 1)] {
+                    if open(a, b) {
+                        waiting[i][j] += 1;
+                    }
+                }
+            }
+        }
+    }
+    let mut best: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, -1));
+    let mut ways: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, 0));
+    best[n - 1][n - 1] = 0;
+    ways[n - 1][n - 1] = 1;
+    let mut ready: VecDeque[(i64, i64)] = VecDeque.new();
+    for i in 0..n {
+        for j in 0..n {
+            if open(i, j) and waiting[i][j] == 0 {
+                ready.push_back((i, j));
+            }
+        }
+    }
+    while let Some((i, j)) = ready.pop_front() {
+        if best[i][j] >= 0 and not (i == n - 1 and j == n - 1) {
+            let points = match grid[i][j].to_digit(10) {
+                Some(d) => d as i64,
+                None => 0,
+            };
+            best[i][j] += points;
+        }
+        for (a, b) in [(i - 1, j), (i, j - 1), (i - 1, j - 1)] {
+            if not open(a, b) {
+                continue;
+            }
+            if best[i][j] >= 0 {
+                if best[i][j] > best[a][b] {
+                    best[a][b] = best[i][j];
+                    ways[a][b] = ways[i][j];
+                } else if best[i][j] == best[a][b] {
+                    ways[a][b] = (ways[a][b] + ways[i][j]) % 1000000007;
+                }
+            }
+            waiting[a][b] -= 1;
+            if waiting[a][b] == 0 {
+                ready.push_back((a, b));
+            }
+        }
+    }
+    if best[0][0] < 0 {
+        [0, 0]
+    } else {
+        [best[0][0], ways[0][0]]
+    }
+}
+
+// ---- paths_with_max_score_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_paths_with_max_score(board: Vec[String]) -> Vec[i32] {
+        const MOD: i64 = 1_000_000_007;
+        let n = board.len();
+        let b: Vec[Vec[u8]] = board.iter().map(|s| s.bytes().to_vec()).collect();
+        let mut dp = Vec.filled(n + 1, Vec.filled(n + 1, (-1, 0)));
+        dp[n - 1][n - 1] = (0, 1);
+        for i in (0..n).rev() {
+            for j in (0..n).rev() {
+                if b[i][j] == b'X' or (i == n - 1 and j == n - 1) {
+                    continue;
+                }
+                let mut best = -1;
+                let mut cnt = 0;
+                for (x, y) in [(i + 1, j), (i, j + 1), (i + 1, j + 1)] {
+                    let (s, c) = dp[x][y];
+                    if s > best {
+                        best = s;
+                        cnt = c;
+                    } else if s == best and s >= 0 {
+                        cnt = (cnt + c) % MOD;
+                    }
+                }
+                if best >= 0 {
+                    let v = if b[i][j] == b'E' { 0 } else { (b[i][j] - b'0') as i64 };
+                    dp[i][j] = (best + v, cnt);
+                }
+            }
+        }
+        if dp[0][0].0 < 0 {
+            [0, 0]
+        } else {
+            [dp[0][0].0 as i32, dp[0][0].1 as i32]
+        }
+    }
+}
+
+fn a4_paths_with_max_score(board: Vec[String]) -> Vec[i64] {
+    A4Solution.a4_paths_with_max_score(board).iter().map(|x| x as i64).collect()
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// Every path from 'S', one move at a time up, left or up-left onto any square
+// that is not an 'X', each digit stepped on added; at 'E' the path's score is
+// compared with the best so far.
+fn walk(i: i64, j: i64, score: i64, rows: Vec[Vec[char]], tally: mut ref (i64, i64)) {
+    if i < 0 or j < 0 or rows[i][j] == 'X' {
+        return;
+    }
+    if i == 0 and j == 0 {
+        if score > tally.0 {
+            *tally = (score, 1);
+        } else if score == tally.0 {
+            tally.1 += 1;
+        }
+        return;
+    }
+    let here = if rows[i][j] >= '1' and rows[i][j] <= '9' { (rows[i][j] as i64) - ('0' as i64) } else { 0 };
+    walk(i - 1, j, score + here, rows, mut tally);
+    walk(i, j - 1, score + here, rows, mut tally);
+    walk(i - 1, j - 1, score + here, rows, mut tally);
+}
+
+fn literal(board: Vec[String]) -> Vec[i64] {
+    let rows: Vec[Vec[char]] = board.iter().map(|r| r.chars().collect()).collect();
+    let n = rows.len();
+    let mut tally = (-1, 0);
+    walk(n - 1, n - 1, 0, rows, mut tally);
+    if tally.0 < 0 {
+        [0, 0]
+    } else {
+        [tally.0, tally.1]
+    }
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Case {
+    rows: Vec[Vec[char]],
+    // P4's obstacle and P5's raised digit, as squares counted row by row
+    wall_at: i64,
+    raise_at: i64,
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, board: Vec[String]) -> Vec[i64] {
+    match i {
+        0 => a0_paths_with_max_score(board),
+        1 => a1_paths_with_max_score(board),
+        2 => a2_paths_with_max_score(board),
+        3 => a3_paths_with_max_score(board),
+        _ => a4_paths_with_max_score(board),
+    }
+}
+
+fn to_board(rows: Vec[Vec[char]]) -> Vec[String] {
+    rows.iter().map(|r| r.iter().collect()).collect()
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    let n = c.rows.len();
+    let board = to_board(c.rows);
+    let want = literal(board);
+    t.cases += 1;
+    t.check = (t.check * 131 + want[0]) % 1000000007;
+    t.check = (t.check * 131 + want[1]) % 1000000007;
+    let mut transposed = c.rows.clone();
+    let mut turned = c.rows.clone();
+    for i in 0..n {
+        for j in 0..n {
+            transposed[i][j] = c.rows[j][i];
+            turned[i][j] = c.rows[n - 1 - i][n - 1 - j];
+        }
+    }
+    turned[0][0] = 'E';
+    turned[n - 1][n - 1] = 'S';
+    let mut walled = c.rows.clone();
+    let (wi, wj) = (c.wall_at / n, c.wall_at % n);
+    let corner = (wi == 0 and wj == 0) or (wi == n - 1 and wj == n - 1);
+    if not corner {
+        walled[wi][wj] = 'X';
+    }
+    let mut raised = c.rows.clone();
+    let (ri, rj) = (c.raise_at / n, c.raise_at % n);
+    let d = raised[ri][rj];
+    if d >= '1' and d <= '8' {
+        raised[ri][rj] = char.try_from((d as u32) + 1).ok().unwrap();
+    }
+    let star = a0_paths_with_max_score(board);
+    for i in 0..5 {
+        let got = arm(i, board);
+        let what = f"arm {i} case {t.cases} {board.join("/")}: got {got[0]},{got[1]}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal {want[0]},{want[1]}");
+        // P2: the board transposed, the same answer
+        let tr = arm(i, to_board(transposed));
+        expect(mut t, 2, tr == got, f"P2 {what}, transposed: {tr[0]},{tr[1]}");
+        // P3: the board turned half round, 'S' and 'E' back in their
+        // corners, the same answer
+        let tu = arm(i, to_board(turned));
+        expect(mut t, 3, tu == got, f"P3 {what}, turned: {tu[0]},{tu[1]}");
+        // P4: one more obstacle, no better: a lower score, or the same with
+        // no more paths
+        let wa = arm(i, to_board(walled));
+        expect(mut t, 4, wa[0] < got[0] or (wa[0] == got[0] and wa[1] <= got[1]), f"P4 {what}, walled at {wi},{wj}: {wa[0]},{wa[1]}");
+        // P5: one digit raised by one, the best score the same or one more
+        let ra = arm(i, to_board(raised));
+        expect(mut t, 5, ra[0] == got[0] or ra[0] == got[0] + 1, f"P5 {what}, raised at {ri},{rj}: {ra[0]},{ra[1]}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star[0]},{star[1]}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 boards of 2 to 5 squares a side in four kinds, 500 each: no
+    // obstacles; obstacles 30 in 100; only the digits 1 and 2, so that paths
+    // tie; and obstacles 50 in 100. Every board, obstacle and raised digit is
+    // drawn before any arm answers.
+    let mut seed = 13011;
+    let mut cases: Vec[Case] = Vec.new();
+    for i in 0..2000 {
+        let kind = i / 500;
+        let n = 2 + next_random(mut seed) % 4;
+        let wall = if kind == 1 { 30 } else if kind == 3 { 50 } else { 0 };
+        let top = if kind == 2 { 2 } else { 9 };
+        let mut rows: Vec[Vec[char]] = Vec.new();
+        for r in 0..n {
+            let mut row: Vec[char] = Vec.new();
+            for s in 0..n {
+                if r == 0 and s == 0 {
+                    row.push('E');
+                } else if r == n - 1 and s == n - 1 {
+                    row.push('S');
+                } else if next_random(mut seed) % 100 < wall {
+                    row.push('X');
+                } else {
+                    row.push(char.from_digit((1 + next_random(mut seed) % top) as u32, 10).unwrap());
+                }
+            }
+            rows.push(row);
+        }
+        let wall_at = next_random(mut seed) % (n * n);
+        let raise_at = next_random(mut seed) % (n * n);
+        cases.push(Case { rows, wall_at, raise_at });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} boards: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

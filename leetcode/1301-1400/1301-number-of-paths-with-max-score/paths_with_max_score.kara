@@ -1,0 +1,110 @@
+// LeetCode #1301: Number of Paths with Max Score -- the ★ arm: a table from
+// the bottom-right corner back, each square holding the most points any path
+// from 'S' collects reaching it and how many paths collect that many, from
+// the best of the three squares a step below, to the right and both; a tie
+// adds their counts. O(n^2)
+
+fn paths_with_max_score(board: Vec[String]) -> Vec[i64] {
+    let grid: Vec[Vec[char]] = board.iter().map(|row| row.chars().collect()).collect();
+    let n = grid.len();
+    let modulus = 1000000007;
+    let mut best: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, -1));
+    let mut ways: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, 0));
+    best[n - 1][n - 1] = 0;
+    ways[n - 1][n - 1] = 1;
+    for i in (0..n).rev() {
+        for j in (0..n).rev() {
+            if grid[i][j] == 'X' or (i == n - 1 and j == n - 1) {
+                continue;
+            }
+            let mut top = -1;
+            let mut count = 0;
+            for (a, b) in [(i + 1, j), (i, j + 1), (i + 1, j + 1)] {
+                if a < n and b < n and best[a][b] >= 0 {
+                    if best[a][b] > top {
+                        top = best[a][b];
+                        count = ways[a][b];
+                    } else if best[a][b] == top {
+                        count = (count + ways[a][b]) % modulus;
+                    }
+                }
+            }
+            if top >= 0 {
+                let points = match grid[i][j].to_digit(10) {
+                    Some(d) => d as i64,
+                    None => 0,
+                };
+                best[i][j] = top + points;
+                ways[i][j] = count;
+            }
+        }
+    }
+    if best[0][0] < 0 {
+        [0, 0]
+    } else {
+        [best[0][0], ways[0][0]]
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[i64]) -> String {
+    f"{v[0]},{v[1]}"
+}
+
+// an n by n board, each square other than the corners an obstacle wall
+// times in 100, else a digit from 1 to 9
+fn make_board(seed: mut ref i64, n: i64, wall: i64) -> Vec[String] {
+    let mut board: Vec[String] = Vec.new();
+    for i in 0..n {
+        let mut row = String.new();
+        for j in 0..n {
+            if i == 0 and j == 0 {
+                row.push('E');
+            } else if i == n - 1 and j == n - 1 {
+                row.push('S');
+            } else if next_random(mut seed) % 100 < wall {
+                row.push('X');
+            } else {
+                let d = next_random(mut seed) % 9 + 1;
+                row.push(char.from_digit(d as u32, 10).unwrap());
+            }
+        }
+        board.push(row);
+    }
+    board
+}
+
+fn main() {
+    // LeetCode's three examples, the smallest board, and two ways that tie
+    let e1 = paths_with_max_score(["E23", "2X2", "12S"].iter().map(|s| s.to_string()).collect());
+    let e2 = paths_with_max_score(["E12", "1X1", "21S"].iter().map(|s| s.to_string()).collect());
+    let e3 = paths_with_max_score(["E11", "XXX", "11S"].iter().map(|s| s.to_string()).collect());
+    let e4 = paths_with_max_score(["EX", "XS"].iter().map(|s| s.to_string()).collect());
+    let e5 = paths_with_max_score(["E5", "5S"].iter().map(|s| s.to_string()).collect());
+    println(f"{show(e1)} {show(e2)} {show(e3)} {show(e4)} {show(e5)}");
+    // random boards of 2 to 30 squares a side with obstacles from 0 to 60 in
+    // 100; then two of 100, the constraints' largest, one without obstacles
+    let mut seed = 1301;
+    let mut total = 0;
+    let mut none = 0;
+    let mut check = 0;
+    for i in 0..602 {
+        let n = if i < 600 { 2 + next_random(mut seed) % 29 } else { 100 };
+        let wall = if i < 600 { next_random(mut seed) % 61 } else if i == 600 { 0 } else { 20 };
+        let board = make_board(mut seed, n, wall);
+        let got = paths_with_max_score(board);
+        if got[1] == 0 {
+            none += 1;
+        }
+        total += got[0];
+        check = (check * 131 + got[0]) % 1000000007;
+        check = (check * 131 + got[1]) % 1000000007;
+    }
+    println(f"602 random boards: {none} with no path, scores total {total}, checksum {check}");
+}
