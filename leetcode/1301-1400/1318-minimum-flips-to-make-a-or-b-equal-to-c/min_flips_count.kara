@@ -1,0 +1,38 @@
+// LeetCode #1318: Minimum Flips to Make a OR b Equal to c -- the count arm:
+// the bits where a | b is wrong are `(a | b) ^ c`, one flip each, except
+// where c wants a 0 and both a and b have a 1, which costs a second, so
+// those bits, `a & b & wrong`, are counted again. Two `count_ones`. O(1)
+
+fn min_flips(a: i64, b: i64, c: i64) -> i64 {
+    let wrong = (a | b) ^ c;
+    (wrong.count_ones() + (a & b & wrong).count_ones())
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples; every bit of a and b wanted off; every bit
+    // of 10^9 wanted on from nothing set; and a, b, c all 10^9, the
+    // constraints' most
+    let big = 1000000000;
+    println(f"{min_flips(2, 6, 5)} {min_flips(4, 2, 7)} {min_flips(1, 2, 3)} {min_flips(big, 999999999, 1)} {min_flips(1, 1, big)} {min_flips(big, big, big)}");
+    // 100000 random triples from 1 to 10^9, every other one from 1 to 15
+    let mut seed = 1318;
+    let mut total = 0;
+    let mut check = 0;
+    for t in 0..100000 {
+        let top = if t % 2 == 0 { 15 } else { big };
+        let a = 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % top;
+        let b = 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % top;
+        let c = 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % top;
+        let got = min_flips(a, b, c);
+        total += got;
+        check = (check * 31 + got) % 1000000007;
+    }
+    println(f"100000 random triples: flips total {total}, checksum {check}");
+}

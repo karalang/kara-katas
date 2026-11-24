@@ -1,0 +1,39 @@
+// LeetCode #1318 bench: the ★ arm (each of the 30 bits looked at alone and
+// costed) on 1000 triples of numbers from 1 to 10^9, the constraints'
+// range, built once; then 3000 passes, each setting one number of every
+// triple from the checksum so far, so no answer carries over, and folding
+// every answer plus the pass into the checksum.
+
+fn min_flips(a: i64, b: i64, c: i64) -> i64 {
+    let mut flips = 0;
+    for i in 0..30 {
+        let x = (a >> i) & 1;
+        let y = (b >> i) & 1;
+        let z = (c >> i) & 1;
+        flips += if z == 1 { 1 - (x | y) } else { x + y };
+    }
+    flips
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let big = 1000000000;
+    let mut seed = 1318;
+    let mut nums: Vec[i64] = Vec.new();
+    for _ in 0..3000 {
+        nums.push(1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % big);
+    }
+    let mut check: i64 = 0;
+    for pass in 0..3000 {
+        for t in 0..1000 {
+            nums[3 * t + check % 3] = 1 + (check * 7919) % big;
+            let got = min_flips(nums[3 * t], nums[3 * t + 1], nums[3 * t + 2]);
+            check = (check * 31 + got + pass) % 1000000007;
+        }
+    }
+    println(f"3000 passes over 1000 triples: checksum {check}");
+}
