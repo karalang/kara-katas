@@ -1,0 +1,60 @@
+// LeetCode #1290: Convert Binary Number in a Linked List to Integer -- the
+// shift arm: one walk, the value so far shifted left a place and the node's
+// bit or-ed into the place freed. O(n)
+
+shared struct ListNode {
+    mut val: i64,
+    mut next: Option[ListNode],
+}
+
+fn get_decimal_value(head: Option[ListNode]) -> i64 {
+    let mut value = 0;
+    let mut cur = head;
+    while let Some(node) = cur {
+        value = (value << 1) | node.val;
+        cur = node.next;
+    }
+    value
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn from_values(values: Vec[i64]) -> Option[ListNode] {
+    let mut head: Option[ListNode] = None;
+    for v in values.iter().rev() {
+        head = Some(ListNode { val: v, next: head });
+    }
+    head
+}
+
+fn main() {
+    // LeetCode's examples, a single 1, and the longest lists the constraints allow
+    println(f"{get_decimal_value(from_values([1, 0, 1]))} {get_decimal_value(from_values([0]))} {get_decimal_value(from_values([1]))} {get_decimal_value(from_values([0, 0, 0, 1]))}");
+    let mut ones: Vec[i64] = Vec.new();
+    let mut alternate: Vec[i64] = Vec.new();
+    for k in 0..30 {
+        ones.push(1);
+        alternate.push((k + 1) % 2);
+    }
+    println(f"{get_decimal_value(from_values(ones))} {get_decimal_value(from_values(alternate))}");
+    // random lists of 1 to 30 bits; the head is 0 only on a list of one node
+    let mut seed = 1290;
+    let mut total = 0;
+    let mut check = 0;
+    for k in 0..20000 {
+        let n = if k < 30 { k + 1 } else { next_random(mut seed) % 30 + 1 };
+        let mut values: Vec[i64] = Vec.new();
+        for i in 0..n {
+            values.push(if i == 0 and n > 1 { 1 } else { next_random(mut seed) % 2 });
+        }
+        let value = get_decimal_value(from_values(values));
+        total += value;
+        check = (check * 131 + value) % 1000000007;
+    }
+    println(f"20000 random lists of 1 to 30 bits: total {total}, checksum {check}");
+}

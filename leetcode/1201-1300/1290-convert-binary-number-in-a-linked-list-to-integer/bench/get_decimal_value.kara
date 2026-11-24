@@ -1,0 +1,57 @@
+// LeetCode #1290 bench: the ★ arm (one walk, the value doubled and the bit
+// added at each node) over 10^4 lists of 30 nodes built once; then 500
+// passes, each setting one bit of every list from the checksum so far and
+// reading every list back, folding each value into the checksum.
+
+shared struct ListNode {
+    mut val: i64,
+    mut next: Option[ListNode],
+}
+
+fn get_decimal_value(head: Option[ListNode]) -> i64 {
+    let mut value = 0;
+    let mut cur = head;
+    while let Some(node) = cur {
+        value = value * 2 + node.val;
+        cur = node.next;
+    }
+    value
+}
+
+fn set_bit(head: Option[ListNode], k: i64, bit: i64) {
+    let mut cur = head;
+    let mut i = 0;
+    while let Some(node) = cur {
+        if i == k {
+            node.val = bit;
+            return;
+        }
+        i += 1;
+        cur = node.next;
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1290;
+    let mut heads: Vec[Option[ListNode]] = Vec.new();
+    for _ in 0..10000 {
+        let mut head: Option[ListNode] = None;
+        for _ in 0..30 {
+            head = Some(ListNode { val: next_random(mut seed) % 2, next: head });
+        }
+        heads.push(head);
+    }
+    let mut check = 0;
+    for p in 0..500 {
+        for a in 0..heads.len() {
+            set_bit(heads[a], (check + a) % 30, check / 16 % 2);
+            check = (check * 31 + get_decimal_value(heads[a]) + p) % 1000000007;
+        }
+    }
+    println(f"500 passes over 10^4 lists of 30 bits: checksum {check}");
+}
