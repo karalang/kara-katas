@@ -1,0 +1,41 @@
+// LeetCode #2535 bench: the ★ arm (one pass, digits by % 10 and / 10)
+// over 50 lists of 2000 numbers to 2000, 1000 passes; each pass changes
+// one number of each list, so no answer is the one before.
+
+fn difference_of_sum(nums: Vec[i64]) -> i64 {
+    let mut element_sum = 0;
+    let mut digit_sum = 0;
+    for x in nums.iter() {
+        element_sum += x;
+        let mut rest = x;
+        while rest > 0 {
+            digit_sum += rest % 10;
+            rest /= 10;
+        }
+    }
+    (element_sum - digit_sum).abs()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let passes = 1000;
+    let n = 2000;
+    let mut seed = 2535;
+    let mut lists: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..50 {
+        lists.push((0..n).map(|_| next_random(mut seed) % 2000 + 1).collect());
+    }
+    let mut check = 0;
+    for p in 0..passes {
+        for q in 0..50 {
+            let at = check % n;
+            lists[q][at] = (check + p) % 2000 + 1;
+            check = (check * 31 + difference_of_sum(lists[q]) + p) % 1000000007;
+        }
+    }
+    println(f"{passes} passes over 50 lists of 2000: checksum {check}");
+}
