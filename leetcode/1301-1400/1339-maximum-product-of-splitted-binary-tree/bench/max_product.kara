@@ -1,0 +1,85 @@
+// LeetCode #1339 bench: the ★ arm (one walk for the total, a second for
+// every subtree's sum s, keeping the best s * (total - s), taken modulo
+// 10^9 + 7 at the end) on 10 trees of 5 * 10^4 nodes, the constraints'
+// most, with values from 1 to 10^4, each node hung on a random empty
+// place and built once; then 20 passes, each setting one node of every
+// tree from the checksum so far, so no answer carries over, answering it
+// and folding the answer plus the pass into the checksum.
+
+fn total(node: Option[TreeNode]) -> i64 {
+    match node {
+        Some(n) => n.val + total(n.left) + total(n.right),
+        None => 0,
+    }
+}
+
+fn best_cut(node: Option[TreeNode], all: i64, best: mut ref i64) -> i64 {
+    match node {
+        Some(n) => {
+            let s = n.val + best_cut(n.left, all, mut best) + best_cut(n.right, all, mut best);
+            *best = max(*best, s * (all - s));
+            s
+        }
+        None => 0,
+    }
+}
+
+fn max_product(root: Option[TreeNode]) -> i32 {
+    let all = total(root);
+    let mut best = 0;
+    best_cut(root, all, mut best);
+    (best % 1000000007) as i32
+}
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n nodes, every one also kept in `nodes` so that a pass can change it
+fn build(seed: mut ref i64, n: i64, nodes: mut ref Vec[TreeNode]) {
+    let root = TreeNode { val: (1 + next_random(mut seed) % 10000) as i32, left: None, right: None };
+    nodes.push(root);
+    let mut places: Vec[(TreeNode, bool)] = [(root, true), (root, false)];
+    while nodes.len() < n {
+        let k = next_random(mut seed) % places.len();
+        let (parent, left) = places.swap_remove(k);
+        let node = TreeNode { val: (1 + next_random(mut seed) % 10000) as i32, left: None, right: None };
+        if left {
+            parent.left = Some(node);
+        } else {
+            parent.right = Some(node);
+        }
+        places.push((node, true));
+        places.push((node, false));
+        nodes.push(node);
+    }
+}
+
+fn main() {
+    let n = 50000;
+    let mut seed = 1339;
+    let mut trees: Vec[Vec[TreeNode]] = Vec.new();
+    for _ in 0..10 {
+        let mut nodes: Vec[TreeNode] = Vec.new();
+        build(mut seed, n, mut nodes);
+        trees.push(nodes);
+    }
+    let mut check: i64 = 0;
+    for pass in 0..20 {
+        for t in 0..10 {
+            let nodes = ref trees[t];
+            let at = nodes[check % n];
+            at.val = (1 + (check / 7) % 10000) as i32;
+            let answer = max_product(Some(nodes[0]));
+            check = (check * 31 + answer + pass) % 1000000007;
+        }
+    }
+    println(f"20 passes over 10 trees of 5 * 10^4: checksum {check}");
+}

@@ -1,0 +1,366 @@
+// LeetCode #1339: Maximum Product of Splitted Binary Tree -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+//
+// The statement: given the root of a binary tree, split the binary tree
+// into two subtrees by removing one edge such that the product of the
+// sums of the subtrees is maximized. Return the maximum product of the
+// sums of the two subtrees, modulo 10^9 + 7; maximize the answer before
+// taking the mod.
+
+// ---- max_product.kara ----
+fn a0_total(node: Option[TreeNode]) -> i64 {
+    match node {
+        Some(n) => n.val + a0_total(n.left) + a0_total(n.right),
+        None => 0,
+    }
+}
+
+fn a0_best_cut(node: Option[TreeNode], all: i64, best: mut ref i64) -> i64 {
+    match node {
+        Some(n) => {
+            let s = n.val + a0_best_cut(n.left, all, mut best) + a0_best_cut(n.right, all, mut best);
+            *best = max(*best, s * (all - s));
+            s
+        }
+        None => 0,
+    }
+}
+
+fn a0_max_product(root: Option[TreeNode]) -> i32 {
+    let all = a0_total(root);
+    let mut best = 0;
+    a0_best_cut(root, all, mut best);
+    (best % 1000000007) as i32
+}
+
+// ---- max_product_stack.kara ----
+fn a1_max_product(root: Option[TreeNode]) -> i32 {
+    let mut stack: Vec[(TreeNode, bool)] = Vec.new();
+    if let Some(r) = root {
+        stack.push((r, false));
+    }
+    let mut finished: Vec[i64] = Vec.new();
+    let mut sums: Vec[i64] = Vec.new();
+    while let Some((n, children_done)) = stack.pop() {
+        if children_done {
+            let mut s = n.val as i64;
+            if n.right.is_some() {
+                s += finished.pop().unwrap();
+            }
+            if n.left.is_some() {
+                s += finished.pop().unwrap();
+            }
+            finished.push(s);
+            sums.push(s);
+        } else {
+            stack.push((n, true));
+            if let Some(r) = n.right {
+                stack.push((r, false));
+            }
+            if let Some(l) = n.left {
+                stack.push((l, false));
+            }
+        }
+    }
+    let all = finished.pop().unwrap();
+    let best = sums.iter().map(|s| s * (all - s)).max().unwrap();
+    (best % 1000000007) as i32
+}
+
+// ---- max_product_closest.kara ----
+fn a2_sums(node: Option[TreeNode], out: mut ref Vec[i64]) -> i64 {
+    let Some(n) = node else {
+        return 0;
+    };
+    let s = n.val + a2_sums(n.left, mut out) + a2_sums(n.right, mut out);
+    out.push(s);
+    s
+}
+
+fn a2_max_product(root: Option[TreeNode]) -> i32 {
+    let mut all_sums: Vec[i64] = Vec.new();
+    let all = a2_sums(root, mut all_sums);
+    // the distance of 2s from the total measures how far s is from half
+    let mut nearest = all_sums[0];
+    for s in all_sums.iter() {
+        if (2 * s - all).abs() < (2 * nearest - all).abs() {
+            nearest = s;
+        }
+    }
+    (nearest * (all - nearest) % 1000000007) as i32
+}
+
+// ---- max_product_solution.kara ----
+struct A3Solution {}
+
+fn a3_sum(node: Option[TreeNode], sums: mut ref Vec[i64]) -> i64 {
+    match node {
+        None => 0,
+        Some(n) => {
+            let s = n.val + a3_sum(n.left, mut sums) + a3_sum(n.right, mut sums);
+            sums.push(s);
+            s
+        }
+    }
+}
+
+impl A3Solution {
+    pub fn a3_max_product(root: Option[TreeNode]) -> i32 {
+        let mut sums = Vec.new();
+        let total = a3_sum(root, mut sums);
+        let best = sums.iter().map(|s| s * (total - s)).max().unwrap();
+        (best % 1_000_000_007) as i32
+    }
+}
+
+fn a3_max_product(root: Option[TreeNode]) -> i32 {
+    A3Solution.a3_max_product(root)
+}
+
+// ---- max_product_twopass.kara ----
+struct A4Solution {}
+
+fn a4_dfs(node: Option[TreeNode], total: i64, best: mut ref i64) -> i64 {
+    if let Some(n) = node {
+        let s = n.val + a4_dfs(n.left, total, mut best) + a4_dfs(n.right, total, mut best);
+        *best = (*best).max(s * (total - s));
+        s
+    } else {
+        0
+    }
+}
+
+fn a4_total(node: Option[TreeNode]) -> i64 {
+    if let Some(n) = node {
+        n.val + a4_total(n.left) + a4_total(n.right)
+    } else {
+        0
+    }
+}
+
+impl A4Solution {
+    pub fn a4_max_product(root: Option[TreeNode]) -> i32 {
+        let t = a4_total(root);
+        let mut best = 0;
+        a4_dfs(root, t, mut best);
+        (best % 1_000_000_007) as i32
+    }
+}
+
+fn a4_max_product(root: Option[TreeNode]) -> i32 {
+    A4Solution.a4_max_product(root)
+}
+
+// ---- the differential -------------------------------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the tree as a list of values and of neighbours, numbered in preorder,
+// each node's left child before its right
+fn flatten(node: Option[TreeNode], parent: i64, vals: mut ref Vec[i32], adj: mut ref Vec[Vec[i64]]) {
+    let Some(n) = node else {
+        return;
+    };
+    let at = vals.len();
+    vals.push(n.val);
+    adj.push(Vec.new());
+    if parent >= 0 {
+        adj[at].push(parent);
+        adj[parent].push(at);
+    }
+    flatten(n.left, at, mut vals, mut adj);
+    flatten(n.right, at, mut vals, mut adj);
+}
+
+// a fresh tree hung from node `at`, its neighbours other than `from` as
+// children in the order they were listed
+fn build(vals: Vec[i32], adj: Vec[Vec[i64]], at: i64, from: i64) -> Option[TreeNode] {
+    let node = TreeNode { val: vals[at], left: None, right: None };
+    let kids: Vec[i64] = adj[at].iter().filter(|k| k != from).cloned().collect();
+    if kids.len() > 0 {
+        node.left = build(vals, adj, kids[0], at);
+    }
+    if kids.len() > 1 {
+        node.right = build(vals, adj, kids[1], at);
+    }
+    Some(node)
+}
+
+// the sum of the nodes reached from `at` without passing through `cut`
+fn reach(vals: Vec[i32], adj: Vec[Vec[i64]], at: i64, from: i64, cut: i64) -> i64 {
+    let mut s = vals[at] as i64;
+    for k in adj[at].iter() {
+        if k != from and k != cut {
+            s += reach(vals, adj, k, at, cut);
+        }
+    }
+    s
+}
+
+// the statement read literally: each edge removed in turn, the edge from
+// a node to its parent; the two trees left summed by separate walks, and
+// the largest product kept before the modulo
+fn literal(vals: Vec[i32], adj: Vec[Vec[i64]]) -> i64 {
+    let mut best = 0;
+    for c in 1..vals.len() {
+        let parent = adj[c].iter().cloned().filter(|k| k < c).min().unwrap();
+        let below = reach(vals, adj, c, parent, -1);
+        let above = reach(vals, adj, 0, -1, c);
+        best = max(best, below * above);
+    }
+    best % 1000000007
+}
+
+fn mirror(node: Option[TreeNode]) -> Option[TreeNode] {
+    let Some(n) = node else {
+        return None;
+    };
+    Some(TreeNode { val: n.val, left: mirror(n.right), right: mirror(n.left) })
+}
+
+fn scaled(node: Option[TreeNode], by: i32) -> Option[TreeNode] {
+    let Some(n) = node else {
+        return None;
+    };
+    Some(TreeNode { val: n.val * by, left: scaled(n.left, by), right: scaled(n.right, by) })
+}
+
+// n nodes with values from 1 to `top`, each hung on an empty child place
+// of the tree so far chosen at random
+fn random_tree(seed: mut ref i64, n: i64, top: i64) -> Option[TreeNode] {
+    let root = TreeNode { val: (1 + next_random(mut seed) % top) as i32, left: None, right: None };
+    let mut places: Vec[(TreeNode, bool)] = [(root, true), (root, false)];
+    for _ in 1..n {
+        let k = next_random(mut seed) % places.len();
+        let (parent, left) = places.swap_remove(k);
+        let node = TreeNode { val: (1 + next_random(mut seed) % top) as i32, left: None, right: None };
+        if left {
+            parent.left = Some(node);
+        } else {
+            parent.right = Some(node);
+        }
+        places.push((node, true));
+        places.push((node, false));
+    }
+    Some(root)
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, root: Option[TreeNode]) -> i32 {
+    match i {
+        0 => a0_max_product(root),
+        1 => a1_max_product(root),
+        2 => a2_max_product(root),
+        3 => a3_max_product(root),
+        _ => a4_max_product(root),
+    }
+}
+
+fn check_case(t: mut ref Tally, root: Option[TreeNode]) {
+    t.cases += 1;
+    let mut vals: Vec[i32] = Vec.new();
+    let mut adj: Vec[Vec[i64]] = Vec.new();
+    flatten(root, -1, mut vals, mut adj);
+    let want = literal(vals, adj);
+    t.check = (t.check * 131 + want + vals.len()) % 1000000007;
+    let total: i64 = vals.iter().map(|v| v as i64).sum();
+    // the first leaf in preorder, the tree's leftmost leaf
+    let mut leaf = 1;
+    while adj[leaf].len() > 1 {
+        leaf += 1;
+    }
+    let star = a0_max_product(root);
+    for i in 0..5 {
+        let got = arm(i, root);
+        let what = f"arm {i} on {vals} {adj}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the tree mirrored: the same answer
+        let mr = arm(i, mirror(root));
+        expect(mut t, 2, mr == got, f"P2 {what}, mirrored: {mr}");
+        // P3: every value doubled: four times the answer
+        let db = arm(i, scaled(root, 2));
+        expect(mut t, 3, db == 4 * got, f"P3 {what}, doubled: {db}");
+        // P4: the same tree hung from its leftmost leaf: the same edges,
+        // so the same answer
+        let rr = arm(i, build(vals, adj, leaf, -1));
+        expect(mut t, 4, rr == got, f"P4 {what}, hung from node {leaf}: {rr}");
+        // P5: a new root of value 1 above the tree: at least the old answer,
+        // and at least the old total, the new edge's product
+        let up = arm(i, Some(TreeNode { val: 1, left: root, right: None }));
+        expect(mut t, 5, up >= got and up >= total, f"P5 {what}, a root above: {up}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 trees of 2 to 12 nodes in four kinds, 500 each: values from 1
+    // to 100 hung at random places; values from 1 to 3; every value 1;
+    // and a chain, each node a random child of the one before. Every tree
+    // is drawn before any arm answers.
+    let mut seed = 13391;
+    let mut cases: Vec[Option[TreeNode]] = Vec.new();
+    for c in 0..2000 {
+        let kind = c / 500;
+        let n = 2 + next_random(mut seed) % 11;
+        let tree = if kind == 0 {
+            random_tree(mut seed, n, 100)
+        } else if kind == 1 {
+            random_tree(mut seed, n, 3)
+        } else if kind == 2 {
+            random_tree(mut seed, n, 1)
+        } else {
+            let root = TreeNode { val: (1 + next_random(mut seed) % 100) as i32, left: None, right: None };
+            let mut at = root;
+            for _ in 1..n {
+                let node = TreeNode { val: (1 + next_random(mut seed) % 100) as i32, left: None, right: None };
+                if next_random(mut seed) % 2 == 0 {
+                    at.left = Some(node);
+                } else {
+                    at.right = Some(node);
+                }
+                at = node;
+            }
+            Some(root)
+        };
+        cases.push(tree);
+    }
+    for root in cases.iter() {
+        check_case(mut t, root);
+    }
+    println(f"{t.cases} trees: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
