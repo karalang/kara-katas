@@ -1,0 +1,210 @@
+// LeetCode #1343: Number of Sub-arrays of Size K and Average Greater than
+// or Equal to Threshold -- differential test of the five arms against the
+// statement read literally, with five more properties.
+//
+// The statement: given an array of integers arr and two integers k and
+// threshold, return the number of sub-arrays of size k and average greater
+// than or equal to threshold.
+
+// ---- num_of_subarrays.kara ----
+fn a0_num_of_subarrays(arr: Vec[i32], k: i32, threshold: i32) -> i32 {
+    let need = k * threshold;
+    let mut sum = 0;
+    let mut count = 0;
+    for i in 0..arr.len() {
+        sum += arr[i];
+        if i >= k {
+            sum -= arr[i - k];
+        }
+        if i >= k - 1 and sum >= need {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- num_of_subarrays_prefix.kara ----
+fn a1_num_of_subarrays(arr: Vec[i32], k: i32, threshold: i32) -> i32 {
+    let mut before: Vec[i32] = [0];
+    for x in arr.iter() {
+        before.push(before[before.len() - 1] + x);
+    }
+    let mut count = 0;
+    for i in 0..arr.len() - k + 1 {
+        if before[i + k] - before[i] >= k * threshold {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- num_of_subarrays_windows.kara ----
+fn a2_num_of_subarrays(arr: Vec[i32], k: i32, threshold: i32) -> i32 {
+    arr.windows(k).into_iter().filter(|w| w.iter().sum() >= k * threshold).count() as i32
+}
+
+// ---- num_of_subarrays_average.kara ----
+fn a3_num_of_subarrays(arr: Vec[i32], k: i32, threshold: i32) -> i32 {
+    if arr.len() < k {
+        return 0;
+    }
+    let mut sum: i32 = arr[0..k].iter().sum();
+    let mut count = if sum / k >= threshold { 1 } else { 0 };
+    for i in k..arr.len() {
+        sum += arr[i] - arr[i - k];
+        if sum / k >= threshold {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- num_of_subarrays_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_num_of_subarrays(arr: Vec[i32], k: i32, threshold: i32) -> i32 {
+        let k = k as i64;
+        let target = threshold * k as i32;
+        let mut sum: i32 = arr[..k].iter().sum();
+        let mut ans = if sum >= target { 1 } else { 0 };
+        for i in k..arr.len() {
+            sum += arr[i] - arr[i - k];
+            if sum >= target {
+                ans += 1;
+            }
+        }
+        ans
+    }
+}
+
+fn a4_num_of_subarrays(arr: Vec[i32], k: i32, threshold: i32) -> i32 {
+    A4Solution.a4_num_of_subarrays(arr, k, threshold)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every sub-array of k values, its average
+// as a floating-point quotient, compared with the threshold
+fn literal(arr: Vec[i32], k: i32, threshold: i32) -> i32 {
+    let mut count = 0;
+    let mut start = 0;
+    while start + k <= arr.len() {
+        let mut sum = 0.0;
+        for i in start..start + k {
+            sum += arr[i] as f64;
+        }
+        if sum / (k as f64) >= threshold as f64 {
+            count += 1;
+        }
+        start += 1;
+    }
+    count
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, arr: Vec[i32], k: i32, threshold: i32) -> i32 {
+    match i {
+        0 => a0_num_of_subarrays(arr, k, threshold),
+        1 => a1_num_of_subarrays(arr, k, threshold),
+        2 => a2_num_of_subarrays(arr, k, threshold),
+        3 => a3_num_of_subarrays(arr, k, threshold),
+        _ => a4_num_of_subarrays(arr, k, threshold),
+    }
+}
+
+fn check_case(t: mut ref Tally, arr: Vec[i32], k: i32, threshold: i32) {
+    t.cases += 1;
+    let want = literal(arr, k, threshold);
+    t.check = (t.check * 131 + want * 7 + k + threshold) % 1000000007;
+    let star = a0_num_of_subarrays(arr, k, threshold);
+    let backwards: Vec[i32] = arr.iter().rev().cloned().collect();
+    let raised: Vec[i32] = arr.iter().map(|x| x + 1).collect();
+    let reaching = arr.iter().filter(|x| x >= threshold).count() as i32;
+    for i in 0..5 {
+        let got = arm(i, arr, k, threshold);
+        let what = f"arm {i} on {arr}, k = {k}, threshold {threshold}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the array read backwards: the same windows, the same answer
+        let bw = arm(i, backwards, k, threshold);
+        expect(mut t, 2, bw == got, f"P2 {what}, backwards: {bw}");
+        // P3: every value and the threshold one higher: every average one
+        // higher too, so the same answer
+        let up = arm(i, raised, k, threshold + 1);
+        expect(mut t, 3, up == got, f"P3 {what}, all one higher: {up}");
+        // P4: the threshold one higher: no more windows reach it
+        let harder = arm(i, arr, k, threshold + 1);
+        expect(mut t, 4, harder <= got, f"P4 {what}, threshold + 1: {harder}");
+        // P5: windows of one value: the values that reach the threshold
+        let ones = arm(i, arr, 1, threshold);
+        expect(mut t, 5, ones == reaching, f"P5 {what}, k = 1: {ones}, values reaching {reaching}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 arrays of 1 to 10 values in four kinds, 500 each: from 1 to 3;
+    // from 1 to 100; every value the same, from 1 to 5; and alternating, the
+    // even places from 50 to 100 and the odd ones from 1 to 10. k from 1 to
+    // the length, and the threshold from 0 to one above the largest value.
+    // Every case is drawn before any arm answers.
+    let mut seed = 13431;
+    let mut cases: Vec[(Vec[i32], i32, i32)] = Vec.new();
+    for c in 0..2000 {
+        let kind = c / 500;
+        let n = 1 + next_random(mut seed) % 10;
+        let same = 1 + next_random(mut seed) % 5;
+        let mut arr: Vec[i32] = Vec.new();
+        for j in 0..n {
+            let v = if kind == 0 {
+                1 + next_random(mut seed) % 3
+            } else if kind == 1 {
+                1 + next_random(mut seed) % 100
+            } else if kind == 2 {
+                same
+            } else if j % 2 == 0 {
+                50 + next_random(mut seed) % 51
+            } else {
+                1 + next_random(mut seed) % 10
+            };
+            arr.push(v as i32);
+        }
+        let k = (1 + next_random(mut seed) % n) as i32;
+        let top = arr.iter().max().unwrap();
+        let threshold = (next_random(mut seed) % (top + 2)) as i32;
+        cases.push((arr, k, threshold));
+    }
+    for (arr, k, threshold) in cases.iter() {
+        check_case(mut t, arr, k, threshold);
+    }
+    println(f"{t.cases} arrays: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
