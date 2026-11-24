@@ -1,0 +1,64 @@
+// LeetCode #1300: Sum of Mutated Array Closest to Target -- the ★ arm: the
+// numbers sorted, then walked from the smallest with the sum of those passed.
+// At the first number that, as the cap of it and everything after it, brings
+// the sum to the target or past it, the best cap lies between the number
+// before it and it: the target's share of what is left, rounded down or up,
+// whichever sum is closer, the smaller on a tie. Past every number, the
+// largest. O(n log n)
+
+fn find_best_value(arr: Vec[i64], target: i64) -> i64 {
+    let mut sorted = arr.clone();
+    sorted.sort();
+    let n = sorted.len();
+    let mut before = 0;
+    for i in 0..n {
+        let left = n - i;
+        if before + sorted[i] * left >= target {
+            let x = (target - before) / left;
+            let low = (before + x * left - target).abs();
+            let high = (before + (x + 1) * left - target).abs();
+            return if low <= high { x } else { x + 1 };
+        }
+        before += sorted[i];
+    }
+    sorted[n - 1]
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples, a target past the whole sum, a target of 1
+    // over two numbers (a tie between 0 and 1), and a cap that lands exactly
+    println(f"{find_best_value([4, 9, 3], 10)} {find_best_value([2, 3, 5], 10)} {find_best_value([60864, 25176, 27249, 21296, 20204], 56803)} {find_best_value([1, 2, 3], 100)} {find_best_value([5, 5], 1)} {find_best_value([1, 10, 10], 13)}");
+    // random arrays of 1 to 200 numbers up to 10, 1000 or 10^5, with targets
+    // up to 10^5, a third of them below the array's sum
+    let mut seed = 1300;
+    let mut total = 0;
+    let mut check = 0;
+    for i in 0..900 {
+        let n = 1 + next_random(mut seed) % 200;
+        let top = if i % 3 == 0 { 10 } else if i % 3 == 1 { 1000 } else { 100000 };
+        let mut arr: Vec[i64] = Vec.new();
+        let mut sum = 0;
+        for _ in 0..n {
+            let x = 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % top;
+            arr.push(x);
+            sum += x;
+        }
+        let cap = if sum < 100000 { sum } else { 100000 };
+        let target = if i % 3 == 2 {
+            1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000
+        } else {
+            1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % cap
+        };
+        let best = find_best_value(arr, target);
+        total += best;
+        check = (check * 131 + best) % 1000000007;
+    }
+    println(f"900 random arrays: values total {total}, checksum {check}");
+}

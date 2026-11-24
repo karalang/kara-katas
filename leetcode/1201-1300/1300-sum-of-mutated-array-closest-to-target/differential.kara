@@ -1,0 +1,307 @@
+// LeetCode #1300: Sum of Mutated Array Closest to Target -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+//
+// The statement: given an integer array arr and a target value target,
+// return the integer value such that when we change all the integers larger
+// than value in the given array to be equal to value, the sum of the array
+// gets as close as possible (in absolute difference) to target. In case of
+// a tie, return the minimum such integer.
+
+// ---- find_best_value.kara ----
+fn a0_find_best_value(arr: Vec[i64], target: i64) -> i64 {
+    let mut sorted = arr.clone();
+    sorted.sort();
+    let n = sorted.len();
+    let mut before = 0;
+    for i in 0..n {
+        let left = n - i;
+        if before + sorted[i] * left >= target {
+            let x = (target - before) / left;
+            let low = (before + x * left - target).abs();
+            let high = (before + (x + 1) * left - target).abs();
+            return if low <= high { x } else { x + 1 };
+        }
+        before += sorted[i];
+    }
+    sorted[n - 1]
+}
+
+// ---- find_best_value_binary.kara ----
+fn a1_capped_sum(arr: Vec[i64], cap: i64) -> i64 {
+    let mut sum = 0;
+    for x in arr.iter() {
+        sum += if x < cap { x } else { cap };
+    }
+    sum
+}
+
+fn a1_find_best_value(arr: Vec[i64], target: i64) -> i64 {
+    let mut lo = 0;
+    let mut hi = 0;
+    for x in arr.iter() {
+        if x > hi {
+            hi = x;
+        }
+    }
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if a1_capped_sum(arr, mid) < target {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    if lo > 0 and (a1_capped_sum(arr, lo - 1) - target).abs() <= (a1_capped_sum(arr, lo) - target).abs() {
+        lo - 1
+    } else {
+        lo
+    }
+}
+
+// ---- find_best_value_down.kara ----
+fn a2_find_best_value(arr: Vec[i64], target: i64) -> i64 {
+    let mut desc = arr.clone();
+    desc.sort();
+    desc.reverse();
+    let n = desc.len();
+    let mut total = 0;
+    for x in desc.iter() {
+        total += x;
+    }
+    if total <= target {
+        return desc[0];
+    }
+    let mut top = 0;
+    for k in 1..n + 1 {
+        top += desc[k - 1];
+        let next = if k < n { desc[k] } else { 0 };
+        let rest = total - top;
+        if rest + k * next <= target {
+            let x = (target - rest) / k;
+            let low = (rest + x * k - target).abs();
+            let high = (rest + (x + 1) * k - target).abs();
+            return if low <= high { x } else { x + 1 };
+        }
+    }
+    0
+}
+
+// ---- find_best_value_every.kara ----
+fn a3_find_best_value(arr: Vec[i64], target: i64) -> i64 {
+    let mut most = 0;
+    for x in arr.iter() {
+        if x > most {
+            most = x;
+        }
+    }
+    let mut count: Vec[i64] = Vec.filled(most + 1, 0);
+    for x in arr.iter() {
+        count[x] += 1;
+    }
+    let mut below = 0;
+    let mut at_or_above = arr.len();
+    let mut best = 0;
+    let mut best_gap = target;
+    for cap in 0..most + 1 {
+        let gap = (below + cap * at_or_above - target).abs();
+        if gap < best_gap {
+            best = cap;
+            best_gap = gap;
+        }
+        below += cap * count[cap];
+        at_or_above -= count[cap];
+    }
+    best
+}
+
+// ---- find_best_value_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_find_best_value(arr: Vec[i32], target: i32) -> i32 {
+        let mut (lo, hi) = (0i32, *arr.iter().max().unwrap());
+        let sum: Fn(i32) -> i32 = |v: i32| { arr.iter().map(|a| a.min(v)).sum() };
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            if sum(mid) < target {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        if (sum(lo) - target).abs() < (sum(lo - 1) - target).abs() {
+            lo
+        } else {
+            lo - 1
+        }
+    }
+}
+
+fn a4_find_best_value(arr: Vec[i64], target: i64) -> i64 {
+    A4Solution.a4_find_best_value(arr.iter().map(|x| x as i32).collect(), target as i32)
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// Every value from 0 to the largest number (past it nothing changes, and a
+// tie keeps the smaller): the array copied with each number larger than the
+// value changed to it, summed, and the closest sum kept, the first on a tie.
+fn literal(arr: Vec[i64], target: i64) -> i64 {
+    let mut largest = 0;
+    for x in arr.iter() {
+        if x > largest {
+            largest = x;
+        }
+    }
+    let mut best = 0;
+    let mut best_gap = -1;
+    for value in 0..largest + 1 {
+        let mut changed = arr.clone();
+        for i in 0..changed.len() {
+            if changed[i] > value {
+                changed[i] = value;
+            }
+        }
+        let mut sum = 0;
+        for x in changed.iter() {
+            sum += x;
+        }
+        let gap = if sum > target { sum - target } else { target - sum };
+        if best_gap < 0 or gap < best_gap {
+            best = value;
+            best_gap = gap;
+        }
+    }
+    best
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Case {
+    arr: Vec[i64],
+    target: i64,
+    raise: i64,
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, arr: Vec[i64], target: i64) -> i64 {
+    match i {
+        0 => a0_find_best_value(arr, target),
+        1 => a1_find_best_value(arr, target),
+        2 => a2_find_best_value(arr, target),
+        3 => a3_find_best_value(arr, target),
+        _ => a4_find_best_value(arr, target),
+    }
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    let want = literal(c.arr, c.target);
+    t.cases += 1;
+    t.check = (t.check * 131 + want) % 1000000007;
+    let mut reversed = c.arr.clone();
+    reversed.reverse();
+    let mut doubled = c.arr.clone();
+    for x in c.arr.iter() {
+        doubled.push(x);
+    }
+    let star = a0_find_best_value(c.arr, c.target);
+    for i in 0..5 {
+        let got = arm(i, c.arr, c.target);
+        let what = f"arm {i} case {t.cases} {show(c.arr)} target {c.target}: got {got}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal {want}");
+        // P2: the array reversed, the same answer
+        let rv = arm(i, reversed, c.target);
+        expect(mut t, 2, rv == got, f"P2 {what}, reversed: {rv}");
+        // P3: every number twice and the target doubled, the same answer
+        let db = arm(i, doubled, 2 * c.target);
+        expect(mut t, 3, db == got, f"P3 {what}, doubled: {db}");
+        // P4: the target raised, an answer no smaller
+        let up = arm(i, c.arr, c.target + c.raise);
+        expect(mut t, 4, up >= got, f"P4 {what}, target {c.target + c.raise}: {up}");
+        // P5: the array changed by its own answer, the same answer
+        let capped: Vec[i64] = c.arr.iter().map(|x| if x > got { got } else { x }).collect();
+        let cp = arm(i, capped, c.target);
+        expect(mut t, 5, cp == got, f"P5 {what}, capped {show(capped)}: {cp}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 arrays of 1 to 8 numbers in four kinds, 500 each: numbers up to 5
+    // with a target up to the sum and a little past it, so that ties are
+    // common; numbers up to 50; one number throughout; and a target below the
+    // length or past the sum. Every array, target and raise is drawn before
+    // any arm answers.
+    let mut seed = 13001;
+    let mut cases: Vec[Case] = Vec.new();
+    for i in 0..2000 {
+        let kind = i / 500;
+        let n = 1 + next_random(mut seed) % 8;
+        let mut arr: Vec[i64] = Vec.new();
+        let same = 1 + next_random(mut seed) % 30;
+        for _ in 0..n {
+            if kind == 0 {
+                arr.push(1 + next_random(mut seed) % 5);
+            } else if kind == 2 {
+                arr.push(same);
+            } else {
+                arr.push(1 + next_random(mut seed) % 50);
+            }
+        }
+        let mut sum = 0;
+        for x in arr.iter() {
+            sum += x;
+        }
+        let target = if kind == 3 {
+            if next_random(mut seed) % 2 == 0 {
+                1 + next_random(mut seed) % n
+            } else {
+                sum + next_random(mut seed) % 20
+            }
+        } else {
+            1 + next_random(mut seed) % (sum + 3)
+        };
+        let raise = 1 + next_random(mut seed) % 20;
+        cases.push(Case { arr, target, raise });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} arrays: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
