@@ -1,0 +1,55 @@
+// LeetCode #1312 bench: the ★ arm (the interval costs kept in one row) on
+// 20 strings of 500 letters, the constraints' longest, over 2, 4 or 26
+// letters, built once; then 50 passes, each setting one letter of every
+// string from the checksum so far, so no answer carries over, answering it
+// and folding the answer plus the pass into the checksum.
+
+fn min_insertions(s: String) -> i64 {
+    let b = s.bytes();
+    let n = b.len();
+    // row[j]: the cost of s[i..=j] for the current i; `inside` holds the
+    // cost of s[i + 1..=j - 1], from the row before
+    let mut row: Vec[i64] = Vec.filled(n, 0);
+    let mut i = n - 1;
+    while i >= 0 {
+        let mut inside = 0;
+        for j in i + 1..n {
+            let keep = row[j];
+            row[j] = if b[i] == b[j] { inside } else { 1 + keep.min(row[j - 1]) };
+            inside = keep;
+        }
+        i -= 1;
+    }
+    row[n - 1]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let letters = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'];
+    let n = 500;
+    let mut seed = 1312;
+    let mut strings: Vec[Vec[char]] = Vec.new();
+    for g in 0..20 {
+        let k = if g % 3 == 0 { 2 } else if g % 3 == 1 { 4 } else { 26 };
+        let mut chars: Vec[char] = Vec.new();
+        for _ in 0..n {
+            chars.push(letters[next_random(mut seed) % k]);
+        }
+        strings.push(chars);
+    }
+    let mut check: i64 = 0;
+    for pass in 0..50 {
+        for g in 0..20 {
+            let k = if g % 3 == 0 { 2 } else if g % 3 == 1 { 4 } else { 26 };
+            strings[g][check % n] = letters[(check / 7) % k];
+            let s: String = strings[g].iter().collect();
+            let got = min_insertions(s);
+            check = (check * 31 + got + pass) % 1000000007;
+        }
+    }
+    println(f"50 passes over 20 strings of 500: checksum {check}");
+}

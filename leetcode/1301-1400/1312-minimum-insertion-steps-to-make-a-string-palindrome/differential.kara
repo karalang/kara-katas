@@ -1,0 +1,258 @@
+// LeetCode #1312: Minimum Insertion Steps to Make a String Palindrome --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+//
+// The statement: given a string s, in one step you can insert any character
+// at any index of the string. Return the minimum number of steps to make s
+// a palindrome, a string that reads the same backward as forward.
+
+// ---- min_insertions.kara ----
+fn a0_min_insertions(s: String) -> i64 {
+    let b = s.bytes();
+    let n = b.len();
+    // row[j]: the cost of s[i..=j] for the current i; `inside` holds the
+    // cost of s[i + 1..=j - 1], from the row before
+    let mut row: Vec[i64] = Vec.filled(n, 0);
+    let mut i = n - 1;
+    while i >= 0 {
+        let mut inside = 0;
+        for j in i + 1..n {
+            let keep = row[j];
+            row[j] = if b[i] == b[j] { inside } else { 1 + keep.min(row[j - 1]) };
+            inside = keep;
+        }
+        i -= 1;
+    }
+    row[n - 1]
+}
+
+// ---- min_insertions_table.kara ----
+fn a1_min_insertions(s: String) -> i64 {
+    let b = s.bytes();
+    let n = b.len();
+    let mut cost: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, 0));
+    for len in 2..n + 1 {
+        for i in 0..n - len + 1 {
+            let j = i + len - 1;
+            cost[i][j] = if b[i] == b[j] {
+                if len == 2 { 0 } else { cost[i + 1][j - 1] }
+            } else {
+                1 + cost[i + 1][j].min(cost[i][j - 1])
+            };
+        }
+    }
+    cost[0][n - 1]
+}
+
+// ---- min_insertions_lcs.kara ----
+fn a2_min_insertions(s: String) -> i64 {
+    let a: Vec[u8] = s.bytes().to_vec();
+    let r: Vec[u8] = a.iter().rev().collect();
+    let n = a.len();
+    let mut prev: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut cur: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 1..n + 1 {
+        for j in 1..n + 1 {
+            cur[j] = if a[i - 1] == r[j - 1] { prev[j - 1] + 1 } else { prev[j].max(cur[j - 1]) };
+        }
+        let done = prev;
+        prev = cur;
+        cur = done;
+    }
+    n - prev[n]
+}
+
+// ---- min_insertions_memo.kara ----
+fn a3_cost(b: Vec[u8], i: i64, j: i64, memo: mut ref Vec[Vec[i64]]) -> i64 {
+    if i >= j {
+        return 0;
+    }
+    if memo[i][j] >= 0 {
+        return memo[i][j];
+    }
+    let c = if b[i] == b[j] {
+        a3_cost(b, i + 1, j - 1, mut memo)
+    } else {
+        1 + a3_cost(b, i + 1, j, mut memo).min(a3_cost(b, i, j - 1, mut memo))
+    };
+    memo[i][j] = c;
+    c
+}
+
+fn a3_min_insertions(s: String) -> i64 {
+    let b = s.bytes();
+    let n = b.len();
+    let mut memo: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, -1));
+    a3_cost(b.to_vec(), 0, n - 1, mut memo)
+}
+
+// ---- min_insertions_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_min_insertions(s: String) -> i32 {
+        let s = s.bytes();
+        let n = s.len();
+        let mut dp = Vec.filled(n, Vec.filled(n, 0));
+        for len in 2..=n {
+            for i in 0..=n - len {
+                let j = i + len - 1;
+                dp[i][j] = if s[i] == s[j] {
+                    dp[i + 1][j - 1]
+                } else {
+                    1 + dp[i + 1][j].min(dp[i][j - 1])
+                };
+            }
+        }
+        dp[0][n - 1] as i32
+    }
+}
+
+fn a4_min_insertions(s: String) -> i64 {
+    A4Solution.a4_min_insertions(s)
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// every set of letters to leave alone tried, as a bit mask: when they read
+// the same both ways, each other letter can be matched by inserting its twin
+// at the mirror place, and nothing less will do, so the answer is the
+// letters not in the largest such set
+fn literal(s: String) -> i64 {
+    let chars: Vec[char] = s.chars().collect();
+    let n = chars.len();
+    let mut most = 0;
+    for mask in 0..(1 << n) {
+        let mut kept: Vec[char] = Vec.new();
+        for i in 0..n {
+            if (mask >> i) & 1 == 1 {
+                kept.push(chars[i]);
+            }
+        }
+        let back: Vec[char] = kept.iter().rev().collect();
+        if kept == back and kept.len() > most {
+            most = kept.len();
+        }
+    }
+    n - most
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Case {
+    s: String,
+    // P3: how far every letter moves round the alphabet
+    by: i64,
+    // P4: the letter appended; P5: the letter wrapped round
+    extra: char,
+    wrap: char,
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, s: String) -> i64 {
+    match i {
+        0 => a0_min_insertions(s),
+        1 => a1_min_insertions(s),
+        2 => a2_min_insertions(s),
+        3 => a3_min_insertions(s),
+        _ => a4_min_insertions(s),
+    }
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    t.cases += 1;
+    let want = literal(c.s);
+    t.check = (t.check * 31 + want) % 1000000007;
+    let reversed: String = c.s.chars().rev().collect();
+    let renamed: String = c.s.chars().map(|ch| (((ch as i64) - 97 + c.by) % 26 + 97) as u8 as char).collect();
+    let appended = f"{c.s}{c.extra}";
+    let wrapped = f"{c.wrap}{c.s}{c.wrap}";
+    let star = a0_min_insertions(c.s);
+    for i in 0..5 {
+        let got = arm(i, c.s);
+        let what = f"arm {i} case {t.cases} \"{c.s}\": got {got}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal {want}");
+        // P2: the string reversed, the same answer
+        let rv = arm(i, reversed);
+        expect(mut t, 2, rv == got, f"P2 {what}, reversed: {rv}");
+        // P3: the letters renamed one for one, the same answer
+        let rn = arm(i, renamed);
+        expect(mut t, 3, rn == got, f"P3 {what}, renamed: {rn}");
+        // P4: one more letter at the end, an answer at most one away
+        let ap = arm(i, appended);
+        expect(mut t, 4, ap >= got - 1 and ap <= got + 1, f"P4 {what}, appended {c.extra}: {ap}");
+        // P5: one letter put at both ends, the same answer
+        let wr = arm(i, wrapped);
+        expect(mut t, 5, wr == got, f"P5 {what}, wrapped in {c.wrap}: {wr}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 strings of 1 to 12 letters in four kinds, 500 each: over 2
+    // letters, over 3, and over all 26; and a palindrome over 3 letters with
+    // up to 3 letters taken out. Every string, renaming and extra letter is
+    // drawn before any arm answers.
+    let letters = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'];
+    let mut seed = 13121;
+    let mut cases: Vec[Case] = Vec.new();
+    for i in 0..2000 {
+        let kind = i / 500;
+        let n = 1 + next_random(mut seed) % 12;
+        let k = if kind == 0 { 2 } else if kind == 2 { 26 } else { 3 };
+        let mut chars: Vec[char] = Vec.new();
+        for _ in 0..n {
+            chars.push(letters[next_random(mut seed) % k]);
+        }
+        if kind == 3 {
+            for j in 0..n / 2 {
+                chars[n - 1 - j] = chars[j];
+            }
+            let cuts = next_random(mut seed) % 4;
+            for _ in 0..cuts {
+                if chars.len() > 1 {
+                    chars.remove(next_random(mut seed) % chars.len());
+                }
+            }
+        }
+        let s: String = chars.iter().collect();
+        let by = 1 + next_random(mut seed) % 25;
+        let extra = letters[next_random(mut seed) % k];
+        let wrap = letters[next_random(mut seed) % k];
+        cases.push(Case { s, by, extra, wrap });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} strings: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
