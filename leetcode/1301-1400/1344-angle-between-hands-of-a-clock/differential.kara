@@ -1,0 +1,155 @@
+// LeetCode #1344: Angle Between Hands of a Clock -- differential test of
+// the five arms against the statement read literally, with five more
+// properties, over every one of the 720 times.
+//
+// The statement: given two numbers, hour and minutes, return the smaller
+// angle (in degrees) formed between the hour and the minute hand.
+
+// ---- angle_clock.kara ----
+fn a0_angle_clock(hour: i32, minutes: i32) -> f64 {
+    let hour_hand = (hour % 12) as f64 * 30.0 + minutes as f64 * 0.5;
+    let minute_hand = minutes as f64 * 6.0;
+    let gap = (hour_hand - minute_hand).abs();
+    gap.min(360.0 - gap)
+}
+
+// ---- angle_clock_halves.kara ----
+fn a1_angle_clock(hour: i32, minutes: i32) -> f64 {
+    let hour_hand = hour % 12 * 60 + minutes;
+    let minute_hand = minutes * 12;
+    let gap = (hour_hand - minute_hand).abs();
+    min(gap, 720 - gap) as f64 / 2.0
+}
+
+// ---- angle_clock_gaining.kara ----
+fn a2_angle_clock(hour: i32, minutes: i32) -> f64 {
+    let since_twelve = (hour % 12) * 60 + minutes;
+    let ahead = (5.5 * since_twelve as f64) % 360.0;
+    if ahead > 180.0 { 360.0 - ahead } else { ahead }
+}
+
+// ---- angle_clock_walk.kara ----
+fn a3_angle_clock(hour: i32, minutes: i32) -> f64 {
+    let mut hour_hand = 0;
+    let mut minute_hand = 0;
+    for _ in 0..hour % 12 * 60 + minutes {
+        hour_hand += 1;
+        minute_hand = (minute_hand + 12) % 720;
+    }
+    let gap = (minute_hand - hour_hand + 720) % 720;
+    let shorter = if gap > 360 { 720 - gap } else { gap };
+    shorter as f64 / 2.0
+}
+
+// ---- angle_clock_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_angle_clock(hour: i32, minutes: i32) -> f64 {
+        let h = hour as f64 % 12.0 * 30.0 + minutes as f64 / 2.0;
+        let m = minutes as f64 * 6.0;
+        let diff = (h - m).abs();
+        diff.min(360.0 - diff)
+    }
+}
+
+fn a4_angle_clock(hour: i32, minutes: i32) -> f64 {
+    A4Solution.a4_angle_clock(hour, minutes)
+}
+// ---- the differential -------------------------------------------------------
+
+// the statement read literally: each hand's place in half degrees
+// clockwise from 12 (the hour hand 30 degrees an hour and half a degree a
+// minute, the minute hand 6 a minute), both angles between them, one each
+// way round, and the smaller of the two in degrees
+fn literal(hour: i32, minutes: i32) -> f64 {
+    let hour_hand = 60 * (hour % 12) + minutes;
+    let minute_hand = 12 * minutes;
+    let one_way = (minute_hand - hour_hand).rem_euclid(720);
+    let other_way = (hour_hand - minute_hand).rem_euclid(720);
+    let smaller = if one_way < other_way { one_way } else { other_way };
+    smaller as f64 / 2.0
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, hour: i32, minutes: i32) -> f64 {
+    match i {
+        0 => a0_angle_clock(hour, minutes),
+        1 => a1_angle_clock(hour, minutes),
+        2 => a2_angle_clock(hour, minutes),
+        3 => a3_angle_clock(hour, minutes),
+        _ => a4_angle_clock(hour, minutes),
+    }
+}
+
+// the time `since` minutes after 12, as an hour from 1 to 12 and minutes
+fn time_at(since: i32) -> (i32, i32) {
+    let s = since.rem_euclid(720);
+    let h = s / 60;
+    (if h == 0 { 12 } else { h }, s % 60)
+}
+
+fn check_case(t: mut ref Tally, hour: i32, minutes: i32) {
+    t.cases += 1;
+    let want = literal(hour, minutes);
+    t.check = (t.check * 131 + (2.0 * want) as i64) % 1000000007;
+    let star = a0_angle_clock(hour, minutes);
+    let since = hour % 12 * 60 + minutes;
+    let (mh, mm) = time_at(720 - since);
+    let (fh, fm) = time_at(since + 360);
+    let (nh, nm) = time_at(since + 1);
+    for i in 0..5 {
+        let got = arm(i, hour, minutes);
+        let what = f"arm {i} at {hour}:{minutes}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the face seen in a mirror, the time as far before 12 as this is
+        // after it: the same angle
+        let mirrored = arm(i, mh, mm);
+        expect(mut t, 2, mirrored == got, f"P2 {what}, mirrored at {mh}:{mm}: {mirrored}");
+        // P3: six hours on: the hour hand turned half round, so 180 less
+        let later = arm(i, fh, fm);
+        expect(mut t, 3, later == 180.0 - got, f"P3 {what}, six hours on at {fh}:{fm}: {later}");
+        // P4: from 0 to 180, a whole number of half degrees
+        expect(mut t, 4, got >= 0.0 and got <= 180.0 and (2.0 * got).fract() == 0.0, f"P4 {what}: {got} out of range");
+        // P5: a minute on: the hands move 5.5 degrees apart a minute, so
+        // the angle changes by at most that
+        let next = arm(i, nh, nm);
+        expect(mut t, 5, (next - got).abs() <= 5.5, f"P5 {what}, a minute on at {nh}:{nm}: {next}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // every one of the 720 times, from 1:00 to 12:59
+    for hour in 1..13 {
+        for minutes in 0..60 {
+            check_case(mut t, hour, minutes);
+        }
+    }
+    println(f"{t.cases} times: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
