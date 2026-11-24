@@ -1,0 +1,362 @@
+// LeetCode #1315: Sum of Nodes with Even-Valued Grandparent -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+//
+// The statement: given the root of a binary tree, return the sum of values
+// of nodes with an even-valued grandparent, 0 if there are none. A node's
+// grandparent is the parent of its parent, if it exists.
+
+// ---- sum_even_grandparent.kara ----
+fn a0_walk(node: Option[TreeNode], parent: i32, grandparent: i32) -> i32 {
+    let Some(n) = node else {
+        return 0;
+    };
+    let mine = if grandparent % 2 == 0 { n.val } else { 0 };
+    mine + a0_walk(n.left, n.val, parent) + a0_walk(n.right, n.val, parent)
+}
+
+fn a0_sum_even_grandparent(root: Option[TreeNode]) -> i32 {
+    a0_walk(root, 1, 1)
+}
+
+// ---- sum_even_grandparent_grand.kara ----
+fn a1_below(node: Option[TreeNode]) -> i32 {
+    let Some(n) = node else {
+        return 0;
+    };
+    let mut sum: i32 = 0;
+    if let Some(l) = n.left {
+        sum += l.val;
+    }
+    if let Some(r) = n.right {
+        sum += r.val;
+    }
+    sum
+}
+
+fn a1_sum_even_grandparent(root: Option[TreeNode]) -> i32 {
+    let mut queue: VecDeque[TreeNode] = VecDeque.new();
+    if let Some(r) = root {
+        queue.push_back(r);
+    }
+    let mut sum: i32 = 0;
+    while let Some(node) = queue.pop_front() {
+        if node.val % 2 == 0 {
+            sum += a1_below(node.left) + a1_below(node.right);
+        }
+        if let Some(l) = node.left {
+            queue.push_back(l);
+        }
+        if let Some(r) = node.right {
+            queue.push_back(r);
+        }
+    }
+    sum
+}
+
+// ---- sum_even_grandparent_stack.kara ----
+fn a2_sum_even_grandparent(root: Option[TreeNode]) -> i32 {
+    let mut stack: Vec[(TreeNode, i32, i32)] = Vec.new();
+    if let Some(r) = root {
+        stack.push((r, 1, 1));
+    }
+    let mut sum: i32 = 0;
+    while let Some((node, parent, grandparent)) = stack.pop() {
+        if grandparent % 2 == 0 {
+            sum += node.val;
+        }
+        if let Some(l) = node.left {
+            stack.push((l, node.val, parent));
+        }
+        if let Some(r) = node.right {
+            stack.push((r, node.val, parent));
+        }
+    }
+    sum
+}
+
+// ---- sum_even_grandparent_parents.kara ----
+fn a3_sum_even_grandparent(root: Option[TreeNode]) -> i32 {
+    let mut nodes: Vec[TreeNode] = Vec.new();
+    let mut parent: Vec[i64] = Vec.new();
+    if let Some(r) = root {
+        nodes.push(r);
+        parent.push(-1);
+    }
+    let mut at = 0;
+    while at < nodes.len() {
+        let node = nodes[at];
+        if let Some(l) = node.left {
+            nodes.push(l);
+            parent.push(at);
+        }
+        if let Some(r) = node.right {
+            nodes.push(r);
+            parent.push(at);
+        }
+        at += 1;
+    }
+    let mut sum: i32 = 0;
+    for i in 0..nodes.len() {
+        let p = parent[i];
+        if p >= 0 and parent[p] >= 0 and nodes[parent[p]].val % 2 == 0 {
+            sum += nodes[i].val;
+        }
+    }
+    sum
+}
+
+// ---- sum_even_grandparent_solution.kara ----
+struct A4Solution {}
+
+fn a4_dfs(node: Option[TreeNode], p: i32, gp: i32) -> i32 {
+    if let Some(n) = node {
+        let mut sum: i32 = 0;
+        if gp % 2 == 0 {
+            sum += n.val;
+        }
+        sum + a4_dfs(n.left, n.val, p) + a4_dfs(n.right, n.val, p)
+    } else {
+        0
+    }
+}
+
+impl A4Solution {
+    pub fn a4_sum_even_grandparent(root: Option[TreeNode]) -> i32 {
+        a4_dfs(root, 1, 1)
+    }
+}
+
+fn a4_sum_even_grandparent(root: Option[TreeNode]) -> i32 {
+    A4Solution.a4_sum_even_grandparent(root)
+}
+
+// ---- the tree ---------------------------------------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+// a tree kept as lists: each node's value and the places of its children in
+// the lists, -1 for none; node 0 is the root
+struct Shape {
+    vals: Vec[i32],
+    left: Vec[i64],
+    right: Vec[i64],
+}
+
+fn build(s: Shape, i: i64) -> Option[TreeNode] {
+    if i < 0 {
+        return None;
+    }
+    Some(TreeNode { val: s.vals[i], left: build(s, s.left[i]), right: build(s, s.right[i]) })
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// for every pair of nodes g and x, x counts when one of g's children has x
+// as a child and g's value is even
+fn literal(s: Shape) -> i32 {
+    let n = s.vals.len();
+    let mut sum: i32 = 0;
+    for x in 0..n {
+        for g in 0..n {
+            let mut grandchild = false;
+            for c in [s.left[g], s.right[g]] {
+                if c >= 0 and (s.left[c] == x or s.right[c] == x) {
+                    grandchild = true;
+                }
+            }
+            if grandchild and s.vals[g] % 2 == 0 {
+                sum += s.vals[x];
+            }
+        }
+    }
+    sum
+}
+
+// the nodes with a grandparent at all, found the same way
+fn with_grandparent(s: Shape) -> Vec[i64] {
+    let n = s.vals.len();
+    let mut out: Vec[i64] = Vec.new();
+    for x in 0..n {
+        for g in 0..n {
+            for c in [s.left[g], s.right[g]] {
+                if c >= 0 and (s.left[c] == x or s.right[c] == x) {
+                    out.push(x);
+                }
+            }
+        }
+    }
+    out
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Case {
+    shape: Shape,
+    // P4: the value of a new root above the old one
+    top: i32,
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, root: Option[TreeNode]) -> i32 {
+    match i {
+        0 => a0_sum_even_grandparent(root),
+        1 => a1_sum_even_grandparent(root),
+        2 => a2_sum_even_grandparent(root),
+        3 => a3_sum_even_grandparent(root),
+        _ => a4_sum_even_grandparent(root),
+    }
+}
+
+fn show(s: Shape) -> String {
+    let parts: Vec[String] = (0..s.vals.len()).map(|i| f"{s.vals[i]}:{s.left[i]}:{s.right[i]}").collect();
+    parts.join(" ")
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    t.cases += 1;
+    let s = ref c.shape;
+    let n = s.vals.len();
+    let want = literal(s);
+    t.check = (t.check * 131 + want) % 1000000007;
+    let counted = with_grandparent(s);
+    // P2: every node's children swapped
+    let mirrored = Shape { vals: s.vals.clone(), left: s.right.clone(), right: s.left.clone() };
+    // P3: every value raised by 2, which keeps its parity
+    let raised = Shape { vals: s.vals.iter().map(|v| v + 2).collect(), left: s.left.clone(), right: s.right.clone() };
+    let mut even_counted: i32 = 0;
+    for x in counted.iter() {
+        let mut g_even = false;
+        for g in 0..n {
+            for ch in [s.left[g], s.right[g]] {
+                if ch >= 0 and (s.left[ch] == x or s.right[ch] == x) and s.vals[g] % 2 == 0 {
+                    g_even = true;
+                }
+            }
+        }
+        if g_even {
+            even_counted += 1;
+        }
+    }
+    // P4: a new root of value `top` above the old one, as its left child
+    let mut vals: Vec[i32] = s.vals.clone();
+    vals.push(c.top);
+    let mut left: Vec[i64] = s.left.clone();
+    left.push(0);
+    let mut right: Vec[i64] = s.right.clone();
+    right.push(-1);
+    let lifted = Shape { vals, left, right };
+    let mut under_root: i32 = 0;
+    for ch in [s.left[0], s.right[0]] {
+        if ch >= 0 {
+            under_root += s.vals[ch];
+        }
+    }
+    // P5: every value doubled, so that every grandparent is even
+    let doubled = Shape { vals: s.vals.iter().map(|v| 2 * v).collect(), left: s.left.clone(), right: s.right.clone() };
+    let mut all_counted: i32 = 0;
+    for x in counted.iter() {
+        all_counted += 2 * s.vals[x];
+    }
+    let root = build(s, 0);
+    let star = a0_sum_even_grandparent(root);
+    for i in 0..5 {
+        let got = arm(i, root);
+        let what = f"arm {i} case {t.cases} [{show(s)}]: got {got}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal {want}");
+        // P2: the tree mirrored, the same answer
+        let mr = arm(i, build(mirrored, 0));
+        expect(mut t, 2, mr == got, f"P2 {what}, mirrored: {mr}");
+        // P3: every value raised by 2, the answer raised by 2 for every node
+        // it counts
+        let rs = arm(i, build(raised, 0));
+        expect(mut t, 3, rs == got + 2 * even_counted, f"P3 {what}, raised: {rs}");
+        // P4: a new root above the old one, which adds the old root's
+        // children when it is even
+        let lf = arm(i, build(lifted, n));
+        let extra = if c.top % 2 == 0 { under_root } else { 0 };
+        expect(mut t, 4, lf == got + extra, f"P4 {what}, new root {c.top}: {lf}");
+        // P5: every value doubled, twice every node with a grandparent
+        let db = arm(i, build(doubled, 0));
+        expect(mut t, 5, db == all_counted, f"P5 {what}, doubled: {db}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 trees of 1 to 12 nodes, each new node hung on an empty child
+    // place chosen at random, in four kinds, 500 each: values 1 to 4, so
+    // that even and odd mix; values up to 100; values 1 to 4 with each node
+    // hung below the one before when it can be, so that the trees run deep;
+    // and every value even but one in four. Every tree and new root is drawn
+    // before any arm answers.
+    let mut seed = 13151;
+    let mut cases: Vec[Case] = Vec.new();
+    for i in 0..2000 {
+        let kind = i / 500;
+        let n = 1 + next_random(mut seed) % 12;
+        let mut vals: Vec[i32] = Vec.new();
+        let mut left: Vec[i64] = Vec.new();
+        let mut right: Vec[i64] = Vec.new();
+        // the empty child places: (node, true for left)
+        let mut places: Vec[(i64, bool)] = Vec.new();
+        for k in 0..n {
+            let x = next_random(mut seed);
+            let v = if kind == 1 { 1 + x % 100 } else if kind == 3 { if x % 4 == 0 { 1 + 2 * (x / 4 % 50) } else { 2 + 2 * (x / 4 % 50) } } else { 1 + x % 4 };
+            vals.push(v as i32);
+            left.push(-1);
+            right.push(-1);
+            if k > 0 {
+                let at = if kind == 2 and next_random(mut seed) % 4 != 0 { places.len() - 1 - next_random(mut seed) % 2.min(places.len()) } else { next_random(mut seed) % places.len() };
+                let (parent, is_left) = places.swap_remove(at);
+                if is_left {
+                    left[parent] = k;
+                } else {
+                    right[parent] = k;
+                }
+            }
+            places.push((k, true));
+            places.push((k, false));
+        }
+        let top = (1 + next_random(mut seed) % 4) as i32;
+        cases.push(Case { shape: Shape { vals, left, right }, top });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} trees: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

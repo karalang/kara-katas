@@ -1,0 +1,96 @@
+// LeetCode #1315 bench: the ★ arm (a recursive walk that hands each child
+// its parent's and grandparent's values) on 50 trees of 10^4 nodes, the
+// constraints' most, with values from 1 to 100, built once: half with each
+// node hung on a random empty place, half filled level by level with gaps;
+// then 50 passes, each setting one node of every tree from the checksum so
+// far, so no answer carries over, answering it and folding the sum plus the
+// pass into the checksum.
+
+fn walk(node: Option[TreeNode], parent: i32, grandparent: i32) -> i32 {
+    let Some(n) = node else {
+        return 0;
+    };
+    let mine = if grandparent % 2 == 0 { n.val } else { 0 };
+    mine + walk(n.left, n.val, parent) + walk(n.right, n.val, parent)
+}
+
+fn sum_even_grandparent(root: Option[TreeNode]) -> i32 {
+    walk(root, 1, 1)
+}
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n nodes, every one also kept in `nodes` so that a pass can change it
+fn build(seed: mut ref i64, n: i64, level_order: bool, nodes: mut ref Vec[TreeNode]) {
+    let root = TreeNode { val: (1 + next_random(mut seed) % 100) as i32, left: None, right: None };
+    nodes.push(root);
+    if level_order {
+        let mut level: VecDeque[TreeNode] = VecDeque.new();
+        level.push_back(root);
+        while nodes.len() < n {
+            let at = level.pop_front().unwrap();
+            for side in 0..2 {
+                if nodes.len() < n and next_random(mut seed) % 4 != 0 {
+                    let node = TreeNode { val: (1 + next_random(mut seed) % 100) as i32, left: None, right: None };
+                    if side == 0 {
+                        at.left = Some(node);
+                    } else {
+                        at.right = Some(node);
+                    }
+                    level.push_back(node);
+                    nodes.push(node);
+                }
+            }
+            // a node that got no child leaves the walk; keep it going
+            if level.len() == 0 {
+                level.push_back(at);
+            }
+        }
+    } else {
+        let mut places: Vec[(TreeNode, bool)] = [(root, true), (root, false)];
+        while nodes.len() < n {
+            let k = next_random(mut seed) % places.len();
+            let (parent, left) = places.swap_remove(k);
+            let node = TreeNode { val: (1 + next_random(mut seed) % 100) as i32, left: None, right: None };
+            if left {
+                parent.left = Some(node);
+            } else {
+                parent.right = Some(node);
+            }
+            places.push((node, true));
+            places.push((node, false));
+            nodes.push(node);
+        }
+    }
+}
+
+fn main() {
+    let n = 10000;
+    let mut seed = 1315;
+    let mut trees: Vec[Vec[TreeNode]] = Vec.new();
+    for t in 0..50 {
+        let mut nodes: Vec[TreeNode] = Vec.new();
+        build(mut seed, n, t % 2 == 1, mut nodes);
+        trees.push(nodes);
+    }
+    let mut check: i64 = 0;
+    for pass in 0..50 {
+        for t in 0..50 {
+            let nodes = ref trees[t];
+            let at = nodes[check % n];
+            at.val = (1 + (check / 7) % 100) as i32;
+            let sum = sum_even_grandparent(Some(nodes[0]));
+            check = (check * 31 + sum + pass) % 1000000007;
+        }
+    }
+    println(f"50 passes over 50 trees of 10^4: checksum {check}");
+}
