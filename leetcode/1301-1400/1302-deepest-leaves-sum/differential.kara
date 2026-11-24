@@ -1,0 +1,429 @@
+// LeetCode #1302: Deepest Leaves Sum -- differential test of the six arms
+// against the statement read literally, with five more properties.
+//
+// The statement: given the root of a binary tree, return the sum of values
+// of its deepest leaves.
+
+// ---- deepest_leaves_sum.kara ----
+fn a0_deepest_leaves_sum(root: Option[TreeNode]) -> i32 {
+    let mut queue: VecDeque[TreeNode] = VecDeque.new();
+    if let Some(r) = root {
+        queue.push_back(r);
+    }
+    let mut sum: i32 = 0;
+    while queue.len() > 0 {
+        sum = 0;
+        for _ in 0..queue.len() {
+            let node = queue.pop_front().unwrap();
+            sum += node.val;
+            if let Some(l) = node.left {
+                queue.push_back(l);
+            }
+            if let Some(r) = node.right {
+                queue.push_back(r);
+            }
+        }
+    }
+    sum
+}
+
+// ---- deepest_leaves_sum_dfs.kara ----
+struct A1Deepest {
+    depth: i64,
+    sum: i32,
+}
+
+fn a1_visit(node: Option[TreeNode], depth: i64, best: mut ref A1Deepest) {
+    let Some(n) = node else {
+        return;
+    };
+    if depth > best.depth {
+        best.depth = depth;
+        best.sum = n.val;
+    } else if depth == best.depth {
+        best.sum += n.val;
+    }
+    a1_visit(n.left, depth + 1, mut best);
+    a1_visit(n.right, depth + 1, mut best);
+}
+
+fn a1_deepest_leaves_sum(root: Option[TreeNode]) -> i32 {
+    let mut best = A1Deepest { depth: -1, sum: 0 };
+    a1_visit(root, 0, mut best);
+    best.sum
+}
+
+// ---- deepest_leaves_sum_twopass.kara ----
+fn a2_height(node: Option[TreeNode]) -> i64 {
+    match node {
+        None => 0,
+        Some(n) => 1 + a2_height(n.left).max(a2_height(n.right)),
+    }
+}
+
+fn a2_sum_at(node: Option[TreeNode], depth: i64) -> i32 {
+    match node {
+        None => 0,
+        Some(n) => if depth == 1 { n.val } else { a2_sum_at(n.left, depth - 1) + a2_sum_at(n.right, depth - 1) },
+    }
+}
+
+fn a2_deepest_leaves_sum(root: Option[TreeNode]) -> i32 {
+    a2_sum_at(root, a2_height(root))
+}
+
+// ---- deepest_leaves_sum_stack.kara ----
+fn a3_deepest_leaves_sum(root: Option[TreeNode]) -> i32 {
+    let mut stack: Vec[(TreeNode, i64)] = Vec.new();
+    if let Some(r) = root {
+        stack.push((r, 0));
+    }
+    let mut deepest = -1;
+    let mut sum: i32 = 0;
+    while let Some((node, depth)) = stack.pop() {
+        if depth > deepest {
+            deepest = depth;
+            sum = 0;
+        }
+        if depth == deepest {
+            sum += node.val;
+        }
+        if let Some(r) = node.right {
+            stack.push((r, depth + 1));
+        }
+        if let Some(l) = node.left {
+            stack.push((l, depth + 1));
+        }
+    }
+    sum
+}
+
+// ---- deepest_leaves_sum_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_deepest_leaves_sum(root: Option[TreeNode]) -> i32 {
+        let mut q = VecDeque.new();
+        if let Some(r) = root {
+            q.push_back(r);
+        }
+        let mut sum: i32 = 0;
+        while not q.is_empty() {
+            sum = 0;
+            for _ in 0..q.len() {
+                let node = q.pop_front().unwrap();
+                sum += node.val;
+                if let Some(l) = node.left.clone() {
+                    q.push_back(l);
+                }
+                if let Some(r) = node.right.clone() {
+                    q.push_back(r);
+                }
+            }
+        }
+        sum
+    }
+}
+
+fn a4_deepest_leaves_sum(root: Option[TreeNode]) -> i32 {
+    A4Solution.a4_deepest_leaves_sum(root)
+}
+
+// ---- deepest_leaves_sum_recursive.kara ----
+struct A5Solution {}
+
+fn a5_dfs(node: Option[TreeNode], depth: i32, max_depth: mut ref i32, sum: mut ref i32) {
+    if let Some(n) = node {
+        if n.left.is_none() and n.right.is_none() {
+            if depth > *max_depth {
+                *max_depth = depth;
+                *sum = n.val;
+            } else if depth == *max_depth {
+                *sum += n.val;
+            }
+        }
+        a5_dfs(n.left, depth + 1, mut max_depth, mut sum);
+        a5_dfs(n.right, depth + 1, mut max_depth, mut sum);
+    }
+}
+
+impl A5Solution {
+    pub fn a5_deepest_leaves_sum(root: Option[TreeNode]) -> i32 {
+        let mut max_depth = -1;
+        let mut sum = 0;
+        a5_dfs(root, 0, mut max_depth, mut sum);
+        sum
+    }
+}
+
+fn a5_deepest_leaves_sum(root: Option[TreeNode]) -> i32 {
+    A5Solution.a5_deepest_leaves_sum(root)
+}
+
+// ---- the statement read literally -----------------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+// Every path from the root down to a leaf, a node with no children, written
+// out as its list of values; the deepest leaves end the longest lists.
+fn paths(node: Option[TreeNode], above: Vec[i32], out: mut ref Vec[Vec[i32]]) {
+    let Some(n) = node else {
+        return;
+    };
+    let mut here = above.clone();
+    here.push(n.val);
+    if n.left.is_none() and n.right.is_none() {
+        out.push(here);
+        return;
+    }
+    paths(n.left, here, mut out);
+    paths(n.right, here, mut out);
+}
+
+fn literal(root: Option[TreeNode]) -> i32 {
+    let mut all: Vec[Vec[i32]] = Vec.new();
+    paths(root, Vec.new(), mut all);
+    let mut longest = 0;
+    for p in all.iter() {
+        if p.len() > longest {
+            longest = p.len();
+        }
+    }
+    let mut sum: i32 = 0;
+    for p in all.iter() {
+        if p.len() == longest {
+            sum += p[p.len() - 1];
+        }
+    }
+    sum
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a tree's own copy, so that a changed copy leaves the original alone
+fn copy(node: Option[TreeNode]) -> Option[TreeNode] {
+    match node {
+        None => None,
+        Some(n) => Some(TreeNode { val: n.val, left: copy(n.left), right: copy(n.right) }),
+    }
+}
+
+fn mirror(node: Option[TreeNode]) -> Option[TreeNode] {
+    match node {
+        None => None,
+        Some(n) => Some(TreeNode { val: n.val, left: mirror(n.right), right: mirror(n.left) }),
+    }
+}
+
+fn doubled(node: Option[TreeNode]) -> Option[TreeNode] {
+    match node {
+        None => None,
+        Some(n) => Some(TreeNode { val: 2 * n.val, left: doubled(n.left), right: doubled(n.right) }),
+    }
+}
+
+// the nodes with an empty child place, with their depths, in pre-order
+fn open_places(node: Option[TreeNode], depth: i64, out: mut ref Vec[(TreeNode, i64)]) {
+    let Some(n) = node else {
+        return;
+    };
+    if n.left.is_none() or n.right.is_none() {
+        out.push((n, depth));
+    }
+    open_places(n.left, depth + 1, mut out);
+    open_places(n.right, depth + 1, mut out);
+}
+
+fn tree_height(node: Option[TreeNode]) -> i64 {
+    match node {
+        None => 0,
+        Some(n) => {
+            let l = tree_height(n.left);
+            let r = tree_height(n.right);
+            1 + if l > r { l } else { r }
+        }
+    }
+}
+
+struct Case {
+    root: Option[TreeNode],
+    // P4: the place to hang a new leaf, as an index into the open places,
+    // and the leaf's value
+    place: i64,
+    leaf: i32,
+    shape: String,
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, root: Option[TreeNode]) -> i32 {
+    match i {
+        0 => a0_deepest_leaves_sum(root),
+        1 => a1_deepest_leaves_sum(root),
+        2 => a2_deepest_leaves_sum(root),
+        3 => a3_deepest_leaves_sum(root),
+        4 => a4_deepest_leaves_sum(root),
+        _ => a5_deepest_leaves_sum(root),
+    }
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    let want = literal(c.root);
+    t.cases += 1;
+    t.check = (t.check * 131 + want) % 1000000007;
+    let height = tree_height(c.root);
+    // P4's tree: a copy with one new leaf, and the answer the depths give
+    let grown = copy(c.root);
+    let mut places: Vec[(TreeNode, i64)] = Vec.new();
+    open_places(grown, 1, mut places);
+    let (at, depth) = places[c.place % places.len()];
+    let leaf = TreeNode { val: c.leaf, left: None, right: None };
+    if at.left.is_none() {
+        at.left = Some(leaf);
+    } else {
+        at.right = Some(leaf);
+    }
+    let grown_want = if depth + 1 > height { c.leaf } else if depth + 1 == height { want + c.leaf } else { want };
+    // P5's tree: two copies of the tree under a new root
+    let twin = Some(TreeNode { val: 7, left: copy(c.root), right: copy(c.root) });
+    let star = a0_deepest_leaves_sum(c.root);
+    for i in 0..6 {
+        let got = arm(i, c.root);
+        let what = f"arm {i} case {t.cases} {c.shape}: got {got}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal {want}");
+        // P2: the tree mirrored, the same answer
+        let mi = arm(i, mirror(c.root));
+        expect(mut t, 2, mi == got, f"P2 {what}, mirrored: {mi}");
+        // P3: every value doubled, the answer doubled
+        let db = arm(i, doubled(c.root));
+        expect(mut t, 3, db == 2 * got, f"P3 {what}, doubled: {db}");
+        // P4: one leaf hung on an empty place, the answer the depths give
+        let gr = arm(i, grown);
+        expect(mut t, 4, gr == grown_want, f"P4 {what}, leaf {c.leaf} at depth {depth + 1} of {height}: {gr}, want {grown_want}");
+        // P5: two copies under a new root, the answer doubled
+        let tw = arm(i, twin);
+        expect(mut t, 5, tw == 2 * got, f"P5 {what}, twinned: {tw}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+// the tree written out as nested parentheses, for a failure's message
+fn shape(node: Option[TreeNode]) -> String {
+    match node {
+        None => "-".to_string(),
+        Some(n) => if n.left.is_none() and n.right.is_none() { f"{n.val}" } else { f"({n.val} {shape(n.left)} {shape(n.right)})" },
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 trees of 1 to 16 nodes in four kinds, 500 each: each node hung on
+    // an empty place chosen at random; a chain, each node a child of the one
+    // before on a random side, with now and then a second child; a full
+    // level-order tree with gaps; and random hanging with values from 1 to 3.
+    // Every tree, place and leaf is drawn before any arm answers.
+    let mut seed = 13021;
+    let mut cases: Vec[Case] = Vec.new();
+    for i in 0..2000 {
+        let kind = i / 500;
+        let n = 1 + next_random(mut seed) % 16;
+        let top = if kind == 3 { 3 } else { 100 };
+        let root = TreeNode { val: (1 + next_random(mut seed) % top) as i32, left: None, right: None };
+        if kind == 1 {
+            let mut at = root;
+            for _ in 1..n {
+                let node = TreeNode { val: (1 + next_random(mut seed) % top) as i32, left: None, right: None };
+                let side = next_random(mut seed) % 2;
+                if next_random(mut seed) % 5 == 0 {
+                    let extra = TreeNode { val: (1 + next_random(mut seed) % top) as i32, left: None, right: None };
+                    if side == 0 {
+                        at.right = Some(extra);
+                    } else {
+                        at.left = Some(extra);
+                    }
+                }
+                if side == 0 {
+                    at.left = Some(node);
+                } else {
+                    at.right = Some(node);
+                }
+                at = node;
+            }
+        } else if kind == 2 {
+            let mut level: VecDeque[TreeNode] = VecDeque.new();
+            level.push_back(root);
+            let mut made = 1;
+            while made < n {
+                let Some(at) = level.pop_front() else {
+                    break;
+                };
+                for side in 0..2 {
+                    if made < n and next_random(mut seed) % 4 != 0 {
+                        let node = TreeNode { val: (1 + next_random(mut seed) % top) as i32, left: None, right: None };
+                        if side == 0 {
+                            at.left = Some(node);
+                        } else {
+                            at.right = Some(node);
+                        }
+                        level.push_back(node);
+                        made += 1;
+                    }
+                }
+            }
+        } else {
+            let mut places: Vec[(TreeNode, bool)] = [(root, true), (root, false)];
+            for _ in 1..n {
+                let k = next_random(mut seed) % places.len();
+                let (parent, left) = places.swap_remove(k);
+                let node = TreeNode { val: (1 + next_random(mut seed) % top) as i32, left: None, right: None };
+                if left {
+                    parent.left = Some(node);
+                } else {
+                    parent.right = Some(node);
+                }
+                places.push((node, true));
+                places.push((node, false));
+            }
+        }
+        let place = next_random(mut seed);
+        let leaf = (1 + next_random(mut seed) % 100) as i32;
+        let s = shape(Some(root));
+        cases.push(Case { root: Some(root), place, leaf, shape: s });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} trees: checksum {t.check}, {t.checks} checks over 6 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

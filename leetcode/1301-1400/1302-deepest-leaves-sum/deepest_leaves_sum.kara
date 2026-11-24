@@ -1,0 +1,114 @@
+// LeetCode #1302: Deepest Leaves Sum -- the ★ arm: a breadth-first walk a
+// level at a time from a `VecDeque`, each level's values summed afresh, so
+// the sum left when the queue runs out is the last level's. O(n)
+
+fn deepest_leaves_sum(root: Option[TreeNode]) -> i32 {
+    let mut queue: VecDeque[TreeNode] = VecDeque.new();
+    if let Some(r) = root {
+        queue.push_back(r);
+    }
+    let mut sum: i32 = 0;
+    while queue.len() > 0 {
+        sum = 0;
+        for _ in 0..queue.len() {
+            let node = queue.pop_front().unwrap();
+            sum += node.val;
+            if let Some(l) = node.left {
+                queue.push_back(l);
+            }
+            if let Some(r) = node.right {
+                queue.push_back(r);
+            }
+        }
+    }
+    sum
+}
+
+// ---- test harness ---------------------------------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// LeetCode's level-order list, `None` for a missing child
+fn from_level(values: Vec[Option[i32]]) -> Option[TreeNode] {
+    if values.len() == 0 or values[0].is_none() {
+        return None;
+    }
+    let root = TreeNode { val: values[0].unwrap(), left: None, right: None };
+    let mut queue: VecDeque[TreeNode] = VecDeque.new();
+    queue.push_back(root);
+    let mut i = 1;
+    while i < values.len() {
+        let Some(node) = queue.pop_front() else {
+            break;
+        };
+        if let Some(v) = values[i] {
+            let child = TreeNode { val: v, left: None, right: None };
+            node.left = Some(child);
+            queue.push_back(child);
+        }
+        i += 1;
+        if i < values.len() {
+            if let Some(v) = values[i] {
+                let child = TreeNode { val: v, left: None, right: None };
+                node.right = Some(child);
+                queue.push_back(child);
+            }
+            i += 1;
+        }
+    }
+    Some(root)
+}
+
+// n nodes with values from 1 to 100, each hung on an empty child place of
+// the tree so far chosen at random
+fn random_tree(seed: mut ref i64, n: i64) -> Option[TreeNode] {
+    let root = TreeNode { val: (1 + next_random(mut seed) % 100) as i32, left: None, right: None };
+    let mut places: Vec[(TreeNode, bool)] = [(root, true), (root, false)];
+    for _ in 1..n {
+        let k = next_random(mut seed) % places.len();
+        let (parent, left) = places.swap_remove(k);
+        let node = TreeNode { val: (1 + next_random(mut seed) % 100) as i32, left: None, right: None };
+        if left {
+            parent.left = Some(node);
+        } else {
+            parent.right = Some(node);
+        }
+        places.push((node, true));
+        places.push((node, false));
+    }
+    Some(root)
+}
+
+fn main() {
+    // LeetCode's two examples, one node, a chain of 10^4 nodes each the
+    // right child of the one before, and a full tree of 2^13 - 1 nodes
+    let e1 = deepest_leaves_sum(from_level([Some(1), Some(2), Some(3), Some(4), Some(5), None, Some(6), Some(7), None, None, None, None, Some(8)]));
+    let e2 = deepest_leaves_sum(from_level([Some(6), Some(7), Some(8), Some(2), Some(7), Some(1), Some(3), Some(9), None, Some(1), Some(4), None, None, None, Some(5)]));
+    let one = deepest_leaves_sum(from_level([Some(42)]));
+    let mut chain: Option[TreeNode] = None;
+    for v in 0..10000 {
+        chain = Some(TreeNode { val: (v % 100 + 1) as i32, left: None, right: chain });
+    }
+    let full: Vec[Option[i32]] = (0..8191).map(|i| Some((i % 100 + 1) as i32)).collect();
+    println(f"{e1} {e2} {one} {deepest_leaves_sum(chain)} {deepest_leaves_sum(from_level(full))}");
+    // random trees of 1 to 300 nodes
+    let mut seed = 1302;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 300;
+        let got = deepest_leaves_sum(random_tree(mut seed, n)) as i64;
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random trees: sums total {total}, checksum {check}");
+}
