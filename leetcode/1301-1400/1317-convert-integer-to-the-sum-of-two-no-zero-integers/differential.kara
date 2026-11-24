@@ -1,0 +1,242 @@
+// LeetCode #1317: Convert Integer to the Sum of Two No-Zero Integers --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+//
+// The statement: a No-Zero integer is a positive integer that does not
+// contain any 0 in its decimal representation. Given an integer n, return
+// a list of two integers [a, b] where a and b are No-Zero integers and
+// a + b = n. Any valid answer is accepted; every arm here gives the one
+// with the smallest a.
+
+// ---- get_no_zero_integers.kara ----
+fn a0_has_zero(x: i64) -> bool {
+    let mut rest = x;
+    while rest > 0 {
+        if rest % 10 == 0 {
+            return true;
+        }
+        rest /= 10;
+    }
+    false
+}
+
+fn a0_get_no_zero_integers(n: i64) -> Vec[i64] {
+    let mut a = 1;
+    while a0_has_zero(a) or a0_has_zero(n - a) {
+        a += 1;
+    }
+    [a, n - a]
+}
+
+// ---- get_no_zero_integers_text.kara ----
+fn a1_get_no_zero_integers(n: i64) -> Vec[i64] {
+    for a in 1..n {
+        let b = n - a;
+        if not f"{a}{b}".contains("0") {
+            return [a, b];
+        }
+    }
+    [0, 0]
+}
+
+// ---- get_no_zero_integers_table.kara ----
+fn a2_get_no_zero_integers(n: i64) -> Vec[i64] {
+    let mut clean: Vec[bool] = Vec.filled(n + 1, false);
+    clean[0] = true;
+    for x in 1..=n {
+        clean[x] = x % 10 != 0 and clean[x / 10];
+    }
+    let a = (1..n).find(|a| clean[a] and clean[n - a]).unwrap();
+    [a, n - a]
+}
+
+// ---- get_no_zero_integers_solution.kara ----
+struct A3Solution {}
+
+impl A3Solution {
+    pub fn a3_get_no_zero_integers(n: i32) -> Vec[i32] {
+        let a = (1..n)
+            .find(|a| not a.to_string().contains("0") and not (n - a).to_string().contains("0"))
+            .unwrap();
+        [a, n - a]
+    }
+}
+
+fn a3_get_no_zero_integers(n: i64) -> Vec[i64] {
+    A3Solution.a3_get_no_zero_integers(n as i32).iter().map(|x| x as i64).collect()
+}
+
+// ---- get_no_zero_integers_loop.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    fn no_zero(x: i32) -> bool {
+        let mut x = x;
+        while x > 0 {
+            if x % 10 == 0 {
+                return false;
+            }
+            x /= 10;
+        }
+        true
+    }
+
+    pub fn a4_get_no_zero_integers(n: i32) -> Vec[i32] {
+        for a in 1..n {
+            if A4Solution.no_zero(a) and A4Solution.no_zero(n - a) {
+                return [a, n - a];
+            }
+        }
+        Vec.new()
+    }
+}
+
+fn a4_get_no_zero_integers(n: i64) -> Vec[i64] {
+    A4Solution.a4_get_no_zero_integers(n as i32).iter().map(|x| x as i64).collect()
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: a no-zero integer is a positive integer
+// with no 0 among its decimal digits
+fn no_zero(x: i64) -> bool {
+    x >= 1 and not f"{x}".chars().any(|c| c == '0')
+}
+
+// an answer is two no-zero integers that add up to n
+fn valid(n: i64, v: Vec[i64]) -> bool {
+    v.len() == 2 and no_zero(v[0]) and no_zero(v[1]) and v[0] + v[1] == n
+}
+
+struct Case {
+    n: i64,
+    // P4: two no-zero integers whose sum is asked
+    x: i64,
+    y: i64,
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, n: i64) -> Vec[i64] {
+    match i {
+        0 => a0_get_no_zero_integers(n),
+        1 => a1_get_no_zero_integers(n),
+        2 => a2_get_no_zero_integers(n),
+        3 => a3_get_no_zero_integers(n),
+        _ => a4_get_no_zero_integers(n),
+    }
+}
+
+fn first(v: Vec[i64]) -> i64 {
+    if v.len() > 0 { v[0] } else { -1 }
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    t.cases += 1;
+    let n = c.n;
+    // the smallest first number of an answer, by trying them all
+    let mut least = -1;
+    for a in 1..n {
+        if least < 0 and no_zero(a) and no_zero(n - a) {
+            least = a;
+        }
+    }
+    t.check = (t.check * 31 + least) % 1000000007;
+    let star = a0_get_no_zero_integers(n);
+    for i in 0..5 {
+        let got = arm(i, n);
+        let shown: Vec[String] = got.iter().map(|x| f"{x}").collect();
+        let what = f"arm {i} case {t.cases} n {n}: got [{shown.join(",")}]";
+        // P1: the statement read literally, two no-zero integers adding up to n
+        expect(mut t, 1, valid(n, got), f"P1 {what}");
+        // P2: no smaller first number makes an answer
+        let mut smaller = false;
+        for a in 1..first(got) {
+            if no_zero(a) and no_zero(n - a) {
+                smaller = true;
+            }
+        }
+        expect(mut t, 2, not smaller and first(got) == least, f"P2 {what}, least {least}");
+        // P3: n + 1, which the same first number answers too when the second
+        // plus 1 has no 0: a first number no larger
+        if n < 10000 and got.len() == 2 and no_zero(got[1] + 1) {
+            let up = arm(i, n + 1);
+            expect(mut t, 3, valid(n + 1, up) and first(up) <= got[0], f"P3 {what}, n + 1: {first(up)}");
+        }
+        // P4: the sum of two no-zero integers, which they answer: a valid
+        // answer whose first number is no larger than the smaller of them
+        let pair = arm(i, c.x + c.y);
+        expect(mut t, 4, valid(c.x + c.y, pair) and first(pair) <= c.x.min(c.y), f"P4 {what}, {c.x} + {c.y}: {first(pair)}");
+        // P5: the pair turned round answers too, so the first number is at
+        // most half of n
+        expect(mut t, 5, got.len() == 2 and 2 * got[0] <= n, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {first(star)}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 values of n in four kinds, 500 each: 2 to 100; 2 to 10^4; within
+    // 12 of a multiple of 100 or 1000; and the digits 0 and 1 after a
+    // leading 1. Every n and pair is drawn before any arm answers.
+    let mut seed = 13171;
+    let mut cases: Vec[Case] = Vec.new();
+    for i in 0..2000 {
+        let kind = i / 500;
+        let mut n = if kind == 0 {
+            2 + next_random(mut seed) % 99
+        } else if kind == 1 {
+            2 + next_random(mut seed) % 9999
+        } else if kind == 2 {
+            let round = if next_random(mut seed) % 2 == 0 { 100 } else { 1000 };
+            round * (1 + next_random(mut seed) % (10000 / round)) + next_random(mut seed) % 25 - 12
+        } else {
+            let mut m = 1;
+            for _ in 0..1 + next_random(mut seed) % 3 {
+                m = 10 * m + next_random(mut seed) % 2;
+            }
+            m
+        };
+        n = n.max(2).min(10000);
+        let mut x = 1 + next_random(mut seed) % 9999;
+        while not no_zero(x) {
+            x = 1 + next_random(mut seed) % 9999;
+        }
+        let mut y = 1 + next_random(mut seed) % (10001 - x);
+        while not no_zero(y) or x + y > 10000 or x + y < 2 {
+            y = 1 + next_random(mut seed) % (10001 - x);
+        }
+        cases.push(Case { n, x, y });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} values of n: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
