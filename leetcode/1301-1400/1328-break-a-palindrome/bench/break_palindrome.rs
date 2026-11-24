@@ -1,0 +1,67 @@
+// LeetCode #1328 bench, Rust mirror of the Kāra bench: the ★ arm (the
+// letters into a `Vec<char>`, the first half searched for a letter that is
+// not an a, the answer collected back into a `String`) on 20 palindromes of
+// 10^5 letters built once, in four kinds: all a; a until the last tenth of
+// the half, then random letters; a with a rare b; and random letters. Then
+// 800 passes, each setting one mirrored pair of every palindrome from the
+// checksum so far, answering it and folding two of the answer's letters
+// plus the pass into the checksum.
+
+fn break_palindrome(palindrome: String) -> String {
+    let mut chars: Vec<char> = palindrome.chars().collect();
+    let n = chars.len();
+    if n == 1 {
+        return String::new();
+    }
+    for i in 0..n / 2 {
+        if chars[i] != 'a' {
+            chars[i] = 'a';
+            return chars.iter().collect();
+        }
+    }
+    chars[n - 1] = 'b';
+    chars.iter().collect()
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let n: usize = 100000;
+    let mut seed: i64 = 1328;
+    let letters = b"abcdefghijklmnopqrstuvwxyz";
+    let mut texts: Vec<Vec<u8>> = Vec::new();
+    for t in 0..20 {
+        let kind = t % 4;
+        let mut bytes = vec![b'a'; n];
+        for i in 0..n / 2 {
+            let c = if kind == 0 {
+                b'a'
+            } else if kind == 1 {
+                if i < n / 2 - n / 20 { b'a' } else { letters[(next_random(&mut seed) % 26) as usize] }
+            } else if kind == 2 {
+                if next_random(&mut seed) % 2000 == 0 { b'b' } else { b'a' }
+            } else {
+                letters[(next_random(&mut seed) % 26) as usize]
+            };
+            bytes[i] = c;
+            bytes[n - 1 - i] = c;
+        }
+        texts.push(bytes);
+    }
+    let mut check: i64 = 0;
+    for pass in 0..800 {
+        for t in 0..20 {
+            let j = (check % (n / 2) as i64) as usize;
+            let c = if (check / 7) % 4 == 0 { b'b' } else { b'a' };
+            texts[t][j] = c;
+            texts[t][n - 1 - j] = c;
+            let got = break_palindrome(String::from_utf8(texts[t].clone()).unwrap());
+            let b = got.as_bytes();
+            check = (check * 31 + b[j] as i64 + b[n - 1] as i64 + pass) % 1000000007;
+        }
+    }
+    println!("800 passes over 20 palindromes of 10^5: checksum {check}");
+}

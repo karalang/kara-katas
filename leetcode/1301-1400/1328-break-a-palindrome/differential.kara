@@ -1,0 +1,257 @@
+// LeetCode #1328: Break a Palindrome -- differential test of the five
+// arms against the statement read literally, with five more properties.
+//
+// The statement: given a palindromic string of lowercase English letters,
+// replace exactly one character with any lowercase English letter so that
+// the resulting string is not a palindrome and is the lexicographically
+// smallest one possible. Return the resulting string; if there is no way
+// to replace a character to make it not a palindrome, return an empty
+// string.
+
+// ---- break_palindrome.kara ----
+fn a0_break_palindrome(palindrome: String) -> String {
+    let mut chars: Vec[char] = palindrome.chars().collect();
+    let n = chars.len();
+    if n == 1 {
+        return String.new();
+    }
+    for i in 0..n / 2 {
+        if chars[i] != 'a' {
+            chars[i] = 'a';
+            return chars.iter().collect();
+        }
+    }
+    chars[n - 1] = 'b';
+    chars.iter().collect()
+}
+
+// ---- break_palindrome_every.kara ----
+fn a1_is_palindrome(s: Vec[u8]) -> bool {
+    let n = s.len();
+    for i in 0..n / 2 {
+        if s[i] != s[n - 1 - i] {
+            return false;
+        }
+    }
+    true
+}
+
+fn a1_break_palindrome(palindrome: String) -> String {
+    let s = palindrome.bytes().to_vec();
+    let mut best: Option[Vec[u8]] = None;
+    for i in 0..s.len() {
+        for c in b'a'..=b'z' {
+            if c == s[i] {
+                continue;
+            }
+            let mut t = s.clone();
+            t[i] = c;
+            if a1_is_palindrome(t) {
+                continue;
+            }
+            best = match best {
+                Some(b) if b <= t => Some(b),
+                _ => Some(t),
+            };
+        }
+    }
+    match best {
+        Some(b) => String.from_utf8(b).unwrap(),
+        None => String.new(),
+    }
+}
+
+// ---- break_palindrome_slices.kara ----
+fn a2_break_palindrome(palindrome: String) -> String {
+    let n = palindrome.len();
+    if n < 2 {
+        return "".to_string();
+    }
+    let half = palindrome[..n / 2];
+    match half.char_indices().find(|(_, c)| c != 'a').map(|(i, _)| i) {
+        Some(i) => f"{palindrome[..i]}a{palindrome[i + 1..]}",
+        None => f"{palindrome[..n - 1]}b",
+    }
+}
+
+// ---- break_palindrome_solution.kara ----
+struct A3Solution {}
+
+impl A3Solution {
+    pub fn a3_break_palindrome(palindrome: String) -> String {
+        let n = palindrome.len();
+        if n == 1 {
+            return String.new();
+        }
+        let mut s = palindrome.bytes().to_vec();
+        for i in 0..n / 2 {
+            if s[i] != b'a' {
+                s[i] = b'a';
+                return String.from_utf8(s).unwrap();
+            }
+        }
+        s[n - 1] = b'b';
+        String.from_utf8(s).unwrap()
+    }
+}
+
+fn a3_break_palindrome(palindrome: String) -> String {
+    A3Solution.a3_break_palindrome(palindrome)
+}
+
+// ---- break_palindrome_position.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_break_palindrome(palindrome: String) -> String {
+        if palindrome.len() < 2 {
+            return "".to_string();
+        }
+        let mut chars: Vec[char] = palindrome.chars().collect();
+        let n = chars.len();
+        match chars[..n / 2].iter().position(|c| c != 'a') {
+            Some(i) => chars[i] = 'a',
+            None => chars[n - 1] = 'b',
+        }
+        chars.into_iter().collect()
+    }
+}
+
+fn a4_break_palindrome(palindrome: String) -> String {
+    A4Solution.a4_break_palindrome(palindrome)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every one letter put in place of every
+// other letter, the results that do not read the same backwards kept, and
+// the smallest of them, or the empty string when none is kept
+fn literal(p: String) -> String {
+    let chars: Vec[char] = p.chars().collect();
+    let mut best: Option[String] = None;
+    for i in 0..chars.len() {
+        for c in "abcdefghijklmnopqrstuvwxyz".chars() {
+            if c == chars[i] {
+                continue;
+            }
+            let mut t = chars.clone();
+            t[i] = c;
+            let s: String = t.iter().collect();
+            let r: String = t.iter().rev().collect();
+            if s == r {
+                continue;
+            }
+            best = match best {
+                Some(b) if b <= s => Some(b),
+                _ => Some(s),
+            };
+        }
+    }
+    best.unwrap_or(String.new())
+}
+
+// the places where two strings of one length differ
+fn differences(a: Str, b: Str) -> i64 {
+    a.bytes().iter().zip(b.bytes().iter()).filter(|(x, y)| x != y).count()
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, p: String) -> String {
+    match i {
+        0 => a0_break_palindrome(p),
+        1 => a1_break_palindrome(p),
+        2 => a2_break_palindrome(p),
+        3 => a3_break_palindrome(p),
+        _ => a4_break_palindrome(p),
+    }
+}
+
+fn check_case(t: mut ref Tally, p: String) {
+    t.cases += 1;
+    let n = p.len();
+    let want = literal(p);
+    for b in want.bytes().iter() {
+        t.check = (t.check * 131 + *b) % 1000000007;
+    }
+    t.check = (t.check * 131 + 1) % 1000000007;
+    let star = a0_break_palindrome(p);
+    for i in 0..5 {
+        let got = arm(i, p);
+        let what = f"arm {i} case {t.cases} [{p}]: got [{got}]";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal [{want}]");
+        // P2: one letter of the same length changed, or nothing when the
+        // string is a single letter
+        let one = if n == 1 { got.is_empty() } else { got.len() == n and differences(got, p) == 1 };
+        expect(mut t, 2, one, f"P2 {what}");
+        // P3: what comes back does not read the same backwards
+        let back: String = got.chars().rev().collect();
+        expect(mut t, 3, n == 1 or back != got, f"P3 {what}, backwards [{back}]");
+        // P4: the string between two z: its first z becomes an a
+        let zs = arm(i, f"z{p}z");
+        expect(mut t, 4, zs == f"a{p}z", f"P4 {what}, between z: [{zs}]");
+        // P5: the string between two a: the same change one place on, or
+        // when the string had no first-half letter but a, its last a a b
+        let az = arm(i, f"a{p}a");
+        let last = n == 1 or got == f"{p[..n - 1]}b";
+        let moved = if last { f"a{p}b" } else { f"a{got}a" };
+        expect(mut t, 5, az == moved, f"P5 {what}, between a: [{az}], expected [{moved}]");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: [{star}]");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 palindromes of 1 to 9 letters in four kinds, 500 each, over a
+    // alone, a and b, a to c, and all 26 letters. Every palindrome is drawn
+    // before any arm answers.
+    let letters = "abcdefghijklmnopqrstuvwxyz".bytes().to_vec();
+    let sizes = [1, 2, 3, 26];
+    let mut seed = 13281;
+    let mut cases: Vec[String] = Vec.new();
+    for i in 0..2000 {
+        let k = sizes[i / 500];
+        let n = 1 + next_random(mut seed) % 9;
+        let mut half: Vec[u8] = Vec.new();
+        for _ in 0..(n + 1) / 2 {
+            half.push(letters[next_random(mut seed) % k]);
+        }
+        let mut bytes = half.clone();
+        for j in (0..n / 2).rev() {
+            bytes.push(half[j]);
+        }
+        cases.push(String.from_utf8(bytes).unwrap());
+    }
+    for p in cases.iter() {
+        check_case(mut t, p);
+    }
+    println(f"{t.cases} palindromes: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
