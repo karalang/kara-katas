@@ -1,0 +1,340 @@
+// LeetCode #1320: Minimum Distance to Type a Word Using Two Fingers --
+// differential test of the six arms against the statement read literally,
+// with five more properties.
+//
+// The statement: on a keyboard laid out A to Z in rows of six, letter k at
+// row k / 6 and column k % 6, the distance between two keys is
+// |x1 - x2| + |y1 - y2|. Return the minimum total distance to type the word
+// using only two fingers; their first positions are free, and they need not
+// start on the first letter or on the first two letters.
+
+// ---- minimum_distance.kara ----
+fn a0_key_distance(a: i64, b: i64) -> i64 {
+    if a == 26 {
+        return 0;
+    }
+    (a / 6 - b / 6).abs() + (a % 6 - b % 6).abs()
+}
+
+fn a0_minimum_distance(word: String) -> i64 {
+    let w: Vec[i64] = word.bytes().iter().map(|b| (b - 65) as i64).collect();
+    let free = 26;
+    let far = 1000000;
+    // other[j]: the least distance with one finger on the last letter typed
+    // and the other on key j, or not yet placed at j = 26
+    let mut other: Vec[i64] = Vec.filled(27, far);
+    other[free] = 0;
+    for i in 1..w.len() {
+        let (last, now) = (w[i - 1], w[i]);
+        let mut next: Vec[i64] = Vec.filled(27, far);
+        for j in 0..27 {
+            if other[j] < far {
+                // the finger on the last letter moves; the other stays at j
+                next[j] = next[j].min(other[j] + a0_key_distance(last, now));
+                // the other finger moves; the one on the last letter stays
+                next[last] = next[last].min(other[j] + a0_key_distance(j, now));
+            }
+        }
+        other = next;
+    }
+    other.iter().min().unwrap()
+}
+
+// ---- minimum_distance_saving.kara ----
+fn a1_key_distance(a: i64, b: i64) -> i64 {
+    (a / 6 - b / 6).abs() + (a % 6 - b % 6).abs()
+}
+
+fn a1_minimum_distance(word: String) -> i64 {
+    let w: Vec[i64] = word.bytes().iter().map(|b| (b - 65) as i64).collect();
+    let mut alone = 0;
+    let mut saved: Vec[i64] = Vec.filled(26, 0);
+    for i in 1..w.len() {
+        let (b, c) = (w[i - 1], w[i]);
+        alone += a1_key_distance(b, c);
+        // the idle finger, on key a, types c; the finger on b becomes idle
+        let mut best = saved[b];
+        for a in 0..26 {
+            best = best.max(saved[a] + a1_key_distance(b, c) - a1_key_distance(a, c));
+        }
+        saved[b] = best;
+    }
+    alone - saved.iter().max().unwrap()
+}
+
+// ---- minimum_distance_memo.kara ----
+fn a2_key_distance(a: i64, b: i64) -> i64 {
+    if a == 26 {
+        return 0;
+    }
+    (a / 6 - b / 6).abs() + (a % 6 - b % 6).abs()
+}
+
+fn a2_rest(w: Vec[i64], i: i64, l: i64, r: i64, memo: mut ref Vec[i64]) -> i64 {
+    if i == w.len() {
+        return 0;
+    }
+    let at = (i * 27 + l) * 27 + r;
+    if memo[at] >= 0 {
+        return memo[at];
+    }
+    let c = w[i];
+    let with_left = a2_key_distance(l, c) + a2_rest(w, i + 1, c, r, mut memo);
+    let with_right = a2_key_distance(r, c) + a2_rest(w, i + 1, l, c, mut memo);
+    let best = with_left.min(with_right);
+    memo[at] = best;
+    best
+}
+
+fn a2_minimum_distance(word: String) -> i64 {
+    let w: Vec[i64] = word.bytes().iter().map(|b| (b - 65) as i64).collect();
+    let mut memo: Vec[i64] = Vec.filled(w.len() * 27 * 27, -1);
+    a2_rest(w, 0, 26, 26, mut memo)
+}
+
+// ---- minimum_distance_table.kara ----
+fn a3_key_distance(a: i64, b: i64) -> i64 {
+    if a == 26 {
+        return 0;
+    }
+    (a / 6 - b / 6).abs() + (a % 6 - b % 6).abs()
+}
+
+fn a3_minimum_distance(word: String) -> i64 {
+    let w: Vec[i64] = word.bytes().iter().map(|b| (b - 65) as i64).collect();
+    let n = w.len();
+    let far = 1000000;
+    let mut dp: Vec[Vec[Vec[i64]]] = Vec.filled(n + 1, Vec.filled(27, Vec.filled(27, far)));
+    dp[0][26][26] = 0;
+    for i in 0..n {
+        let c = w[i];
+        for l in 0..27 {
+            for r in 0..27 {
+                let here = dp[i][l][r];
+                if here < far {
+                    dp[i + 1][c][r] = dp[i + 1][c][r].min(here + a3_key_distance(l, c));
+                    dp[i + 1][l][c] = dp[i + 1][l][c].min(here + a3_key_distance(r, c));
+                }
+            }
+        }
+    }
+    let mut best = far;
+    for l in 0..27 {
+        for r in 0..27 {
+            best = best.min(dp[n][l][r]);
+        }
+    }
+    best
+}
+
+// ---- minimum_distance_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_minimum_distance(word: String) -> i32 {
+        let w: Vec[i64] = word.bytes().iter().map(|b| (b - b'A') as i64).collect();
+        let dist = |a: i64, b: i64| {
+            if a == 26 {
+                return 0;
+            }
+            ((a / 6) as i32 - (b / 6) as i32).abs() + ((a % 6) as i32 - (b % 6) as i32).abs()
+        };
+        let mut dp = Vec.filled(27, Vec.filled(27, i32.MAX));
+        dp[26][26] = 0;
+        for c in ref w {
+            let mut next = Vec.filled(27, Vec.filled(27, i32.MAX));
+            for l in 0..27 {
+                for r in 0..27 {
+                    if dp[l][r] == i32.MAX {
+                        continue;
+                    }
+                    next[c][r] = next[c][r].min(dp[l][r] + dist(l, c));
+                    next[l][c] = next[l][c].min(dp[l][r] + dist(r, c));
+                }
+            }
+            dp = next;
+        }
+        dp.iter().flat_map(|v| v.iter()).cloned().min().unwrap()
+    }
+}
+
+fn a4_minimum_distance(word: String) -> i64 {
+    A4Solution.a4_minimum_distance(word)
+}
+
+// ---- minimum_distance_lee.kara ----
+struct A5Solution {}
+
+fn a5_d(a: i32, b: i32) -> i32 {
+    (a / 6 - b / 6).abs() + (a % 6 - b % 6).abs()
+}
+
+impl A5Solution {
+    pub fn a5_minimum_distance(word: String) -> i32 {
+        let a: Vec[i32] = word.chars().map(|ch| ch as i32 - 'A' as i32).collect();
+        let mut dp = [0i32; 26];
+        let mut total: i32 = 0;
+        for i in 0..a.len() - 1 {
+            let (b, c) = (a[i], a[i + 1]);
+            dp[b as usize] = (0i32..26).map(|x| dp[x as usize] + a5_d(b, c) - a5_d(x, c)).max().unwrap();
+            total += a5_d(b, c);
+        }
+        total - *dp.iter().max().unwrap()
+    }
+}
+
+fn a5_minimum_distance(word: String) -> i64 {
+    A5Solution.a5_minimum_distance(word)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn spot(c: char) -> (i64, i64) {
+    let k = (c as i64) - 65;
+    (k / 6, k % 6)
+}
+
+fn apart(a: char, b: char) -> i64 {
+    let (ra, ca) = spot(a);
+    let (rb, cb) = spot(b);
+    (ra - rb).abs() + (ca - cb).abs()
+}
+
+// the statement read literally: every way to share the letters between the
+// two fingers tried, as a bit mask; each finger's distance is the sum of
+// its moves from letter to letter, its first letter free
+fn literal(word: String) -> i64 {
+    let c: Vec[char] = word.chars().collect();
+    let n = c.len();
+    let mut best = -1;
+    for mask in 0..1 << n {
+        let mut cost = 0;
+        for finger in 0..2 {
+            let mut last: Option[char] = None;
+            for i in 0..n {
+                if (mask >> i) & 1 == finger {
+                    if let Some(p) = last {
+                        cost += apart(p, c[i]);
+                    }
+                    last = Some(c[i]);
+                }
+            }
+        }
+        if best < 0 or cost < best {
+            best = cost;
+        }
+    }
+    best
+}
+
+struct Case {
+    word: String,
+    // P5: the letter put at the end
+    extra: char,
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, word: String) -> i64 {
+    match i {
+        0 => a0_minimum_distance(word),
+        1 => a1_minimum_distance(word),
+        2 => a2_minimum_distance(word),
+        3 => a3_minimum_distance(word),
+        4 => a4_minimum_distance(word),
+        _ => a5_minimum_distance(word),
+    }
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    t.cases += 1;
+    let want = literal(c.word);
+    t.check = (t.check * 31 + want) % 1000000007;
+    let reversed: String = c.word.chars().rev().collect();
+    // the rows A to X turned upside down, which keeps every distance; only
+    // for a word without Y or Z, whose row is short
+    let flippable = not c.word.chars().any(|ch| ch == 'Y' or ch == 'Z');
+    let flipped: String = c.word.chars().map(|ch| {
+        let (r, col) = spot(ch);
+        (65 + 6 * (3 - r) + col) as u8 as char
+    }).collect();
+    let doubled: String = c.word.chars().flat_map(|ch| [ch, ch].into_iter()).collect();
+    let longer = f"{c.word}{c.extra}";
+    let last = c.word.chars().last().unwrap();
+    let star = a0_minimum_distance(c.word);
+    for i in 0..6 {
+        let got = arm(i, c.word);
+        let what = f"arm {i} case {t.cases} \"{c.word}\": got {got}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal {want}");
+        // P2: the word backwards, the same answer
+        let rv = arm(i, reversed);
+        expect(mut t, 2, rv == got, f"P2 {what}, reversed: {rv}");
+        // P3: the keyboard's rows A to X turned upside down, the same answer
+        if flippable {
+            let fl = arm(i, flipped);
+            expect(mut t, 3, fl == got, f"P3 {what}, flipped: {fl}");
+        }
+        // P4: every letter typed twice, the same answer
+        let db = arm(i, doubled);
+        expect(mut t, 4, db == got, f"P4 {what}, doubled: {db}");
+        // P5: one more letter at the end: no shorter, and longer by at most
+        // the step to it from the last letter
+        let lg = arm(i, longer);
+        expect(mut t, 5, lg >= got and lg <= got + apart(last, c.extra), f"P5 {what}, then {c.extra}: {lg}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 words of 2 to 10 letters in four kinds, 500 each: over 2 letters
+    // next to each other, over 5, over A to X, and over A to Z. Every word
+    // and extra letter is drawn before any arm answers.
+    let letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
+    let mut seed = 13201;
+    let mut cases: Vec[Case] = Vec.new();
+    for i in 0..2000 {
+        let kind = i / 500;
+        let n = 2 + next_random(mut seed) % 9;
+        let k = if kind == 0 { 2 } else if kind == 1 { 5 } else if kind == 2 { 24 } else { 26 };
+        let base = if kind < 2 { next_random(mut seed) % (25 - k) } else { 0 };
+        let mut chars: Vec[char] = Vec.new();
+        for _ in 0..n {
+            chars.push(letters[base + next_random(mut seed) % k]);
+        }
+        let extra = letters[next_random(mut seed) % 26];
+        cases.push(Case { word: chars.iter().collect(), extra });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} words: checksum {t.check}, {t.checks} checks over 6 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

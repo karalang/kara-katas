@@ -1,0 +1,77 @@
+// LeetCode #1320: Minimum Distance to Type a Word Using Two Fingers -- a
+// Rust solution as LeetCode's Rust users write it (the letters by
+// `word.bytes().map(|b| (b - b'A') as usize)`, a `dist` closure on `usize`
+// keys with 26 for a free finger, and `dp: Vec<Vec<i32>>` over the two
+// fingers, made afresh for each letter with `i32::MAX` for out of reach),
+// carried to Kāra by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_distance(word: String) -> i32 {
+        let w: Vec[i64] = word.bytes().iter().map(|b| (b - b'A') as i64).collect();
+        let dist = |a: i64, b: i64| {
+            if a == 26 {
+                return 0;
+            }
+            ((a / 6) as i32 - (b / 6) as i32).abs() + ((a % 6) as i32 - (b % 6) as i32).abs()
+        };
+        let mut dp = Vec.filled(27, Vec.filled(27, i32.MAX));
+        dp[26][26] = 0;
+        for c in ref w {
+            let mut next = Vec.filled(27, Vec.filled(27, i32.MAX));
+            for l in 0..27 {
+                for r in 0..27 {
+                    if dp[l][r] == i32.MAX {
+                        continue;
+                    }
+                    next[c][r] = next[c][r].min(dp[l][r] + dist(l, c));
+                    next[l][c] = next[l][c].min(dp[l][r] + dist(r, c));
+                }
+            }
+            dp = next;
+        }
+        dp.iter().flat_map(|v| v.iter()).cloned().min().unwrap()
+    }
+}
+
+fn minimum_distance(word: String) -> i64 {
+    Solution.minimum_distance(word)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn ask(s: Str) -> i64 {
+    minimum_distance(s.to_string())
+}
+
+fn main() {
+    // LeetCode's two examples; two letters, one finger each; one letter said
+    // over and over; the alphabet; and the two far corners in turn, 300
+    // letters, the constraints' longest
+    println(f"{ask("CAKE")} {ask("HAPPY")} {ask("AZ")} {ask("QQQQ")} {ask("ABCDEFGHIJKLMNOPQRSTUVWXYZ")} {ask("AZ".repeat(150))}");
+    // 400 random words of 2 to 300 letters over 2, 5 or 26 letters
+    let letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
+    let mut seed = 1320;
+    let mut total = 0;
+    let mut check = 0;
+    for t in 0..400 {
+        let n = 2 + next_random(mut seed) % 299;
+        let k = if t % 3 == 0 { 2 } else if t % 3 == 1 { 5 } else { 26 };
+        let base = next_random(mut seed) % (27 - k);
+        let mut chars: Vec[char] = Vec.new();
+        for _ in 0..n {
+            chars.push(letters[base + next_random(mut seed) % k]);
+        }
+        let word: String = chars.iter().collect();
+        let got = minimum_distance(word);
+        total += got;
+        check = (check * 31 + got) % 1000000007;
+    }
+    println(f"400 random words: distance total {total}, checksum {check}");
+}
