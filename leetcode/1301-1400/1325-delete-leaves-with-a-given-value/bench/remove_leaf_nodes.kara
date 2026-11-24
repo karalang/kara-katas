@@ -1,0 +1,99 @@
+// LeetCode #1325 bench: the ★ arm (a recursive walk that settles both
+// children first and deletes a leaf with the target's value) on 30 trees of
+// 3000 nodes, the constraints' most, with values from 1 to 3, built once,
+// each node hung on an empty place chosen at random, or for every other
+// tree, three times in four one of the two newest, so that it runs deep;
+// then 300 passes, each setting one node of every tree and the target from
+// the checksum so far, so no answer carries over, linking every node back
+// to its children, since the last answer cut some away, answering it, and
+// folding the nodes left, the root's value and the pass into the checksum.
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn remove_leaf_nodes(root: Option[TreeNode], target: i32) -> Option[TreeNode] {
+    let Some(node) = root else {
+        return None;
+    };
+    node.left = remove_leaf_nodes(node.left, target);
+    node.right = remove_leaf_nodes(node.right, target);
+    if node.left.is_none() and node.right.is_none() and node.val == target {
+        return None;
+    }
+    Some(node)
+}
+
+fn count(node: Option[TreeNode]) -> i64 {
+    let Some(n) = node else {
+        return 0;
+    };
+    1 + count(n.left) + count(n.right)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a tree of n nodes: nodes[0] is the root, and left[i] and right[i] are the
+// indices of node i's children, -1 for none
+struct Tree {
+    nodes: Vec[TreeNode],
+    left: Vec[i64],
+    right: Vec[i64],
+}
+
+fn build(seed: mut ref i64, n: i64, deep: bool) -> Tree {
+    let mut t = Tree { nodes: Vec.new(), left: Vec.new(), right: Vec.new() };
+    let mut places: Vec[(i64, bool)] = [(0, true), (0, false)];
+    for i in 0..n {
+        t.nodes.push(TreeNode { val: (1 + next_random(mut seed) % 3) as i32, left: None, right: None });
+        t.left.push(-1);
+        t.right.push(-1);
+        if i > 0 {
+            let r = next_random(mut seed);
+            let at = if deep and r % 4 != 0 { places.len() - 1 - next_random(mut seed) % 2 } else { next_random(mut seed) % places.len() };
+            let (parent, is_left) = places.swap_remove(at);
+            if is_left {
+                t.left[parent] = i;
+            } else {
+                t.right[parent] = i;
+            }
+            places.push((i, true));
+            places.push((i, false));
+        }
+    }
+    t
+}
+
+fn main() {
+    let n = 3000;
+    let mut seed = 1325;
+    let mut trees: Vec[Tree] = Vec.new();
+    for t in 0..30 {
+        trees.push(build(mut seed, n, t % 2 == 1));
+    }
+    let mut check: i64 = 0;
+    for pass in 0..300 {
+        for t in 0..30 {
+            let tree = ref trees[t];
+            tree.nodes[check % n].val = (1 + (check / 7) % 3) as i32;
+            let target = (1 + (check / 11) % 3) as i32;
+            for i in 0..n {
+                let node = tree.nodes[i];
+                node.left = if tree.left[i] >= 0 { Some(tree.nodes[tree.left[i]]) } else { None };
+                node.right = if tree.right[i] >= 0 { Some(tree.nodes[tree.right[i]]) } else { None };
+            }
+            let root = remove_leaf_nodes(Some(tree.nodes[0]), target);
+            let top = match root {
+                Some(r) => r.val as i64,
+                None => 0,
+            };
+            check = (check * 31 + count(root) * 7 + top + pass) % 1000000007;
+        }
+    }
+    println(f"300 passes over 30 trees of 3000: checksum {check}");
+}

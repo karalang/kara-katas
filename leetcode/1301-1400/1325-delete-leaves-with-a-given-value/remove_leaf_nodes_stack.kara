@@ -1,0 +1,186 @@
+// LeetCode #1325: Delete Leaves With a Given Value -- the stack arm: the
+// same order as the recursion, children before their parent, kept by hand
+// on a stack of nodes, each with whether its children are done; a node
+// popped the second time whose children are gone and whose value is the
+// target is cut from its parent, found in a second stack beside it. O(n),
+// no recursion
+
+fn remove_leaf_nodes(root: Option[TreeNode], target: i32) -> Option[TreeNode] {
+    let Some(top) = root else {
+        return None;
+    };
+    // (node, its parent, whether it is the parent's left child, children done)
+    let mut stack: Vec[(TreeNode, Option[TreeNode], bool, bool)] = [(top, None, false, false)];
+    let mut root_gone = false;
+    while let Some((node, parent, is_left, done)) = stack.pop() {
+        if not done {
+            stack.push((node, parent, is_left, true));
+            if let Some(r) = node.right {
+                stack.push((r, Some(node), false, false));
+            }
+            if let Some(l) = node.left {
+                stack.push((l, Some(node), true, false));
+            }
+            continue;
+        }
+        if node.left.is_none() and node.right.is_none() and node.val == target {
+            match parent {
+                Some(p) => {
+                    if is_left {
+                        p.left = None;
+                    } else {
+                        p.right = None;
+                    }
+                }
+                None => root_gone = true,
+            }
+        }
+    }
+    if root_gone { None } else { Some(top) }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// LeetCode's level-order list, `None` for a missing child
+fn from_level(values: Vec[Option[i32]]) -> Option[TreeNode] {
+    if values.len() == 0 or values[0].is_none() {
+        return None;
+    }
+    let root = TreeNode { val: values[0].unwrap(), left: None, right: None };
+    let mut queue: VecDeque[TreeNode] = VecDeque.new();
+    queue.push_back(root);
+    let mut i = 1;
+    while i < values.len() {
+        let Some(node) = queue.pop_front() else {
+            break;
+        };
+        if let Some(v) = values[i] {
+            let child = TreeNode { val: v, left: None, right: None };
+            node.left = Some(child);
+            queue.push_back(child);
+        }
+        i += 1;
+        if i < values.len() {
+            if let Some(v) = values[i] {
+                let child = TreeNode { val: v, left: None, right: None };
+                node.right = Some(child);
+                queue.push_back(child);
+            }
+            i += 1;
+        }
+    }
+    Some(root)
+}
+
+// the tree back as LeetCode's level-order list, with no `null` at the end
+fn to_level(root: Option[TreeNode]) -> Vec[Option[i32]] {
+    let mut out: Vec[Option[i32]] = Vec.new();
+    let mut queue: VecDeque[Option[TreeNode]] = VecDeque.new();
+    queue.push_back(root);
+    while let Some(slot) = queue.pop_front() {
+        if let Some(node) = slot {
+            out.push(Some(node.val));
+            queue.push_back(node.left);
+            queue.push_back(node.right);
+        } else {
+            out.push(None);
+        }
+    }
+    while out.len() > 0 and out[out.len() - 1].is_none() {
+        out.pop();
+    }
+    out
+}
+
+fn show(root: Option[TreeNode]) -> String {
+    let parts: Vec[String] = to_level(root).iter().map(|v| match v {
+        Some(x) => f"{x}",
+        None => "null".to_string(),
+    }).collect();
+    f"[{parts.join(",")}]"
+}
+
+fn ask(values: Vec[Option[i32]], target: i32) -> String {
+    show(remove_leaf_nodes(from_level(values), target))
+}
+
+// n nodes with values from 1 to k, each hung on an empty child place of the
+// tree so far, chosen at random, or when deep, three times in four one of
+// the two newest
+fn random_tree(seed: mut ref i64, n: i64, k: i64, deep: bool) -> Option[TreeNode] {
+    let root = TreeNode { val: (1 + next_random(mut seed) % k) as i32, left: None, right: None };
+    let mut places: Vec[(TreeNode, bool)] = [(root, true), (root, false)];
+    for _ in 1..n {
+        let r = next_random(mut seed);
+        let k_at = if deep and r % 4 != 0 { places.len() - 1 - next_random(mut seed) % 2 } else { next_random(mut seed) % places.len() };
+        let (parent, left) = places.swap_remove(k_at);
+        let node = TreeNode { val: (1 + next_random(mut seed) % k) as i32, left: None, right: None };
+        if left {
+            parent.left = Some(node);
+        } else {
+            parent.right = Some(node);
+        }
+        places.push((node, true));
+        places.push((node, false));
+    }
+    Some(root)
+}
+
+fn main() {
+    // LeetCode's three examples; a lone leaf that is the target; a chain of
+    // 3000 nodes, the constraints' most, all the target, each the left
+    // child of the one before; the same chain with a root that is not; and
+    // a full tree of 2047 nodes, all the target but its root
+    let e1 = ask([Some(1), Some(2), Some(3), Some(2), None, Some(2), Some(4)], 2);
+    let e2 = ask([Some(1), Some(3), Some(3), Some(3), Some(2)], 3);
+    let e3 = ask([Some(1), Some(2), None, Some(2), None, Some(2)], 2);
+    let e4 = ask([Some(7)], 7);
+    let mut chain: Option[TreeNode] = None;
+    for _ in 0..3000 {
+        chain = Some(TreeNode { val: 5, left: chain, right: None });
+    }
+    let e5 = show(remove_leaf_nodes(chain, 5));
+    let mut chain2: Option[TreeNode] = None;
+    for _ in 0..2999 {
+        chain2 = Some(TreeNode { val: 5, left: chain2, right: None });
+    }
+    let e6 = show(remove_leaf_nodes(Some(TreeNode { val: 6, left: chain2, right: None }), 5));
+    let mut full: Vec[Option[i32]] = Vec.filled(2047, Some(1000));
+    full[0] = Some(1);
+    let e7 = ask(full, 1000);
+    println(f"{e1} {e2} {e3} {e4} {e5} {e6} {e7}");
+    // 1000 random trees of 1 to 3000 nodes, most of them small, with values
+    // up to 2, 3 or 1000, every other one deep
+    let mut seed = 1325;
+    let mut total = 0;
+    let mut check = 0;
+    for t in 0..1000 {
+        let n = if t % 10 == 0 { 1 + next_random(mut seed) % 3000 } else { 1 + next_random(mut seed) % 60 };
+        let k = if t % 3 == 0 { 2 } else if t % 3 == 1 { 3 } else { 1000 };
+        let root = random_tree(mut seed, n, k, t % 2 == 1);
+        let target = (1 + next_random(mut seed) % k.min(3)) as i32;
+        let left = to_level(remove_leaf_nodes(root, target));
+        for v in left.iter() {
+            match v {
+                Some(x) => {
+                    total += 1;
+                    check = (check * 131 + x) % 1000000007;
+                }
+                None => check = (check * 131 + 1001) % 1000000007,
+            }
+        }
+        check = (check * 131 + 1002) % 1000000007;
+    }
+    println(f"1000 random trees: nodes left {total}, checksum {check}");
+}
