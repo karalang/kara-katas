@@ -1,0 +1,87 @@
+// LeetCode #1334: Find the City With the Smallest Number of Neighbors at a
+// Threshold Distance -- the Bellman-Ford arm: each city's distances by
+// relaxing every road both ways, round after round, until a round changes
+// nothing; then the cities within the threshold counted. The cities are
+// walked from the last down, so the first strict improvement wins.
+// O(n^2 m) at worst
+
+fn find_the_city(n: i32, edges: Vec[Vec[i32]], distance_threshold: i32) -> i32 {
+    let n = n as i64;
+    let mut best = -1;
+    let mut fewest = n;
+    for city in (0..n).rev() {
+        let mut dist: Vec[i64] = Vec.filled(n, i64.MAX);
+        dist[city] = 0;
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for e in edges.iter() {
+                let (a, b, w) = (e[0] as i64, e[1] as i64, e[2] as i64);
+                if dist[a] != i64.MAX and dist[a] + w < dist[b] {
+                    dist[b] = dist[a] + w;
+                    changed = true;
+                }
+                if dist[b] != i64.MAX and dist[b] + w < dist[a] {
+                    dist[a] = dist[b] + w;
+                    changed = true;
+                }
+            }
+        }
+        let near = dist.iter().filter(|d| d <= distance_threshold).count() - 1;
+        if best < 0 or near < fewest {
+            fewest = near;
+            best = city;
+        }
+    }
+    best as i32
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n cities, each pair joined with chance `percent` in 100, weights from 1
+// to `heaviest`
+fn draw(seed: mut ref i64, n: i64, percent: i64, heaviest: i64) -> Vec[Vec[i32]] {
+    let mut edges: Vec[Vec[i32]] = Vec.new();
+    for a in 0..n {
+        for b in a + 1..n {
+            if next_random(mut seed) % 100 < percent {
+                edges.push([a as i32, b as i32, (1 + next_random(mut seed) % heaviest) as i32]);
+            }
+        }
+    }
+    edges
+}
+
+fn main() {
+    // LeetCode's two examples; two cities alone, and joined too far apart
+    let a = find_the_city(4, [[0, 1, 3], [1, 2, 1], [1, 3, 4], [2, 3, 1]], 4);
+    let b = find_the_city(5, [[0, 1, 2], [0, 4, 8], [1, 2, 3], [1, 4, 2], [2, 3, 1], [3, 4, 1]], 2);
+    let none: Vec[Vec[i32]] = Vec.new();
+    println(f"{a} {b} {find_the_city(2, none, 1)} {find_the_city(2, [[0, 1, 5]], 4)}");
+    // 100 cities, the constraints' most: every pair joined, and a line
+    let mut seed = 1334;
+    let full = draw(mut seed, 100, 100, 10000);
+    let mut line: Vec[Vec[i32]] = Vec.new();
+    for i in 0..99 {
+        line.push([i as i32, (i + 1) as i32, (1 + i % 7) as i32]);
+    }
+    println(f"100 cities: {full.len()} roads {find_the_city(100, full, 150)} {find_the_city(100, full, 500)}, a line {find_the_city(100, line, 3)}");
+    // 300 random maps of 2 to 100 cities, most of them small, with few or
+    // many roads, weights up to 10 or 10^4, and the threshold from 1 to
+    // twice the heaviest weight
+    let mut check = 0;
+    for t in 0..300 {
+        let n = if t % 30 == 0 { 2 + next_random(mut seed) % 99 } else { 2 + next_random(mut seed) % 9 };
+        let percent = if t % 2 == 0 { 20 } else { 70 };
+        let heaviest = if t % 3 == 0 { 10000 } else { 10 };
+        let edges = draw(mut seed, n, percent, heaviest);
+        let threshold = (1 + next_random(mut seed) % (2 * heaviest)) as i32;
+        check = (check * 131 + find_the_city(n as i32, edges, threshold) + n) % 1000000007;
+    }
+    println(f"300 random maps: checksum {check}");
+}
