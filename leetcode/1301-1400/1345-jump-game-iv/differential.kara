@@ -1,0 +1,338 @@
+// LeetCode #1345: Jump Game IV -- differential test of the five arms
+// against the statement read literally, with five more properties.
+//
+// The statement: given an array of integers arr, you are initially
+// positioned at the first index of the array. In one step you can jump
+// from index i to index i + 1 (where i + 1 < arr.length), i - 1 (where
+// i - 1 >= 0), or j (where arr[i] == arr[j] and i != j). Return the
+// minimum number of steps to reach the last index of the array. Notice
+// that you can not jump outside of the array at any time.
+
+// ---- min_jumps.kara ----
+fn a0_min_jumps(arr: Vec[i32]) -> i32 {
+    let n = arr.len();
+    let mut places: Map[i32, Vec[i64]] = Map.new();
+    for i in 0..n {
+        places.entry(arr[i]).or_insert(Vec.new()).push(i);
+    }
+    let mut steps: Vec[i32] = Vec.filled(n, -1);
+    steps[0] = 0;
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    queue.push_back(0);
+    while let Some(i) = queue.pop_front() {
+        if i == n - 1 {
+            return steps[i];
+        }
+        let mut next: Vec[i64] = places.remove(arr[i]).unwrap_or(Vec.new());
+        next.push(i - 1);
+        next.push(i + 1);
+        for j in next.iter() {
+            if j >= 0 and j < n and steps[j] < 0 {
+                steps[j] = steps[i] + 1;
+                queue.push_back(j);
+            }
+        }
+    }
+    steps[n - 1]
+}
+
+// ---- min_jumps_seen.kara ----
+fn a1_min_jumps(arr: Vec[i32]) -> i32 {
+    let n = arr.len();
+    let mut places: Map[i32, Vec[i64]] = Map.new();
+    for i in 0..n {
+        places.entry(arr[i]).or_insert(Vec.new()).push(i);
+    }
+    let mut expanded: Set[i32] = Set.new();
+    let mut seen: Vec[bool] = Vec.filled(n, false);
+    seen[0] = true;
+    let mut queue: VecDeque[(i64, i32)] = VecDeque.new();
+    queue.push_back((0, 0));
+    while let Some((i, d)) = queue.pop_front() {
+        if i == n - 1 {
+            return d;
+        }
+        if i > 0 and not seen[i - 1] {
+            seen[i - 1] = true;
+            queue.push_back((i - 1, d + 1));
+        }
+        if i + 1 < n and not seen[i + 1] {
+            seen[i + 1] = true;
+            queue.push_back((i + 1, d + 1));
+        }
+        if expanded.insert(arr[i]) {
+            for j in places[arr[i]].iter() {
+                if not seen[j] {
+                    seen[j] = true;
+                    queue.push_back((j, d + 1));
+                }
+            }
+        }
+    }
+    0
+}
+
+// ---- min_jumps_zeroone.kara ----
+fn a2_min_jumps(arr: Vec[i32]) -> i32 {
+    let n = arr.len();
+    // value nodes are numbered from n up
+    let mut node_of: Map[i32, i64] = Map.new();
+    let mut members: Vec[Vec[i64]] = Vec.new();
+    for i in 0..n {
+        let next_id = n + members.len();
+        let id = node_of.entry(arr[i]).or_insert(next_id);
+        if id == next_id {
+            members.push(Vec.new());
+        }
+        members[id - n].push(i);
+    }
+    let total = n + members.len();
+    let mut dist: Vec[i32] = Vec.filled(total, i32.MAX);
+    let mut done: Vec[bool] = Vec.filled(total, false);
+    dist[0] = 0;
+    let mut deque: VecDeque[i64] = VecDeque.new();
+    deque.push_back(0);
+    while let Some(u) = deque.pop_front() {
+        if done[u] {
+            continue;
+        }
+        done[u] = true;
+        if u < n {
+            let mut paid: Vec[i64] = [node_of[arr[u]]];
+            if u > 0 {
+                paid.push(u - 1);
+            }
+            if u + 1 < n {
+                paid.push(u + 1);
+            }
+            for v in paid.iter() {
+                if dist[u] + 1 < dist[v] {
+                    dist[v] = dist[u] + 1;
+                    deque.push_back(v);
+                }
+            }
+        } else {
+            for v in members[u - n].iter() {
+                if dist[u] < dist[v] {
+                    dist[v] = dist[u];
+                    deque.push_front(v);
+                }
+            }
+        }
+    }
+    dist[n - 1]
+}
+
+// ---- min_jumps_levels.kara ----
+fn a3_min_jumps(arr: Vec[i32]) -> i32 {
+    let n = arr.len();
+    let mut places: Map[i32, Vec[i64]] = Map.new();
+    for i in 0..n {
+        places.entry(arr[i]).or_insert(Vec.new()).push(i);
+    }
+    let mut reached: Vec[bool] = Vec.filled(n, false);
+    reached[0] = true;
+    let mut frontier: Vec[i64] = [0];
+    let mut steps = 0;
+    while not reached[n - 1] {
+        let mut next: Vec[i64] = Vec.new();
+        for i in frontier.iter() {
+            let mut options: Vec[i64] = places.insert(arr[i], Vec.new()).unwrap_or(Vec.new());
+            options.push(i - 1);
+            options.push(i + 1);
+            for j in options.iter() {
+                if j >= 0 and j < n and not reached[j] {
+                    reached[j] = true;
+                    next.push(j);
+                }
+            }
+        }
+        frontier = next;
+        steps += 1;
+    }
+    steps
+}
+
+// ---- min_jumps_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_min_jumps(arr: Vec[i32]) -> i32 {
+        let n = arr.len();
+        if n == 1 {
+            return 0;
+        }
+        let mut graph: Map[i32, Vec[i64]] = Map.new();
+        for (i, x) in arr.iter().enumerate() {
+            graph.entry(x).or_insert_with(Vec.new).push(i);
+        }
+        let mut visited = Vec.filled(n, false);
+        visited[0] = true;
+        let mut queue = VecDeque.new();
+        queue.push_back(0);
+        let mut steps = 0;
+        while not queue.is_empty() {
+            for _ in 0..queue.len() {
+                let i = queue.pop_front().unwrap();
+                if i == n - 1 {
+                    return steps;
+                }
+                if let Some(nexts) = graph.remove(arr[i]) {
+                    for j in nexts {
+                        if not visited[j] {
+                            visited[j] = true;
+                            queue.push_back(j);
+                        }
+                    }
+                }
+                if i + 1 < n and not visited[i + 1] {
+                    visited[i + 1] = true;
+                    queue.push_back(i + 1);
+                }
+                if i > 0 and not visited[i - 1] {
+                    visited[i - 1] = true;
+                    queue.push_back(i - 1);
+                }
+            }
+            steps += 1;
+        }
+        -1
+    }
+}
+
+fn a4_min_jumps(arr: Vec[i32]) -> i32 {
+    A4Solution.a4_min_jumps(arr)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every index's distance from the first,
+// relaxed over every allowed step, every pair of indices tried each
+// round, until a round changes nothing
+fn literal(arr: Vec[i32]) -> i32 {
+    let n = arr.len();
+    let far = n as i32;
+    let mut dist: Vec[i32] = Vec.filled(n, far);
+    dist[0] = 0;
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for i in 0..n {
+            for j in 0..n {
+                let step = j == i + 1 or j + 1 == i or (arr[i] == arr[j] and i != j);
+                if step and dist[i] + 1 < dist[j] {
+                    dist[j] = dist[i] + 1;
+                    changed = true;
+                }
+            }
+        }
+    }
+    dist[n - 1]
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, arr: Vec[i32]) -> i32 {
+    match i {
+        0 => a0_min_jumps(arr),
+        1 => a1_min_jumps(arr),
+        2 => a2_min_jumps(arr),
+        3 => a3_min_jumps(arr),
+        _ => a4_min_jumps(arr),
+    }
+}
+
+fn check_case(t: mut ref Tally, arr: Vec[i32]) {
+    t.cases += 1;
+    let want = literal(arr);
+    t.check = (t.check * 131 + want * 13 + arr.len()) % 1000000007;
+    let star = a0_min_jumps(arr);
+    let backwards: Vec[i32] = arr.iter().rev().cloned().collect();
+    let relabelled: Vec[i32] = arr.iter().map(|x| 3 * x + 7).collect();
+    let mut closed = arr.clone();
+    closed.push(arr[0]);
+    // a value no other index holds, put in front
+    let mut fresh: Vec[i32] = [-1000];
+    fresh.extend(arr.iter().cloned());
+    for i in 0..5 {
+        let got = arm(i, arr);
+        let what = f"arm {i} on {arr}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the array read backwards: a way back is a way there, so the
+        // same answer
+        let bw = arm(i, backwards);
+        expect(mut t, 2, bw == got, f"P2 {what}, backwards: {bw}");
+        // P3: every value x made 3x + 7, which keeps equal values equal and
+        // different ones different: the same answer
+        let rl = arm(i, relabelled);
+        expect(mut t, 3, rl == got, f"P3 {what}, relabelled: {rl}");
+        // P4: the first value put again at the end: one jump
+        let cl = arm(i, closed);
+        expect(mut t, 4, cl == 1, f"P4 {what}, first value at the end: {cl}");
+        // P5: a value held nowhere else put in front: one step more
+        let fr = arm(i, fresh);
+        expect(mut t, 5, fr == got + 1, f"P5 {what}, a fresh value in front: {fr}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 arrays of 1 to 12 values in four kinds, 500 each: from 1 to 2;
+    // from 1 to 4; from 1 to 12, mostly different; and a walk, each value
+    // one more, one less or the same as the one before. Every array is
+    // drawn before any arm answers.
+    let mut seed = 13451;
+    let mut cases: Vec[Vec[i32]] = Vec.new();
+    for c in 0..2000 {
+        let kind = c / 500;
+        let n = 1 + next_random(mut seed) % 12;
+        let mut arr: Vec[i32] = Vec.new();
+        let mut walk = 5;
+        for _ in 0..n {
+            let v = if kind == 0 {
+                1 + next_random(mut seed) % 2
+            } else if kind == 1 {
+                1 + next_random(mut seed) % 4
+            } else if kind == 2 {
+                1 + next_random(mut seed) % 12
+            } else {
+                walk += next_random(mut seed) % 3 - 1;
+                walk
+            };
+            arr.push(v as i32);
+        }
+        cases.push(arr);
+    }
+    for arr in cases.iter() {
+        check_case(mut t, arr);
+    }
+    println(f"{t.cases} arrays: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

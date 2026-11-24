@@ -1,0 +1,104 @@
+// LeetCode #1345: Jump Game IV -- the zero-one arm: one more node for
+// each distinct value, so a jump between equal values is two edges: from
+// an index to its value's node, costing the step, and from the node to
+// each index holding it, costing nothing. A breadth-first search with a
+// deque, free edges pushed at the front and paid ones at the back, then
+// finds every distance with each edge looked at once. O(n)
+
+fn min_jumps(arr: Vec[i32]) -> i32 {
+    let n = arr.len();
+    // value nodes are numbered from n up
+    let mut node_of: Map[i32, i64] = Map.new();
+    let mut members: Vec[Vec[i64]] = Vec.new();
+    for i in 0..n {
+        let next_id = n + members.len();
+        let id = node_of.entry(arr[i]).or_insert(next_id);
+        if id == next_id {
+            members.push(Vec.new());
+        }
+        members[id - n].push(i);
+    }
+    let total = n + members.len();
+    let mut dist: Vec[i32] = Vec.filled(total, i32.MAX);
+    let mut done: Vec[bool] = Vec.filled(total, false);
+    dist[0] = 0;
+    let mut deque: VecDeque[i64] = VecDeque.new();
+    deque.push_back(0);
+    while let Some(u) = deque.pop_front() {
+        if done[u] {
+            continue;
+        }
+        done[u] = true;
+        if u < n {
+            let mut paid: Vec[i64] = [node_of[arr[u]]];
+            if u > 0 {
+                paid.push(u - 1);
+            }
+            if u + 1 < n {
+                paid.push(u + 1);
+            }
+            for v in paid.iter() {
+                if dist[u] + 1 < dist[v] {
+                    dist[v] = dist[u] + 1;
+                    deque.push_back(v);
+                }
+            }
+        } else {
+            for v in members[u - n].iter() {
+                if dist[u] < dist[v] {
+                    dist[v] = dist[u];
+                    deque.push_front(v);
+                }
+            }
+        }
+    }
+    dist[n - 1]
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples; 5 * 10^4 values, the constraints' longest,
+    // all equal; all different, rising; at random from 1 to 1000; and the
+    // first and last values unique, the rest at random from -10^8 to 10^8
+    // in 300 kinds
+    let e1 = min_jumps([100, -23, -23, 404, 100, 23, 23, 23, 3, 404]);
+    let e2 = min_jumps([7]);
+    let e3 = min_jumps([7, 6, 9, 6, 9, 6, 9, 7]);
+    let n = 50000;
+    let same: Vec[i32] = Vec.filled(n, 5);
+    let rising: Vec[i32] = (0..n).map(|i| i as i32).collect();
+    let mut seed = 1345;
+    let mut thousand: Vec[i32] = Vec.new();
+    let mut kinds: Vec[i32] = Vec.new();
+    let mut spread: Vec[i32] = [-100000000];
+    for _ in 0..300 {
+        kinds.push(((next_random(mut seed) * 65536 + next_random(mut seed)) % 200000001 - 100000000) as i32);
+    }
+    for i in 0..n {
+        thousand.push((1 + next_random(mut seed) % 1000) as i32);
+        if i > 0 and i < n - 1 {
+            spread.push(kinds[next_random(mut seed) % 300]);
+        }
+    }
+    spread.push(100000000);
+    println(f"{e1} {e2} {e3} {min_jumps(same)} {min_jumps(rising)} {min_jumps(thousand)} {min_jumps(spread)}");
+    // 1000 random arrays of 1 to 500 values, most of them short, from 1 to
+    // 3, to 20 or to 10^4
+    let mut check = 0;
+    for t in 0..1000 {
+        let len = if t % 10 == 0 { 1 + next_random(mut seed) % 500 } else { 1 + next_random(mut seed) % 30 };
+        let top = if t % 3 == 0 { 3 } else if t % 3 == 1 { 20 } else { 10000 };
+        let mut arr: Vec[i32] = Vec.new();
+        for _ in 0..len {
+            arr.push((1 + next_random(mut seed) % top) as i32);
+        }
+        check = (check * 131 + min_jumps(arr)) % 1000000007;
+    }
+    println(f"1000 random arrays: checksum {check}");
+}
