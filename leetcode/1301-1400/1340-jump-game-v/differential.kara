@@ -1,0 +1,303 @@
+// LeetCode #1340: Jump Game V -- differential test of the five arms
+// against the statement read literally, with five more properties.
+//
+// The statement: given an array of integers arr and an integer d, in one
+// step you can jump from index i to index i + x (i + x < arr.length, 0 < x
+// <= d) or to index i - x (i - x >= 0, 0 < x <= d), only if arr[i] >
+// arr[j] and arr[i] > arr[k] for all indices k between i and j. You can
+// choose any index of the array and start jumping. Return the maximum
+// number of indices you can visit.
+
+// ---- max_jumps.kara ----
+fn a0_most_from(arr: Vec[i32], d: i32, i: i64, memo: mut ref Vec[i32]) -> i32 {
+    if memo[i] > 0 {
+        return memo[i];
+    }
+    let mut best = 1;
+    for step in [-1, 1] {
+        let mut j = i + step;
+        while j >= 0 and j < arr.len() and (j - i).abs() <= d and arr[j] < arr[i] {
+            best = max(best, 1 + a0_most_from(arr, d, j, mut memo));
+            j += step;
+        }
+    }
+    memo[i] = best;
+    best
+}
+
+fn a0_max_jumps(arr: Vec[i32], d: i32) -> i32 {
+    let mut memo: Vec[i32] = Vec.filled(arr.len(), 0);
+    let mut best = 0;
+    for i in 0..arr.len() {
+        best = max(best, a0_most_from(arr, d, i, mut memo));
+    }
+    best
+}
+
+// ---- max_jumps_sorted.kara ----
+fn a1_max_jumps(arr: Vec[i32], d: i32) -> i32 {
+    let n = arr.len();
+    let mut order: Vec[i64] = (0..n).collect();
+    order.sort_by_key(|i| arr[i]);
+    let mut most: Vec[i32] = Vec.filled(n, 1);
+    for i in order.iter() {
+        for step in [-1, 1] {
+            let mut j = i + step;
+            while j >= 0 and j < n and (j - i).abs() <= d and arr[j] < arr[i] {
+                most[i] = max(most[i], most[j] + 1);
+                j += step;
+            }
+        }
+    }
+    most.iter().max().unwrap()
+}
+
+// ---- max_jumps_stack.kara ----
+fn a2_max_jumps(arr: Vec[i32], d: i32) -> i32 {
+    let n = arr.len();
+    let mut most: Vec[i32] = Vec.filled(n + 1, 1);
+    let mut stack: Vec[i64] = Vec.new();
+    for i in 0..n + 1 {
+        let here = if i < n { arr[i] } else { i32.MAX };
+        while stack.len() > 0 and arr[stack[stack.len() - 1]] < here {
+            let low = arr[stack[stack.len() - 1]];
+            let mut run: Vec[i64] = Vec.new();
+            while stack.len() > 0 and arr[stack[stack.len() - 1]] == low {
+                run.push(stack.pop().unwrap());
+            }
+            for j in run.iter() {
+                if i - j <= d {
+                    most[i] = max(most[i], most[j] + 1);
+                }
+                if stack.len() > 0 {
+                    let left = stack[stack.len() - 1];
+                    if j - left <= d {
+                        most[left] = max(most[left], most[j] + 1);
+                    }
+                }
+            }
+        }
+        stack.push(i);
+    }
+    most[0..n].iter().max().unwrap()
+}
+
+// ---- max_jumps_solution.kara ----
+struct A3Solution {}
+
+fn a3_dfs(i: i64, arr: ref Vec[i32], d: i64, memo: mut ref Vec[i32]) -> i32 {
+    if memo[i] != 0 {
+        return memo[i];
+    }
+    let n = arr.len();
+    let mut best: i32 = 1;
+    for j in (i + 1)..=(i + d).min(n - 1) {
+        if arr[j] >= arr[i] {
+            break;
+        }
+        best = best.max(1 + a3_dfs(j, arr, d, mut memo));
+    }
+    for j in (i.saturating_sub(d).max(0)..i).rev() {
+        if arr[j] >= arr[i] {
+            break;
+        }
+        best = best.max(1 + a3_dfs(j, arr, d, mut memo));
+    }
+    memo[i] = best;
+    best
+}
+
+impl A3Solution {
+    pub fn a3_max_jumps(arr: Vec[i32], d: i32) -> i32 {
+        let n = arr.len();
+        let d = d as i64;
+        let mut memo = Vec.filled(n, 0);
+        (0..n).map(|i| a3_dfs(i, arr, d, mut memo)).max().unwrap()
+    }
+}
+
+fn a3_max_jumps(arr: Vec[i32], d: i32) -> i32 {
+    A3Solution.a3_max_jumps(arr, d)
+}
+
+// ---- max_jumps_byheight.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_max_jumps(arr: Vec[i32], d: i32) -> i32 {
+        let n = arr.len();
+        let d = d as i64;
+        let mut idx: Vec[i64] = (0..n).collect();
+        idx.sort_by_key(|i| arr[i]);
+        let mut dp = Vec.filled(n, 1i32);
+        for i in idx.iter() {
+            let mut j = i;
+            while j + 1 < n and j + 1 - i <= d and arr[j + 1] < arr[i] {
+                j += 1;
+                dp[i] = dp[i].max(dp[j] + 1);
+            }
+            let mut j = i;
+            while j > 0 and i - (j - 1) <= d and arr[j - 1] < arr[i] {
+                j -= 1;
+                dp[i] = dp[i].max(dp[j] + 1);
+            }
+        }
+        *dp.iter().max().unwrap()
+    }
+}
+
+fn a4_max_jumps(arr: Vec[i32], d: i32) -> i32 {
+    A4Solution.a4_max_jumps(arr, d)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// whether the statement lets a jump go from i to j: at most d away, to a
+// lower value, over only lower values
+fn can_jump(arr: Vec[i32], d: i32, i: i64, j: i64) -> bool {
+    if i == j or (i - j).abs() > d or arr[j] >= arr[i] {
+        return false;
+    }
+    for k in min(i, j) + 1..max(i, j) {
+        if arr[k] >= arr[i] {
+            return false;
+        }
+    }
+    true
+}
+
+// the statement read literally: every sequence of jumps from i tried,
+// with nothing remembered, and the most indices any of them visits
+fn longest_from(arr: Vec[i32], d: i32, i: i64) -> i32 {
+    let mut best = 1;
+    for j in 0..arr.len() {
+        if can_jump(arr, d, i, j) {
+            best = max(best, 1 + longest_from(arr, d, j));
+        }
+    }
+    best
+}
+
+fn literal(arr: Vec[i32], d: i32) -> i32 {
+    let mut best = 0;
+    for i in 0..arr.len() {
+        best = max(best, longest_from(arr, d, i));
+    }
+    best
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, arr: Vec[i32], d: i32) -> i32 {
+    match i {
+        0 => a0_max_jumps(arr, d),
+        1 => a1_max_jumps(arr, d),
+        2 => a2_max_jumps(arr, d),
+        3 => a3_max_jumps(arr, d),
+        _ => a4_max_jumps(arr, d),
+    }
+}
+
+fn check_case(t: mut ref Tally, arr: Vec[i32], d: i32) {
+    t.cases += 1;
+    let n = arr.len() as i32;
+    let want = literal(arr, d);
+    t.check = (t.check * 131 + want * 17 + d) % 1000000007;
+    let star = a0_max_jumps(arr, d);
+    let backwards: Vec[i32] = arr.iter().rev().cloned().collect();
+    let stretched: Vec[i32] = arr.iter().map(|x| 3 * x - 1).collect();
+    let top = arr.iter().max().unwrap() + 1;
+    let mut under: Vec[i32] = [top];
+    under.extend(arr.iter().cloned());
+    for i in 0..5 {
+        let got = arm(i, arr, d);
+        let what = f"arm {i} on {arr}, d = {d}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the array read backwards: the same answer
+        let bw = arm(i, backwards, d);
+        expect(mut t, 2, bw == got, f"P2 {what}, backwards: {bw}");
+        // P3: every value x made 3x - 1, which keeps their order: the same
+        // answer
+        let st = arm(i, stretched, d);
+        expect(mut t, 3, st == got, f"P3 {what}, stretched: {st}");
+        // P4: one step farther allowed: no fewer indices
+        let far = arm(i, arr, d + 1);
+        expect(mut t, 4, far >= got, f"P4 {what}, d + 1: {far}");
+        // P5: a value above all put in front, any distance allowed: it can
+        // jump to every index and none to it, so one more than the array's
+        // own answer at any distance
+        let whole = arm(i, arr, n);
+        let lifted = arm(i, under, n + 1);
+        expect(mut t, 5, lifted == whole + 1, f"P5 {what}, under {top}: {lifted}, any distance {whole}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 arrays of 1 to 8 values in four kinds, 500 each: from 1 to 3,
+    // where many values tie; from 1 to 100; the numbers 1 to n shuffled;
+    // and a zigzag, the even places from 50 to 100 and the odd ones from 1
+    // to 49. d from 1 to the length. Every array is drawn before any arm
+    // answers.
+    let mut seed = 13401;
+    let mut cases: Vec[(Vec[i32], i32)] = Vec.new();
+    for c in 0..2000 {
+        let kind = c / 500;
+        let n = 1 + next_random(mut seed) % 8;
+        let mut arr: Vec[i32] = Vec.new();
+        for k in 0..n {
+            let v = if kind == 0 {
+                1 + next_random(mut seed) % 3
+            } else if kind == 1 {
+                1 + next_random(mut seed) % 100
+            } else if kind == 2 {
+                k + 1
+            } else if k % 2 == 0 {
+                50 + next_random(mut seed) % 51
+            } else {
+                1 + next_random(mut seed) % 49
+            };
+            arr.push(v as i32);
+        }
+        if kind == 2 {
+            for k in (1..n).rev() {
+                let r = next_random(mut seed) % (k + 1);
+                arr.swap(k, r);
+            }
+        }
+        let d = (1 + next_random(mut seed) % n) as i32;
+        cases.push((arr, d));
+    }
+    for (arr, d) in cases.iter() {
+        check_case(mut t, arr, d);
+    }
+    println(f"{t.cases} arrays: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

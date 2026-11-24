@@ -1,0 +1,60 @@
+// LeetCode #1340: Jump Game V -- the sorted arm: no recursion. A jump
+// always lands lower, so taking the indices lowest first means every index
+// a jump can land on is answered before the index it leaves from; each is
+// then 1 + the best of the indices it reaches, each direction walked
+// outward and stopped at the first value not lower. O(n log n + n * d)
+
+fn max_jumps(arr: Vec[i32], d: i32) -> i32 {
+    let n = arr.len();
+    let mut order: Vec[i64] = (0..n).collect();
+    order.sort_by_key(|i| arr[i]);
+    let mut most: Vec[i32] = Vec.filled(n, 1);
+    for i in order.iter() {
+        for step in [-1, 1] {
+            let mut j = i + step;
+            while j >= 0 and j < n and (j - i).abs() <= d and arr[j] < arr[i] {
+                most[i] = max(most[i], most[j] + 1);
+                j += step;
+            }
+        }
+    }
+    most.iter().max().unwrap()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples; one value; 1000 values rising, the
+    // constraints' longest, with d = 1000; and 1000 values at random up to
+    // 10^5 with d = 1000 and with d = 10
+    let e1 = max_jumps([6, 4, 14, 6, 8, 13, 9, 7, 10, 6, 12], 2);
+    let e2 = max_jumps([3, 3, 3, 3, 3], 3);
+    let e3 = max_jumps([7, 6, 5, 4, 3, 2, 1], 1);
+    let one = max_jumps([5], 1);
+    let rising: Vec[i32] = (1..1001).collect();
+    let mut seed = 1340;
+    let mut big: Vec[i32] = Vec.new();
+    for _ in 0..1000 {
+        big.push((1 + next_random(mut seed) % 100000) as i32);
+    }
+    println(f"{e1} {e2} {e3} {one} {max_jumps(rising, 1000)} {max_jumps(big, 1000)} {max_jumps(big, 10)}");
+    // 1000 random arrays of 1 to 200 values, most of them short, from 1 to
+    // 5 or to 10^5, with d from 1 to the length
+    let mut check = 0;
+    for t in 0..1000 {
+        let n = if t % 10 == 0 { 1 + next_random(mut seed) % 200 } else { 1 + next_random(mut seed) % 20 };
+        let top = if t % 2 == 0 { 5 } else { 100000 };
+        let mut arr: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            arr.push((1 + next_random(mut seed) % top) as i32);
+        }
+        let d = (1 + next_random(mut seed) % n) as i32;
+        check = (check * 131 + max_jumps(arr, d)) % 1000000007;
+    }
+    println(f"1000 random arrays: checksum {check}");
+}
