@@ -1,0 +1,450 @@
+// LeetCode #1305: All Elements in Two Binary Search Trees -- differential
+// test of the six arms against the statement read literally, with five more
+// properties.
+//
+// The statement: given two binary search trees root1 and root2, return a
+// list containing all the integers from both trees sorted in ascending
+// order.
+
+// ---- get_all_elements.kara ----
+fn a0_in_order(node: Option[TreeNode], out: mut ref Vec[i32]) {
+    if let Some(n) = node {
+        a0_in_order(n.left, mut out);
+        out.push(n.val);
+        a0_in_order(n.right, mut out);
+    }
+}
+
+fn a0_get_all_elements(root1: Option[TreeNode], root2: Option[TreeNode]) -> Vec[i32] {
+    let mut a: Vec[i32] = Vec.new();
+    let mut b: Vec[i32] = Vec.new();
+    a0_in_order(root1, mut a);
+    a0_in_order(root2, mut b);
+    let mut out: Vec[i32] = Vec.new();
+    let mut i = 0;
+    let mut j = 0;
+    while i < a.len() or j < b.len() {
+        if j == b.len() or (i < a.len() and a[i] <= b[j]) {
+            out.push(a[i]);
+            i += 1;
+        } else {
+            out.push(b[j]);
+            j += 1;
+        }
+    }
+    out
+}
+
+// ---- get_all_elements_sort.kara ----
+fn a1_gather(root: Option[TreeNode], out: mut ref Vec[i32]) {
+    let mut stack: Vec[TreeNode] = Vec.new();
+    if let Some(r) = root {
+        stack.push(r);
+    }
+    while let Some(node) = stack.pop() {
+        out.push(node.val);
+        if let Some(r) = node.right {
+            stack.push(r);
+        }
+        if let Some(l) = node.left {
+            stack.push(l);
+        }
+    }
+}
+
+fn a1_get_all_elements(root1: Option[TreeNode], root2: Option[TreeNode]) -> Vec[i32] {
+    let mut out: Vec[i32] = Vec.new();
+    a1_gather(root1, mut out);
+    a1_gather(root2, mut out);
+    out.sort();
+    out
+}
+
+// ---- get_all_elements_heap.kara ----
+fn a2_fill(node: Option[TreeNode], heap: mut ref PriorityQueue[i32]) {
+    if let Some(n) = node {
+        heap.push(n.val);
+        a2_fill(n.left, mut heap);
+        a2_fill(n.right, mut heap);
+    }
+}
+
+fn a2_get_all_elements(root1: Option[TreeNode], root2: Option[TreeNode]) -> Vec[i32] {
+    let mut heap: PriorityQueue[i32] = PriorityQueue.new();
+    a2_fill(root1, mut heap);
+    a2_fill(root2, mut heap);
+    let mut out: Vec[i32] = Vec.new();
+    while let Some(v) = heap.pop() {
+        out.push(v);
+    }
+    out
+}
+
+// ---- get_all_elements_morris.kara ----
+fn a3_morris(root: Option[TreeNode], out: mut ref Vec[i32]) {
+    let mut cur = root;
+    while let Some(c) = cur {
+        match c.left {
+            None => {
+                out.push(c.val);
+                cur = c.right;
+            }
+            Some(l) => {
+                let mut pre = l;
+                while let Some(r) = pre.right {
+                    if r.val == c.val {
+                        break;
+                    }
+                    pre = r;
+                }
+                if pre.right.is_none() {
+                    pre.right = Some(c);
+                    cur = c.left;
+                } else {
+                    pre.right = None;
+                    out.push(c.val);
+                    cur = c.right;
+                }
+            }
+        }
+    }
+}
+
+fn a3_get_all_elements(root1: Option[TreeNode], root2: Option[TreeNode]) -> Vec[i32] {
+    let mut a: Vec[i32] = Vec.new();
+    let mut b: Vec[i32] = Vec.new();
+    a3_morris(root1, mut a);
+    a3_morris(root2, mut b);
+    let mut out: Vec[i32] = Vec.new();
+    let mut (i, j) = (0, 0);
+    while i < a.len() and j < b.len() {
+        if a[i] <= b[j] {
+            out.push(a[i]);
+            i += 1;
+        } else {
+            out.push(b[j]);
+            j += 1;
+        }
+    }
+    out.extend(a[i..].iter());
+    out.extend(b[j..].iter());
+    out
+}
+
+// ---- get_all_elements_solution.kara ----
+struct A4Solution {}
+
+fn a4_dfs(node: Option[TreeNode], v: mut ref Vec[i32]) {
+    if let Some(n) = node {
+        a4_dfs(n.left, mut v);
+        v.push(n.val);
+        a4_dfs(n.right, mut v);
+    }
+}
+
+impl A4Solution {
+    pub fn a4_get_all_elements(root1: Option[TreeNode], root2: Option[TreeNode]) -> Vec[i32] {
+        let mut v = Vec.new();
+        a4_dfs(root1, mut v);
+        a4_dfs(root2, mut v);
+        v.sort();
+        v
+    }
+}
+
+fn a4_get_all_elements(root1: Option[TreeNode], root2: Option[TreeNode]) -> Vec[i32] {
+    A4Solution.a4_get_all_elements(root1, root2)
+}
+
+// ---- get_all_elements_stacks.kara ----
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn a5_get_all_elements(root1: Option[TreeNode], root2: Option[TreeNode]) -> Vec[i32] {
+        let mut s1 = Vec.new();
+        let mut s2 = Vec.new();
+        let mut c1 = root1;
+        let mut c2 = root2;
+        let mut res = Vec.new();
+        loop {
+            while let Some(n) = c1 {
+                c1 = n.left.clone();
+                s1.push(n);
+            }
+            while let Some(n) = c2 {
+                c2 = n.left.clone();
+                s2.push(n);
+            }
+            if s1.is_empty() and s2.is_empty() {
+                break;
+            }
+            let take1 = match (s1.last(), s2.last()) {
+                (Some(a), Some(b)) => a.val <= b.val,
+                (Some(_), None) => true,
+                _ => false,
+            };
+            if take1 {
+                let n = s1.pop().unwrap();
+                res.push(n.val);
+                c1 = n.right.clone();
+            } else {
+                let n = s2.pop().unwrap();
+                res.push(n.val);
+                c2 = n.right.clone();
+            }
+        }
+        res
+    }
+}
+
+fn a5_get_all_elements(root1: Option[TreeNode], root2: Option[TreeNode]) -> Vec[i32] {
+    A5Solution.a5_get_all_elements(root1, root2)
+}
+// ---- the statement read literally -----------------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn every_value(node: Option[TreeNode], out: mut ref Vec[i32]) {
+    if let Some(n) = node {
+        out.push(n.val);
+        every_value(n.left, mut out);
+        every_value(n.right, mut out);
+    }
+}
+
+// every value of both trees, then the smallest of those left taken again
+// and again until none are left
+fn literal(root1: Option[TreeNode], root2: Option[TreeNode]) -> Vec[i32] {
+    let mut left: Vec[i32] = Vec.new();
+    every_value(root1, mut left);
+    every_value(root2, mut left);
+    let mut out: Vec[i32] = Vec.new();
+    while left.len() > 0 {
+        let mut at = 0;
+        for k in 1..left.len() {
+            if left[k] < left[at] {
+                at = k;
+            }
+        }
+        out.push(left.remove(at));
+    }
+    out
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn insert(root: TreeNode, v: i32) {
+    let mut at = root;
+    loop {
+        if v == at.val {
+            return;
+        }
+        let next = if v < at.val { at.left } else { at.right };
+        match next {
+            Some(child) => at = child,
+            None => {
+                let node = TreeNode { val: v, left: None, right: None };
+                if v < at.val {
+                    at.left = Some(node);
+                } else {
+                    at.right = Some(node);
+                }
+                return;
+            }
+        }
+    }
+}
+
+// a search tree of the values, put in in the order given
+fn bst(values: Vec[i32]) -> Option[TreeNode] {
+    if values.len() == 0 {
+        return None;
+    }
+    let root = TreeNode { val: values[0], left: None, right: None };
+    for k in 1..values.len() {
+        insert(root, values[k]);
+    }
+    Some(root)
+}
+
+fn copy(node: Option[TreeNode]) -> Option[TreeNode] {
+    match node {
+        None => None,
+        Some(n) => Some(TreeNode { val: n.val, left: copy(n.left), right: copy(n.right) }),
+    }
+}
+
+// every value negated and the children swapped, which keeps a search tree
+fn flipped(node: Option[TreeNode]) -> Option[TreeNode] {
+    match node {
+        None => None,
+        Some(n) => Some(TreeNode { val: -n.val, left: flipped(n.right), right: flipped(n.left) }),
+    }
+}
+
+fn shifted(node: Option[TreeNode], by: i32) -> Option[TreeNode] {
+    match node {
+        None => None,
+        Some(n) => Some(TreeNode { val: n.val + by, left: shifted(n.left, by), right: shifted(n.right, by) }),
+    }
+}
+
+fn show(v: Vec[i32]) -> String {
+    if v.len() == 0 {
+        return "-".to_string();
+    }
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    parts.join(",")
+}
+
+struct Case {
+    first: Vec[i32],
+    second: Vec[i32],
+    // P4: the value put into the first tree
+    extra: i32,
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, root1: Option[TreeNode], root2: Option[TreeNode]) -> Vec[i32] {
+    match i {
+        0 => a0_get_all_elements(root1, root2),
+        1 => a1_get_all_elements(root1, root2),
+        2 => a2_get_all_elements(root1, root2),
+        3 => a3_get_all_elements(root1, root2),
+        4 => a4_get_all_elements(root1, root2),
+        _ => a5_get_all_elements(root1, root2),
+    }
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    t.cases += 1;
+    let want = literal(bst(c.first), bst(c.second));
+    for x in want.iter() {
+        t.check = (t.check * 131 + x + 100000) % 1000000007;
+    }
+    // P4's answer: the extra value in its place, unless the first tree has it
+    let mut grown_want = want.clone();
+    if not c.first.contains(c.extra) {
+        let mut at = 0;
+        while at < grown_want.len() and grown_want[at] < c.extra {
+            at += 1;
+        }
+        grown_want.insert(at, c.extra);
+    }
+    let star = a0_get_all_elements(bst(c.first), bst(c.second));
+    for i in 0..6 {
+        let root1 = bst(c.first);
+        let root2 = bst(c.second);
+        let got = arm(i, root1, root2);
+        let what = f"arm {i} trees {show(c.first)} and {show(c.second)}: got {show(got)}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal {show(want)}");
+        // P2: the trees swapped, the same answer
+        let swapped = arm(i, root2, root1);
+        expect(mut t, 2, swapped == got, f"P2 {what}, swapped: {show(swapped)}");
+        // P3: both trees flipped, values negated, the answer negated and reversed
+        let fl = arm(i, flipped(root1), flipped(root2));
+        let back: Vec[i32] = got.iter().rev().map(|x| -x).collect();
+        expect(mut t, 3, fl == back, f"P3 {what}, flipped: {show(fl)}");
+        // P4: one more value put into a copy of the first tree, the answer with
+        // it in its place
+        let grown = match copy(root1) {
+            None => TreeNode { val: c.extra, left: None, right: None },
+            Some(r) => {
+                insert(r, c.extra);
+                r
+            }
+        };
+        let gr = arm(i, Some(grown), root2);
+        expect(mut t, 4, gr == grown_want, f"P4 {what}, {c.extra} added: {show(gr)}");
+        // P5: the second tree shifted above every value of the first, the
+        // first tree's answer alone, then the second's alone shifted
+        let alone1 = arm(i, root1, None);
+        let alone2: Vec[i32] = arm(i, None, root2).iter().map(|x| x + 300000).collect();
+        let mut joined = alone1.clone();
+        joined.extend(alone2.iter());
+        let sh = arm(i, root1, shifted(root2, 300000));
+        expect(mut t, 5, sh == joined, f"P5 {what}, shifted: {show(sh)}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {show(star)}");
+    }
+}
+
+fn draw(seed: mut ref i64, n: i64, spread: i64, order: i64) -> Vec[i32] {
+    let mut values: Vec[i32] = Vec.new();
+    for _ in 0..n {
+        values.push((next_random(mut seed) % (2 * spread + 1) - spread) as i32);
+    }
+    if order == 1 {
+        values.sort();
+    } else if order == 2 {
+        values.sort();
+        values.reverse();
+    }
+    values
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 pairs of trees of 0 to 12 draws each, a repeat left out of its
+    // tree, in four kinds, 500 each: values from -3 to 3, so that the two
+    // trees share most of them; from -20 to 20; one tree empty; and the
+    // values put in sorted, rising or falling, so that the trees are chains.
+    // Every tree and extra value is drawn before any arm answers.
+    let mut seed = 13051;
+    let mut cases: Vec[Case] = Vec.new();
+    for i in 0..2000 {
+        let kind = i / 500;
+        let spread = if kind == 0 { 3 } else { 20 };
+        let mut n1 = next_random(mut seed) % 13;
+        let mut n2 = next_random(mut seed) % 13;
+        if kind == 2 {
+            if next_random(mut seed) % 2 == 0 {
+                n1 = 0;
+            } else {
+                n2 = 0;
+            }
+        }
+        let o1 = if kind == 3 { 1 + next_random(mut seed) % 2 } else { 0 };
+        let o2 = if kind == 3 { 1 + next_random(mut seed) % 2 } else { 0 };
+        let first = draw(mut seed, n1, spread, o1);
+        let second = draw(mut seed, n2, spread, o2);
+        let extra = (next_random(mut seed) % (2 * spread + 1) - spread) as i32;
+        cases.push(Case { first, second, extra });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} pairs: checksum {t.check}, {t.checks} checks over 6 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

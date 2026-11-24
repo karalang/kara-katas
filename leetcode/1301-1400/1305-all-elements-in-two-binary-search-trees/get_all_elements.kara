@@ -1,0 +1,166 @@
+// LeetCode #1305: All Elements in Two Binary Search Trees -- the ★ arm: each
+// tree read in order into its own `Vec`, already sorted, then the two merged,
+// the smaller front taken each step. O(m + n)
+
+fn in_order(node: Option[TreeNode], out: mut ref Vec[i32]) {
+    if let Some(n) = node {
+        in_order(n.left, mut out);
+        out.push(n.val);
+        in_order(n.right, mut out);
+    }
+}
+
+fn get_all_elements(root1: Option[TreeNode], root2: Option[TreeNode]) -> Vec[i32] {
+    let mut a: Vec[i32] = Vec.new();
+    let mut b: Vec[i32] = Vec.new();
+    in_order(root1, mut a);
+    in_order(root2, mut b);
+    let mut out: Vec[i32] = Vec.new();
+    let mut i = 0;
+    let mut j = 0;
+    while i < a.len() or j < b.len() {
+        if j == b.len() or (i < a.len() and a[i] <= b[j]) {
+            out.push(a[i]);
+            i += 1;
+        } else {
+            out.push(b[j]);
+            j += 1;
+        }
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// LeetCode's level-order list, `None` for a missing child
+fn from_level(values: Vec[Option[i32]]) -> Option[TreeNode] {
+    if values.len() == 0 or values[0].is_none() {
+        return None;
+    }
+    let root = TreeNode { val: values[0].unwrap(), left: None, right: None };
+    let mut queue: VecDeque[TreeNode] = VecDeque.new();
+    queue.push_back(root);
+    let mut i = 1;
+    while i < values.len() {
+        let Some(node) = queue.pop_front() else {
+            break;
+        };
+        if let Some(v) = values[i] {
+            let child = TreeNode { val: v, left: None, right: None };
+            node.left = Some(child);
+            queue.push_back(child);
+        }
+        i += 1;
+        if i < values.len() {
+            if let Some(v) = values[i] {
+                let child = TreeNode { val: v, left: None, right: None };
+                node.right = Some(child);
+                queue.push_back(child);
+            }
+            i += 1;
+        }
+    }
+    Some(root)
+}
+
+// v put in its place in the search tree under root; a value already there
+// is left out, as the trees hold no repeats
+fn insert(root: TreeNode, v: i32) {
+    let mut at = root;
+    loop {
+        if v == at.val {
+            return;
+        }
+        let next = if v < at.val { at.left } else { at.right };
+        match next {
+            Some(child) => at = child,
+            None => {
+                let node = TreeNode { val: v, left: None, right: None };
+                if v < at.val {
+                    at.left = Some(node);
+                } else {
+                    at.right = Some(node);
+                }
+                return;
+            }
+        }
+    }
+}
+
+// n values drawn from -spread to spread, put into a search tree in the order
+// drawn
+fn random_bst(seed: mut ref i64, n: i64, spread: i64) -> Option[TreeNode] {
+    if n == 0 {
+        return None;
+    }
+    let root = TreeNode { val: (next_random(mut seed) % (2 * spread + 1) - spread) as i32, left: None, right: None };
+    for _ in 1..n {
+        insert(root, (next_random(mut seed) % (2 * spread + 1) - spread) as i32);
+    }
+    Some(root)
+}
+
+fn show(v: Vec[i32]) -> String {
+    if v.len() == 0 {
+        return "-".to_string();
+    }
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    parts.join(",")
+}
+
+fn main() {
+    // LeetCode's two examples, one tree empty, both empty, and a tree of 5000
+    // values put in rising beside one of 5000 put in falling: two chains, one
+    // all right children and one all left
+    let e1 = get_all_elements(from_level([Some(2), Some(1), Some(4)]), from_level([Some(1), Some(0), Some(3)]));
+    let e2 = get_all_elements(from_level([Some(1), None, Some(8)]), from_level([Some(8), Some(1)]));
+    let e3 = get_all_elements(None, from_level([Some(5), Some(1), Some(7)]));
+    let e4 = get_all_elements(None, None);
+    let rising = TreeNode { val: 0, left: None, right: None };
+    let falling = TreeNode { val: 5000, left: None, right: None };
+    let mut at = rising;
+    let mut down = falling;
+    for v in 1..5000 {
+        let up = TreeNode { val: v as i32, left: None, right: None };
+        at.right = Some(up);
+        at = up;
+        let low = TreeNode { val: (5000 - 2 * v) as i32, left: None, right: None };
+        down.left = Some(low);
+        down = low;
+    }
+    let chains = get_all_elements(Some(rising), Some(falling));
+    let mut chain_check = 0;
+    for x in chains.iter() {
+        chain_check = (chain_check * 131 + x + 100000) % 1000000007;
+    }
+    println(f"{show(e1)} {show(e2)} {show(e3)} {show(e4)} {chains.len()}:{chain_check}");
+    // 2000 random pairs of 0 to 300 draws each, values from -10 to 10, -1000
+    // to 1000 or -10^5 to 10^5
+    let mut seed = 1305;
+    let mut total = 0;
+    let mut check = 0;
+    for i in 0..2000 {
+        let spread = if i % 3 == 0 { 10 } else if i % 3 == 1 { 1000 } else { 100000 };
+        let n1 = next_random(mut seed) % 301;
+        let n2 = next_random(mut seed) % 301;
+        let r1 = random_bst(mut seed, n1, spread);
+        let r2 = random_bst(mut seed, n2, spread);
+        let got = get_all_elements(r1, r2);
+        total += got.len();
+        for x in got.iter() {
+            check = (check * 131 + x + 100000) % 1000000007;
+        }
+    }
+    println(f"2000 random pairs: elements total {total}, checksum {check}");
+}

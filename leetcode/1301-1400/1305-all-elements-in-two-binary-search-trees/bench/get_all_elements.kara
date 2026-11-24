@@ -1,0 +1,99 @@
+// LeetCode #1305 bench: the ★ arm (each tree read in order into its own
+// `Vec`, then the two merged) on 20 pairs of search trees of 4900 values
+// each, drawn from -10^5 to 10^5 and put in in the order drawn, a repeat
+// left out, built once; then 100 passes, each putting one value from the
+// checksum so far into the first tree of every pair, so no answer carries
+// over and no tree passes the constraints' 5000, answering it and folding
+// one value of the answer, at a place also chosen from the checksum, its
+// length and the pass into the checksum.
+
+fn in_order(node: Option[TreeNode], out: mut ref Vec[i32]) {
+    if let Some(n) = node {
+        in_order(n.left, mut out);
+        out.push(n.val);
+        in_order(n.right, mut out);
+    }
+}
+
+fn get_all_elements(root1: Option[TreeNode], root2: Option[TreeNode]) -> Vec[i32] {
+    let mut a: Vec[i32] = Vec.new();
+    let mut b: Vec[i32] = Vec.new();
+    in_order(root1, mut a);
+    in_order(root2, mut b);
+    let mut out: Vec[i32] = Vec.new();
+    let mut i = 0;
+    let mut j = 0;
+    while i < a.len() or j < b.len() {
+        if j == b.len() or (i < a.len() and a[i] <= b[j]) {
+            out.push(a[i]);
+            i += 1;
+        } else {
+            out.push(b[j]);
+            j += 1;
+        }
+    }
+    out
+}
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// v put in its place in the search tree under root; a value already there
+// is left out, as the trees hold no repeats
+fn insert(root: TreeNode, v: i32) {
+    let mut at = root;
+    loop {
+        if v == at.val {
+            return;
+        }
+        let next = if v < at.val { at.left } else { at.right };
+        match next {
+            Some(child) => at = child,
+            None => {
+                let node = TreeNode { val: v, left: None, right: None };
+                if v < at.val {
+                    at.left = Some(node);
+                } else {
+                    at.right = Some(node);
+                }
+                return;
+            }
+        }
+    }
+}
+
+fn random_bst(seed: mut ref i64, n: i64) -> TreeNode {
+    let root = TreeNode { val: (next_random(mut seed) % 200001 - 100000) as i32, left: None, right: None };
+    for _ in 1..n {
+        insert(root, (next_random(mut seed) % 200001 - 100000) as i32);
+    }
+    root
+}
+
+fn main() {
+    let mut seed = 1305;
+    let mut firsts: Vec[TreeNode] = Vec.new();
+    let mut seconds: Vec[TreeNode] = Vec.new();
+    for _ in 0..20 {
+        firsts.push(random_bst(mut seed, 4900));
+        seconds.push(random_bst(mut seed, 4900));
+    }
+    let mut check: i64 = 0;
+    for pass in 0..100 {
+        for p in 0..20 {
+            insert(firsts[p], (check % 200001 - 100000) as i32);
+            let got = get_all_elements(Some(firsts[p]), Some(seconds[p]));
+            let x = got[check % got.len()];
+            check = (check * 31 + x + 100000 + got.len() + pass) % 1000000007;
+        }
+    }
+    println(f"100 passes over 20 pairs of trees: checksum {check}");
+}
