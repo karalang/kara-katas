@@ -1,0 +1,70 @@
+// LeetCode #1324: Print Words Vertically -- the ★ arm: the words split
+// apart, and row i made of each word's i-th letter in turn, a space for a
+// word too short to have one, with the spaces left at the row's end
+// trimmed. O(words * longest word)
+
+fn print_vertically(s: String) -> Vec[String] {
+    let words: Vec[String] = s.split(" ").map(|w| w.to_string()).collect();
+    let tallest = words.iter().map(|w| w.len()).max().unwrap();
+    let mut rows: Vec[String] = Vec.new();
+    for i in 0..tallest {
+        let mut row = String.new();
+        for w in words.iter() {
+            row.push(if i < w.len() { w.bytes()[i] as char } else { ' ' });
+        }
+        rows.push(row.trim_end().to_string());
+    }
+    rows
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(s: Str) -> String {
+    let rows = print_vertically(s.to_string());
+    f"[{rows.join(",")}]"
+}
+
+fn main() {
+    // LeetCode's three examples; one letter; one word of 200 letters, the
+    // constraints' longest; and 100 one-letter words, the most there can be
+    println(f"{show("HOW ARE YOU")} {show("TO BE OR NOT TO BE")} {show("CONTEST IS COMING")} {show("A")} {print_vertically("Q".repeat(200)).len()} {show("B ".repeat(99) + "C")}");
+    // 600 random sentences of up to 200 letters and spaces: words of 1 to 3
+    // letters, of 1 to 10, of 1 to 40, or a single word, over 2 or 26 letters
+    let mut seed = 1324;
+    let mut total = 0;
+    let mut check = 0;
+    for t in 0..600 {
+        let limit = 1 + next_random(mut seed) % 200;
+        let longest = if t % 4 == 0 { 3 } else if t % 4 == 1 { 10 } else if t % 4 == 2 { 40 } else { 200 };
+        let k = if t % 8 < 4 { 2 } else { 26 };
+        let mut bytes: Vec[u8] = Vec.new();
+        loop {
+            let mut len = 1 + next_random(mut seed) % longest;
+            if bytes.len() > 0 {
+                if bytes.len() + 1 + len > limit {
+                    break;
+                }
+                bytes.push(b' ');
+            } else if len > limit {
+                len = limit;
+            }
+            for _ in 0..len {
+                bytes.push(b'A' + (next_random(mut seed) % k) as u8);
+            }
+        }
+        let rows = print_vertically(String.from_utf8(bytes).unwrap());
+        total += rows.len();
+        for row in rows.iter() {
+            for b in row.bytes().iter() {
+                check = (check * 131 + *b) % 1000000007;
+            }
+            check = (check * 131 + 1) % 1000000007;
+        }
+    }
+    println(f"600 random sentences: rows total {total}, checksum {check}");
+}

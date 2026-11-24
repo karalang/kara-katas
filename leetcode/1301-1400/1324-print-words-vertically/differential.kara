@@ -1,0 +1,302 @@
+// LeetCode #1324: Print Words Vertically -- differential test of the
+// five arms against the statement read literally, with five more
+// properties.
+//
+// The statement: given a string s, return all the words vertically in the
+// same order in which they appear in s. Words are returned as a list of
+// strings, complete with spaces when necessary (trailing spaces are not
+// allowed). Each word is put on only one column and each column holds
+// only one word.
+
+// ---- print_vertically.kara ----
+fn a0_print_vertically(s: String) -> Vec[String] {
+    let words: Vec[String] = s.split(" ").map(|w| w.to_string()).collect();
+    let tallest = words.iter().map(|w| w.len()).max().unwrap();
+    let mut rows: Vec[String] = Vec.new();
+    for i in 0..tallest {
+        let mut row = String.new();
+        for w in words.iter() {
+            row.push(if i < w.len() { w.bytes()[i] as char } else { ' ' });
+        }
+        rows.push(row.trim_end().to_string());
+    }
+    rows
+}
+
+// ---- print_vertically_pad.kara ----
+fn a1_print_vertically(s: String) -> Vec[String] {
+    let words: Vec[Str] = s.split(" ").collect();
+    let tallest = words.iter().map(|w| w.len()).max().unwrap();
+    let mut grid: Vec[Vec[char]] = Vec.new();
+    for w in words.iter() {
+        let padded = w.to_string() + " ".repeat(tallest - w.len());
+        grid.push(padded.chars().collect());
+    }
+    let mut rows: Vec[String] = Vec.new();
+    for i in 0..tallest {
+        let mut row: Vec[char] = Vec.new();
+        for j in 0..grid.len() {
+            row.push(grid[j][i]);
+        }
+        while row.last() == Some(' ') {
+            row.pop();
+        }
+        rows.push(row.iter().collect());
+    }
+    rows
+}
+
+// ---- print_vertically_bytes.kara ----
+fn a2_print_vertically(s: String) -> Vec[String] {
+    let mut grid: Vec[Vec[u8]] = Vec.new();
+    let mut word = 0;
+    let mut letter = 0;
+    for b in s.bytes().iter() {
+        if *b == b' ' {
+            word += 1;
+            letter = 0;
+            continue;
+        }
+        if letter == grid.len() {
+            grid.push(Vec.new());
+        }
+        while grid[letter].len() < word {
+            grid[letter].push(b' ');
+        }
+        grid[letter].push(*b);
+        letter += 1;
+    }
+    grid.into_iter().map(|row| String.from_utf8(row).unwrap()).collect()
+}
+
+// ---- print_vertically_solution.kara ----
+struct A3Solution {}
+
+impl A3Solution {
+    pub fn a3_print_vertically(s: String) -> Vec[String] {
+        let words: Vec[Str] = s.split_whitespace().collect();
+        let max_len = words.iter().map(|w| w.len()).max().unwrap_or(0);
+        let mut res = Vec.new();
+        for i in 0..max_len {
+            let mut row = String.new();
+            for w in ref words {
+                row.push(w.chars().nth(i).unwrap_or(' '));
+            }
+            res.push(row.trim_end().to_string());
+        }
+        res
+    }
+}
+
+fn a3_print_vertically(s: String) -> Vec[String] {
+    A3Solution.a3_print_vertically(s)
+}
+
+// ---- print_vertically_lastword.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_print_vertically(s: String) -> Vec[String] {
+        let words: Vec[Vec[u8]] = s.split(" ").map(|w| w.bytes().to_vec()).collect();
+        let n = words.iter().map(|w| w.len()).max().unwrap();
+        let mut ans = Vec.new();
+        for i in 0..n {
+            let mut last = 0;
+            for (j, w) in words.iter().enumerate() {
+                if w.len() > i {
+                    last = j;
+                }
+            }
+            let mut row = Vec.new();
+            for j in 0..=last {
+                row.push(if i < words[j].len() { words[j][i] } else { b' ' });
+            }
+            ans.push(String.from_utf8(row).unwrap());
+        }
+        ans
+    }
+}
+
+fn a4_print_vertically(s: String) -> Vec[String] {
+    A4Solution.a4_print_vertically(s)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a row with its spaces at the end cut off
+fn trimmed(row: own Vec[char]) -> String {
+    let mut r = row;
+    while r.len() > 0 and r[r.len() - 1] == ' ' {
+        r.pop();
+    }
+    r.iter().collect()
+}
+
+// a row of an answer as characters, padded with spaces out to width
+fn padded(row: String, width: i64) -> Vec[char] {
+    let mut r: Vec[char] = row.chars().collect();
+    while r.len() < width {
+        r.push(' ');
+    }
+    r
+}
+
+// the statement read literally: a grid of spaces as tall as the longest
+// word and as wide as the words are many, each word written down its own
+// column, and each row's spaces at the end cut off
+fn literal(words: Vec[String]) -> Vec[String] {
+    let mut tall = 0;
+    for w in words.iter() {
+        if w.len() > tall {
+            tall = w.len();
+        }
+    }
+    let mut grid: Vec[Vec[char]] = Vec.filled(tall, Vec.filled(words.len(), ' '));
+    for j in 0..words.len() {
+        let letters: Vec[char] = words[j].chars().collect();
+        for i in 0..letters.len() {
+            grid[i][j] = letters[i];
+        }
+    }
+    grid.into_iter().map(|row| trimmed(row)).collect()
+}
+
+struct Case {
+    words: Vec[String],
+    // P3: a word put on the end
+    extra: String,
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, s: String) -> Vec[String] {
+    match i {
+        0 => a0_print_vertically(s),
+        1 => a1_print_vertically(s),
+        2 => a2_print_vertically(s),
+        3 => a3_print_vertically(s),
+        _ => a4_print_vertically(s),
+    }
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    t.cases += 1;
+    let s = c.words.join(" ");
+    let n = c.words.len();
+    let want = literal(c.words);
+    for row in want.iter() {
+        for ch in row.chars() {
+            t.check = (t.check * 131 + ch as i64) % 1000000007;
+        }
+        t.check = (t.check * 131 + 1) % 1000000007;
+    }
+    let reversed: Vec[String] = c.words.iter().rev().cloned().collect();
+    let mut longer = c.words.clone();
+    longer.push(c.extra.clone());
+    let doubled: Vec[String] = c.words.iter().flat_map(|w| [w.clone(), w.clone()].into_iter()).collect();
+    let rest: Vec[String] = c.words.iter().skip(1).cloned().collect();
+    let star = a0_print_vertically(s);
+    for i in 0..5 {
+        let got = arm(i, s);
+        let what = f"arm {i} case {t.cases} \"{s}\": got [{got.join(",")}]";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal [{want.join(",")}]");
+        // P2: the words in the reverse order: each row, padded out to the
+        // words' number, read backwards
+        let rv = arm(i, reversed.join(" "));
+        let rv_want: Vec[String] = got.iter().map(|row| trimmed(padded(row, n).into_iter().rev().collect())).collect();
+        expect(mut t, 2, rv == rv_want, f"P2 {what}, reversed: [{rv.join(",")}]");
+        // P3: a word put on the end: each of its letters on the end of its
+        // row, padded out to the words' number, and new rows below the old
+        // ones if it is the longest
+        let lg = arm(i, longer.join(" "));
+        let extra: Vec[char] = c.extra.chars().collect();
+        let mut lg_want: Vec[String] = Vec.new();
+        for r in 0..got.len().max(extra.len()) {
+            let mut row = padded(if r < got.len() { got[r].clone() } else { String.new() }, n);
+            row.push(if r < extra.len() { extra[r] } else { ' ' });
+            lg_want.push(trimmed(row));
+        }
+        expect(mut t, 3, lg == lg_want, f"P3 {what}, with {c.extra} on the end: [{lg.join(",")}]");
+        // P4: every word said twice where it stands: every letter of every
+        // row, padded out to the words' number, twice
+        let db = arm(i, doubled.join(" "));
+        let db_want: Vec[String] = got.iter().map(|row| trimmed(padded(row, n).iter().flat_map(|ch| [*ch, *ch].into_iter()).collect())).collect();
+        expect(mut t, 4, db == db_want, f"P4 {what}, every word twice: [{db.join(",")}]");
+        // P5: the first word taken away, when there are two: each row's
+        // first letter gone, and the rows left with nothing at the bottom
+        // dropped
+        if n > 1 {
+            let rs = arm(i, rest.join(" "));
+            let mut rs_want: Vec[String] = got.iter().map(|row| trimmed(row.chars().skip(1).collect())).collect();
+            while rs_want.len() > 0 and rs_want[rs_want.len() - 1].len() == 0 {
+                rs_want.pop();
+            }
+            expect(mut t, 5, rs == rs_want, f"P5 {what}, first word gone: [{rs.join(",")}]");
+        }
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: [{star.join(",")}]");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 sentences of 1 to 8 words in four kinds, 500 each: words of 1 to
+    // 3 letters over 2; words of 1 to 6 letters over 26; short words with
+    // one long one among them; and a single word. Every sentence and extra
+    // word is drawn before any arm answers.
+    let letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
+    let mut seed = 13241;
+    let mut cases: Vec[Case] = Vec.new();
+    for i in 0..2000 {
+        let kind = i / 500;
+        let n = if kind == 3 { 1 } else { 1 + next_random(mut seed) % 8 };
+        let k = if kind == 0 { 2 } else { 26 };
+        let long_at = next_random(mut seed) % n;
+        let mut words: Vec[String] = Vec.new();
+        for j in 0..n {
+            let most = if kind == 0 or kind == 2 { 3 } else { 6 };
+            let len = if kind == 2 and j == long_at { 4 + next_random(mut seed) % 9 } else { 1 + next_random(mut seed) % most };
+            let mut w = String.new();
+            for _ in 0..len {
+                w.push(letters[next_random(mut seed) % k]);
+            }
+            words.push(w);
+        }
+        let mut extra = String.new();
+        for _ in 0..1 + next_random(mut seed) % 8 {
+            extra.push(letters[next_random(mut seed) % k]);
+        }
+        cases.push(Case { words, extra });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} sentences: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
