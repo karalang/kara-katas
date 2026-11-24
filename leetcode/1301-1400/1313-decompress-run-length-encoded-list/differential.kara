@@ -1,0 +1,270 @@
+// LeetCode #1313: Decompress Run-Length Encoded List -- differential test of
+// the six arms against the statement read literally, with five more
+// properties.
+//
+// The statement: given a list nums of integers representing a list
+// compressed with run-length encoding, each pair of adjacent elements
+// [freq, val] = [nums[2*i], nums[2*i+1]] stands for freq elements of value
+// val in a sublist; concatenate all the sublists from left to right to make
+// the decompressed list, and return it.
+
+// ---- decompress_rl_elist.kara ----
+fn a0_decompress_rl_elist(nums: Vec[i64]) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    for pair in nums.chunks(2) {
+        for _ in 0..pair[0] {
+            out.push(pair[1]);
+        }
+    }
+    out
+}
+
+// ---- decompress_rl_elist_repeat.kara ----
+fn a1_decompress_rl_elist(nums: Vec[i64]) -> Vec[i64] {
+    nums.chunks(2).into_iter().flat_map(|pair| repeat(pair[1]).take(pair[0])).collect()
+}
+
+// ---- decompress_rl_elist_sized.kara ----
+fn a2_decompress_rl_elist(nums: Vec[i64]) -> Vec[i64] {
+    let mut total = 0;
+    let mut i = 0;
+    while i < nums.len() {
+        total += nums[i];
+        i += 2;
+    }
+    let mut out: Vec[i64] = Vec.filled(total, 0);
+    let mut at = 0;
+    i = 0;
+    while i < nums.len() {
+        for k in 0..nums[i] {
+            out[at + k] = nums[i + 1];
+        }
+        at += nums[i];
+        i += 2;
+    }
+    out
+}
+
+// ---- decompress_rl_elist_runs.kara ----
+fn a3_decompress_rl_elist(nums: Vec[i64]) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    for i in (0..nums.len()).step_by(2) {
+        out.extend(Vec.filled(nums[i], nums[i + 1]));
+    }
+    out
+}
+
+// ---- decompress_rl_elist_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_decompress_rl_elist(nums: Vec[i32]) -> Vec[i32] {
+        nums.chunks(2).into_iter().flat_map(|p| Vec.filled(p[0], p[1]).into_iter()).collect()
+    }
+}
+
+fn a4_decompress_rl_elist(nums: Vec[i64]) -> Vec[i64] {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    A4Solution.a4_decompress_rl_elist(nums).iter().map(|x| x as i64).collect()
+}
+
+// ---- decompress_rl_elist_extend.kara ----
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn a5_decompress_rl_elist(nums: Vec[i32]) -> Vec[i32] {
+        let mut res = Vec.new();
+        for i in (0..nums.len()).step_by(2) {
+            res.extend(repeat(nums[i + 1]).take(nums[i]));
+        }
+        res
+    }
+}
+
+fn a5_decompress_rl_elist(nums: Vec[i64]) -> Vec[i64] {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    A5Solution.a5_decompress_rl_elist(nums).iter().map(|x| x as i64).collect()
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// the decompressed list's length is the counts added up; each of its places
+// k takes the value of the first pair whose running count passes k
+fn literal(nums: Vec[i64]) -> Vec[i64] {
+    let mut length = 0;
+    for i in 0..nums.len() / 2 {
+        length += nums[2 * i];
+    }
+    let mut out: Vec[i64] = Vec.new();
+    for k in 0..length {
+        let mut running = 0;
+        let mut i = 0;
+        while running + nums[2 * i] <= k {
+            running += nums[2 * i];
+            i += 1;
+        }
+        out.push(nums[2 * i + 1]);
+    }
+    out
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    parts.join(",")
+}
+
+struct Case {
+    nums: Vec[i64],
+    // P3: the pair the list is cut before (0 to the number of pairs)
+    cut: i64,
+    // P4: the pair whose count is split, and how much goes first
+    split: i64,
+    part: i64,
+    // P5: how much every value is raised
+    shift: i64,
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, nums: Vec[i64]) -> Vec[i64] {
+    match i {
+        0 => a0_decompress_rl_elist(nums),
+        1 => a1_decompress_rl_elist(nums),
+        2 => a2_decompress_rl_elist(nums),
+        3 => a3_decompress_rl_elist(nums),
+        4 => a4_decompress_rl_elist(nums),
+        _ => a5_decompress_rl_elist(nums),
+    }
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    t.cases += 1;
+    let pairs = c.nums.len() / 2;
+    let want = literal(c.nums);
+    for x in want.iter() {
+        t.check = (t.check * 31 + x) % 1000000007;
+    }
+    t.check = (t.check * 31 + 1) % 1000000007;
+    // P2: the pairs in the reverse order
+    let mut backwards: Vec[i64] = Vec.new();
+    for i in 0..pairs {
+        backwards.push(c.nums[2 * (pairs - 1 - i)]);
+        backwards.push(c.nums[2 * (pairs - 1 - i) + 1]);
+    }
+    // P3: the list cut before pair `cut`
+    let front: Vec[i64] = c.nums.iter().take(2 * c.cut).collect();
+    let back: Vec[i64] = c.nums.iter().skip(2 * c.cut).collect();
+    // P4: pair `split` made two pairs of the same value, `part` first
+    let mut split: Vec[i64] = Vec.new();
+    for i in 0..pairs {
+        if i == c.split and c.nums[2 * i] >= 2 {
+            split.push(c.part);
+            split.push(c.nums[2 * i + 1]);
+            split.push(c.nums[2 * i] - c.part);
+        } else {
+            split.push(c.nums[2 * i]);
+        }
+        split.push(c.nums[2 * i + 1]);
+    }
+    // P5: every value raised by `shift`
+    let mut raised: Vec[i64] = c.nums.clone();
+    for i in 0..pairs {
+        raised[2 * i + 1] += c.shift;
+    }
+    let star = a0_decompress_rl_elist(c.nums);
+    for i in 0..6 {
+        let got = arm(i, c.nums);
+        let what = f"arm {i} case {t.cases} [{show(c.nums)}]: got [{show(got)}]";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal [{show(want)}]");
+        // P2: the pairs in the reverse order, the answer back to front
+        let bw: Vec[i64] = arm(i, backwards).iter().rev().collect();
+        expect(mut t, 2, bw == got, f"P2 {what}, backwards, turned round: [{show(bw)}]");
+        // P3: the list cut between two pairs, the two answers joined
+        let mut joined = arm(i, front);
+        joined.extend(arm(i, back));
+        expect(mut t, 3, joined == got, f"P3 {what}, cut at {c.cut}: [{show(joined)}]");
+        // P4: one count split over two pairs of the same value, the same
+        // answer
+        let sp = arm(i, split);
+        expect(mut t, 4, sp == got, f"P4 {what}, split: [{show(sp)}]");
+        // P5: every value raised, every number of the answer raised
+        let rs = arm(i, raised);
+        let up: Vec[i64] = got.iter().map(|x| x + c.shift).collect();
+        expect(mut t, 5, rs == up, f"P5 {what}, raised by {c.shift}: [{show(rs)}]");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: [{show(star)}]");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 lists of 1 to 10 pairs in four kinds, 500 each: counts and values
+    // up to 3, so that neighbouring runs often share a value; every count 1;
+    // counts and values up to 100; and one value throughout with counts up
+    // to 5. Every list, cut, split and raise is drawn before any arm
+    // answers.
+    let mut seed = 13131;
+    let mut cases: Vec[Case] = Vec.new();
+    for i in 0..2000 {
+        let kind = i / 500;
+        let pairs = 1 + next_random(mut seed) % 10;
+        let same = 1 + next_random(mut seed) % 100;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..pairs {
+            let count = next_random(mut seed);
+            let value = next_random(mut seed);
+            if kind == 0 {
+                nums.push(1 + count % 3);
+                nums.push(1 + value % 3);
+            } else if kind == 1 {
+                nums.push(1);
+                nums.push(1 + value % 100);
+            } else if kind == 2 {
+                nums.push(1 + count % 100);
+                nums.push(1 + value % 100);
+            } else {
+                nums.push(1 + count % 5);
+                nums.push(same);
+            }
+        }
+        let cut = next_random(mut seed) % (pairs + 1);
+        let split = next_random(mut seed) % pairs;
+        let room = nums[2 * split];
+        let part = if room >= 2 { 1 + next_random(mut seed) % (room - 1) } else { 0 };
+        let shift = 1 + next_random(mut seed) % 50;
+        cases.push(Case { nums, cut, split, part, shift });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} lists: checksum {t.check}, {t.checks} checks over 6 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
