@@ -1,0 +1,245 @@
+// LeetCode #2475: Number of Unequal Triplets in Array -- the
+// differential. The six arms against the statement read literally: every
+// set of three places, each a mask of the list's places with three bits
+// set, counted when the three values there differ pairwise. 360 random
+// lists: 300 of 3 to 10 values, then 60 of up to 12; their values from 1
+// to between 1 and 6. Every case is drawn before any arm answers.
+//
+// P1  the count is the literal reading's
+// P2  the list reversed: the same count
+// P3  a value not in the list appended: one more for every pair of
+//     places holding different values
+// P4  the list twice over: eight times the count
+// P5  every value replaced by its place: `n choose 3`
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn triplets_literally(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut count = 0;
+    for mask in 0..(1 << n) {
+        let mut picked: Vec[i64] = Vec.new();
+        for i in 0..n {
+            if (mask >> i) & 1 == 1 {
+                picked.push(nums[i]);
+            }
+        }
+        if picked.len() == 3 and picked[0] != picked[1] and picked[0] != picked[2] and picked[1] != picked[2] {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- star (triplets.kara) ------------------------------------------------
+
+fn star_unequal_triplets(nums: Vec[i64]) -> i64 {
+    let mut counts: Map[i64, i64] = Map.new();
+    for v in nums.iter() {
+        counts.insert(v, counts.get(v).unwrap_or(0) + 1);
+    }
+    let n = nums.len();
+    let mut left = 0;
+    let mut total = 0;
+    for (_, c) in counts.iter() {
+        total += left * c * (n - left - c);
+        left += c;
+    }
+    total
+}
+
+// ---- every (triplets_every.kara) -----------------------------------------
+
+fn every_unequal_triplets(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut count = 0;
+    for i in 0..n {
+        for j in i + 1..n {
+            if nums[i] == nums[j] {
+                continue;
+            }
+            for k in j + 1..n {
+                if nums[k] != nums[i] and nums[k] != nums[j] {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
+}
+
+// ---- sorted (triplets_sorted.kara) ---------------------------------------
+
+fn sorted_unequal_triplets(nums: Vec[i64]) -> i64 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let n = sorted.len();
+    let mut total = 0;
+    let mut start = 0;
+    while start < n {
+        let mut end = start;
+        while end < n and sorted[end] == sorted[start] {
+            end += 1;
+        }
+        let c = end - start;
+        total += start * c * (n - end);
+        start = end;
+    }
+    total
+}
+
+// ---- complement (triplets_complement.kara) -------------------------------
+
+fn complement_choose(n: i64, k: i64) -> i64 {
+    let mut result = 1;
+    for i in 0..k {
+        result = result * (n - i) / (i + 1);
+    }
+    result
+}
+
+fn complement_unequal_triplets(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut counts: Vec[i64] = Vec.filled(1001, 0);
+    for v in nums.iter() {
+        counts[v] += 1;
+    }
+    let mut total = complement_choose(n, 3);
+    for c in counts.iter() {
+        total -= complement_choose(c, 2) * (n - c) + complement_choose(c, 3);
+    }
+    total
+}
+
+// ---- iter (triplets_iter.kara) -------------------------------------------
+
+fn iter_unequal_triplets(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let counts: Map[i64, i64] = nums.iter().fold(Map.new(), |m, v| {
+        let mut m = m;
+        m.insert(v, m.get(v).unwrap_or(0) + 1);
+        m
+    });
+    let (_, total) = counts.values().fold((0, 0), |(left, total), c| (left + c, total + left * c * (n - left - c)));
+    total
+}
+
+// ---- solution (triplets_solution.kara) -----------------------------------
+
+impl Solution {
+    pub fn unequal_triplets(nums: Vec[i32]) -> i32 {
+        let mut count = Map.new();
+        for x in ref nums {
+            *count.entry(x).or_insert(0i32) += 1;
+        }
+        let n = nums.len() as i32;
+        let mut (ans, left) = (0i32, 0i32);
+        for c in count.values() {
+            ans += left * c * (n - left - c);
+            left += c;
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_unequal_triplets(nums: Vec[i64]) -> i64 {
+    let asked: Vec[i32] = nums.iter().map(|v| v as i32).collect();
+    Solution.unequal_triplets(asked)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_unequal_triplets(nums),
+        1 => every_unequal_triplets(nums),
+        2 => sorted_unequal_triplets(nums),
+        3 => complement_unequal_triplets(nums),
+        4 => iter_unequal_triplets(nums),
+        _ => solution_unequal_triplets(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "every", "sorted", "complement", "iter", "solution"];
+    let mut seed = 2475;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let n = if t < 300 { 3 + next_random(mut seed) % 8 } else { 3 + next_random(mut seed) % 10 };
+        let top = 1 + next_random(mut seed) % 6;
+        cases.push((0..n).map(|_| 1 + next_random(mut seed) % top).collect());
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let nums = cases[c].clone();
+        let n = nums.len();
+        let truth = triplets_literally(nums);
+        check = (check * 31 + truth) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        let mut back = nums.clone();
+        back.reverse();
+        let mut pairs = 0;
+        for i in 0..n {
+            for j in i + 1..n {
+                if nums[i] != nums[j] {
+                    pairs += 1;
+                }
+            }
+        }
+        let mut longer = nums.clone();
+        longer.push(999);
+        let mut twice = nums.clone();
+        twice.extend(nums.clone());
+        let places: Vec[i64] = (0..n).map(|i| i + 1).collect();
+        let every_set = n * (n - 1) * (n - 2) / 6;
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, back) == value,
+                answer(arm, longer) == value + pairs,
+                answer(arm, twice) == 8 * value,
+                answer(arm, places) == every_set,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

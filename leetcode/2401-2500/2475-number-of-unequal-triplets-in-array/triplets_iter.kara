@@ -1,0 +1,61 @@
+// LeetCode #2475: Number of Unequal Triplets in Array -- iterators: the
+// counts gathered by `fold` into a `Map`, then a `fold` over its values
+// carrying the places before and the triplets so far as a pair. O(n).
+
+fn unequal_triplets(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let counts: Map[i64, i64] = nums.iter().fold(Map.new(), |m, v| {
+        let mut m = m;
+        m.insert(v, m.get(v).unwrap_or(0) + 1);
+        m
+    });
+    let (_, total) = counts.values().fold((0, 0), |(left, total), c| (left + c, total + left * c * (n - left - c)));
+    total
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` random values from 1 to `top`
+fn random_nums(n: i64, top: i64, seed: mut ref i64) -> Vec[i64] {
+    (0..n).map(|_| 1 + next_random(mut seed) % top).collect()
+}
+
+fn main() {
+    // LeetCode's two examples; then three distinct values; two values
+    // only; a value held by every triplet but one; and one value three
+    // times among two others
+    let cases: Vec[Vec[i64]] = [
+        [4, 4, 2, 4, 3].to_vec(),
+        [1, 1, 1, 1, 1].to_vec(),
+        [1, 2, 3].to_vec(),
+        [5, 7, 5, 7, 7, 5].to_vec(),
+        [9, 1, 9, 2, 9, 3].to_vec(),
+        [1000, 1, 1000, 1000, 2].to_vec(),
+    ].to_vec();
+    for nums in cases.into_iter() {
+        let shown = f"{nums}";
+        println(f"{shown} -> {unequal_triplets(nums)}");
+    }
+    // the constraints' largest, 100 values: all distinct; random from 1
+    // to 1000; from 1 to 10; and from 1 to 3
+    let mut seed = 2475;
+    let distinct: Vec[i64] = (0..100).map(|i| 1000 - 7 * i).collect();
+    println(f"100 distinct -> {unequal_triplets(distinct)}");
+    println(f"100 of 1 to 1000 -> {unequal_triplets(random_nums(100, 1000, mut seed))}");
+    println(f"100 of 1 to 10 -> {unequal_triplets(random_nums(100, 10, mut seed))}");
+    println(f"100 of 1 to 3 -> {unequal_triplets(random_nums(100, 3, mut seed))}");
+    // 3000 random lists of 3 to 100 values from 1 to between 1 and 20: a
+    // checksum of every answer in order
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 3 + next_random(mut seed) % 98;
+        let top = 1 + next_random(mut seed) % 20;
+        check = (check * 31 + unequal_triplets(random_nums(n, top, mut seed))) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}
