@@ -1,0 +1,114 @@
+// LeetCode #2456: Most Popular Video Creator -- LeetCode's Rust template,
+// as Rust writes it, carried by karac fix: two `HashMap`s, the totals by
+// `*total.entry(..).or_insert(0) += views[i] as i64` and the best video
+// through the `&mut` that `entry(..).or_insert(..)` returns, replaced by
+// `*e = ..`; the answer by `filter(|(_, &t)| ..)` and `vec![..]`.
+
+impl Solution {
+    pub fn most_popular_creator(creators: Vec[String], ids: Vec[String], views: Vec[i32]) -> Vec[Vec[String]] {
+        let mut total: Map[String, i64] = Map.new();
+        let mut best: Map[String, (i32, String)] = Map.new();
+        for i in 0..creators.len() {
+            *total.entry(creators[i].clone()).or_insert(0) += views[i];
+            let e = best.entry(creators[i].clone()).or_insert((views[i], ids[i].clone()));
+            if views[i] > e.0 or (views[i] == e.0 and ids[i] < e.1) {
+                *e = (views[i], ids[i].clone());
+            }
+        }
+        let most = *total.values().max().unwrap();
+        total
+            .iter()
+            .filter(|(_, t)| t == most)
+            .map(|(c, _)| [c.clone(), best[c].1.clone()])
+            .collect()
+    }
+}
+
+struct Solution {}
+
+fn most_popular_creator(creators: Vec[String], ids: Vec[String], views: Vec[i64]) -> Vec[Vec[String]] {
+    let counts: Vec[i32] = views.iter().map(|x| x as i32).collect();
+    let mut answer = Solution.most_popular_creator(creators, ids, counts);
+    answer.sort();
+    answer
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn strings(list: Vec[Str]) -> Vec[String] {
+    list.iter().map(|w| w.to_string()).collect()
+}
+
+// a random name of 1 to `len` letters from the first `letters`
+fn random_name(len: i64, letters: i64, seed: mut ref i64) -> String {
+    let n = 1 + next_random(mut seed) % len;
+    let bytes: Vec[u8] = (0..n).map(|_| (97 + next_random(mut seed) % letters) as u8).collect();
+    String.from_utf8(bytes).unwrap()
+}
+
+// every pair as `creator/id`, in the answer's order
+fn show(answer: Vec[Vec[String]]) -> String {
+    let parts: Vec[String] = answer.iter().map(|p| f"{p[0]}/{p[1]}").collect();
+    parts.join(" ")
+}
+
+// how many pairs, and a checksum of their letters in order
+fn summary(answer: Vec[Vec[String]]) -> String {
+    let mut check = 0;
+    for p in answer.iter() {
+        for w in p.iter() {
+            for b in w.bytes().iter() {
+                check = (check * 31 + b as i64) % 1000000007;
+            }
+            check = (check * 31 + 1) % 1000000007;
+        }
+    }
+    f"{answer.len()} pairs, checksum {check}"
+}
+
+fn main() {
+    // LeetCode's two examples; one video of no views; a creator's tie
+    // broken by the least id; two creators tied, one holding the most
+    // viewed video; one creator's many small videos above another's one
+    // large one
+    println(show(most_popular_creator(strings(["alice", "bob", "alice", "chris"].to_vec()), strings(["one", "two", "three", "four"].to_vec()), [5, 10, 5, 4].to_vec())));
+    println(show(most_popular_creator(strings(["alice", "alice", "alice"].to_vec()), strings(["a", "b", "c"].to_vec()), [1, 2, 2].to_vec())));
+    println(show(most_popular_creator(strings(["z"].to_vec()), strings(["q"].to_vec()), [0].to_vec())));
+    println(show(most_popular_creator(strings(["x", "x", "x"].to_vec()), strings(["bb", "ab", "b"].to_vec()), [7, 7, 7].to_vec())));
+    println(show(most_popular_creator(strings(["p", "q", "q", "p"].to_vec()), strings(["a", "b", "c", "d"].to_vec()), [6, 3, 3, 0].to_vec())));
+    println(show(most_popular_creator(strings(["m", "m", "m", "n"].to_vec()), strings(["c", "b", "a", "z"].to_vec()), [1, 1, 1, 2].to_vec())));
+    // 2000 videos by creators from 3 letters, views up to 10^5; then 2000
+    // by creators from 1 letter of 2, views up to 3, full of ties
+    let mut seed = 2456;
+    for (len, letters, top) in [(3, 3, 100000), (1, 2, 3)].iter() {
+        let creators: Vec[String] = (0..2000).map(|_| random_name(len, letters, mut seed)).collect();
+        let ids: Vec[String] = (0..2000).map(|_| random_name(5, 26, mut seed)).collect();
+        let views: Vec[i64] = (0..2000).map(|_| next_random(mut seed) % (top + 1)).collect();
+        println(f"2000 videos, names of {len} from {letters}: {summary(most_popular_creator(creators, ids, views))}");
+    }
+    // 3000 random lists of 1 to 8 videos, creators and ids of 1 to 2
+    // letters from 3, views up to 5: a checksum of every summary's
+    // checksum in order
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 8;
+        let creators: Vec[String] = (0..n).map(|_| random_name(2, 3, mut seed)).collect();
+        let ids: Vec[String] = (0..n).map(|_| random_name(2, 3, mut seed)).collect();
+        let views: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 6).collect();
+        for p in most_popular_creator(creators, ids, views).iter() {
+            for w in p.iter() {
+                for b in w.bytes().iter() {
+                    check = (check * 31 + b as i64) % 1000000007;
+                }
+                check = (check * 31 + 1) % 1000000007;
+            }
+        }
+        check = (check * 31 + 2) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}

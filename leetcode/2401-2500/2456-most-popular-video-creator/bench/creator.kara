@@ -1,0 +1,68 @@
+// LeetCode #2456: Most Popular Video Creator -- bench. Ten lists of 10^5
+// videos are built once, creators of 3 letters and ids of 5, views up to
+// 10^5; each of 16 passes sets one view of every list, so no answer
+// carries over, then answers every list, folding the letters of every
+// pair, and then the pass, into the checksum. The ★ arm: one pass keeps
+// each creator's total and best video in a `Map`.
+
+fn most_popular_creator(creators: Vec[String], ids: Vec[String], views: Vec[i64]) -> Vec[Vec[String]] {
+    let mut stats: Map[String, (i64, i64, String)] = Map.new();
+    for i in 0..creators.len() {
+        let c = creators[i].clone();
+        match stats.get(c) {
+            Some((total, top, id)) => {
+                let better = views[i] > top or (views[i] == top and ids[i] < id);
+                stats[c] = if better { (total + views[i], views[i], ids[i].clone()) } else { (total + views[i], top, id.clone()) };
+            }
+            None => stats[c] = (views[i], views[i], ids[i].clone()),
+        }
+    }
+    let mut most = 0;
+    for (_, (total, _, _)) in stats.iter() {
+        most = most.max(total);
+    }
+    let mut answer: Vec[Vec[String]] = Vec.new();
+    for (c, (total, _, id)) in stats.iter() {
+        if total == most {
+            answer.push([c.clone(), id.clone()].to_vec());
+        }
+    }
+    answer.sort();
+    answer
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_name(len: i64, letters: i64, seed: mut ref i64) -> String {
+    let bytes: Vec[u8] = (0..len).map(|_| (97 + next_random(mut seed) % letters) as u8).collect();
+    String.from_utf8(bytes).unwrap()
+}
+
+fn main() {
+    let mut seed = 2456;
+    let mut lists: Vec[(Vec[String], Vec[String], Vec[i64])] = Vec.new();
+    for _ in 0..10 {
+        let creators: Vec[String] = (0..100000).map(|_| random_name(3, 26, mut seed)).collect();
+        let ids: Vec[String] = (0..100000).map(|_| random_name(5, 26, mut seed)).collect();
+        let views: Vec[i64] = (0..100000).map(|_| next_random(mut seed) % 100001).collect();
+        lists.push((creators, ids, views));
+    }
+    let mut check = 0;
+    for p in 0..16 {
+        for a in 0..10 {
+            lists[a].2[(p * 7919 + a) % 100000] = check % 100001;
+            for pair in most_popular_creator(lists[a].0, lists[a].1, lists[a].2).iter() {
+                for w in pair.iter() {
+                    for b in w.bytes().iter() {
+                        check = (check * 31 + b as i64) % 1000000007;
+                    }
+                }
+            }
+            check = (check + p) % 1000000007;
+        }
+    }
+    println(f"16 passes over 10 lists of 10^5 videos: checksum {check}");
+}
