@@ -1,0 +1,89 @@
+// LeetCode #1292: Maximum Side Length of a Square with Sum Less than or Equal
+// to Threshold -- the binary search arm: two-dimensional prefix sums, then a
+// binary search on the side, since every square inside one that fits fits
+// too; each try scans every position of a square of that side. O(mn log
+// min(m, n))
+
+fn fits(sum: Vec[Vec[i64]], k: i64, threshold: i64) -> bool {
+    let m = sum.len() - 1;
+    let n = sum[0].len() - 1;
+    for i in k..m + 1 {
+        for j in k..n + 1 {
+            if sum[i][j] - sum[i - k][j] - sum[i][j - k] + sum[i - k][j - k] <= threshold {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn max_side_length(mat: Vec[Vec[i64]], threshold: i64) -> i64 {
+    let m = mat.len();
+    let n = mat[0].len();
+    let mut sum: Vec[Vec[i64]] = Vec.filled(m + 1, Vec.filled(n + 1, 0));
+    for i in 1..m + 1 {
+        for j in 1..n + 1 {
+            sum[i][j] = mat[i - 1][j - 1] + sum[i - 1][j] + sum[i][j - 1] - sum[i - 1][j - 1];
+        }
+    }
+    // the answer is in [lo, hi]
+    let mut lo = 0;
+    let mut hi = if m < n { m } else { n };
+    while lo < hi {
+        let mid = (lo + hi + 1) / 2;
+        if fits(sum, mid, threshold) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn problem(seed: mut ref i64, m: i64, n: i64, top: i64) -> Vec[Vec[i64]] {
+    let mut mat: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..m {
+        let mut row: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            row.push(wide_random(mut seed) % (top + 1));
+        }
+        mat.push(row);
+    }
+    mat
+}
+
+fn main() {
+    // LeetCode's examples, a threshold of 0 over zeros and over ones, and a
+    // single cell either side of the threshold
+    let ex1 = [[1, 1, 3, 2, 4, 3, 2], [1, 1, 3, 2, 4, 3, 2], [1, 1, 3, 2, 4, 3, 2]];
+    let ex2 = [[2, 2, 2, 2, 2], [2, 2, 2, 2, 2], [2, 2, 2, 2, 2], [2, 2, 2, 2, 2], [2, 2, 2, 2, 2]];
+    println(f"{max_side_length(ex1, 4)} {max_side_length(ex2, 1)} {max_side_length([[0, 0], [0, 0]], 0)} {max_side_length([[1, 1], [1, 1]], 0)} {max_side_length([[7]], 7)} {max_side_length([[7]], 6)}");
+    // random matrices up to 30 by 30 in three kinds, each with its own
+    // largest value (10^4, 100, 9), and thresholds up to 10^5; then one of
+    // 100 by 100 with values up to 9
+    let mut seed = 1292;
+    let mut total = 0;
+    let mut check = 0;
+    for k in 0..601 {
+        let top = if k == 600 { 9 } else { [10000, 100, 9][k % 3] };
+        let m = if k == 600 { 100 } else { next_random(mut seed) % 30 + 1 };
+        let n = if k == 600 { 100 } else { next_random(mut seed) % 30 + 1 };
+        let mat = problem(mut seed, m, n, top);
+        let threshold = wide_random(mut seed) % 100001;
+        let side = max_side_length(mat, threshold);
+        total += side;
+        check = (check * 131 + side) % 1000000007;
+    }
+    println(f"601 random matrices: sides total {total}, checksum {check}");
+}
