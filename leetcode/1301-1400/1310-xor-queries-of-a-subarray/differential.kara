@@ -1,0 +1,313 @@
+// LeetCode #1310: XOR Queries of a Subarray -- differential test of the six
+// arms against the statement read literally, with five more properties.
+//
+// The statement: given an array arr of positive integers and an array of
+// queries where queries[i] = [left, right], for each query compute the XOR
+// of the elements from left to right (arr[left] XOR arr[left + 1] XOR ...
+// XOR arr[right]), and return the answers.
+
+// ---- xor_queries.kara ----
+fn a0_xor_queries(arr: Vec[i64], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut prefix: Vec[i64] = Vec.filled(arr.len() + 1, 0);
+    for i in 0..arr.len() {
+        prefix[i + 1] = prefix[i] ^ arr[i];
+    }
+    queries.iter().map(|q| prefix[q[1] + 1] ^ prefix[q[0]]).collect()
+}
+
+// ---- xor_queries_naive.kara ----
+fn a1_xor_queries(arr: Vec[i64], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let mut x = 0;
+        for i in q[0]..q[1] + 1 {
+            x ^= arr[i];
+        }
+        out.push(x);
+    }
+    out
+}
+
+// ---- xor_queries_fenwick.kara ----
+fn a2_prefix_xor(tree: Vec[i64], end: i64) -> i64 {
+    let mut x = 0;
+    let mut i = end;
+    while i > 0 {
+        x ^= tree[i];
+        i -= i & -i;
+    }
+    x
+}
+
+fn a2_xor_queries(arr: Vec[i64], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let n = arr.len();
+    let mut tree: Vec[i64] = Vec.filled(n + 1, 0);
+    for k in 0..n {
+        let mut i = k + 1;
+        while i <= n {
+            tree[i] ^= arr[k];
+            i += i & -i;
+        }
+    }
+    queries.iter().map(|q| a2_prefix_xor(tree, q[1] + 1) ^ a2_prefix_xor(tree, q[0])).collect()
+}
+
+// ---- xor_queries_blocks.kara ----
+fn a3_xor_queries(arr: Vec[i64], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let n = arr.len();
+    let mut size = 1;
+    while size * size < n {
+        size += 1;
+    }
+    let mut blocks: Vec[i64] = Vec.filled(n / size + 1, 0);
+    for i in 0..n {
+        blocks[i / size] ^= arr[i];
+    }
+    let mut out: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let (l, r) = (q[0], q[1]);
+        let mut x = 0;
+        let mut i = l;
+        while i <= r {
+            if i % size == 0 and i + size - 1 <= r {
+                x ^= blocks[i / size];
+                i += size;
+            } else {
+                x ^= arr[i];
+                i += 1;
+            }
+        }
+        out.push(x);
+    }
+    out
+}
+
+// ---- xor_queries_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_xor_queries(arr: Vec[i32], queries: Vec[Vec[i32]]) -> Vec[i32] {
+        let p: Vec[i32] = once(0).chain(arr.iter().scan(0i32, |acc, x| {
+            let acc = acc ^ x;
+            Some((acc, acc))
+        })).collect();
+        queries.iter().map(|q| p[q[0] as usize] ^ p[q[1] as usize + 1]).collect()
+    }
+}
+
+fn a4_xor_queries(arr: Vec[i64], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let arr: Vec[i32] = arr.iter().map(|x| x as i32).collect();
+    let queries: Vec[Vec[i32]] = queries.iter().map(|q| q.iter().map(|x| x as i32).collect()).collect();
+    A4Solution.a4_xor_queries(arr, queries).iter().map(|x| x as i64).collect()
+}
+
+// ---- xor_queries_inplace.kara ----
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn a5_xor_queries(arr: own Vec[i32], queries: Vec[Vec[i32]]) -> Vec[i32] {
+        let mut arr = arr;
+        for i in 1..arr.len() {
+            arr[i] ^= arr[i - 1];
+        }
+        let mut res = Vec.with_capacity(queries.len());
+        for q in queries.iter() {
+            let (l, r) = (q[0] as usize, q[1] as usize);
+            if l == 0 {
+                res.push(arr[r]);
+            } else {
+                res.push(arr[r] ^ arr[l - 1]);
+            }
+        }
+        res
+    }
+}
+
+fn a5_xor_queries(arr: Vec[i64], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let arr: Vec[i32] = arr.iter().map(|x| x as i32).collect();
+    let queries: Vec[Vec[i32]] = queries.iter().map(|q| q.iter().map(|x| x as i32).collect()).collect();
+    A5Solution.a5_xor_queries(arr, queries).iter().map(|x| x as i64).collect()
+}
+// ---- the statement read literally -----------------------------------------
+
+// XOR as the statement means it, a bit at a time: a bit of the answer is set
+// when an odd number of the range's numbers have it set
+fn literal(arr: Vec[i64], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let mut x = 0;
+        let mut bit = 1;
+        for _ in 0..31 {
+            let mut ones = 0;
+            for i in q[0]..q[1] + 1 {
+                if arr[i] / bit % 2 == 1 {
+                    ones += 1;
+                }
+            }
+            if ones % 2 == 1 {
+                x += bit;
+            }
+            bit *= 2;
+        }
+        out.push(x);
+    }
+    out
+}
+
+// ---- the checks -------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    parts.join(",")
+}
+
+struct Case {
+    arr: Vec[i64],
+    queries: Vec[Vec[i64]],
+    // P3: for each query, where a second range just after it ends, or -1
+    after: Vec[i64],
+    // P4: the number every number is XORed with
+    mask: i64,
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, arr: Vec[i64], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    match i {
+        0 => a0_xor_queries(arr, queries),
+        1 => a1_xor_queries(arr, queries),
+        2 => a2_xor_queries(arr, queries),
+        3 => a3_xor_queries(arr, queries),
+        4 => a4_xor_queries(arr, queries),
+        _ => a5_xor_queries(arr, queries),
+    }
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    t.cases += 1;
+    let n = c.arr.len();
+    let want = literal(c.arr, c.queries);
+    for x in want.iter() {
+        t.check = (t.check * 31 + x) % 1000000007;
+    }
+    let reversed: Vec[i64] = c.arr.iter().rev().collect();
+    let mirrored: Vec[Vec[i64]] = c.queries.iter().map(|q| [n - 1 - q[1], n - 1 - q[0]]).collect();
+    let backwards: Vec[Vec[i64]] = c.queries.iter().rev().map(|q| q.clone()).collect();
+    let masked: Vec[i64] = c.arr.iter().map(|x| x ^ c.mask).collect();
+    // P3: each query with a range after it, the range from its start to the
+    // second range's end, and the second range alone
+    let mut joined: Vec[Vec[i64]] = Vec.new();
+    let mut seconds: Vec[Vec[i64]] = Vec.new();
+    let mut firsts: Vec[i64] = Vec.new();
+    for k in 0..c.queries.len() {
+        if c.after[k] >= 0 {
+            joined.push([c.queries[k][0], c.after[k]]);
+            seconds.push([c.queries[k][1] + 1, c.after[k]]);
+            firsts.push(k);
+        }
+    }
+    let star = a0_xor_queries(c.arr, c.queries);
+    for i in 0..6 {
+        let got = arm(i, c.arr, c.queries);
+        let what = f"arm {i} case {t.cases} [{show(c.arr)}]: got {show(got)}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal {show(want)}");
+        // P2: the array reversed and every range with it, the same answers
+        let rv = arm(i, reversed, mirrored);
+        expect(mut t, 2, rv == got, f"P2 {what}, reversed: {show(rv)}");
+        // P3: a range joined to the one just after it, the two answers XORed
+        if joined.len() > 0 {
+            let jn = arm(i, c.arr, joined);
+            let sc = arm(i, c.arr, seconds);
+            let mut ok = true;
+            for k in 0..joined.len() {
+                if jn[k] != got[firsts[k]] ^ sc[k] {
+                    ok = false;
+                }
+            }
+            expect(mut t, 3, ok, f"P3 {what}, joined: {show(jn)} and {show(sc)}");
+        }
+        // P4: every number XORed with a mask, each answer XORed with it when
+        // its range is odd in length
+        let mk = arm(i, masked, c.queries);
+        let mut ok = true;
+        for k in 0..got.len() {
+            let len = c.queries[k][1] - c.queries[k][0] + 1;
+            let expect_k = if len % 2 == 1 { got[k] ^ c.mask } else { got[k] };
+            if mk[k] != expect_k {
+                ok = false;
+            }
+        }
+        expect(mut t, 4, ok, f"P4 {what}, masked by {c.mask}: {show(mk)}");
+        // P5: the queries asked in the reverse order, the answers reversed
+        let bw = arm(i, c.arr, backwards);
+        let got_back: Vec[i64] = got.iter().rev().collect();
+        expect(mut t, 5, bw == got_back, f"P5 {what}, backwards: {show(bw)}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {show(star)}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 arrays of 1 to 12 numbers, each with 1 to 6 ranges, in four kinds,
+    // 500 each: numbers 0 and 1; up to 7; up to 10^9; and one number
+    // throughout, so that a range of even length cancels to 0. Every array,
+    // range and mask is drawn before any arm answers.
+    let mut seed = 13101;
+    let mut cases: Vec[Case] = Vec.new();
+    for i in 0..2000 {
+        let kind = i / 500;
+        let n = 1 + next_random(mut seed) % 12;
+        let top = if kind == 0 { 2 } else if kind == 1 { 8 } else { 1000000001 };
+        let same = next_random(mut seed) % top;
+        let mut arr: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            let hi = next_random(mut seed);
+            let lo = next_random(mut seed);
+            arr.push(if kind == 3 { same } else { (hi * 65536 + lo) % top });
+        }
+        let q = 1 + next_random(mut seed) % 6;
+        let mut queries: Vec[Vec[i64]] = Vec.new();
+        let mut after: Vec[i64] = Vec.new();
+        for _ in 0..q {
+            let a = next_random(mut seed) % n;
+            let b = next_random(mut seed) % n;
+            let (l, r) = if a <= b { (a, b) } else { (b, a) };
+            queries.push([l, r]);
+            after.push(if r + 1 < n { r + 1 + next_random(mut seed) % (n - r - 1) } else { -1 });
+        }
+        let mask = (next_random(mut seed) * 65536 + next_random(mut seed)) % 1073741824;
+        cases.push(Case { arr, queries, after, mask });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} arrays: checksum {t.check}, {t.checks} checks over 6 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
