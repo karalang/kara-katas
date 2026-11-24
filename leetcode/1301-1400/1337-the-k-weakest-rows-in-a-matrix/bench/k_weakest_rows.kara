@@ -1,0 +1,66 @@
+// LeetCode #1337 bench: the ★ arm (each row's soldiers by binary search,
+// the (soldiers, row) pairs sorted, the first k kept) on 50 matrices of
+// 100 by 100, the constraints' largest, built once. Then 2000 passes, each
+// rewriting one row of every matrix with a soldier count, and choosing k,
+// from the checksum so far, answering every matrix and folding the
+// answer's first and last rows plus the pass into the checksum.
+
+fn soldiers(row: Vec[i32]) -> i64 {
+    let mut low = 0;
+    let mut high = row.len();
+    while low < high {
+        let mid = (low + high) / 2;
+        if row[mid] == 1 {
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
+    }
+    low
+}
+
+fn k_weakest_rows(mat: Vec[Vec[i32]], k: i32) -> Vec[i32] {
+    let mut rows: Vec[(i64, i64)] = Vec.new();
+    for (i, row) in mat.iter().enumerate() {
+        rows.push((soldiers(row), i));
+    }
+    rows.sort();
+    rows.iter().take(k).map(|p| p.1 as i32).collect()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let n = 100;
+    let mut seed = 1337;
+    let mut mats: Vec[Vec[Vec[i32]]] = Vec.new();
+    for _ in 0..50 {
+        let mut mat: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..n {
+            let s = next_random(mut seed) % (n + 1);
+            let mut row: Vec[i32] = Vec.filled(n, 0);
+            for c in 0..s {
+                row[c] = 1;
+            }
+            mat.push(row);
+        }
+        mats.push(mat);
+    }
+    let mut check: i64 = 0;
+    for pass in 0..2000 {
+        let k = (1 + check % n) as i32;
+        for t in 0..50 {
+            let r = check % n;
+            let s = check / 7 % (n + 1);
+            for c in 0..n {
+                mats[t][r][c] = if c < s { 1 } else { 0 };
+            }
+            let rows = k_weakest_rows(mats[t], k);
+            check = (check * 31 + rows[0] + rows[rows.len() - 1] + pass) % 1000000007;
+        }
+    }
+    println(f"2000 passes over 50 matrices of 100 by 100: checksum {check}");
+}
