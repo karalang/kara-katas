@@ -1,0 +1,87 @@
+// LeetCode #2462: Total Cost to Hire K Workers -- one heap of `(cost,
+// index)` over both ends: a worker's index tells which end it came from,
+// so after it is hired the next untaken worker from the same end goes in;
+// ties fall to the lower index by the tuple order itself.
+// O((k + c) log c).
+
+fn total_cost(costs: Vec[i64], k: i64, candidates: i64) -> i64 {
+    let n = costs.len();
+    let mut pool: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    let mut next = 0;
+    let mut last = n - 1;
+    while next < candidates and next <= last {
+        pool.push((costs[next], next));
+        next += 1;
+    }
+    while n - 1 - last < candidates and next <= last {
+        pool.push((costs[last], last));
+        last -= 1;
+    }
+    let mut total = 0;
+    for _ in 0..k {
+        let (cost, at) = pool.pop().unwrap();
+        total += cost;
+        if next <= last {
+            if at < next {
+                pool.push((costs[next], next));
+                next += 1;
+            } else {
+                pool.push((costs[last], last));
+                last -= 1;
+            }
+        }
+    }
+    total
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples; then one worker; the two ends overlapping
+    // from the start; a tie between the ends, which the front wins; every
+    // worker hired; and the cheapest in the middle, out of reach until
+    // the ends are used up
+    let cases: Vec[(Vec[i64], i64, i64)] = [
+        ([17, 12, 10, 2, 7, 2, 11, 20, 8].to_vec(), 3, 4),
+        ([1, 2, 4, 1].to_vec(), 3, 3),
+        ([5].to_vec(), 1, 1),
+        ([3, 1, 2].to_vec(), 2, 2),
+        ([4, 9, 9, 4].to_vec(), 1, 1),
+        ([6, 5, 4, 3, 2, 1].to_vec(), 6, 1),
+        ([9, 8, 1, 1, 1, 7, 9].to_vec(), 4, 2),
+    ].to_vec();
+    for (costs, k, candidates) in cases.into_iter() {
+        let shown = f"{costs}";
+        println(f"{shown}, k = {k}, candidates = {candidates} -> {total_cost(costs, k, candidates)}");
+    }
+    // 2000 workers of the constraints' largest cost, every one hired with
+    // one candidate a side, and 2000 random costs from 1 to 10^5 with k
+    // of 1000 and 2 candidates, then k of 2000 and 1500 candidates
+    let same: Vec[i64] = Vec.filled(2000, 100000);
+    println(f"2000 of 10^5, k = 2000, candidates = 1: {total_cost(same, 2000, 1)}");
+    let mut seed = 2462;
+    let costs: Vec[i64] = (0..2000).map(|_| 1 + wide_random(mut seed) % 100000).collect();
+    println(f"2000 random, k = 1000, candidates = 2: {total_cost(costs, 1000, 2)}");
+    println(f"2000 random, k = 2000, candidates = 1500: {total_cost(costs, 2000, 1500)}");
+    // 3000 random cases of 1 to 12 workers with costs from 1 to 6 and a
+    // random k and candidates: a checksum of every answer in order
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 12;
+        let costs: Vec[i64] = (0..n).map(|_| 1 + next_random(mut seed) % 6).collect();
+        let k = 1 + next_random(mut seed) % n;
+        let candidates = 1 + next_random(mut seed) % n;
+        check = (check * 31 + total_cost(costs, k, candidates)) % 1000000007;
+    }
+    println(f"3000 random: checksum {check}");
+}
