@@ -1,0 +1,72 @@
+// LeetCode #1332: Remove Palindromic Subsequences -- the iterator arm: the
+// bytes forwards zipped with the bytes backwards, and one step when every
+// pair agrees. O(n)
+
+fn remove_palindrome_sub(s: String) -> i32 {
+    if s.bytes().iter().zip(s.bytes().iter().rev()).all(|(a, b)| a == b) { 1 } else { 2 }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letter(r: i64) -> char {
+    if r % 2 == 0 { 'a' } else { 'b' }
+}
+
+// n letters drawn at random (kind 0), a palindrome of n letters (kind 1),
+// or that palindrome with one letter changed (kind 2)
+fn draw(seed: mut ref i64, n: i64, kind: i64) -> String {
+    let mut letters: Vec[char] = Vec.new();
+    for i in 0..n {
+        if kind == 0 or i < (n + 1) / 2 {
+            letters.push(letter(next_random(mut seed)));
+        } else {
+            letters.push(letters[n - 1 - i]);
+        }
+    }
+    if kind == 2 {
+        let at = next_random(mut seed) % n;
+        letters[at] = if letters[at] == 'a' { 'b' } else { 'a' };
+    }
+    letters.iter().collect()
+}
+
+fn main() {
+    // LeetCode's three examples; one letter, two letters; and 1000 letters,
+    // the constraints' longest: all a, a palindrome, and the same with its
+    // first letter changed
+    let ex = [remove_palindrome_sub("ababa".to_string()), remove_palindrome_sub("abb".to_string()), remove_palindrome_sub("baabb".to_string())];
+    println(f"{ex[0]} {ex[1]} {ex[2]}");
+    let short = [remove_palindrome_sub("a".to_string()), remove_palindrome_sub("b".to_string()), remove_palindrome_sub("ab".to_string()), remove_palindrome_sub("bb".to_string())];
+    println(f"{short[0]} {short[1]} {short[2]} {short[3]}");
+    let mut all_a = String.new();
+    let mut pal = String.new();
+    let mut broken = String.new();
+    for i in 0..1000 {
+        all_a.push('a');
+        let c = if min(i, 999 - i) % 7 == 3 { 'b' } else { 'a' };
+        pal.push(c);
+        broken.push(if i == 0 { 'b' } else { c });
+    }
+    println(f"1000 letters: {remove_palindrome_sub(all_a)} {remove_palindrome_sub(pal)} {remove_palindrome_sub(broken)}");
+    // 600 random strings of 1 to 1000 letters, most of them short, in three
+    // kinds: letters drawn at random, palindromes, and palindromes with one
+    // letter changed
+    let mut seed = 1332;
+    let mut check = 0;
+    let mut ones = 0;
+    for t in 0..600 {
+        let n = if t % 20 == 0 { 1 + next_random(mut seed) % 1000 } else { 1 + next_random(mut seed) % 12 };
+        let s = draw(mut seed, n, t % 3);
+        let steps = remove_palindrome_sub(s);
+        if steps == 1 {
+            ones += 1;
+        }
+        check = (check * 131 + steps + n) % 1000000007;
+    }
+    println(f"600 random strings: {ones} palindromes, checksum {check}");
+}

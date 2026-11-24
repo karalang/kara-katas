@@ -1,0 +1,227 @@
+// LeetCode #1332: Remove Palindromic Subsequences -- differential test
+// of the five arms against the statement read literally, with five more
+// properties.
+//
+// The statement: you are given a string s consisting only of letters 'a'
+// and 'b'. In a single step you can remove one palindromic subsequence
+// from s. Return the minimum number of steps to make the given string
+// empty.
+
+// ---- remove_palindrome_sub.kara ----
+fn a0_remove_palindrome_sub(s: String) -> i32 {
+    let b = s.bytes();
+    let n = b.len();
+    for i in 0..n / 2 {
+        if b[i] != b[n - 1 - i] {
+            return 2;
+        }
+    }
+    1
+}
+
+// ---- remove_palindrome_sub_reverse.kara ----
+fn a1_remove_palindrome_sub(s: String) -> i32 {
+    let backwards: String = s.chars().rev().collect();
+    if backwards == s { 1 } else { 2 }
+}
+
+// ---- remove_palindrome_sub_longest.kara ----
+fn a2_remove_palindrome_sub(s: String) -> i32 {
+    let c: Vec[char] = s.chars().collect();
+    let n = c.len();
+    // longest[j] is the longest palindromic subsequence of c[i..=j] for the
+    // row i being filled; below holds row i + 1
+    let mut below: Vec[i64] = Vec.filled(n, 0);
+    for i in (0..n).rev() {
+        let mut longest: Vec[i64] = Vec.filled(n, 0);
+        longest[i] = 1;
+        for j in i + 1..n {
+            longest[j] = if c[i] == c[j] {
+                (if j - 1 >= i + 1 { below[j - 1] } else { 0 }) + 2
+            } else {
+                max(below[j], longest[j - 1])
+            };
+        }
+        below = longest;
+    }
+    if below[n - 1] == n { 1 } else { 2 }
+}
+
+// ---- remove_palindrome_sub_iter.kara ----
+fn a3_remove_palindrome_sub(s: String) -> i32 {
+    if s.bytes().iter().zip(s.bytes().iter().rev()).all(|(a, b)| a == b) { 1 } else { 2 }
+}
+
+// ---- remove_palindrome_sub_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_remove_palindrome_sub(s: String) -> i32 {
+        let s = s.bytes();
+        let mut (i, j) = (0, s.len() - 1);
+        while i < j {
+            if s[i] != s[j] {
+                return 2;
+            }
+            i += 1;
+            j -= 1;
+        }
+        1
+    }
+}
+
+fn a4_remove_palindrome_sub(s: String) -> i32 {
+    A4Solution.a4_remove_palindrome_sub(s)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: the fewest steps from every letter left to
+// none, a step removing any set of the letters left that reads as a
+// palindrome in order; a breadth-first search over the sets left
+fn literal(s: Str) -> i32 {
+    let c: Vec[char] = s.chars().collect();
+    let n = c.len();
+    let full = (1 << n) - 1;
+    let mut steps: Vec[i64] = Vec.filled(full + 1, -1);
+    steps[full] = 0;
+    let mut queue: Vec[i64] = [full];
+    let mut head = 0;
+    while head < queue.len() {
+        let left = queue[head];
+        head += 1;
+        // every non-empty subset of what is left
+        let mut part = left;
+        while part > 0 {
+            let mut picked: Vec[char] = Vec.new();
+            for i in 0..n {
+                if part & (1 << i) != 0 {
+                    picked.push(c[i]);
+                }
+            }
+            let m = picked.len();
+            let mut palindrome = true;
+            for i in 0..m / 2 {
+                if picked[i] != picked[m - 1 - i] {
+                    palindrome = false;
+                }
+            }
+            let next = left & ~part;
+            if palindrome and steps[next] < 0 {
+                steps[next] = steps[left] + 1;
+                queue.push(next);
+            }
+            part = (part - 1) & left;
+        }
+    }
+    steps[0] as i32
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, s: Str) -> i32 {
+    let s = s.to_string();
+    match i {
+        0 => a0_remove_palindrome_sub(s),
+        1 => a1_remove_palindrome_sub(s),
+        2 => a2_remove_palindrome_sub(s),
+        3 => a3_remove_palindrome_sub(s),
+        _ => a4_remove_palindrome_sub(s),
+    }
+}
+
+fn check_case(t: mut ref Tally, s: Str) {
+    t.cases += 1;
+    let want = literal(s);
+    t.check = (t.check * 131 + want + s.len()) % 1000000007;
+    let reversed: String = s.chars().rev().collect();
+    let swapped: String = s.chars().map(|c| if c == 'a' { 'b' } else { 'a' }).collect();
+    let mut there_and_back = s.to_string();
+    there_and_back.push_str(reversed);
+    let mut doubled = String.new();
+    for c in s.chars() {
+        doubled.push(c);
+        doubled.push(c);
+    }
+    let star = a0_remove_palindrome_sub(s.to_string());
+    for i in 0..5 {
+        let got = arm(i, s);
+        let what = f"arm {i} on {s}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal {want}, got {got}");
+        // P2: the string read backwards: the same answer
+        let rv = arm(i, reversed);
+        expect(mut t, 2, rv == got, f"P2 {what}, backwards: {rv}");
+        // P3: every a made b and every b made a: the same answer
+        let sw = arm(i, swapped);
+        expect(mut t, 3, sw == got, f"P3 {what}, swapped: {sw}");
+        // P4: the string followed by itself backwards, a palindrome: one step
+        let tb = arm(i, there_and_back);
+        expect(mut t, 4, tb == 1, f"P4 {what}, there and back: {tb}");
+        // P5: every letter doubled: the same answer
+        let db = arm(i, doubled);
+        expect(mut t, 5, db == got, f"P5 {what}, doubled: {db}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 strings of 1 to 7 letters in four kinds, 500 each: letters drawn
+    // at random; palindromes; palindromes with one letter changed; and a
+    // run of a then a run of b. Every string is drawn before any arm answers.
+    let mut seed = 13321;
+    let mut cases: Vec[String] = Vec.new();
+    for k in 0..2000 {
+        let kind = k / 500;
+        let n = 1 + next_random(mut seed) % 7;
+        let mut letters: Vec[char] = Vec.new();
+        let run = next_random(mut seed) % (n + 1);
+        for i in 0..n {
+            let c = if kind == 3 {
+                if i < run { 'a' } else { 'b' }
+            } else if kind == 0 or i < (n + 1) / 2 {
+                if next_random(mut seed) % 2 == 0 { 'a' } else { 'b' }
+            } else {
+                letters[n - 1 - i]
+            };
+            letters.push(c);
+        }
+        if kind == 2 {
+            let at = next_random(mut seed) % n;
+            letters[at] = if letters[at] == 'a' { 'b' } else { 'a' };
+        }
+        cases.push(letters.iter().collect());
+    }
+    for s in cases.iter() {
+        check_case(mut t, s);
+    }
+    println(f"{t.cases} strings: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
