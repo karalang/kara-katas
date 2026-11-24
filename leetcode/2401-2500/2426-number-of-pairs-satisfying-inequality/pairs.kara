@@ -1,0 +1,97 @@
+// LeetCode #2426: Number of Pairs Satisfying Inequality -- the ★ arm.
+// With `a[i] = nums1[i] - nums2[i]` the inequality is `a[i] <= a[j] +
+// diff`, so the task counts the pairs `i < j` of one array that hold it.
+// A merge sort counts them: once both halves are sorted, a pointer into
+// the left half moves on while its value is at most `a[j] + diff`, and
+// it only moves forward as `j` rises through the right half. O(n log n).
+
+fn count_pairs(a: mut ref Vec[i64], lo: i64, hi: i64, diff: i64) -> i64 {
+    if hi - lo < 2 {
+        return 0;
+    }
+    let mid = (lo + hi) / 2;
+    let mut count = count_pairs(mut a, lo, mid, diff) + count_pairs(mut a, mid, hi, diff);
+    let mut p = lo;
+    for j in mid..hi {
+        while p < mid and a[p] <= a[j] + diff {
+            p += 1;
+        }
+        count += p - lo;
+    }
+    let mut merged: Vec[i64] = Vec.new();
+    let mut i = lo;
+    let mut j = mid;
+    while i < mid or j < hi {
+        if j == hi or (i < mid and a[i] <= a[j]) {
+            merged.push(a[i]);
+            i += 1;
+        } else {
+            merged.push(a[j]);
+            j += 1;
+        }
+    }
+    for k in 0..merged.len() {
+        a[lo + k] = merged[k];
+    }
+    count
+}
+
+fn number_of_pairs(nums1: Vec[i64], nums2: Vec[i64], diff: i64) -> i64 {
+    let mut a: Vec[i64] = Vec.new();
+    for i in 0..nums1.len() {
+        a.push(nums1[i] - nums2[i]);
+    }
+    let n = a.len();
+    count_pairs(mut a, 0, n, diff)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` values from `-top` to `top`
+fn random_nums(seed: mut ref i64, n: i64, top: i64) -> Vec[i64] {
+    let mut nums: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        nums.push(next_random(mut seed) % (2 * top + 1) - top);
+    }
+    nums
+}
+
+fn main() {
+    // LeetCode's two examples; all equal; a falling and a rising gap
+    // against diff 0; a diff too small and one too large for any pair
+    println(f"{number_of_pairs([3, 2, 5].to_vec(), [2, 2, 1].to_vec(), 1)}");
+    println(f"{number_of_pairs([3, -1].to_vec(), [-2, 2].to_vec(), -1)}");
+    println(f"{number_of_pairs([4, 4, 4, 4, 4].to_vec(), [1, 1, 1, 1, 1].to_vec(), 0)}");
+    println(f"{number_of_pairs([5, 4, 3, 2, 1].to_vec(), [0, 0, 0, 0, 0].to_vec(), 0)}");
+    println(f"{number_of_pairs([1, 2, 3, 4, 5].to_vec(), [0, 0, 0, 0, 0].to_vec(), 0)}");
+    println(f"{number_of_pairs([10000, -10000].to_vec(), [-10000, 10000].to_vec(), -10000)}");
+    println(f"{number_of_pairs([-10000, 10000].to_vec(), [10000, -10000].to_vec(), 10000)}");
+    // 10^4 values from -10^4 to 10^4 against diffs of -100, 0 and 10^4; and
+    // 10^4 values from -3 to 3 against diff 0
+    let mut seed = 2426;
+    let a = random_nums(mut seed, 10000, 10000);
+    let b = random_nums(mut seed, 10000, 10000);
+    println(f"{number_of_pairs(a, b, -100)} {number_of_pairs(a, b, 0)} {number_of_pairs(a, b, 10000)}");
+    let c = random_nums(mut seed, 10000, 3);
+    let d = random_nums(mut seed, 10000, 3);
+    println(f"{number_of_pairs(c, d, 0)}");
+    // 3000 random cases of 2 to 12 values from -5 to 5, diff -5 to 5: a
+    // checksum of the answers in order, and their total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let n = 2 + next_random(mut seed) % 11;
+        let x = random_nums(mut seed, n, 5);
+        let y = random_nums(mut seed, n, 5);
+        let diff = next_random(mut seed) % 11 - 5;
+        let answer = number_of_pairs(x, y, diff);
+        check = (check * 31 + answer) % 1000000007;
+        total += answer;
+    }
+    println(f"3000 random: checksum {check}, total {total}");
+}

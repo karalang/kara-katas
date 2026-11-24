@@ -1,0 +1,303 @@
+// LeetCode #2426: Number of Pairs Satisfying Inequality -- the
+// differential. The six arms against the statement read literally: every
+// pair of indices `i < j` tested as written, `nums1[i] - nums1[j] <=
+// nums2[i] - nums2[j] + diff`, no difference array formed. 360 cases: 300
+// random cases of 2 to 10 values from -1 to 1 up to -5 to 5, diff -5 to
+// 5; then 30 of up to 200 values from -5000 to 5000, diff -5000 to 5000;
+// then 30 of up to 200 values from -2 to 2, diff -1 to 1, full of ties.
+// Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  `nums1` shifted by one constant: the same answer
+// P3  both lists reversed and negated: the same answer
+// P4  diff raised by 1: an answer no smaller, and none past n (n - 1) / 2
+// P5  the lists swapped and diff made `-diff - 1`: the two answers add
+//     up to n (n - 1) / 2
+// P6  each arm agrees with at least three of the other five
+
+// ---- the statement read literally ------------------------------------------
+
+fn pairs_literally(nums1: Vec[i64], nums2: Vec[i64], diff: i64) -> i64 {
+    let mut count = 0;
+    for j in 0..nums1.len() {
+        for i in 0..j {
+            if nums1[i] - nums1[j] <= nums2[i] - nums2[j] + diff {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+// ---- star (pairs.kara) ---------------------------------------------------
+
+fn star_count_pairs(a: mut ref Vec[i64], lo: i64, hi: i64, diff: i64) -> i64 {
+    if hi - lo < 2 {
+        return 0;
+    }
+    let mid = (lo + hi) / 2;
+    let mut count = star_count_pairs(mut a, lo, mid, diff) + star_count_pairs(mut a, mid, hi, diff);
+    let mut p = lo;
+    for j in mid..hi {
+        while p < mid and a[p] <= a[j] + diff {
+            p += 1;
+        }
+        count += p - lo;
+    }
+    let mut merged: Vec[i64] = Vec.new();
+    let mut i = lo;
+    let mut j = mid;
+    while i < mid or j < hi {
+        if j == hi or (i < mid and a[i] <= a[j]) {
+            merged.push(a[i]);
+            i += 1;
+        } else {
+            merged.push(a[j]);
+            j += 1;
+        }
+    }
+    for k in 0..merged.len() {
+        a[lo + k] = merged[k];
+    }
+    count
+}
+
+fn star_number_of_pairs(nums1: Vec[i64], nums2: Vec[i64], diff: i64) -> i64 {
+    let mut a: Vec[i64] = Vec.new();
+    for i in 0..nums1.len() {
+        a.push(nums1[i] - nums2[i]);
+    }
+    let n = a.len();
+    star_count_pairs(mut a, 0, n, diff)
+}
+
+// ---- naive (pairs_naive.kara) --------------------------------------------
+
+fn naive_number_of_pairs(nums1: Vec[i64], nums2: Vec[i64], diff: i64) -> i64 {
+    let n = nums1.len();
+    let mut count = 0;
+    for i in 0..n {
+        for j in i + 1..n {
+            if nums1[i] - nums1[j] <= nums2[i] - nums2[j] + diff {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+// ---- fenwick (pairs_fenwick.kara) ----------------------------------------
+
+const SHIFT: i64 = 30001;
+const SIZE: i64 = 60002;
+
+struct Fenwick {
+    tree: Vec[i64],
+}
+
+impl Fenwick {
+    fn new() -> Fenwick {
+        Fenwick { tree: Vec.filled(SIZE, 0) }
+    }
+
+    fn add(mut ref self, at: i64) {
+        let mut i = at;
+        while i < SIZE {
+            self.tree[i] += 1;
+            i += i & -i;
+        }
+    }
+
+    fn count_to(self, at: i64) -> i64 {
+        let mut i = at.min(SIZE - 1);
+        let mut total = 0;
+        while i > 0 {
+            total += self.tree[i];
+            i -= i & -i;
+        }
+        total
+    }
+}
+
+fn fenwick_number_of_pairs(nums1: Vec[i64], nums2: Vec[i64], diff: i64) -> i64 {
+    let mut seen = Fenwick.new();
+    let mut count = 0;
+    for j in 0..nums1.len() {
+        let a = nums1[j] - nums2[j];
+        count += seen.count_to(a + diff + SHIFT);
+        seen.add(a + SHIFT);
+    }
+    count
+}
+
+// ---- sorted (pairs_sorted.kara) ------------------------------------------
+
+fn sorted_number_of_pairs(nums1: Vec[i64], nums2: Vec[i64], diff: i64) -> i64 {
+    let mut seen: Vec[i64] = Vec.new();
+    let mut count = 0;
+    for j in 0..nums1.len() {
+        let a = nums1[j] - nums2[j];
+        count += seen.partition_point(|v| v <= a + diff);
+        let at = seen.partition_point(|v| v < a);
+        seen.insert(at, a);
+    }
+    count
+}
+
+// ---- iter (pairs_iter.kara) ----------------------------------------------
+
+fn iter_number_of_pairs(nums1: Vec[i64], nums2: Vec[i64], diff: i64) -> i64 {
+    let a: Vec[i64] = nums1.iter().zip(nums2.iter()).map(|(x, y)| x - y).collect();
+    (0..a.len()).map(|j| (0..j).filter(|i| a[i] <= a[j] + diff).count()).sum()
+}
+
+// ---- solution (pairs_solution.kara) --------------------------------------
+
+struct Bit {
+    t: Vec[i64],
+}
+
+impl Bit {
+    fn new(n: i64) -> Self {
+        Bit { t: Vec.filled(n + 1, 0) }
+    }
+
+    fn add(mut ref self, i: i64) {
+        let mut i = i;
+        while i < self.t.len() {
+            self.t[i] += 1;
+            i += i & i.wrapping_neg();
+        }
+    }
+
+    fn sum(self, i: i64) -> i64 {
+        let mut i = i;
+        let mut s = 0;
+        while i > 0 {
+            s += self.t[i];
+            i -= i & i.wrapping_neg();
+        }
+        s
+    }
+}
+
+impl Solution {
+    pub fn number_of_pairs(nums1: Vec[i32], nums2: Vec[i32], diff: i32) -> i64 {
+        let mut bit = Bit.new(60001);
+        let mut ans = 0;
+        for j in 0..nums1.len() {
+            let v = nums1[j] - nums2[j];
+            ans += bit.sum((v + diff + 30001));
+            bit.add((v + 30001));
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_number_of_pairs(nums1: Vec[i64], nums2: Vec[i64], diff: i64) -> i64 {
+    let a: Vec[i32] = nums1.iter().map(|x| x as i32).collect();
+    let b: Vec[i32] = nums2.iter().map(|x| x as i32).collect();
+    Solution.number_of_pairs(a, b, diff as i32)
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn answer(arm: i64, nums1: Vec[i64], nums2: Vec[i64], diff: i64) -> i64 {
+    let nums1 = nums1.clone();
+    let nums2 = nums2.clone();
+    match arm {
+        0 => star_number_of_pairs(nums1, nums2, diff),
+        1 => naive_number_of_pairs(nums1, nums2, diff),
+        2 => fenwick_number_of_pairs(nums1, nums2, diff),
+        3 => sorted_number_of_pairs(nums1, nums2, diff),
+        4 => iter_number_of_pairs(nums1, nums2, diff),
+        _ => solution_number_of_pairs(nums1, nums2, diff),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let arms = ["star", "naive", "fenwick", "sorted", "iter", "solution"];
+    let mut seed = 2426;
+    let mut cases: Vec[(Vec[i64], Vec[i64], i64)] = Vec.new();
+    for t in 0..360 {
+        let (n, top, reach) = if t < 300 {
+            (2 + next_random(mut seed) % 9, 1 + next_random(mut seed) % 5, 5)
+        } else if t < 330 {
+            (2 + next_random(mut seed) % 199, 5000, 5000)
+        } else {
+            (2 + next_random(mut seed) % 199, 2, 1)
+        };
+        let mut nums1: Vec[i64] = Vec.new();
+        let mut nums2: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            nums1.push(next_random(mut seed) % (2 * top + 1) - top);
+            nums2.push(next_random(mut seed) % (2 * top + 1) - top);
+        }
+        let diff = next_random(mut seed) % (2 * reach + 1) - reach;
+        cases.push((nums1, nums2, diff));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in 0..cases.len() {
+        let (nums1, nums2, diff) = cases[c].clone();
+        let n = nums1.len();
+        let all_pairs = n * (n - 1) / 2;
+        let truth = pairs_literally(nums1, nums2, diff);
+        check = (check * 31 + truth) % 1000000007;
+        let shift = next_random(mut seed) % 21 - 10;
+        let shifted: Vec[i64] = nums1.iter().map(|x| x + shift).collect();
+        let mut flipped1: Vec[i64] = nums1.iter().map(|x| -x).collect();
+        flipped1.reverse();
+        let mut flipped2: Vec[i64] = nums2.iter().map(|y| -y).collect();
+        flipped2.reverse();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums1, nums2, diff)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let wider = answer(arm, nums1, nums2, diff + 1);
+            let verdicts = [
+                value == truth,
+                answer(arm, shifted, nums2, diff) == value,
+                answer(arm, flipped1, flipped2, diff) == value,
+                wider >= value and wider <= all_pairs and value >= 0,
+                value + answer(arm, nums2, nums1, -diff - 1) == all_pairs,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"case {c}, arm {arms[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let all = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {all} failures");
+    if all > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

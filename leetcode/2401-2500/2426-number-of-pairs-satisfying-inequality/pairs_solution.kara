@@ -1,0 +1,104 @@
+// LeetCode #2426: Number of Pairs Satisfying Inequality -- LeetCode's
+// Rust template, as Rust writes it, carried by karac fix: a `struct Bit`
+// of `Vec<i64>` with `usize` indices stepped by `i & i.wrapping_neg()`,
+// and the differences shifted by 30001 before they index it.
+
+struct Bit {
+    t: Vec[i64],
+}
+
+impl Bit {
+    fn new(n: i64) -> Self {
+        Bit { t: Vec.filled(n + 1, 0) }
+    }
+
+    fn add(mut ref self, i: i64) {
+        let mut i = i;
+        while i < self.t.len() {
+            self.t[i] += 1;
+            i += i & i.wrapping_neg();
+        }
+    }
+
+    fn sum(self, i: i64) -> i64 {
+        let mut i = i;
+        let mut s = 0;
+        while i > 0 {
+            s += self.t[i];
+            i -= i & i.wrapping_neg();
+        }
+        s
+    }
+}
+
+impl Solution {
+    pub fn number_of_pairs(nums1: Vec[i32], nums2: Vec[i32], diff: i32) -> i64 {
+        let mut bit = Bit.new(60001);
+        let mut ans = 0;
+        for j in 0..nums1.len() {
+            let v = nums1[j] - nums2[j];
+            ans += bit.sum((v + diff + 30001));
+            bit.add((v + 30001));
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn number_of_pairs(nums1: Vec[i64], nums2: Vec[i64], diff: i64) -> i64 {
+    let a: Vec[i32] = nums1.iter().map(|x| x as i32).collect();
+    let b: Vec[i32] = nums2.iter().map(|x| x as i32).collect();
+    Solution.number_of_pairs(a, b, diff as i32)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` values from `-top` to `top`
+fn random_nums(seed: mut ref i64, n: i64, top: i64) -> Vec[i64] {
+    let mut nums: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        nums.push(next_random(mut seed) % (2 * top + 1) - top);
+    }
+    nums
+}
+
+fn main() {
+    // LeetCode's two examples; all equal; a falling and a rising gap
+    // against diff 0; a diff too small and one too large for any pair
+    println(f"{number_of_pairs([3, 2, 5].to_vec(), [2, 2, 1].to_vec(), 1)}");
+    println(f"{number_of_pairs([3, -1].to_vec(), [-2, 2].to_vec(), -1)}");
+    println(f"{number_of_pairs([4, 4, 4, 4, 4].to_vec(), [1, 1, 1, 1, 1].to_vec(), 0)}");
+    println(f"{number_of_pairs([5, 4, 3, 2, 1].to_vec(), [0, 0, 0, 0, 0].to_vec(), 0)}");
+    println(f"{number_of_pairs([1, 2, 3, 4, 5].to_vec(), [0, 0, 0, 0, 0].to_vec(), 0)}");
+    println(f"{number_of_pairs([10000, -10000].to_vec(), [-10000, 10000].to_vec(), -10000)}");
+    println(f"{number_of_pairs([-10000, 10000].to_vec(), [10000, -10000].to_vec(), 10000)}");
+    // 10^4 values from -10^4 to 10^4 against diffs of -100, 0 and 10^4; and
+    // 10^4 values from -3 to 3 against diff 0
+    let mut seed = 2426;
+    let a = random_nums(mut seed, 10000, 10000);
+    let b = random_nums(mut seed, 10000, 10000);
+    println(f"{number_of_pairs(a, b, -100)} {number_of_pairs(a, b, 0)} {number_of_pairs(a, b, 10000)}");
+    let c = random_nums(mut seed, 10000, 3);
+    let d = random_nums(mut seed, 10000, 3);
+    println(f"{number_of_pairs(c, d, 0)}");
+    // 3000 random cases of 2 to 12 values from -5 to 5, diff -5 to 5: a
+    // checksum of the answers in order, and their total
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..3000 {
+        let n = 2 + next_random(mut seed) % 11;
+        let x = random_nums(mut seed, n, 5);
+        let y = random_nums(mut seed, n, 5);
+        let diff = next_random(mut seed) % 11 - 5;
+        let answer = number_of_pairs(x, y, diff);
+        check = (check * 31 + answer) % 1000000007;
+        total += answer;
+    }
+    println(f"3000 random: checksum {check}, total {total}");
+}
