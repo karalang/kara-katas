@@ -1,0 +1,217 @@
+// LeetCode #1323: Maximum 69 Number -- differential test of the six arms
+// against the statement read literally, with five more properties.
+//
+// The statement: given a positive integer num of the digits 6 and 9 only,
+// return the maximum number you can get by changing at most one digit (6
+// becomes 9, and 9 becomes 6).
+
+// ---- maximum69_number.kara ----
+fn a0_maximum69_number(num: i32) -> i32 {
+    i32.parse(f"{num}".replacen("6", "9", 1)).unwrap()
+}
+
+// ---- maximum69_number_place.kara ----
+fn a1_maximum69_number(num: i32) -> i32 {
+    let mut rest = num;
+    let mut place: i32 = 1;
+    let mut highest_six: i32 = 0;
+    while rest > 0 {
+        if rest % 10 == 6 {
+            highest_six = place;
+        }
+        rest /= 10;
+        place *= 10;
+    }
+    num + 3 * highest_six
+}
+
+// ---- maximum69_number_every.kara ----
+fn a2_maximum69_number(num: i32) -> i32 {
+    let mut best = num;
+    let mut place: i32 = 1;
+    let mut rest = num;
+    while rest > 0 {
+        let d = rest % 10;
+        let changed = if d == 6 { num + 3 * place } else { num - 3 * place };
+        best = best.max(changed);
+        rest /= 10;
+        place *= 10;
+    }
+    best
+}
+
+// ---- maximum69_number_digits.kara ----
+fn a3_maximum69_number(num: i32) -> i32 {
+    let mut digits: Vec[i32] = Vec.new();
+    let mut rest = num;
+    while rest > 0 {
+        digits.push(rest % 10);
+        rest /= 10;
+    }
+    digits.reverse();
+    if let Some(at) = digits.iter().position(|d| d == 6) {
+        digits[at] = 9;
+    }
+    digits.iter().fold(0, |acc, d| acc * 10 + d)
+}
+
+// ---- maximum69_number_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_maximum69_number(num: i32) -> i32 {
+        i32.parse(num.to_string().replacen("6", "9", 1)).unwrap()
+    }
+}
+
+fn a4_maximum69_number(num: i32) -> i32 {
+    A4Solution.a4_maximum69_number(num)
+}
+
+// ---- maximum69_number_bytes.kara ----
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn a5_maximum69_number(num: i32) -> i32 {
+        let mut s = num.to_string().bytes().to_vec();
+        for i in 0..s.len() {
+            if s[i] == b'6' {
+                s[i] = b'9';
+                break;
+            }
+        }
+        i32.parse(String.from_utf8(s).unwrap()).unwrap()
+    }
+}
+
+fn a5_maximum69_number(num: i32) -> i32 {
+    A5Solution.a5_maximum69_number(num)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn digits_of(x: i32) -> Vec[i32] {
+    f"{x}".chars().map(|c| ((c as i64) - 48) as i32).collect()
+}
+
+fn number_of(ds: Vec[i32]) -> i32 {
+    let mut x: i32 = 0;
+    for d in ds.iter() {
+        x = x * 10 + d;
+    }
+    x
+}
+
+// the statement read literally: the number itself, and every number made by
+// changing one of its digits, a 6 to a 9 or a 9 to a 6; the largest
+fn literal(num: i32) -> i32 {
+    let ds = digits_of(num);
+    let mut best = num;
+    for i in 0..ds.len() {
+        let mut changed = ds.clone();
+        changed[i] = if ds[i] == 6 { 9 } else { 6 };
+        best = best.max(number_of(changed));
+    }
+    best
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, num: i32) -> i32 {
+    match i {
+        0 => a0_maximum69_number(num),
+        1 => a1_maximum69_number(num),
+        2 => a2_maximum69_number(num),
+        3 => a3_maximum69_number(num),
+        4 => a4_maximum69_number(num),
+        _ => a5_maximum69_number(num),
+    }
+}
+
+fn check_case(t: mut ref Tally, num: i32) {
+    t.cases += 1;
+    let want = literal(num);
+    t.check = (t.check * 31 + want) % 1000000007;
+    let ds = digits_of(num);
+    let d = ds.len();
+    let mut top: i32 = 1;
+    for _ in 1..d {
+        top *= 10;
+    }
+    let star = a0_maximum69_number(num);
+    for i in 0..6 {
+        let got = arm(i, num);
+        let what = f"arm {i} num {num}: got {got}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal {want}");
+        // P2: no less than the number, and no more than a 6 turned to a 9 in
+        // its first place would give
+        expect(mut t, 2, got >= num and got <= num + 3 * top, f"P2 {what}");
+        // P3: as many digits, at most one of them changed, and that one a 6
+        // made a 9
+        let gs = digits_of(got);
+        let mut changed = 0;
+        let mut only_up = gs.len() == d;
+        if only_up {
+            for k in 0..d {
+                if gs[k] != ds[k] {
+                    changed += 1;
+                    only_up = only_up and ds[k] == 6 and gs[k] == 9;
+                }
+            }
+        }
+        expect(mut t, 3, only_up and changed <= 1, f"P3 {what}");
+        if d < 4 {
+            // P4: a 9 put in front, which stays: the answer with that 9 in
+            // front
+            let nine = arm(i, 9 * 10 * top + num);
+            expect(mut t, 4, nine == 9 * 10 * top + got, f"P4 {what}, 9 in front: {nine}");
+            // P5: a 6 put in front, the first 6, which becomes the 9: the
+            // number itself with a 9 in front
+            let six = arm(i, 6 * 10 * top + num);
+            expect(mut t, 5, six == 9 * 10 * top + num, f"P5 {what}, 6 in front: {six}");
+        }
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // every number the constraints allow: 1 to 4 digits, each a 6 or a 9
+    let mut nums: Vec[i32] = Vec.new();
+    for digits in 1..=4 {
+        for pattern in 0..1 << digits {
+            let mut num: i32 = 0;
+            for k in 0..digits {
+                num = num * 10 + if (pattern >> k) & 1 == 1 { 9 } else { 6 };
+            }
+            nums.push(num);
+        }
+    }
+    for num in nums.iter() {
+        check_case(mut t, num);
+    }
+    println(f"{t.cases} numbers: checksum {t.check}, {t.checks} checks over 6 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
