@@ -1,0 +1,93 @@
+// LeetCode #1319 bench: the ★ arm (union-find with halved paths and the
+// smaller group hung under the larger) on 4 networks of 10^5 computers,
+// the constraints' most, built once: 10^5 cables at random; a chain listed
+// in a shuffled order; 10^4 rings of 10 computers, 10^5 cables in all, and
+// so 9999 moves; and 99999 cables at random. Then 25 passes, each moving
+// one cable of every network to a pair chosen by the checksum so far, so no
+// answer carries over, answering it and folding the answer plus the pass
+// into the checksum. A move can repeat a cable already there, which the arm
+// takes as one more spare.
+
+fn find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut at = x;
+    while parent[at] != at {
+        parent[at] = parent[parent[at]];
+        at = parent[at];
+    }
+    at
+}
+
+fn make_connected(n: i64, connections: Vec[Vec[i64]]) -> i64 {
+    if connections.len() < n - 1 {
+        return -1;
+    }
+    let mut parent: Vec[i64] = (0..n).collect();
+    let mut size: Vec[i64] = Vec.filled(n, 1);
+    let mut groups = n;
+    for c in connections.iter() {
+        let a = find(mut parent, c[0]);
+        let b = find(mut parent, c[1]);
+        if a != b {
+            let (big, small) = if size[a] >= size[b] { (a, b) } else { (b, a) };
+            parent[small] = big;
+            size[big] += size[small];
+            groups -= 1;
+        }
+    }
+    groups - 1
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64, n: i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % n
+}
+
+fn main() {
+    let n = 100000;
+    let mut seed = 1319;
+    let mut nets: Vec[Vec[Vec[i64]]] = Vec.new();
+    for kind in 0..4 {
+        let mut cables: Vec[Vec[i64]] = Vec.new();
+        if kind == 1 {
+            for i in 1..n {
+                cables.push([i - 1, i]);
+            }
+            for k in (1..cables.len()).rev() {
+                cables.swap(k, wide(mut seed, k + 1));
+            }
+        } else if kind == 2 {
+            for g in 0..n / 10 {
+                for u in 0..10 {
+                    cables.push([10 * g + u, 10 * g + (u + 1) % 10]);
+                }
+            }
+        } else {
+            let m = if kind == 0 { n } else { n - 1 };
+            while cables.len() < m {
+                let u = wide(mut seed, n);
+                let v = wide(mut seed, n);
+                if u != v {
+                    cables.push([u, v]);
+                }
+            }
+        }
+        nets.push(cables);
+    }
+    let mut check: i64 = 0;
+    for pass in 0..25 {
+        for t in 0..4 {
+            let cables = mut ref nets[t];
+            let m = cables.len();
+            let u = check % n;
+            let v = (u + 1 + (check / 7) % (n - 1)) % n;
+            cables[check % m] = [u, v];
+            let got = make_connected(n, cables);
+            check = (check * 31 + got + 1 + pass) % 1000000007;
+        }
+    }
+    println(f"25 passes over 4 networks of 10^5: checksum {check}");
+}

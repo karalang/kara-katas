@@ -1,0 +1,409 @@
+// LeetCode #1319: Number of Operations to Make Network Connected --
+// differential test of the six arms against the statement read literally,
+// with five more properties.
+//
+// The statement: n computers numbered 0 to n - 1 are connected by ethernet
+// cables, connections[i] = [a, b] joining a and b. You may take out a cable
+// between two directly connected computers and place it between any pair
+// of disconnected computers. Return the minimum number of times you need to
+// do this so that all the computers are connected, or -1 if it is not
+// possible.
+
+// ---- make_connected.kara ----
+fn a0_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut at = x;
+    while parent[at] != at {
+        parent[at] = parent[parent[at]];
+        at = parent[at];
+    }
+    at
+}
+
+fn a0_make_connected(n: i64, connections: Vec[Vec[i64]]) -> i64 {
+    if connections.len() < n - 1 {
+        return -1;
+    }
+    let mut parent: Vec[i64] = (0..n).collect();
+    let mut size: Vec[i64] = Vec.filled(n, 1);
+    let mut groups = n;
+    for c in connections.iter() {
+        let a = a0_find(mut parent, c[0]);
+        let b = a0_find(mut parent, c[1]);
+        if a != b {
+            let (big, small) = if size[a] >= size[b] { (a, b) } else { (b, a) };
+            parent[small] = big;
+            size[big] += size[small];
+            groups -= 1;
+        }
+    }
+    groups - 1
+}
+
+// ---- make_connected_bfs.kara ----
+fn a1_make_connected(n: i64, connections: Vec[Vec[i64]]) -> i64 {
+    if connections.len() < n - 1 {
+        return -1;
+    }
+    let mut next: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for c in connections.iter() {
+        next[c[0]].push(c[1]);
+        next[c[1]].push(c[0]);
+    }
+    let mut reached: Vec[bool] = Vec.filled(n, false);
+    let mut groups = 0;
+    for start in 0..n {
+        if reached[start] {
+            continue;
+        }
+        groups += 1;
+        reached[start] = true;
+        let mut queue: VecDeque[i64] = VecDeque.new();
+        queue.push_back(start);
+        while let Some(at) = queue.pop_front() {
+            for to in next[at].iter() {
+                if not reached[to] {
+                    reached[to] = true;
+                    queue.push_back(to);
+                }
+            }
+        }
+    }
+    groups - 1
+}
+
+// ---- make_connected_dfs.kara ----
+fn a2_mark(next: Vec[Vec[i64]], seen: mut ref Vec[bool], at: i64) {
+    seen[at] = true;
+    for to in next[at].iter() {
+        if not seen[to] {
+            a2_mark(next, mut seen, to);
+        }
+    }
+}
+
+fn a2_make_connected(n: i64, connections: Vec[Vec[i64]]) -> i64 {
+    if connections.len() < n - 1 {
+        return -1;
+    }
+    let mut next: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for c in connections.iter() {
+        next[c[0]].push(c[1]);
+        next[c[1]].push(c[0]);
+    }
+    let mut seen: Vec[bool] = Vec.filled(n, false);
+    let mut groups = 0;
+    for start in 0..n {
+        if not seen[start] {
+            groups += 1;
+            a2_mark(next, mut seen, start);
+        }
+    }
+    groups - 1
+}
+
+// ---- make_connected_label.kara ----
+fn a3_make_connected(n: i64, connections: Vec[Vec[i64]]) -> i64 {
+    if connections.len() < n - 1 {
+        return -1;
+    }
+    let mut label: Vec[i64] = (0..n).collect();
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for c in connections.iter() {
+            let low = label[c[0]].min(label[c[1]]);
+            if label[c[0]] != low or label[c[1]] != low {
+                label[c[0]] = low;
+                label[c[1]] = low;
+                changed = true;
+            }
+        }
+    }
+    let groups = (0..n).filter(|i| label[i] == i).count();
+    groups - 1
+}
+
+// ---- make_connected_solution.kara ----
+struct A4Solution {}
+
+fn a4_find(parent: mut ref Vec[usize], x: usize) -> usize {
+    if parent[x] != x {
+        parent[x] = a4_find(mut parent, parent[x]);
+    }
+    parent[x]
+}
+
+impl A4Solution {
+    pub fn a4_make_connected(n: i32, connections: Vec[Vec[i32]]) -> i32 {
+        if (connections.len() as i32) < n - 1 {
+            return -1;
+        }
+        let n = n as usize;
+        let mut parent: Vec[usize] = (0..n).collect();
+        let mut components = n;
+        for c in ref connections {
+            let a = a4_find(mut parent, c[0] as usize);
+            let b = a4_find(mut parent, c[1] as usize);
+            if a != b {
+                parent[a] = b;
+                components -= 1;
+            }
+        }
+        (components - 1) as i32
+    }
+}
+
+fn a4_make_connected(n: i64, connections: Vec[Vec[i64]]) -> i64 {
+    let cables: Vec[Vec[i32]] = connections.iter().map(|c| c.iter().map(|x| x as i32).collect()).collect();
+    A4Solution.a4_make_connected(n as i32, cables)
+}
+
+// ---- make_connected_graph.kara ----
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn a5_make_connected(n: i32, connections: Vec[Vec[i32]]) -> i32 {
+        let n = n as i64;
+        if connections.len() < n - 1 {
+            return -1;
+        }
+        let mut graph = Vec.filled(n, Vec.new());
+        for c in connections.iter() {
+            graph[c[0]].push(c[1] as i64);
+            graph[c[1]].push(c[0]);
+        }
+        let mut visited = Vec.filled(n, false);
+        let mut count = 0;
+        for i in 0..n {
+            if visited[i] {
+                continue;
+            }
+            count += 1;
+            visited[i] = true;
+            let mut stack = [i];
+            while let Some(u) = stack.pop() {
+                for v in ref graph[u] {
+                    if not visited[v] {
+                        visited[v] = true;
+                        stack.push(v);
+                    }
+                }
+            }
+        }
+        count - 1
+    }
+}
+
+fn a5_make_connected(n: i64, connections: Vec[Vec[i64]]) -> i64 {
+    let cables: Vec[Vec[i32]] = connections.iter().map(|c| c.iter().map(|x| x as i32).collect()).collect();
+    A5Solution.a5_make_connected(n as i32, cables)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the pairs of n computers, numbered: pair k joins pairs[k].0 and pairs[k].1
+fn all_pairs(n: i64) -> Vec[(i64, i64)] {
+    let mut pairs: Vec[(i64, i64)] = Vec.new();
+    for u in 0..n {
+        for v in u + 1..n {
+            pairs.push((u, v));
+        }
+    }
+    pairs
+}
+
+// whether the cables in `mask`, one bit for each pair, join every computer
+fn joined(n: i64, pairs: Vec[(i64, i64)], mask: i64) -> bool {
+    let mut reached: Vec[bool] = Vec.filled(n, false);
+    reached[0] = true;
+    let mut grew = true;
+    while grew {
+        grew = false;
+        for k in 0..pairs.len() {
+            if (mask >> k) & 1 == 1 {
+                let (u, v) = pairs[k];
+                if reached[u] != reached[v] {
+                    reached[u] = true;
+                    reached[v] = true;
+                    grew = true;
+                }
+            }
+        }
+    }
+    reached.iter().all(|r| r)
+}
+
+// the statement read literally: a move takes out one cable and puts it
+// between two computers no cable joins; the fewest moves from the given
+// cables to cables that join every computer, by a breadth-first search over
+// the sets of cables, or -1 when no number of moves will do
+fn literal(n: i64, cables: Vec[Vec[i64]]) -> i64 {
+    let pairs = all_pairs(n);
+    let p = pairs.len();
+    let mut start = 0;
+    for c in cables.iter() {
+        for k in 0..p {
+            let (u, v) = pairs[k];
+            if (u == c[0] and v == c[1]) or (u == c[1] and v == c[0]) {
+                start |= 1 << k;
+            }
+        }
+    }
+    let mut dist: Vec[i64] = Vec.filled(1 << p, -1);
+    dist[start] = 0;
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    queue.push_back(start);
+    while let Some(mask) = queue.pop_front() {
+        if joined(n, pairs, mask) {
+            return dist[mask];
+        }
+        for out in 0..p {
+            if (mask >> out) & 1 == 1 {
+                for into in 0..p {
+                    if (mask >> into) & 1 == 0 {
+                        let next = mask ^ (1 << out) ^ (1 << into);
+                        if dist[next] < 0 {
+                            dist[next] = dist[mask] + 1;
+                            queue.push_back(next);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    -1
+}
+
+struct Case {
+    n: i64,
+    cables: Vec[Vec[i64]],
+    // P2: the new number of every computer
+    order: Vec[i64],
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, n: i64, cables: Vec[Vec[i64]]) -> i64 {
+    match i {
+        0 => a0_make_connected(n, cables),
+        1 => a1_make_connected(n, cables),
+        2 => a2_make_connected(n, cables),
+        3 => a3_make_connected(n, cables),
+        4 => a4_make_connected(n, cables),
+        _ => a5_make_connected(n, cables),
+    }
+}
+
+fn show(cables: Vec[Vec[i64]]) -> String {
+    let parts: Vec[String] = cables.iter().map(|c| f"{c[0]}-{c[1]}").collect();
+    parts.join(" ")
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    t.cases += 1;
+    let n = c.n;
+    let m = c.cables.len();
+    let want = literal(n, c.cables);
+    t.check = (t.check * 31 + want + 1) % 1000000007;
+    let renumbered: Vec[Vec[i64]] = c.cables.iter().map(|e| [c.order[e[0]], c.order[e[1]]]).collect();
+    let reversed: Vec[Vec[i64]] = c.cables.iter().rev().map(|e| [e[1], e[0]]).collect();
+    let mut grown: Vec[Vec[i64]] = c.cables.clone();
+    grown.push([n, 0]);
+    let mut doubled: Vec[Vec[i64]] = c.cables.clone();
+    for e in c.cables.iter() {
+        doubled.push([e[0] + n, e[1] + n]);
+    }
+    let star = a0_make_connected(n, c.cables);
+    for i in 0..6 {
+        let got = arm(i, n, c.cables);
+        let what = f"arm {i} case {t.cases} n {n} [{show(c.cables)}]: got {got}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}, literal {want}");
+        // P2: the computers renumbered, the same answer
+        let rn = arm(i, n, renumbered);
+        expect(mut t, 2, rn == got, f"P2 {what}, renumbered: {rn}");
+        // P3: the cables listed last first, each written end to start, the
+        // same answer
+        let rv = arm(i, n, reversed);
+        expect(mut t, 3, rv == got, f"P3 {what}, reversed: {rv}");
+        // P4: one more computer with a cable to computer 0, the same answer
+        let gr = arm(i, n + 1, grown);
+        expect(mut t, 4, gr == got, f"P4 {what}, one more: {gr}");
+        // P5: the network beside a copy of itself: -1 with fewer than n
+        // cables, which the copy cannot spare, else twice the groups less one
+        let db = arm(i, 2 * n, doubled);
+        let expected = if m < n { -1 } else { 2 * (got + 1) - 1 };
+        expect(mut t, 5, db == expected, f"P5 {what}, doubled: {db}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 networks of 2 to 6 computers, every cable a different pair, in
+    // four kinds, 500 each: 1 cable up to every pair; exactly n - 1 cables;
+    // n - 1 cables up to every pair; and 1 to n - 1 cables. Every network
+    // and renumbering is drawn before any arm answers.
+    let mut seed = 13191;
+    let mut cases: Vec[Case] = Vec.new();
+    for i in 0..2000 {
+        let kind = i / 500;
+        let n = 2 + next_random(mut seed) % 5;
+        let most = n * (n - 1) / 2;
+        let m = if kind == 0 {
+            1 + next_random(mut seed) % most
+        } else if kind == 1 {
+            n - 1
+        } else if kind == 2 {
+            n - 1 + next_random(mut seed) % (most - n + 2)
+        } else {
+            1 + next_random(mut seed) % (n - 1)
+        };
+        let mut pairs = all_pairs(n);
+        let mut cables: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..m {
+            let (u, v) = pairs.swap_remove(next_random(mut seed) % pairs.len());
+            if next_random(mut seed) % 2 == 0 {
+                cables.push([u, v]);
+            } else {
+                cables.push([v, u]);
+            }
+        }
+        let mut order: Vec[i64] = (0..n).collect();
+        for k in (1..n).rev() {
+            order.swap(k, next_random(mut seed) % (k + 1));
+        }
+        cases.push(Case { n, cables, order });
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} networks: checksum {t.check}, {t.checks} checks over 6 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

@@ -1,0 +1,82 @@
+// LeetCode #1319: Number of Operations to Make Network Connected -- the DFS
+// arm: the same neighbour lists, and each group marked by a recursive
+// depth-first walk from its first computer. O(n + m), as deep as the
+// longest path the walk takes
+
+fn mark(next: Vec[Vec[i64]], seen: mut ref Vec[bool], at: i64) {
+    seen[at] = true;
+    for to in next[at].iter() {
+        if not seen[to] {
+            mark(next, mut seen, to);
+        }
+    }
+}
+
+fn make_connected(n: i64, connections: Vec[Vec[i64]]) -> i64 {
+    if connections.len() < n - 1 {
+        return -1;
+    }
+    let mut next: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for c in connections.iter() {
+        next[c[0]].push(c[1]);
+        next[c[1]].push(c[0]);
+    }
+    let mut seen: Vec[bool] = Vec.filled(n, false);
+    let mut groups = 0;
+    for start in 0..n {
+        if not seen[start] {
+            groups += 1;
+            mark(next, mut seen, start);
+        }
+    }
+    groups - 1
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// m different cables between n computers, none from a computer to itself
+fn random_cables(seed: mut ref i64, n: i64, m: i64) -> Vec[Vec[i64]] {
+    let mut seen: Set[(i64, i64)] = Set.new();
+    let mut cables: Vec[Vec[i64]] = Vec.new();
+    while cables.len() < m {
+        let u = (next_random(mut seed) * 32768 + next_random(mut seed)) % n;
+        let v = (next_random(mut seed) * 32768 + next_random(mut seed)) % n;
+        if u != v and not seen.contains((u.min(v), u.max(v))) {
+            seen.insert((u.min(v), u.max(v)));
+            cables.push([u, v]);
+        }
+    }
+    cables
+}
+
+fn main() {
+    // LeetCode's three examples; two computers and their one cable; a chain
+    // of 10^5 computers, the constraints' most; and 10^5 computers with 10^5
+    // cables at random
+    let e1 = make_connected(4, [[0, 1], [0, 2], [1, 2]]);
+    let e2 = make_connected(6, [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3]]);
+    let e3 = make_connected(6, [[0, 1], [0, 2], [0, 3], [1, 2]]);
+    let e4 = make_connected(2, [[1, 0]]);
+    let chain: Vec[Vec[i64]] = (1..100000).map(|i| [i - 1, i]).collect();
+    let e5 = make_connected(100000, chain);
+    let mut seed = 1319;
+    let e6 = make_connected(100000, random_cables(mut seed, 100000, 100000));
+    println(f"{e1} {e2} {e3} {e4} {e5} {e6}");
+    // 300 random networks of 2 to 2000 computers with 1 to 3000 cables, at
+    // most every pair
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..300 {
+        let n = 2 + next_random(mut seed) % 1999;
+        let m = 1 + next_random(mut seed) % 3000.min(n * (n - 1) / 2);
+        let got = make_connected(n, random_cables(mut seed, n, m));
+        total += got;
+        check = (check * 31 + got + 1) % 1000000007;
+    }
+    println(f"300 random networks: moves total {total}, checksum {check}");
+}
