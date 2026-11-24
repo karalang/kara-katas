@@ -58,9 +58,9 @@ The iter arm's `scan` starts from `*v`. Written `scan(v, ...)`, with
 with a bare E0200 "expected 'Option[(ref i64, _)]', found 'Option[(i64,
 ref i64)]'": the state's type is taken from the seed as a `ref`, though
 `let mut x = v` in the ★ arm copies the same `v` out to an `i64`, and
-the message names neither the seed nor the `*v` that mends it. That
-diagnostic gap is to be filed on the ledger once the kata rows' cap
-allows.
+the message names neither the seed nor the `*v` that mends it
+(B-2026-11-24-40). Since that row's fix, the refusal names the seed and
+`karac fix` writes the `*v`.
 
 `check` first reports 8 errors on the template, all Rust's spellings:
 the `use std::collections::HashSet;` line, `struct Solution;`,
