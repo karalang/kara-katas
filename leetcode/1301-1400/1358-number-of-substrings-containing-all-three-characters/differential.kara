@@ -1,0 +1,250 @@
+// LeetCode #1358: Number of Substrings Containing All Three Characters --
+// differential test of the five arms against the statement read
+// literally, with five more properties.
+//
+// The statement: given a string s of the characters a, b and c, return
+// the number of substrings containing at least one occurrence of each.
+
+// ---- number_of_substrings.kara ----
+fn a0_number_of_substrings(s: Str) -> i32 {
+    let mut last: Vec[i64] = [-1, -1, -1];
+    let mut count: i64 = 0;
+    for (i, b) in s.bytes().iter().enumerate() {
+        last[b - b'a'] = i;
+        count += last.iter().cloned().min().unwrap() + 1;
+    }
+    count as i32
+}
+
+// ---- number_of_substrings_window.kara ----
+fn a1_number_of_substrings(s: Str) -> i32 {
+    let text: Vec[u8] = s.bytes().iter().collect();
+    let n = text.len();
+    let mut have: Vec[i64] = [0, 0, 0];
+    let mut end = 0;
+    let mut count: i64 = 0;
+    for start in 0..n {
+        while end < n and (have[0] == 0 or have[1] == 0 or have[2] == 0) {
+            have[text[end] - b'a'] += 1;
+            end += 1;
+        }
+        if have[0] > 0 and have[1] > 0 and have[2] > 0 {
+            count += n - end + 1;
+        }
+        have[text[start] - b'a'] -= 1;
+    }
+    count as i32
+}
+
+// ---- number_of_substrings_prefix.kara ----
+fn a2_number_of_substrings(s: Str) -> i32 {
+    let text: Vec[u8] = s.bytes().iter().collect();
+    let n = text.len();
+    let mut seen: Vec[Vec[i64]] = [[0], [0], [0]];
+    for b in text.iter() {
+        for k in 0..3 {
+            let last = seen[k][seen[k].len() - 1];
+            seen[k].push(if b - b'a' == k { last + 1 } else { last });
+        }
+    }
+    let mut count: i64 = 0;
+    for start in 0..n {
+        let mut need = 0;
+        for k in 0..3 {
+            // the fewest letters, from start, that take in one more of k
+            let first = seen[k].partition_point(|c| c <= seen[k][start]);
+            need = need.max(first);
+        }
+        if need <= n {
+            count += n - need + 1;
+        }
+    }
+    count as i32
+}
+
+// ---- number_of_substrings_complement.kara ----
+fn a3_within_runs(text: Vec[u8], allowed: Vec[u8]) -> i64 {
+    let mut total: i64 = 0;
+    let mut run: i64 = 0;
+    for b in text.iter() {
+        if allowed.contains(b) {
+            run += 1;
+            total += run;
+        } else {
+            run = 0;
+        }
+    }
+    total
+}
+
+fn a3_number_of_substrings(s: Str) -> i32 {
+    let text: Vec[u8] = s.bytes().iter().collect();
+    let n = text.len();
+    let every = n * (n + 1) / 2;
+    let missing_one = a3_within_runs(text, [b'b', b'c']) + a3_within_runs(text, [b'a', b'c']) + a3_within_runs(text, [b'a', b'b']);
+    let missing_two = a3_within_runs(text, [b'a']) + a3_within_runs(text, [b'b']) + a3_within_runs(text, [b'c']);
+    (every - missing_one + missing_two) as i32
+}
+
+// ---- number_of_substrings_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_number_of_substrings(s: String) -> i32 {
+        let s = s.bytes();
+        let mut count = [0; 3];
+        let mut left = 0;
+        let mut ans = 0;
+        for right in 0..s.len() {
+            count[(s[right] - b'a') as usize] += 1;
+            while count[0] > 0 and count[1] > 0 and count[2] > 0 {
+                ans += s.len() - right;
+                count[(s[left] - b'a') as usize] -= 1;
+                left += 1;
+            }
+        }
+        ans as i32
+    }
+}
+
+fn a4_number_of_substrings(s: Str) -> i32 {
+    A4Solution.a4_number_of_substrings(s.to_string())
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every substring s[i..j] taken in turn,
+// and counted when an a, a b and a c each occur in it
+fn literal(s: Str) -> i64 {
+    let n = s.len();
+    let mut count = 0;
+    for i in 0..n {
+        for j in i + 1..n + 1 {
+            let part = s[i..j];
+            if part.contains("a") and part.contains("b") and part.contains("c") {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+// each letter replaced by the one after it, c by a
+fn rotated(s: Str) -> String {
+    let mut out = String.new();
+    for ch in s.chars() {
+        out.push(if ch == 'a' { 'b' } else if ch == 'b' { 'c' } else { 'a' });
+    }
+    out
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, s: Str) -> i64 {
+    let got = match i {
+        0 => a0_number_of_substrings(s),
+        1 => a1_number_of_substrings(s),
+        2 => a2_number_of_substrings(s),
+        3 => a3_number_of_substrings(s),
+        _ => a4_number_of_substrings(s),
+    };
+    got
+}
+
+fn check_case(t: mut ref Tally, s: Str) {
+    t.cases += 1;
+    let n = s.len();
+    let want = literal(s);
+    t.check = (t.check * 131 + want * 7 + n) % 1000000007;
+    let turned = rotated(s);
+    let backwards: String = s.chars().rev().collect();
+    let extended = s.to_string() + "abc";
+    let no_a = s.replace("a", "b");
+    let star = arm(0, s);
+    for i in 0..5 {
+        let got = arm(i, s);
+        let what = f"arm {i} on {s}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the letters renamed, a to b, b to c, c to a: the same count
+        let tr = arm(i, turned);
+        expect(mut t, 2, tr == got, f"P2 {what}, renamed: {tr}");
+        // P3: the string backwards: the same count
+        let bw = arm(i, backwards);
+        expect(mut t, 3, bw == got, f"P3 {what}, backwards: {bw}");
+        // P4: "abc" put after the string: at least n + 1 more, each start
+        // ending at the last c
+        let ex = arm(i, extended);
+        expect(mut t, 4, ex >= got + n + 1, f"P4 {what}, then abc: {ex}");
+        // P5: every a made a b: none
+        let na = arm(i, no_a);
+        expect(mut t, 5, na == 0, f"P5 {what}, no a: {na}");
+        // P6: the ★ arm's count
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 strings of 3 to 12 letters in four kinds, 500 each: the letters
+    // evenly drawn; c rare; runs of one letter, each of 1 to 4; and "abc"
+    // with letters drawn around it. Every string is drawn before any arm
+    // answers.
+    let mut seed = 13581;
+    let mut cases: Vec[String] = Vec.new();
+    for c in 0..2000 {
+        let kind = c / 500;
+        let n = 3 + next_random(mut seed) % 10;
+        let mut s = String.new();
+        while s.len() < n {
+            let r = next_random(mut seed);
+            if kind == 0 {
+                s.push(if r % 3 == 0 { 'a' } else if r % 3 == 1 { 'b' } else { 'c' });
+            } else if kind == 1 {
+                s.push(if r % 9 == 0 { 'c' } else if r % 2 == 0 { 'a' } else { 'b' });
+            } else if kind == 2 {
+                let ch = if r % 3 == 0 { 'a' } else if r % 3 == 1 { 'b' } else { 'c' };
+                for _ in 0..1 + (r / 3) % 4 {
+                    if s.len() < n {
+                        s.push(ch);
+                    }
+                }
+            } else if s.len() == n / 2 and n >= 3 and s.len() + 3 <= n {
+                s.push_str("abc");
+            } else {
+                s.push(if r % 3 == 0 { 'a' } else if r % 3 == 1 { 'b' } else { 'c' });
+            }
+        }
+        cases.push(s);
+    }
+    for s in cases.iter() {
+        check_case(mut t, s);
+    }
+    println(f"{t.cases} strings: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

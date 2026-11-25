@@ -1,0 +1,71 @@
+// LeetCode #1358: Number of Substrings Containing All Three Characters --
+// the complement arm: every substring, less the ones that miss a letter,
+// by inclusion and exclusion. A substring missing a lies in a run of
+// letters other than a, a run of r letters holding r (r + 1) / 2 of them;
+// one missing two letters lies in a run of the third. O(n)
+fn within_runs(text: Vec[u8], allowed: Vec[u8]) -> i64 {
+    let mut total: i64 = 0;
+    let mut run: i64 = 0;
+    for b in text.iter() {
+        if allowed.contains(b) {
+            run += 1;
+            total += run;
+        } else {
+            run = 0;
+        }
+    }
+    total
+}
+
+fn number_of_substrings(s: Str) -> i32 {
+    let text: Vec[u8] = s.bytes().iter().collect();
+    let n = text.len();
+    let every = n * (n + 1) / 2;
+    let missing_one = within_runs(text, [b'b', b'c']) + within_runs(text, [b'a', b'c']) + within_runs(text, [b'a', b'b']);
+    let missing_two = within_runs(text, [b'a']) + within_runs(text, [b'b']) + within_runs(text, [b'c']);
+    (every - missing_one + missing_two) as i32
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n letters from a, b and c, each drawn with the given weights
+fn random_text(seed: mut ref i64, n: i64, wa: i64, wb: i64, wc: i64) -> String {
+    let mut text = String.new();
+    for _ in 0..n {
+        let r = next_random(mut seed) % (wa + wb + wc);
+        text.push(if r < wa { 'a' } else if r < wa + wb { 'b' } else { 'c' });
+    }
+    text
+}
+
+fn main() {
+    // LeetCode's three examples; the shortest, a letter missing, and 5 *
+    // 10^4 letters, the constraints' most: "abc" repeated, all a then one
+    // b and one c, and at random
+    let e1 = number_of_substrings("abcabc");
+    let e2 = number_of_substrings("aaacb");
+    let e3 = number_of_substrings("abc");
+    let missing = number_of_substrings("ababab");
+    let repeated = number_of_substrings("abc".repeat(16666) + "ab");
+    let late = number_of_substrings("a".repeat(49998) + "bc");
+    let mut seed = 1358;
+    let random = number_of_substrings(random_text(mut seed, 50000, 1, 1, 1));
+    println(f"{e1} {e2} {e3} {missing} {repeated} {late} {random}");
+    // 2000 random strings of 3 to 300 letters, most of them short, the
+    // letters evenly drawn or one of them rare
+    let mut total: i64 = 0;
+    let mut check = 0;
+    for c in 0..2000 {
+        let n = if c % 10 == 0 { 3 + next_random(mut seed) % 298 } else { 3 + next_random(mut seed) % 15 };
+        let rare = if c % 3 == 0 { 1 } else { 10 };
+        let got = number_of_substrings(random_text(mut seed, n, 10, 10, rare)) as i64;
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random strings: {total} substrings in all, checksum {check}");
+}
