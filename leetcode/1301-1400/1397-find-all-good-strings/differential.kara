@@ -1,0 +1,527 @@
+// LeetCode #1397: Find All Good Strings -- differential test of
+// the five arms against the statement read literally, with five more
+// properties.
+
+// ---- find_good_strings.kara ----
+fn a0_slot(j: i64, low: bool, high: bool) -> i64 {
+    j * 4 + (if low { 2 } else { 0 }) + (if high { 1 } else { 0 })
+}
+
+fn a0_find_good_strings(n: i32, s1: String, s2: String, evil: String) -> i32 {
+    let modulus = 1000000007;
+    let lo = s1.bytes();
+    let hi = s2.bytes();
+    let e = evil.bytes();
+    let m = e.len();
+    // border[i]: the longest proper border of evil's first i + 1 letters
+    let mut border: Vec[i64] = Vec.filled(m, 0);
+    let mut k = 0;
+    for i in 1..m {
+        while k > 0 and e[i] != e[k] {
+            k = border[k - 1];
+        }
+        if e[i] == e[k] {
+            k += 1;
+        }
+        border[i] = k;
+    }
+    // next[j * 26 + c]: the letters matched after j matched and letter c
+    let mut next: Vec[i64] = Vec.filled(m * 26, 0);
+    for j in 0..m {
+        for c in 0..26 {
+            if e[j] as i64 == 97 + c {
+                next[j * 26 + c] = j + 1;
+            } else if j > 0 {
+                next[j * 26 + c] = next[border[j - 1] * 26 + c];
+            }
+        }
+    }
+    let mut ways: Vec[i64] = Vec.filled(m * 4, 0);
+    ways[a0_slot(0, true, true)] = 1;
+    for i in 0..n {
+        let mut after: Vec[i64] = Vec.filled(m * 4, 0);
+        for j in 0..m {
+            for low in [false, true] {
+                for high in [false, true] {
+                    let w = ways[a0_slot(j, low, high)];
+                    if w == 0 {
+                        continue;
+                    }
+                    let first = if low { lo[i] as i64 - 97 } else { 0 };
+                    let last = if high { hi[i] as i64 - 97 } else { 25 };
+                    for c in first..=last {
+                        let to = next[j * 26 + c];
+                        if to == m {
+                            continue;
+                        }
+                        let at = a0_slot(to, low and c == first, high and c == last);
+                        after[at] = (after[at] + w) % modulus;
+                    }
+                }
+            }
+        }
+        ways = after;
+    }
+    let mut total = 0;
+    for w in ways.iter() {
+        total = (total + w) % modulus;
+    }
+    total as i32
+}
+
+// ---- find_good_strings_count.kara ----
+fn a1_upto(bound: Vec[u8], e: Vec[u8], border: Vec[i64]) -> i64 {
+    let modulus = 1000000007;
+    let m = e.len();
+    // free[j]: matches j, already below the bound; tight: the bound's own
+    // prefix, matching `at` letters of evil, or gone once it holds evil
+    let mut free: Vec[i64] = Vec.filled(m, 0);
+    let mut at = 0;
+    let mut tight = true;
+    for b in bound.iter() {
+        let mut after: Vec[i64] = Vec.filled(m, 0);
+        for j in 0..m {
+            if free[j] == 0 and not (tight and j == at) {
+                continue;
+            }
+            for c in 97u8..=122u8 {
+                let mut k = j;
+                while k > 0 and e[k] != c {
+                    k = border[k - 1];
+                }
+                if e[k] == c {
+                    k += 1;
+                }
+                if k == m {
+                    continue;
+                }
+                let mut w = free[j];
+                if tight and j == at and c < b {
+                    w += 1;
+                }
+                after[k] = (after[k] + w) % modulus;
+            }
+        }
+        if tight {
+            while at > 0 and e[at] != b {
+                at = border[at - 1];
+            }
+            if e[at] == b {
+                at += 1;
+            }
+            tight = at < m;
+        }
+        free = after;
+    }
+    let mut total = if tight { 1 } else { 0 };
+    for w in free.iter() {
+        total = (total + w) % modulus;
+    }
+    total
+}
+
+fn a1_find_good_strings(n: i32, s1: String, s2: String, evil: String) -> i32 {
+    let modulus = 1000000007;
+    let e = evil.bytes();
+    let m = e.len();
+    let mut border: Vec[i64] = Vec.filled(m, 0);
+    let mut k = 0;
+    for i in 1..m {
+        while k > 0 and e[i] != e[k] {
+            k = border[k - 1];
+        }
+        if e[i] == e[k] {
+            k += 1;
+        }
+        border[i] = k;
+    }
+    let own = if s1.contains(evil) { 0 } else { 1 };
+    let answer = a1_upto(s2.bytes().to_vec(), e.to_vec(), border) - a1_upto(s1.bytes().to_vec(), e.to_vec(), border) + own;
+    ((answer % modulus + modulus) % modulus) as i32
+}
+
+// ---- find_good_strings_memo.kara ----
+struct A2Search {
+    lo: Vec[u8],
+    hi: Vec[u8],
+    e: Vec[u8],
+    border: Vec[i64],
+    memo: Vec[i64],
+}
+
+impl A2Search {
+    fn a2_ways(mut ref self, i: i64, j: i64, low: bool, high: bool) -> i64 {
+        let m = self.e.len();
+        if j == m {
+            return 0;
+        }
+        if i == self.lo.len() {
+            return 1;
+        }
+        let key = ((i * m + j) * 2 + (if low { 1 } else { 0 })) * 2 + (if high { 1 } else { 0 });
+        if self.memo[key] >= 0 {
+            return self.memo[key];
+        }
+        let first = if low { self.lo[i] } else { b'a' };
+        let last = if high { self.hi[i] } else { b'z' };
+        let mut total = 0;
+        for c in first..=last {
+            let mut k = j;
+            while k > 0 and self.e[k] != c {
+                k = self.border[k - 1];
+            }
+            if self.e[k] == c {
+                k += 1;
+            }
+            total = (total + self.a2_ways(i + 1, k, low and c == first, high and c == last)) % 1000000007;
+        }
+        self.memo[key] = total;
+        total
+    }
+}
+
+fn a2_find_good_strings(n: i32, s1: String, s2: String, evil: String) -> i32 {
+    let e = evil.bytes();
+    let m = e.len();
+    let mut border: Vec[i64] = Vec.filled(m, 0);
+    let mut k = 0;
+    for i in 1..m {
+        while k > 0 and e[i] != e[k] {
+            k = border[k - 1];
+        }
+        if e[i] == e[k] {
+            k += 1;
+        }
+        border[i] = k;
+    }
+    let mut search = A2Search { lo: s1.bytes().to_vec(), hi: s2.bytes().to_vec(), e: e.to_vec(), border: border, memo: Vec.filled(n * m * 4, -1) };
+    search.a2_ways(0, 0, true, true) as i32
+}
+
+// ---- find_good_strings_text.kara ----
+fn a3_find_good_strings(n: i32, s1: String, s2: String, evil: String) -> i32 {
+    let modulus = 1000000007;
+    let letters: Vec[char] = s1.chars().collect();
+    let ceiling: Vec[char] = s2.chars().collect();
+    // moves[(state, letter)]: the state after the letter, or none when
+    // the string would then end in all of `evil`
+    let mut moves: Map[(String, char), Option[String]] = Map.new();
+    let mut ways: Map[(String, bool, bool), i64] = Map.new();
+    ways.insert(("".to_string(), true, true), 1);
+    for i in 0..n {
+        let mut after: Map[(String, bool, bool), i64] = Map.new();
+        for ((state, low, high), w) in ways.iter() {
+            let first = if low { letters[i] } else { 'a' };
+            let last = if high { ceiling[i] } else { 'z' };
+            for c in first..=last {
+                if not moves.contains_key((state.clone(), c)) {
+                    let text = f"{state}{c}";
+                    let mut to: Option[String] = None;
+                    if text != evil {
+                        let mut size = text.len();
+                        while size > 0 and not (evil.starts_with(text[text.len() - size..]) ) {
+                            size -= 1;
+                        }
+                        to = Some(text[text.len() - size..].to_string());
+                    }
+                    moves.insert((state.clone(), c), to);
+                }
+                if let Some(to) = moves[(state.clone(), c)].clone() {
+                    let key = (to, low and c == first, high and c == last);
+                    let old = after.get(key).cloned().unwrap_or(0);
+                    after.insert(key, (old + w) % modulus);
+                }
+            }
+        }
+        ways = after;
+    }
+    let mut total = 0;
+    for (_, w) in ways.iter() {
+        total = (total + w) % modulus;
+    }
+    total as i32
+}
+
+// ---- find_good_strings_solution.kara ----
+struct A4Solution {}
+
+fn a4_dfs(pos: i64, ev: i64, lt: i64, rt: i64, n: i64, s1: Slice[u8], s2: Slice[u8], evil: Slice[u8], lps: Slice[i64], memo: mut ref Vec[Vec[Vec[Vec[i64]]]]) -> i64 {
+    if ev == evil.len() {
+        return 0;
+    }
+    if pos == n {
+        return 1;
+    }
+    if memo[pos][ev][lt][rt] != -1 {
+        return memo[pos][ev][lt][rt];
+    }
+    let lo = if lt == 1 { s1[pos] } else { b'a' };
+    let hi = if rt == 1 { s2[pos] } else { b'z' };
+    let mut res = 0;
+    for c in lo..=hi {
+        let mut j = ev;
+        while j > 0 and evil[j] != c {
+            j = lps[j - 1];
+        }
+        if evil[j] == c {
+            j += 1;
+        }
+        let nlt = if lt == 1 and c == lo { 1 } else { 0 };
+        let nrt = if rt == 1 and c == hi { 1 } else { 0 };
+        res = (res + a4_dfs(pos + 1, j, nlt, nrt, n, s1, s2, evil, lps, mut memo)) % 1_000_000_007;
+    }
+    memo[pos][ev][lt][rt] = res;
+    res
+}
+
+impl A4Solution {
+    pub fn a4_find_good_strings(n: i32, s1: String, s2: String, evil: String) -> i32 {
+        let n = n as i64;
+        let s1 = s1.bytes();
+        let s2 = s2.bytes();
+        let evil = evil.bytes();
+        let m = evil.len();
+        let mut lps = Vec.filled(m, 0);
+        let mut len = 0;
+        let mut i = 1;
+        while i < m {
+            if evil[i] == evil[len] {
+                len += 1;
+                lps[i] = len;
+                i += 1;
+            } else if len > 0 {
+                len = lps[len - 1];
+            } else {
+                lps[i] = 0;
+                i += 1;
+            }
+        }
+        let mut memo = Vec.filled(n, Vec.filled(m, Vec.filled(2, Vec.filled(2, -1))));
+        a4_dfs(0, 0, 1, 1, n, s1, s2, evil, lps, mut memo) as i32
+    }
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n letters drawn from the first `letters` of the alphabet
+fn drawn(n: i64, letters: i64, seed: mut ref i64) -> String {
+    let out: Vec[char] = (0..n).map(|_| (97 + next_random(mut seed) % letters) as u8 as char).collect();
+    out.iter().collect()
+}
+
+// a string of n letters read as a number in base 26, and back
+fn code(s: String) -> i64 {
+    let mut v = 0;
+    for b in s.bytes().iter() {
+        v = v * 26 + (b as i64 - 97);
+    }
+    v
+}
+
+fn decode(v: i64, n: i64) -> String {
+    let mut out: Vec[char] = Vec.filled(n, 'a');
+    let mut rest = v;
+    for i in (0..n).rev() {
+        out[i] = (97 + rest % 26) as u8 as char;
+        rest /= 26;
+    }
+    out.iter().collect()
+}
+
+fn power(n: i64) -> i64 {
+    let mut p = 1;
+    for _ in 0..n {
+        p *= 26;
+    }
+    p
+}
+
+struct Case {
+    n: i64,
+    s1: String,
+    s2: String,
+    evil: String,
+}
+
+// either two strings of 1 to 3 letters from the first 1 to 8, so the
+// range between them is wide, or a string of 1 to 12 letters and the one
+// 0 to 2000 after it, so the strings are long, half of them from the
+// first 1 to 3 letters, where `evil` matches, fails and matches again,
+// and half from the first 1 to 26; the evil string 1 to 4 letters from
+// the first 1 to 3
+fn case_drawn(seed: mut ref i64) -> Case {
+    let mut n = 0;
+    let mut s1 = "".to_string();
+    let mut s2 = "".to_string();
+    if next_random(mut seed) % 2 == 0 {
+        n = 1 + next_random(mut seed) % 3;
+        let letters = 1 + next_random(mut seed) % 8;
+        let a = drawn(n, letters, mut seed);
+        let b = drawn(n, letters, mut seed);
+        if a <= b {
+            s1 = a;
+            s2 = b;
+        } else {
+            s1 = b;
+            s2 = a;
+        }
+    } else {
+        n = 1 + next_random(mut seed) % 12;
+        let letters = if next_random(mut seed) % 2 == 0 { 1 + next_random(mut seed) % 3 } else { 1 + next_random(mut seed) % 26 };
+        s1 = drawn(n, letters, mut seed);
+        let after = code(s1) + next_random(mut seed) % 2001;
+        s2 = decode(after.min(power(n) - 1), n);
+    }
+    let m = 1 + next_random(mut seed) % 4;
+    let evil_letters = 1 + next_random(mut seed) % 3;
+    let evil = drawn(m, evil_letters, mut seed);
+    Case { n: n, s1: s1, s2: s2, evil: evil }
+}
+
+// whether `evil` appears in `t`, every place tried
+fn holds(t: Vec[u8], e: Slice[u8]) -> bool {
+    let m = e.len();
+    if m > t.len() {
+        return false;
+    }
+    for i in 0..=t.len() - m {
+        let mut same = true;
+        for k in 0..m {
+            if t[i + k] != e[k] {
+                same = false;
+                break;
+            }
+        }
+        if same {
+            return true;
+        }
+    }
+    false
+}
+
+// the statement read literally: every string from s1 to s2 in order,
+// each one tried for `evil`
+fn literal(c: Case) -> i64 {
+    let mut t: Vec[u8] = c.s1.bytes().to_vec();
+    let last: Vec[u8] = c.s2.bytes().to_vec();
+    let mut good = 0;
+    loop {
+        if not holds(t, c.evil.bytes()) {
+            good += 1;
+        }
+        if t == last {
+            break;
+        }
+        let mut i = t.len() - 1;
+        while t[i] == b'z' {
+            t[i] = b'a';
+            i -= 1;
+        }
+        t[i] += 1;
+    }
+    good
+}
+
+fn arm(i: i64, n: i64, s1: String, s2: String, evil: String) -> i64 {
+    let n = n as i32;
+    let got = match i {
+        0 => a0_find_good_strings(n, s1, s2, evil),
+        1 => a1_find_good_strings(n, s1, s2, evil),
+        2 => a2_find_good_strings(n, s1, s2, evil),
+        3 => a3_find_good_strings(n, s1, s2, evil),
+        _ => A4Solution.a4_find_good_strings(n, s1, s2, evil),
+    };
+    got
+}
+
+// every letter turned the other way round the alphabet, a to z
+fn mirrored(s: String) -> String {
+    let out: Vec[char] = s.bytes().iter().map(|b| (219 - b as i64) as u8 as char).collect();
+    out.iter().collect()
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, k: i64, c: Case) {
+    t.cases += 1;
+    let want = literal(c);
+    t.check = (t.check * 131 + want) % 1000000007;
+    t.check = (t.check * 131 + c.n) % 1000000007;
+    let (n, s1, s2, evil) = (c.n, c.s1.clone(), c.s2.clone(), c.evil.clone());
+    let star = arm(0, n, s1, s2, evil);
+    let size = code(s2) - code(s1) + 1;
+    let middle = decode(code(s1) + (size - 1) / 2, n);
+    let middle_good = if holds(middle.bytes().to_vec(), evil.bytes()) { 0 } else { 1 };
+    let good1 = if holds(s1.bytes().to_vec(), evil.bytes()) { 0 } else { 1 };
+    let good2 = if holds(s2.bytes().to_vec(), evil.bytes()) { 0 } else { 1 };
+    let longer = f"{evil}q";
+    for i in 0..5 {
+        let got = arm(i, n, s1, s2, evil);
+        let what = f"arm {i} on case {k} ({n}, {s1}, {s2}, {evil})";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the range cut at its middle string: the two halves' counts,
+        // the middle counted once
+        let halves = arm(i, n, s1, middle, evil) + arm(i, n, middle, s2, evil) - middle_good;
+        expect(mut t, 2, halves == got, f"P2 {what}: halves at {middle} give {halves}");
+        // P3: every letter turned the other way round the alphabet, so
+        // s2's mirror comes first: the same count
+        let flipped = arm(i, n, mirrored(s2), mirrored(s1), mirrored(evil));
+        expect(mut t, 3, flipped == got, f"P3 {what}, mirrored: {flipped}");
+        // P4: a longer evil string is no harder to avoid, and no count is
+        // more than the strings in the range
+        let more = arm(i, n, s1, s2, longer);
+        expect(mut t, 4, got <= more and more <= size, f"P4 {what}: {got}, then {more} for {longer}, of {size}");
+        // P5: a range of one string, each end: one when it is good
+        let ends = (arm(i, n, s1, s1, evil), arm(i, n, s2, s2, evil));
+        expect(mut t, 5, ends == (good1, good2), f"P5 {what}: the ends alone give {ends}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    let mut cases: Vec[Case] = Vec.new();
+    // LeetCode's three examples
+    cases.push(Case { n: 2, s1: "aa", s2: "da", evil: "b" });
+    cases.push(Case { n: 8, s1: "leetcode", s2: "leetgoes", evil: "leet" });
+    cases.push(Case { n: 2, s1: "gx", s2: "gz", evil: "x" });
+    // 2000 random cases. Every case is drawn before any arm answers.
+    let mut seed = 13971;
+    for _ in 0..2000 {
+        cases.push(case_drawn(mut seed));
+    }
+    let mut k = 0;
+    for c in cases.iter() {
+        check_case(mut t, k, c);
+        k += 1;
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
