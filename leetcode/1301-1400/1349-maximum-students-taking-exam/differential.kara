@@ -1,0 +1,366 @@
+// LeetCode #1349: Maximum Students Taking Exam -- differential test of
+// the five arms against the statement read literally, with five more
+// properties.
+//
+// The statement: given an m * n matrix of seats, '#' broken and '.' good,
+// a student can see the answers of the students sitting next to the left,
+// right, upper left and upper right, but not directly in front or behind.
+// Return the maximum number of students that can take the exam together
+// without any cheating being possible, seated only in good seats.
+
+// ---- max_students.kara ----
+fn a0_max_students(seats: Vec[Vec[char]]) -> i32 {
+    let n = seats[0].len();
+    let full = 1 << n;
+    let mut best: Vec[i32] = Vec.filled(full, -1);
+    best[0] = 0;
+    for row in seats.iter() {
+        let mut good = 0;
+        for j in 0..n {
+            if row[j] == '.' {
+                good |= 1 << j;
+            }
+        }
+        let mut next: Vec[i32] = Vec.filled(full, -1);
+        for mask in 0..full {
+            if mask & good != mask or mask & (mask << 1) != 0 {
+                continue;
+            }
+            let here = mask.count_ones() as i32;
+            for prev in 0..full {
+                if best[prev] < 0 or mask & (prev << 1) != 0 or mask & (prev >> 1) != 0 {
+                    continue;
+                }
+                next[mask] = next[mask].max(best[prev] + here);
+            }
+        }
+        best = next;
+    }
+    best.iter().cloned().max().unwrap()
+}
+
+// ---- max_students_memo.kara ----
+fn a1_good_masks(seats: Vec[Vec[char]]) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    for row in seats.iter() {
+        let mut good = 0;
+        for j in 0..row.len() {
+            if row[j] == '.' {
+                good |= 1 << j;
+            }
+        }
+        out.push(good);
+    }
+    out
+}
+
+fn a1_most_from(good: Vec[i64], row: i64, prev: i64, memo: mut ref Map[(i64, i64), i32]) -> i32 {
+    if row == good.len() {
+        return 0;
+    }
+    if let Some(v) = memo.get((row, prev)) {
+        return v;
+    }
+    let mut best: i32 = 0;
+    let mut sub = good[row];
+    loop {
+        if sub & (sub << 1) == 0 and sub & (prev << 1) == 0 and sub & (prev >> 1) == 0 {
+            best = best.max(sub.count_ones() as i32 + a1_most_from(good, row + 1, sub, mut memo));
+        }
+        if sub == 0 {
+            break;
+        }
+        sub = (sub - 1) & good[row];
+    }
+    memo[(row, prev)] = best;
+    best
+}
+
+fn a1_max_students(seats: Vec[Vec[char]]) -> i32 {
+    let good = a1_good_masks(seats);
+    let mut memo: Map[(i64, i64), i32] = Map.new();
+    a1_most_from(good, 0, 0, mut memo)
+}
+
+// ---- max_students_matching.kara ----
+fn a2_augment(at: i64, edges: Vec[Vec[i64]], seen: mut ref Vec[bool], mate: mut ref Vec[i64]) -> bool {
+    for to in edges[at].iter() {
+        if seen[to] {
+            continue;
+        }
+        seen[to] = true;
+        if mate[to] < 0 or a2_augment(mate[to], edges, mut seen, mut mate) {
+            mate[to] = at;
+            return true;
+        }
+    }
+    false
+}
+
+fn a2_max_students(seats: Vec[Vec[char]]) -> i32 {
+    let m = seats.len();
+    let n = seats[0].len();
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    let mut good = 0;
+    for i in 0..m {
+        for j in 0..n {
+            let mut e: Vec[i64] = Vec.new();
+            if seats[i][j] == '.' {
+                good += 1;
+                for (di, dj) in [(0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)] {
+                    let (r, c) = (i + di, j + dj);
+                    if r >= 0 and r < m and c >= 0 and c < n and seats[r][c] == '.' {
+                        e.push(r * n + c);
+                    }
+                }
+            }
+            edges.push(e);
+        }
+    }
+    let mut mate: Vec[i64] = Vec.filled(m * n, -1);
+    let mut matched = 0;
+    for i in 0..m {
+        for j in (0..n).step_by(2) {
+            if seats[i][j] == '.' {
+                let mut seen: Vec[bool] = Vec.filled(m * n, false);
+                if a2_augment(i * n + j, edges, mut seen, mut mate) {
+                    matched += 1;
+                }
+            }
+        }
+    }
+    good - matched
+}
+
+// ---- max_students_profile.kara ----
+fn a3_max_students(seats: Vec[Vec[char]]) -> i32 {
+    let m = seats.len();
+    let n = seats[0].len();
+    let states = 1 << (n + 1);
+    let mut best: Vec[i32] = Vec.filled(states, -1);
+    best[0] = 0;
+    for i in 0..m {
+        for j in 0..n {
+            let mut next: Vec[i32] = Vec.filled(states, -1);
+            for s in 0..states {
+                if best[s] < 0 {
+                    continue;
+                }
+                let empty = (s << 1) & (states - 1);
+                next[empty] = next[empty].max(best[s]);
+                let left = j > 0 and s & 1 != 0;
+                let up_left = i > 0 and j > 0 and s & (1 << n) != 0;
+                let up_right = i > 0 and j + 1 < n and s & (1 << (n - 2)) != 0;
+                if seats[i][j] == '.' and not left and not up_left and not up_right {
+                    next[empty | 1] = next[empty | 1].max(best[s] + 1);
+                }
+            }
+            best = next;
+        }
+    }
+    best.iter().cloned().max().unwrap()
+}
+
+// ---- max_students_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_max_students(seats: Vec[Vec[char]]) -> i32 {
+        let m = seats.len();
+        let n = seats[0].len();
+        let mut valid = Vec.filled(m, 0usize);
+        for i in 0..m {
+            for j in 0..n {
+                if seats[i][j] == '.' {
+                    valid[i] |= 1 << j;
+                }
+            }
+        }
+        let mut dp = Vec.filled(m + 1, Vec.filled(1 << n, -1i32));
+        dp[0][0] = 0;
+        for i in 1..=m {
+            let v = valid[i - 1];
+            for j in 0..(1usize << n) {
+                if j & v == j and j & (j >> 1) == 0 {
+                    for k in 0..(1usize << n) {
+                        if dp[i - 1][k] != -1 and j & (k >> 1) == 0 and (j >> 1) & k == 0 {
+                            dp[i][j] = dp[i][j].max(dp[i - 1][k] + j.count_ones() as i32);
+                        }
+                    }
+                }
+            }
+        }
+        *dp[m].iter().max().unwrap()
+    }
+}
+
+fn a4_max_students(seats: Vec[Vec[char]]) -> i32 {
+    A4Solution.a4_max_students(seats)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every set of good seats tried, kept when
+// no student in it sits next to another on the left or right, or on the
+// upper left or upper right; the largest kept
+fn literal(seats: Vec[Vec[char]]) -> i32 {
+    let m = seats.len();
+    let n = seats[0].len();
+    let mut cells: Vec[(i64, i64)] = Vec.new();
+    for i in 0..m {
+        for j in 0..n {
+            if seats[i][j] == '.' {
+                cells.push((i, j));
+            }
+        }
+    }
+    // the pairs of good seats that clash: side by side, or one upper left
+    // or upper right of the other
+    let mut clashes: Vec[(i64, i64)] = Vec.new();
+    for a in 0..cells.len() {
+        for b in 0..cells.len() {
+            let (ai, aj) = cells[a];
+            let (bi, bj) = cells[b];
+            if a != b and (bi == ai or bi == ai - 1) and (bj == aj - 1 or bj == aj + 1) {
+                clashes.push((a, b));
+            }
+        }
+    }
+    let mut best = 0;
+    for set in 0..(1 << cells.len()) {
+        let mut ok = true;
+        for (a, b) in clashes.iter() {
+            if (set >> a) & 1 == 1 and (set >> b) & 1 == 1 {
+                ok = false;
+                break;
+            }
+        }
+        if ok {
+            best = best.max(set.count_ones());
+        }
+    }
+    best as i32
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, seats: Vec[Vec[char]]) -> i32 {
+    match i {
+        0 => a0_max_students(seats),
+        1 => a1_max_students(seats),
+        2 => a2_max_students(seats),
+        3 => a3_max_students(seats),
+        _ => a4_max_students(seats),
+    }
+}
+
+fn check_case(t: mut ref Tally, seats: Vec[Vec[char]], break_at: (i64, i64)) {
+    t.cases += 1;
+    let m = seats.len();
+    let n = seats[0].len();
+    let want = literal(seats);
+    t.check = (t.check * 131 + want as i64 * 17 + m * 8 + n) % 1000000007;
+    let star = a0_max_students(seats);
+    let mirrored: Vec[Vec[char]] = seats.iter().map(|r| r.iter().rev().cloned().collect()).collect();
+    let flipped: Vec[Vec[char]] = seats.iter().rev().cloned().collect();
+    let mut broken = seats.clone();
+    broken[break_at.0][break_at.1] = '#';
+    // the room cut after its first half of rows by a row of broken seats
+    let k = (m + 1) / 2;
+    let top: Vec[Vec[char]] = seats.iter().take(k).cloned().collect();
+    let bottom: Vec[Vec[char]] = seats.iter().skip(k).cloned().collect();
+    let mut cut = top.clone();
+    cut.push(Vec.filled(n, '#'));
+    for r in bottom.iter() {
+        cut.push(r.clone());
+    }
+    for i in 0..5 {
+        let got = arm(i, seats);
+        let what = f"arm {i} on {seats}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the room mirrored left to right: the same answer
+        let mr = arm(i, mirrored);
+        expect(mut t, 2, mr == got, f"P2 {what}, mirrored: {mr}");
+        // P3: the room turned front to back: a clash runs both ways, so
+        // the same answer
+        let fl = arm(i, flipped);
+        expect(mut t, 3, fl == got, f"P3 {what}, front to back: {fl}");
+        // P4: one more seat broken: one student fewer at most
+        let bk = arm(i, broken);
+        expect(mut t, 4, bk == got or bk == got - 1, f"P4 {what}, seat {break_at} broken: {bk}");
+        // P5: a row of broken seats after the first half: the halves seat
+        // their students apart
+        let ct = arm(i, cut);
+        let halves = arm(i, top) + if bottom.len() > 0 { arm(i, bottom) } else { 0 };
+        expect(mut t, 5, ct == halves, f"P5 {what}, cut: {ct}, halves {halves}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 rooms of at most 16 seats in four kinds, 500 each: 1 to 4 rows
+    // and columns with each seat good with probability 1/2; with
+    // probability 3/4; every seat good; and 1 or 2 rows of 5 to 8 seats,
+    // the constraints' widest, each good with probability 3/4. Every room
+    // is drawn before any arm answers.
+    let mut seed = 13491;
+    let mut cases: Vec[(Vec[Vec[char]], (i64, i64))] = Vec.new();
+    for c in 0..2000 {
+        let kind = c / 500;
+        let (m, n) = if kind == 3 {
+            (1 + next_random(mut seed) % 2, 5 + next_random(mut seed) % 4)
+        } else {
+            (1 + next_random(mut seed) % 4, 1 + next_random(mut seed) % 4)
+        };
+        let mut seats: Vec[Vec[char]] = Vec.new();
+        for _ in 0..m {
+            let mut r: Vec[char] = Vec.new();
+            for _ in 0..n {
+                let bad = if kind == 0 {
+                    next_random(mut seed) % 2 == 0
+                } else if kind == 2 {
+                    false
+                } else {
+                    next_random(mut seed) % 4 == 0
+                };
+                r.push(if bad { '#' } else { '.' });
+            }
+            seats.push(r);
+        }
+        let at = (next_random(mut seed) % m, next_random(mut seed) % n);
+        cases.push((seats, at));
+    }
+    for (seats, at) in cases.iter() {
+        check_case(mut t, seats, at);
+    }
+    println(f"{t.cases} rooms: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

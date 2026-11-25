@@ -1,0 +1,70 @@
+// LeetCode #1349: Maximum Students Taking Exam -- the ★ arm: a row's
+// students as a bit mask, one bit per seat; a row's mask must sit on good
+// seats with no two students side by side, and against the row in front
+// no student may sit diagonally behind another, so `mask & (prev << 1)`
+// and `mask & (prev >> 1)` must be empty. best[mask] is the most students
+// in the rows so far with the last row seated as `mask`. O(m * 4^n)
+
+fn max_students(seats: Vec[Vec[char]]) -> i32 {
+    let n = seats[0].len();
+    let full = 1 << n;
+    let mut best: Vec[i32] = Vec.filled(full, -1);
+    best[0] = 0;
+    for row in seats.iter() {
+        let mut good = 0;
+        for j in 0..n {
+            if row[j] == '.' {
+                good |= 1 << j;
+            }
+        }
+        let mut next: Vec[i32] = Vec.filled(full, -1);
+        for mask in 0..full {
+            if mask & good != mask or mask & (mask << 1) != 0 {
+                continue;
+            }
+            let here = mask.count_ones() as i32;
+            for prev in 0..full {
+                if best[prev] < 0 or mask & (prev << 1) != 0 or mask & (prev >> 1) != 0 {
+                    continue;
+                }
+                next[mask] = next[mask].max(best[prev] + here);
+            }
+        }
+        best = next;
+    }
+    best.iter().cloned().max().unwrap()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 20 rooms of 8 by 8 seats, the constraints' largest, each seat good
+    // with probability 3/4, built once; then 3000 rounds, each turning one
+    // seat of one room, both drawn from the checksum so far, from good to
+    // broken or back, and answering that room
+    let mut seed = 1349;
+    let mut rooms: Vec[Vec[Vec[char]]] = Vec.new();
+    for _ in 0..20 {
+        let mut seats: Vec[Vec[char]] = Vec.new();
+        for _ in 0..8 {
+            let mut r: Vec[char] = Vec.new();
+            for _ in 0..8 {
+                r.push(if next_random(mut seed) % 4 == 0 { '#' } else { '.' });
+            }
+            seats.push(r);
+        }
+        rooms.push(seats);
+    }
+    let mut check: i64 = 0;
+    for r in 0..3000 {
+        let k = check % 20;
+        let i = (check / 20) % 8;
+        let j = (check / 160) % 8;
+        rooms[k][i][j] = if rooms[k][i][j] == '.' { '#' } else { '.' };
+        check = (check * 31 + max_students(rooms[k]) + r) % 1000000007;
+    }
+    println(f"3000 rounds over 20 rooms of 8 by 8: checksum {check}");
+}

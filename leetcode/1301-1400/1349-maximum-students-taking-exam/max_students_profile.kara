@@ -1,0 +1,87 @@
+// LeetCode #1349: Maximum Students Taking Exam -- the profile arm: the
+// seats taken one at a time in reading order, the state the last n + 1
+// seats' occupancy, bit k the seat k + 1 back. A student may sit if the
+// seat is good and the seat to the left (1 back), up-left (n + 1 back) and
+// up-right (n - 1 back) are empty. O(m * n * 2^(n+1))
+
+fn max_students(seats: Vec[Vec[char]]) -> i32 {
+    let m = seats.len();
+    let n = seats[0].len();
+    let states = 1 << (n + 1);
+    let mut best: Vec[i32] = Vec.filled(states, -1);
+    best[0] = 0;
+    for i in 0..m {
+        for j in 0..n {
+            let mut next: Vec[i32] = Vec.filled(states, -1);
+            for s in 0..states {
+                if best[s] < 0 {
+                    continue;
+                }
+                let empty = (s << 1) & (states - 1);
+                next[empty] = next[empty].max(best[s]);
+                let left = j > 0 and s & 1 != 0;
+                let up_left = i > 0 and j > 0 and s & (1 << n) != 0;
+                let up_right = i > 0 and j + 1 < n and s & (1 << (n - 2)) != 0;
+                if seats[i][j] == '.' and not left and not up_left and not up_right {
+                    next[empty | 1] = next[empty | 1].max(best[s] + 1);
+                }
+            }
+            best = next;
+        }
+    }
+    best.iter().cloned().max().unwrap()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn grid(rows: Vec[Str]) -> Vec[Vec[char]] {
+    rows.iter().map(|r| r.chars().collect()).collect()
+}
+
+fn main() {
+    // LeetCode's three examples; one good seat; every seat broken; and
+    // 8 by 8, the constraints' largest, every seat good, and every seat
+    // good but the diagonal
+    let e1 = max_students(grid(["#.##.#", ".####.", "#.##.#"]));
+    let e2 = max_students(grid([".#", "##", "#.", "##", ".#"]));
+    let e3 = max_students(grid(["#...#", ".#.#.", "..#..", ".#.#.", "#...#"]));
+    let one = max_students(grid(["."]));
+    let none = max_students(grid(["###", "###"]));
+    let mut open: Vec[Vec[char]] = Vec.new();
+    let mut cross: Vec[Vec[char]] = Vec.new();
+    for i in 0..8 {
+        open.push(Vec.filled(8, '.'));
+        let mut r: Vec[char] = Vec.filled(8, '.');
+        r[i] = '#';
+        cross.push(r);
+    }
+    println(f"{e1} {e2} {e3} {one} {none} {max_students(open)} {max_students(cross)}");
+    // 2000 random rooms of 1 to 8 rows and columns, each seat good with
+    // probability 1/2, 3/4 or 1
+    let mut seed = 1349;
+    let mut total = 0;
+    let mut check = 0;
+    for c in 0..2000 {
+        let m = 1 + next_random(mut seed) % 8;
+        let n = 1 + next_random(mut seed) % 8;
+        let broken = if c % 3 == 0 { 2 } else if c % 3 == 1 { 4 } else { 0 };
+        let mut seats: Vec[Vec[char]] = Vec.new();
+        for _ in 0..m {
+            let mut r: Vec[char] = Vec.new();
+            for _ in 0..n {
+                let bad = broken > 0 and next_random(mut seed) % broken == 0;
+                r.push(if bad { '#' } else { '.' });
+            }
+            seats.push(r);
+        }
+        let got = max_students(seats) as i64;
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random rooms: {total} students in all, checksum {check}");
+}

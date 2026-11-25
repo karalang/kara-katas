@@ -1,0 +1,110 @@
+// LeetCode #1349: Maximum Students Taking Exam -- the matching arm: two
+// good seats clash when they are side by side or diagonal in adjacent
+// rows, and every clash joins a seat in an even column to one in an odd
+// column, so the clashes form a bipartite graph. The most students is
+// its largest independent set: the good seats less a maximum matching
+// (König), found by augmenting paths from each even-column seat (Kuhn).
+// O(V * E)
+
+fn augment(at: i64, edges: Vec[Vec[i64]], seen: mut ref Vec[bool], mate: mut ref Vec[i64]) -> bool {
+    for to in edges[at].iter() {
+        if seen[to] {
+            continue;
+        }
+        seen[to] = true;
+        if mate[to] < 0 or augment(mate[to], edges, mut seen, mut mate) {
+            mate[to] = at;
+            return true;
+        }
+    }
+    false
+}
+
+fn max_students(seats: Vec[Vec[char]]) -> i32 {
+    let m = seats.len();
+    let n = seats[0].len();
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    let mut good = 0;
+    for i in 0..m {
+        for j in 0..n {
+            let mut e: Vec[i64] = Vec.new();
+            if seats[i][j] == '.' {
+                good += 1;
+                for (di, dj) in [(0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)] {
+                    let (r, c) = (i + di, j + dj);
+                    if r >= 0 and r < m and c >= 0 and c < n and seats[r][c] == '.' {
+                        e.push(r * n + c);
+                    }
+                }
+            }
+            edges.push(e);
+        }
+    }
+    let mut mate: Vec[i64] = Vec.filled(m * n, -1);
+    let mut matched = 0;
+    for i in 0..m {
+        for j in (0..n).step_by(2) {
+            if seats[i][j] == '.' {
+                let mut seen: Vec[bool] = Vec.filled(m * n, false);
+                if augment(i * n + j, edges, mut seen, mut mate) {
+                    matched += 1;
+                }
+            }
+        }
+    }
+    good - matched
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn grid(rows: Vec[Str]) -> Vec[Vec[char]] {
+    rows.iter().map(|r| r.chars().collect()).collect()
+}
+
+fn main() {
+    // LeetCode's three examples; one good seat; every seat broken; and
+    // 8 by 8, the constraints' largest, every seat good, and every seat
+    // good but the diagonal
+    let e1 = max_students(grid(["#.##.#", ".####.", "#.##.#"]));
+    let e2 = max_students(grid([".#", "##", "#.", "##", ".#"]));
+    let e3 = max_students(grid(["#...#", ".#.#.", "..#..", ".#.#.", "#...#"]));
+    let one = max_students(grid(["."]));
+    let none = max_students(grid(["###", "###"]));
+    let mut open: Vec[Vec[char]] = Vec.new();
+    let mut cross: Vec[Vec[char]] = Vec.new();
+    for i in 0..8 {
+        open.push(Vec.filled(8, '.'));
+        let mut r: Vec[char] = Vec.filled(8, '.');
+        r[i] = '#';
+        cross.push(r);
+    }
+    println(f"{e1} {e2} {e3} {one} {none} {max_students(open)} {max_students(cross)}");
+    // 2000 random rooms of 1 to 8 rows and columns, each seat good with
+    // probability 1/2, 3/4 or 1
+    let mut seed = 1349;
+    let mut total = 0;
+    let mut check = 0;
+    for c in 0..2000 {
+        let m = 1 + next_random(mut seed) % 8;
+        let n = 1 + next_random(mut seed) % 8;
+        let broken = if c % 3 == 0 { 2 } else if c % 3 == 1 { 4 } else { 0 };
+        let mut seats: Vec[Vec[char]] = Vec.new();
+        for _ in 0..m {
+            let mut r: Vec[char] = Vec.new();
+            for _ in 0..n {
+                let bad = broken > 0 and next_random(mut seed) % broken == 0;
+                r.push(if bad { '#' } else { '.' });
+            }
+            seats.push(r);
+        }
+        let got = max_students(seats) as i64;
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random rooms: {total} students in all, checksum {check}");
+}
