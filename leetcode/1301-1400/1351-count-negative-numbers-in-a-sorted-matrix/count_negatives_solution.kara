@@ -1,0 +1,80 @@
+// LeetCode #1351: Count Negative Numbers in a Sorted Matrix -- a Rust
+// solution as LeetCode's Rust users write it (each row's negatives as
+// `row.len() - row.partition_point(|&x| x >= 0)`, mapped and summed),
+// carried to Kāra by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn count_negatives(grid: Vec[Vec[i32]]) -> i32 {
+        grid.iter()
+            .map(|row| (row.len() - row.partition_point(|x| x >= 0)) as i32)
+            .sum()
+    }
+}
+
+fn count_negatives(grid: Vec[Vec[i32]]) -> i32 {
+    Solution.count_negatives(grid)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// an m by n grid sorted in non-increasing order along every row and
+// column: each value the smaller of the one above and the one to the
+// left, less a random step from 0 to `step`, starting from `top`, kept at
+// -100 or more
+fn sorted_grid(seed: mut ref i64, m: i64, n: i64, top: i64, step: i64) -> Vec[Vec[i32]] {
+    let mut grid: Vec[Vec[i32]] = Vec.new();
+    for i in 0..m {
+        let mut row: Vec[i32] = Vec.new();
+        for j in 0..n {
+            let mut v = top;
+            if i > 0 {
+                v = v.min(grid[i - 1][j] as i64);
+            }
+            if j > 0 {
+                v = v.min(row[j - 1] as i64);
+            }
+            if i + j > 0 {
+                v -= next_random(mut seed) % (step + 1);
+            }
+            row.push(v.max(-100) as i32);
+        }
+        grid.push(row);
+    }
+    grid
+}
+
+fn main() {
+    // LeetCode's two examples; one value, negative and not; every value
+    // negative; and 100 by 100, the constraints' largest, from 100 down
+    // by steps of 0 to 2
+    let e1 = count_negatives([[4, 3, 2, -1], [3, 2, 1, -1], [1, 1, -1, -2], [-1, -1, -2, -3]]);
+    let e2 = count_negatives([[3, 2], [1, 0]]);
+    let neg = count_negatives([[-5]]);
+    let zero = count_negatives([[0]]);
+    let all = count_negatives([[-1, -2], [-3, -4], [-5, -6]]);
+    let mut seed = 1351;
+    let big = sorted_grid(mut seed, 100, 100, 100, 2);
+    println(f"{e1} {e2} {neg} {zero} {all} {count_negatives(big)}");
+    // 2000 random grids of 1 to 30 rows and columns, most of them small,
+    // from a top of -5 to 30 down by steps of 0 to 1, 0 to 3 or 0 to 20
+    let mut total = 0;
+    let mut check = 0;
+    for c in 0..2000 {
+        let small = c % 10 != 0;
+        let m = if small { 1 + next_random(mut seed) % 6 } else { 1 + next_random(mut seed) % 30 };
+        let n = if small { 1 + next_random(mut seed) % 6 } else { 1 + next_random(mut seed) % 30 };
+        let top = next_random(mut seed) % 36 - 5;
+        let step = if c % 3 == 0 { 1 } else if c % 3 == 1 { 3 } else { 20 };
+        let got = count_negatives(sorted_grid(mut seed, m, n, top, step)) as i64;
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random grids: {total} negatives in all, checksum {check}");
+}

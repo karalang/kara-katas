@@ -1,0 +1,233 @@
+// LeetCode #1351: Count Negative Numbers in a Sorted Matrix --
+// differential test of the five arms against the statement read
+// literally, with five more properties.
+//
+// The statement: given an m x n matrix grid which is sorted in
+// non-increasing order both row-wise and column-wise, return the number
+// of negative numbers in grid.
+
+// ---- count_negatives.kara ----
+fn a0_count_negatives(grid: Vec[Vec[i32]]) -> i32 {
+    let n = grid[0].len();
+    let mut row = grid.len() - 1;
+    let mut col = 0;
+    let mut count = 0;
+    while row >= 0 and col < n {
+        if grid[row][col] < 0 {
+            count += n - col;
+            row -= 1;
+        } else {
+            col += 1;
+        }
+    }
+    count as i32
+}
+
+// ---- count_negatives_search.kara ----
+fn a1_count_negatives(grid: Vec[Vec[i32]]) -> i32 {
+    let mut count = 0;
+    let mut bound = grid[0].len();
+    for row in grid.iter() {
+        let mut (lo, hi) = (0, bound);
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            if row[mid] < 0 {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        bound = lo;
+        count += row.len() - lo;
+    }
+    count as i32
+}
+
+// ---- count_negatives_cells.kara ----
+fn a2_count_negatives(grid: Vec[Vec[i32]]) -> i32 {
+    let mut count = 0;
+    for i in 0..grid.len() {
+        for j in 0..grid[i].len() {
+            if grid[i][j] < 0 {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+// ---- count_negatives_flat.kara ----
+fn a3_count_negatives(grid: Vec[Vec[i32]]) -> i32 {
+    grid.iter().flat_map(|row| row.iter()).filter(|x| x < 0).count() as i32
+}
+
+// ---- count_negatives_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_count_negatives(grid: Vec[Vec[i32]]) -> i32 {
+        grid.iter()
+            .map(|row| (row.len() - row.partition_point(|x| x >= 0)) as i32)
+            .sum()
+    }
+}
+
+fn a4_count_negatives(grid: Vec[Vec[i32]]) -> i32 {
+    A4Solution.a4_count_negatives(grid)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// an m by n grid sorted in non-increasing order along every row and
+// column: each value the smaller of the one above and the one to the
+// left, less a random step from 0 to `step`, starting from `top`, kept at
+// -100 or more
+fn sorted_grid(seed: mut ref i64, m: i64, n: i64, top: i64, step: i64) -> Vec[Vec[i32]] {
+    let mut grid: Vec[Vec[i32]] = Vec.new();
+    for i in 0..m {
+        let mut row: Vec[i32] = Vec.new();
+        for j in 0..n {
+            let mut v = top;
+            if i > 0 {
+                v = v.min(grid[i - 1][j] as i64);
+            }
+            if j > 0 {
+                v = v.min(row[j - 1] as i64);
+            }
+            if i + j > 0 {
+                v -= next_random(mut seed) % (step + 1);
+            }
+            row.push(v.max(-100) as i32);
+        }
+        grid.push(row);
+    }
+    grid
+}
+
+// the statement read literally: every number of the grid tested; the
+// order is not used
+fn literal(grid: Vec[Vec[i32]]) -> i32 {
+    let mut count = 0;
+    for row in grid.iter() {
+        for x in row.iter() {
+            if x < 0 {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+fn zeros(grid: Vec[Vec[i32]]) -> i32 {
+    let mut count = 0;
+    for row in grid.iter() {
+        for x in row.iter() {
+            if x == 0 {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, grid: Vec[Vec[i32]]) -> i32 {
+    match i {
+        0 => a0_count_negatives(grid),
+        1 => a1_count_negatives(grid),
+        2 => a2_count_negatives(grid),
+        3 => a3_count_negatives(grid),
+        _ => a4_count_negatives(grid),
+    }
+}
+
+fn check_case(t: mut ref Tally, grid: Vec[Vec[i32]]) {
+    t.cases += 1;
+    let m = grid.len();
+    let n = grid[0].len();
+    let want = literal(grid);
+    t.check = (t.check * 131 + want as i64 * 37 + m * 8 + n) % 1000000007;
+    let star = a0_count_negatives(grid);
+    let z = zeros(grid);
+    let mut transposed: Vec[Vec[i32]] = Vec.new();
+    for j in 0..n {
+        transposed.push((0..m).map(|i| grid[i][j]).collect());
+    }
+    // turned half a turn and negated: still sorted, each positive now
+    // negative
+    let turned: Vec[Vec[i32]] = grid.iter().rev().map(|r| r.iter().rev().map(|x| -x).collect()).collect();
+    let lowered: Vec[Vec[i32]] = grid.iter().map(|r| r.iter().map(|x| x - 1).collect()).collect();
+    let mut floor = grid.clone();
+    floor.push(Vec.filled(n, -100));
+    for i in 0..5 {
+        let got = arm(i, grid);
+        let what = f"arm {i} on {grid}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the grid transposed, still sorted: the same answer
+        let tr = arm(i, transposed);
+        expect(mut t, 2, tr == got, f"P2 {what}, transposed: {tr}");
+        // P3: the grid turned half a turn and negated: its negatives the
+        // old positives, so with the old negatives and the zeros, every
+        // cell once
+        let tn = arm(i, turned);
+        expect(mut t, 3, got + tn + z == (m * n) as i32, f"P3 {what}, turned and negated: {tn}");
+        // P4: every value one lower: the zeros join the negatives
+        let lw = arm(i, lowered);
+        expect(mut t, 4, lw == got + z, f"P4 {what}, lowered: {lw}");
+        // P5: a row of -100, the least value, put below: n more
+        let fl = arm(i, floor);
+        expect(mut t, 5, fl == got + n as i32, f"P5 {what}, a row of -100 below: {fl}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 grids of 1 to 6 rows and columns in four kinds, 500 each: from
+    // a top of -5 to 30 down by steps of 0 to 1; of 0 to 3; of 0 to 20; and
+    // from a top of -2 to 2 by steps of 0 to 1, many zeros. Every grid is
+    // drawn before any arm answers.
+    let mut seed = 13511;
+    let mut cases: Vec[Vec[Vec[i32]]] = Vec.new();
+    for c in 0..2000 {
+        let kind = c / 500;
+        let m = 1 + next_random(mut seed) % 6;
+        let n = 1 + next_random(mut seed) % 6;
+        let top = if kind == 3 { next_random(mut seed) % 5 - 2 } else { next_random(mut seed) % 36 - 5 };
+        let step = if kind == 1 { 3 } else if kind == 2 { 20 } else { 1 };
+        cases.push(sorted_grid(mut seed, m, n, top, step));
+    }
+    for grid in cases.iter() {
+        check_case(mut t, grid);
+    }
+    println(f"{t.cases} grids: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
