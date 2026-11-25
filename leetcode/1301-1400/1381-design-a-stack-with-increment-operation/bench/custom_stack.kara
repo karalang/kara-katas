@@ -1,0 +1,74 @@
+// LeetCode #1381: Design a Stack With Increment Operation -- the ★ arm:
+// an increment is owed to the element k places up and left there; a pop
+// pays the top element what it is owed and hands the debt down to the
+// one below, since every increment that reached the top reached it too.
+// O(1) for each call. Bench workload.
+
+struct CustomStack {
+    max_size: i64,
+    stack: Vec[i32],
+    owed: Vec[i32],
+}
+
+impl CustomStack {
+    fn new(max_size: i32) -> CustomStack {
+        CustomStack { max_size, stack: Vec.new(), owed: Vec.new() }
+    }
+
+    fn push(mut ref self, x: i32) {
+        if self.stack.len() < self.max_size {
+            self.stack.push(x);
+            self.owed.push(0);
+        }
+    }
+
+    fn pop(mut ref self) -> i32 {
+        let Some(x) = self.stack.pop() else {
+            return -1;
+        };
+        let debt = self.owed.pop().unwrap();
+        let n = self.owed.len();
+        if n > 0 {
+            self.owed[n - 1] += debt;
+        }
+        x + debt
+    }
+
+    fn increment(mut ref self, k: i32, val: i32) {
+        let reach = self.stack.len().min(k as i64);
+        if reach > 0 {
+            self.owed[reach - 1] += val;
+        }
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// 2000 rounds, each a new stack of 1000 and 3000 calls on it: four in
+// ten a push of 1 to 1000, three an increment of the bottom 1 to 1000
+// by 0 to 100, three a pop; each round's draws start from the checksum
+// so far
+fn main() {
+    let mut seed = 1381;
+    let mut check: i64 = 0;
+    for _ in 0..2000 {
+        seed = (seed + check) % 2147483648;
+        let mut s = CustomStack.new(1000);
+        for _ in 0..3000 {
+            let r = next_random(mut seed) % 10;
+            if r < 4 {
+                s.push((1 + next_random(mut seed) % 1000) as i32);
+            } else if r < 7 {
+                let k = 1 + next_random(mut seed) % 1000;
+                let val = next_random(mut seed) % 101;
+                s.increment(k as i32, val as i32);
+            } else {
+                check = (check * 131 + s.pop() + 1) % 1000000007;
+            }
+        }
+    }
+    println(f"2000 rounds of 3000 calls on a stack of 1000: checksum {check}");
+}

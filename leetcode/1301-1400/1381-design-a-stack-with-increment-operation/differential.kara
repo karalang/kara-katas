@@ -1,0 +1,412 @@
+// LeetCode #1381: Design a Stack With Increment Operation -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- custom_stack.kara ----
+struct A0CustomStack {
+    max_size: i64,
+    stack: Vec[i32],
+    owed: Vec[i32],
+}
+
+impl A0CustomStack {
+    fn new(max_size: i32) -> A0CustomStack {
+        A0CustomStack { max_size, stack: Vec.new(), owed: Vec.new() }
+    }
+
+    fn push(mut ref self, x: i32) {
+        if self.stack.len() < self.max_size {
+            self.stack.push(x);
+            self.owed.push(0);
+        }
+    }
+
+    fn pop(mut ref self) -> i32 {
+        let Some(x) = self.stack.pop() else {
+            return -1;
+        };
+        let debt = self.owed.pop().unwrap();
+        let n = self.owed.len();
+        if n > 0 {
+            self.owed[n - 1] += debt;
+        }
+        x + debt
+    }
+
+    fn increment(mut ref self, k: i32, val: i32) {
+        let reach = self.stack.len().min(k as i64);
+        if reach > 0 {
+            self.owed[reach - 1] += val;
+        }
+    }
+}
+
+// ---- custom_stack_naive.kara ----
+struct A1CustomStack {
+    max_size: i64,
+    stack: Vec[i32],
+}
+
+impl A1CustomStack {
+    fn new(max_size: i32) -> A1CustomStack {
+        A1CustomStack { max_size, stack: Vec.new() }
+    }
+
+    fn push(mut ref self, x: i32) {
+        if self.stack.len() < self.max_size {
+            self.stack.push(x);
+        }
+    }
+
+    fn pop(mut ref self) -> i32 {
+        self.stack.pop().unwrap_or(-1)
+    }
+
+    fn increment(mut ref self, k: i32, val: i32) {
+        for i in 0..self.stack.len().min(k) {
+            self.stack[i] += val;
+        }
+    }
+}
+
+// ---- custom_stack_fenwick.kara ----
+struct A2CustomStack {
+    max_size: i64,
+    stack: Vec[i32],
+    tree: Vec[i32],
+}
+
+impl A2CustomStack {
+    fn new(max_size: i32) -> A2CustomStack {
+        A2CustomStack { max_size, stack: Vec.new(), tree: Vec.filled(max_size + 2, 0) }
+    }
+
+    // add `delta` to the difference at place `at`, counted from 1
+    fn add(mut ref self, at: i64, delta: i32) {
+        let mut i = at;
+        while i < self.tree.len() {
+            self.tree[i] += delta;
+            i += i & -i;
+        }
+    }
+
+    // the raise at place `at`: the differences up to it summed
+    fn raised(self, at: i64) -> i32 {
+        let mut sum: i32 = 0;
+        let mut i = at;
+        while i > 0 {
+            sum += self.tree[i];
+            i -= i & -i;
+        }
+        sum
+    }
+
+    fn push(mut ref self, x: i32) {
+        if self.stack.len() < self.max_size {
+            self.stack.push(x);
+        }
+    }
+
+    fn pop(mut ref self) -> i32 {
+        let top = self.stack.len();
+        if top == 0 {
+            return -1;
+        }
+        let raise = self.raised(top);
+        self.add(top, -raise);
+        self.add(top + 1, raise);
+        self.stack.pop().unwrap() + raise
+    }
+
+    fn increment(mut ref self, k: i32, val: i32) {
+        let reach = self.stack.len().min(k);
+        if reach > 0 {
+            self.add(1, val);
+            self.add(reach + 1, -val);
+        }
+    }
+}
+
+// ---- custom_stack_log.kara ----
+struct A3CustomStack {
+    max_size: i64,
+    stack: Vec[(i32, i64)],
+    log: Vec[(i32, i32)],
+}
+
+impl A3CustomStack {
+    fn new(max_size: i32) -> A3CustomStack {
+        A3CustomStack { max_size, stack: Vec.new(), log: Vec.new() }
+    }
+
+    fn push(mut ref self, x: i32) {
+        if self.stack.len() < self.max_size {
+            self.stack.push((x, self.log.len()));
+        }
+    }
+
+    fn pop(mut ref self) -> i32 {
+        let place = self.stack.len();
+        let Some((x, since)) = self.stack.pop() else {
+            return -1;
+        };
+        let mut value = x;
+        for (k, val) in self.log[since..].iter() {
+            if k >= place {
+                value += val;
+            }
+        }
+        if self.stack.is_empty() {
+            self.log.clear();
+        }
+        value
+    }
+
+    fn increment(mut ref self, k: i32, val: i32) {
+        self.log.push((k, val));
+    }
+}
+
+// ---- custom_stack_solution.kara ----
+struct A4CustomStack {
+    stack: Vec[i32],
+    inc: Vec[i32],
+    max_size: i64,
+}
+
+impl A4CustomStack {
+    fn new(maxSize: i32) -> Self {
+        A4CustomStack {
+            stack: Vec.new(),
+            inc: Vec.new(),
+            max_size: maxSize,
+        }
+    }
+
+    fn push(mut ref self, x: i32) {
+        if self.stack.len() < self.max_size {
+            self.stack.push(x);
+            self.inc.push(0);
+        }
+    }
+
+    fn pop(mut ref self) -> i32 {
+        match self.stack.pop() {
+            None => -1,
+            Some(x) => {
+                let extra = self.inc.pop().unwrap();
+                if self.inc.len() > 0 {
+                    self.inc[self.inc.len() - 1] += extra;
+                }
+                x + extra
+            }
+        }
+    }
+
+    fn increment(mut ref self, k: i32, val: i32) {
+        let n = self.stack.len().min(k as i64);
+        if n > 0 {
+            self.inc[n - 1] += val;
+        }
+    }
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a session is a stack size and a list of calls: (0, x, 0) is push(x),
+// (1, 0, 0) is pop(), and (2, k, val) is increment(k, val)
+
+// the statement read literally: the stack kept as a list, and each
+// increment making a new one with the bottom k raised
+fn literal(max_size: i64, calls: Vec[(i64, i64, i64)]) -> Vec[i32] {
+    let mut stack: Vec[i64] = Vec.new();
+    let mut out: Vec[i32] = Vec.new();
+    for (op, a, b) in calls.iter() {
+        if op == 0 {
+            if stack.len() < max_size {
+                stack.push(a);
+            }
+        } else if op == 1 {
+            if stack.is_empty() {
+                out.push(-1);
+            } else {
+                out.push(stack[stack.len() - 1] as i32);
+                stack.truncate(stack.len() - 1);
+            }
+        } else {
+            stack = stack.iter().enumerate().map(|(i, v)| if i < a { v + b } else { v }).collect();
+        }
+    }
+    out
+}
+
+fn answers(i: i64, max_size: i64, calls: Vec[(i64, i64, i64)]) -> Vec[i32] {
+    let mut out: Vec[i32] = Vec.new();
+    let m = max_size as i32;
+    if i == 0 {
+        let mut s = A0CustomStack.new(m);
+        for (op, a, b) in calls.iter() {
+            if op == 0 { s.push(a as i32); } else if op == 1 { out.push(s.pop()); } else { s.increment(a as i32, b as i32); }
+        }
+    } else if i == 1 {
+        let mut s = A1CustomStack.new(m);
+        for (op, a, b) in calls.iter() {
+            if op == 0 { s.push(a as i32); } else if op == 1 { out.push(s.pop()); } else { s.increment(a as i32, b as i32); }
+        }
+    } else if i == 2 {
+        let mut s = A2CustomStack.new(m);
+        for (op, a, b) in calls.iter() {
+            if op == 0 { s.push(a as i32); } else if op == 1 { out.push(s.pop()); } else { s.increment(a as i32, b as i32); }
+        }
+    } else if i == 3 {
+        let mut s = A3CustomStack.new(m);
+        for (op, a, b) in calls.iter() {
+            if op == 0 { s.push(a as i32); } else if op == 1 { out.push(s.pop()); } else { s.increment(a as i32, b as i32); }
+        }
+    } else {
+        let mut s = A4CustomStack.new(m);
+        for (op, a, b) in calls.iter() {
+            if op == 0 { s.push(a as i32); } else if op == 1 { out.push(s.pop()); } else { s.increment(a as i32, b as i32); }
+        }
+    }
+    out
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, max_size: i64, calls: Vec[(i64, i64, i64)]) {
+    t.cases += 1;
+    let want = literal(max_size, calls);
+    t.check = (t.check * 131 + want.len() * 7 + calls.len() * 3 + max_size) % 1000000007;
+    for w in want.iter() {
+        t.check = (t.check * 131 + w as i64 + 1) % 1000000007;
+    }
+    let star = answers(0, max_size, calls);
+    // every pushed value raised by 1000
+    let raised: Vec[(i64, i64, i64)] = calls.iter().map(|(op, a, b)| if op == 0 { (op, a + 1000, b) } else { (op, a, b) }).collect();
+    let raised_want: Vec[i32] = want.iter().map(|v| if v == -1 { -1 } else { v + 1000 }).collect();
+    // every pushed value and every increment doubled
+    let doubled: Vec[(i64, i64, i64)] = calls.iter().map(|(op, a, b)| match op {
+        0 => (op, 2 * a, b),
+        2 => (op, a, 2 * b),
+        _ => (op, a, b),
+    }).collect();
+    let doubled_want: Vec[i32] = want.iter().map(|v| if v == -1 { -1 } else { 2 * v }).collect();
+    // the pushes a full stack ignores taken out, and a stack of 1000;
+    // and after every call that leaves room, a push of 1000 and a pop
+    let mut roomy: Vec[(i64, i64, i64)] = Vec.new();
+    let mut paired: Vec[(i64, i64, i64)] = Vec.new();
+    let mut paired_want: Vec[i32] = Vec.new();
+    let mut next = 0;
+    let mut size = 0;
+    for (op, a, b) in calls.iter() {
+        if op == 0 {
+            if size < max_size {
+                size += 1;
+                roomy.push((op, a, b));
+            }
+        } else {
+            roomy.push((op, a, b));
+            if op == 1 {
+                paired_want.push(want[next]);
+                next += 1;
+                if size > 0 {
+                    size -= 1;
+                }
+            }
+        }
+        paired.push((op, a, b));
+        if size < max_size {
+            paired.push((0, 1000, 0));
+            paired.push((1, 0, 0));
+            paired_want.push(1000);
+        }
+    }
+    for i in 0..5 {
+        let got = answers(i, max_size, calls);
+        let what = f"arm {i} on {max_size} {calls}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: every pushed value raised by 1000, every answer but -1 too
+        let ra = answers(i, max_size, raised);
+        expect(mut t, 2, ra == raised_want, f"P2 {what}, raised: {ra}");
+        // P3: pushes and increments doubled, every answer but -1 too
+        let db = answers(i, max_size, doubled);
+        expect(mut t, 3, db == doubled_want, f"P3 {what}, doubled: {db}");
+        // P4: the ignored pushes taken out and room for 1000: the same
+        let ro = answers(i, 1000, roomy);
+        expect(mut t, 4, ro == got, f"P4 {what}, roomy: {ro}");
+        // P5: a push of 1000 and a pop wherever there is room: 1000
+        // from each, the rest the same
+        let pa = answers(i, max_size, paired);
+        expect(mut t, 5, pa == paired_want, f"P5 {what}, paired: {pa}");
+        // P6: the ★ arm's answers
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 sessions in four kinds, 500 each: a stack of 1 to 3 and 1 to
+    // 30 calls, mostly pushes; a stack of 1 to 8 and 1 to 40 calls, mixed;
+    // the same with mostly increments; and with mostly pops. Every
+    // session is drawn before any arm answers.
+    let mut seed = 13811;
+    let mut sessions: Vec[(i64, Vec[(i64, i64, i64)])] = Vec.new();
+    // LeetCode's example
+    sessions.push((3, [(0, 1, 0), (0, 2, 0), (1, 0, 0), (0, 2, 0), (0, 3, 0), (0, 4, 0), (2, 5, 100), (2, 2, 100), (1, 0, 0), (1, 0, 0), (1, 0, 0), (1, 0, 0)]));
+    for c in 0..2000 {
+        let kind = c % 4;
+        let max_size = if kind == 0 { 1 + next_random(mut seed) % 3 } else { 1 + next_random(mut seed) % 8 };
+        let n = if kind == 0 { 1 + next_random(mut seed) % 30 } else { 1 + next_random(mut seed) % 40 };
+        let (push, pop) = match kind {
+            0 => (6, 8),
+            1 => (4, 7),
+            2 => (3, 5),
+            _ => (3, 8),
+        };
+        let mut calls: Vec[(i64, i64, i64)] = Vec.new();
+        for _ in 0..n {
+            let r = next_random(mut seed) % 10;
+            if r < push {
+                calls.push((0, 1 + next_random(mut seed) % 1000, 0));
+            } else if r < pop {
+                calls.push((1, 0, 0));
+            } else {
+                let k = 1 + next_random(mut seed) % 10;
+                calls.push((2, k, next_random(mut seed) % 101));
+            }
+        }
+        sessions.push((max_size, calls));
+    }
+    for (max_size, calls) in sessions.iter() {
+        check_case(mut t, max_size, calls);
+    }
+    println(f"{t.cases} sessions: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

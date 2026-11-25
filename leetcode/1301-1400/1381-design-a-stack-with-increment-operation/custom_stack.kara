@@ -1,0 +1,149 @@
+// LeetCode #1381: Design a Stack With Increment Operation -- the ★ arm:
+// an increment is owed to the element k places up and left there; a pop
+// pays the top element what it is owed and hands the debt down to the
+// one below, since every increment that reached the top reached it too.
+// O(1) for each call
+
+struct CustomStack {
+    max_size: i64,
+    stack: Vec[i32],
+    owed: Vec[i32],
+}
+
+impl CustomStack {
+    fn new(max_size: i32) -> CustomStack {
+        CustomStack { max_size, stack: Vec.new(), owed: Vec.new() }
+    }
+
+    fn push(mut ref self, x: i32) {
+        if self.stack.len() < self.max_size {
+            self.stack.push(x);
+            self.owed.push(0);
+        }
+    }
+
+    fn pop(mut ref self) -> i32 {
+        let Some(x) = self.stack.pop() else {
+            return -1;
+        };
+        let debt = self.owed.pop().unwrap();
+        let n = self.owed.len();
+        if n > 0 {
+            self.owed[n - 1] += debt;
+        }
+        x + debt
+    }
+
+    fn increment(mut ref self, k: i32, val: i32) {
+        let reach = self.stack.len().min(k as i64);
+        if reach > 0 {
+            self.owed[reach - 1] += val;
+        }
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(answers: Vec[i32]) -> String {
+    let parts: Vec[String] = answers.iter().map(|v| f"{v}").collect();
+    parts.join(" ")
+}
+
+fn main() {
+    // LeetCode's example
+    let mut s = CustomStack.new(3);
+    let mut answers: Vec[i32] = Vec.new();
+    s.push(1);
+    s.push(2);
+    answers.push(s.pop());
+    s.push(2);
+    s.push(3);
+    s.push(4);
+    s.increment(5, 100);
+    s.increment(2, 100);
+    for _ in 0..4 {
+        answers.push(s.pop());
+    }
+    println(show(answers));
+    // a stack of one: a push past it ignored, an increment past it
+    // reaching the one there is, a pop of nothing, an increment of
+    // nothing that no later push takes up; then a stack of three, the
+    // bottom two raised, the top popped, another pushed, and all three raised
+    let mut answers: Vec[i32] = Vec.new();
+    let mut s = CustomStack.new(1);
+    s.push(5);
+    s.push(6);
+    s.increment(1000, 100);
+    answers.push(s.pop());
+    answers.push(s.pop());
+    s.increment(3, 7);
+    s.push(4);
+    answers.push(s.pop());
+    let mut s = CustomStack.new(3);
+    s.push(1);
+    s.push(2);
+    s.push(3);
+    s.increment(2, 10);
+    answers.push(s.pop());
+    s.push(7);
+    s.increment(3, 5);
+    for _ in 0..4 {
+        answers.push(s.pop());
+    }
+    println(show(answers));
+    // the constraints' most: a stack of 1000, 1000 pushes, 1000
+    // increments of the bottom 1 to 1000 by 0 to 100, and 1000 pops
+    let mut seed = 1381;
+    let mut s = CustomStack.new(1000);
+    for _ in 0..1000 {
+        s.push((1 + next_random(mut seed) % 1000) as i32);
+    }
+    for _ in 0..1000 {
+        let k = 1 + next_random(mut seed) % 1000;
+        let val = next_random(mut seed) % 101;
+        s.increment(k as i32, val as i32);
+    }
+    let mut check: i64 = 0;
+    for _ in 0..1000 {
+        check = (check * 131 + s.pop()) % 1000000007;
+    }
+    println(f"3000 calls: checksum {check}");
+    // 2000 random sessions: a stack of 1 to 20, 1 to 100 calls, pushes,
+    // pops and increments mixed in four proportions
+    let mut check: i64 = 0;
+    let mut pops = 0;
+    let mut empty = 0;
+    for c in 0..2000 {
+        let mut s = CustomStack.new((1 + next_random(mut seed) % 20) as i32);
+        let calls = 1 + next_random(mut seed) % 100;
+        let (push, pop) = match c % 4 {
+            0 => (4, 7),
+            1 => (6, 8),
+            2 => (3, 6),
+            _ => (5, 9),
+        };
+        for _ in 0..calls {
+            let r = next_random(mut seed) % 10;
+            if r < push {
+                s.push((1 + next_random(mut seed) % 1000) as i32);
+            } else if r < pop {
+                let got = s.pop();
+                pops += 1;
+                if got == -1 {
+                    empty += 1;
+                }
+                check = (check * 131 + got + 1) % 1000000007;
+            } else {
+                let k = 1 + next_random(mut seed) % 25;
+                let val = next_random(mut seed) % 101;
+                s.increment(k as i32, val as i32);
+            }
+        }
+    }
+    println(f"2000 random sessions: {pops} pops, {empty} of an empty stack, checksum {check}");
+}
