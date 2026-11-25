@@ -1,0 +1,270 @@
+// LeetCode #1392: Longest Happy Prefix -- differential test of
+// the five arms against the statement read literally, with five more
+// properties.
+
+// ---- longest_prefix.kara ----
+fn a0_longest_prefix(s: String) -> String {
+    let b = s.bytes();
+    let n = b.len();
+    let mut border: Vec[i64] = Vec.filled(n, 0);
+    let mut k = 0;
+    for i in 1..n {
+        while k > 0 and b[i] != b[k] {
+            k = border[k - 1];
+        }
+        if b[i] == b[k] {
+            k += 1;
+        }
+        border[i] = k;
+    }
+    s[0..border[n - 1]].to_string()
+}
+
+// ---- longest_prefix_hash.kara ----
+fn a1_longest_prefix(s: String) -> String {
+    let b = s.bytes();
+    let n = b.len();
+    let modulus = 1000000007;
+    let base = 131;
+    let mut front = 0;
+    let mut back = 0;
+    let mut power = 1;
+    let mut agree: Vec[i64] = Vec.new();
+    for len in 1..n {
+        front = (front * base + b[len - 1]) % modulus;
+        back = (b[n - len] * power + back) % modulus;
+        power = power * base % modulus;
+        if front == back {
+            agree.push(len);
+        }
+    }
+    for len in agree.iter().rev() {
+        if s[0..len] == s[n - len..n] {
+            return s[0..len].to_string();
+        }
+    }
+    String.new()
+}
+
+// ---- longest_prefix_z.kara ----
+fn a2_longest_prefix(s: String) -> String {
+    let b = s.bytes();
+    let n = b.len();
+    let mut z: Vec[i64] = Vec.filled(n, 0);
+    let mut left = 0;
+    let mut right = 0;
+    for i in 1..n {
+        if i < right {
+            z[i] = (right - i).min(z[i - left]);
+        }
+        while i + z[i] < n and b[z[i]] == b[i + z[i]] {
+            z[i] += 1;
+        }
+        if i + z[i] > right {
+            left = i;
+            right = i + z[i];
+        }
+        if i + z[i] == n {
+            return s[i..n].to_string();
+        }
+    }
+    String.new()
+}
+
+// ---- longest_prefix_plain.kara ----
+fn a3_longest_prefix(s: String) -> String {
+    let n = s.len();
+    for len in (1..n).rev() {
+        if s.starts_with(s[n - len..]) {
+            return s[..len].to_string();
+        }
+    }
+    String.new()
+}
+
+// ---- longest_prefix_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_longest_prefix(s: String) -> String {
+        let s = s.bytes();
+        let n = s.len();
+        let mut lps = Vec.filled(n, 0);
+        let mut len = 0;
+        let mut i = 1;
+        while i < n {
+            if s[i] == s[len] {
+                len += 1;
+                lps[i] = len;
+                i += 1;
+            } else if len > 0 {
+                len = lps[len - 1];
+            } else {
+                lps[i] = 0;
+                i += 1;
+            }
+        }
+        String.from_utf8(s[..lps[n - 1]].to_vec()).unwrap()
+    }
+}
+
+fn a4_longest_prefix(s: String) -> String {
+    A4Solution.a4_longest_prefix(s)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letter(k: i64) -> char {
+    (97 + k) as u8 as char
+}
+
+// a string of n letters: either a random block of 1 to 8 letters repeated,
+// with one letter then changed half the time, or n random letters, from
+// the first `letters` of the alphabet
+fn drawn(n: i64, letters: i64, repeated: bool, seed: mut ref i64) -> String {
+    let mut out: Vec[char] = Vec.new();
+    if repeated {
+        let size = 1 + next_random(mut seed) % 8;
+        let block: Vec[char] = (0..size).map(|_| letter(next_random(mut seed) % letters)).collect();
+        for i in 0..n {
+            out.push(block[i % size]);
+        }
+        if next_random(mut seed) % 2 == 0 {
+            let at = next_random(mut seed) % n;
+            out[at] = letter(next_random(mut seed) % letters);
+        }
+    } else {
+        for _ in 0..n {
+            out.push(letter(next_random(mut seed) % letters));
+        }
+    }
+    out.iter().collect()
+}
+
+// the statement read literally: every length shorter than the string
+// tried, letter by letter, and the longest whose prefix is also the
+// suffix kept
+fn literal(s: String) -> String {
+    let letters: Vec[char] = s.chars().collect();
+    let n = letters.len();
+    let mut best = 0;
+    for len in 1..n {
+        let mut same = true;
+        for k in 0..len {
+            if letters[k] != letters[n - len + k] {
+                same = false;
+            }
+        }
+        if same {
+            best = len;
+        }
+    }
+    letters[0..best].iter().collect()
+}
+
+fn arm(i: i64, s: String) -> String {
+    match i {
+        0 => a0_longest_prefix(s),
+        1 => a1_longest_prefix(s),
+        2 => a2_longest_prefix(s),
+        3 => a3_longest_prefix(s),
+        _ => a4_longest_prefix(s),
+    }
+}
+
+fn reversed(s: Str) -> String {
+    s.chars().rev().collect()
+}
+
+// a, b and c renamed c, a and b, any other letter kept
+fn renamed(s: Str) -> String {
+    s.chars().map(|ch| match ch {
+        'a' => 'c',
+        'b' => 'a',
+        'c' => 'b',
+        _ => ch,
+    }).collect()
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, s: String) {
+    t.cases += 1;
+    let want = literal(s);
+    for ch in want.chars() {
+        t.check = (t.check * 131 + ch as i64) % 1000000007;
+    }
+    t.check = (t.check * 131 + want.len() * 7 + s.len()) % 1000000007;
+    let star = arm(0, s);
+    let back = reversed(s);
+    let moved = renamed(s);
+    let fenced = "z" + s + "z";
+    for i in 0..5 {
+        let got = arm(i, s);
+        let what = f"arm {i} on \"{s}\"";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal \"{want}\", got \"{got}\"");
+        // P2: shorter than the string, and both its prefix and its suffix
+        let fits = got.len() < s.len() and s.starts_with(got) and s.ends_with(got);
+        expect(mut t, 2, fits, f"P2 {what}: \"{got}\" is not a border");
+        // P3: the string reversed: the answer reversed
+        let rv = arm(i, back);
+        expect(mut t, 3, rv == reversed(got), f"P3 {what}, reversed: \"{rv}\"");
+        // P4: the letters renamed: the answer renamed
+        let rn = arm(i, moved);
+        expect(mut t, 4, rn == renamed(got), f"P4 {what}, renamed: \"{rn}\"");
+        // P5: a z, found nowhere else, put at each end: "z"
+        let fz = arm(i, fenced);
+        expect(mut t, 5, fz == "z", f"P5 {what}, between two z: \"{fz}\"");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: \"{star}\"");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    let mut cases: Vec[String] = Vec.new();
+    // LeetCode's two examples, and one letter
+    cases.push("level".to_string());
+    cases.push("ababab".to_string());
+    cases.push("a".to_string());
+    // 2000 strings of 1 to 12 letters from the first 1 to 3 of the
+    // alphabet, every other one a repeated block, so that long borders are
+    // common. Every case is drawn before any arm answers.
+    let mut seed = 13921;
+    for c in 0..2000 {
+        let n = 1 + next_random(mut seed) % 12;
+        let letters = 1 + next_random(mut seed) % 3;
+        cases.push(drawn(n, letters, c % 2 == 0, mut seed));
+    }
+    for s in cases.iter() {
+        check_case(mut t, s);
+    }
+    println(f"{t.cases} strings: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

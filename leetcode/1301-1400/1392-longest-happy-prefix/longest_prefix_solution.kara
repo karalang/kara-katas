@@ -1,0 +1,103 @@
+// LeetCode #1392: Longest Happy Prefix -- a Rust solution as LeetCode's
+// Rust users write it (`s.as_bytes()`, an `lps` table from
+// `vec![0; n]` filled by a `while` loop with `len` and `i`, and
+// `String::from_utf8(..to_vec()).unwrap()`), carried to Kāra by
+// `karac fix`
+
+struct Solution {}
+
+impl Solution {
+    pub fn longest_prefix(s: String) -> String {
+        let s = s.bytes();
+        let n = s.len();
+        let mut lps = Vec.filled(n, 0);
+        let mut len = 0;
+        let mut i = 1;
+        while i < n {
+            if s[i] == s[len] {
+                len += 1;
+                lps[i] = len;
+                i += 1;
+            } else if len > 0 {
+                len = lps[len - 1];
+            } else {
+                lps[i] = 0;
+                i += 1;
+            }
+        }
+        String.from_utf8(s[..lps[n - 1]].to_vec()).unwrap()
+    }
+}
+
+fn longest_prefix(s: String) -> String {
+    Solution.longest_prefix(s)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letter(k: i64) -> char {
+    (97 + k) as u8 as char
+}
+
+// a string of n letters: either a random block of 1 to 8 letters repeated,
+// with one letter then changed half the time, or n random letters, from
+// the first `letters` of the alphabet
+fn drawn(n: i64, letters: i64, repeated: bool, seed: mut ref i64) -> String {
+    let mut out: Vec[char] = Vec.new();
+    if repeated {
+        let size = 1 + next_random(mut seed) % 8;
+        let block: Vec[char] = (0..size).map(|_| letter(next_random(mut seed) % letters)).collect();
+        for i in 0..n {
+            out.push(block[i % size]);
+        }
+        if next_random(mut seed) % 2 == 0 {
+            let at = next_random(mut seed) % n;
+            out[at] = letter(next_random(mut seed) % letters);
+        }
+    } else {
+        for _ in 0..n {
+            out.push(letter(next_random(mut seed) % letters));
+        }
+    }
+    out.iter().collect()
+}
+
+fn main() {
+    // LeetCode's two examples; one letter; one letter four times; a
+    // border of two; none
+    let words = ["level", "ababab", "a", "aaaa", "abcab", "abcd"];
+    let shown: Vec[String] = words.iter().map(|w| f"\"{longest_prefix(w)}\"").collect();
+    println(shown.join(" "));
+    // the constraints' most, 10^5 letters: one letter throughout; one
+    // letter and a different last; a period of 7; two letters at random;
+    // a block of three letters repeated, one letter then changed
+    let mut seed = 1392;
+    let mut big: Vec[String] = Vec.new();
+    big.push("a".repeat(100000));
+    big.push("a".repeat(99999) + "b");
+    big.push("abcabca".repeat(14285) + "abcab");
+    big.push(drawn(100000, 2, false, mut seed));
+    big.push(drawn(100000, 3, true, mut seed));
+    let lengths: Vec[String] = big.iter().map(|s| f"{longest_prefix(s).len()}").collect();
+    println(f"10^5 letters: {lengths.join(" ")}");
+    // 2000 random strings of 1 to 60 letters from the first 1 to 3 of the
+    // alphabet, every other one a repeated block
+    let mut check: i64 = 0;
+    let mut total = 0;
+    for c in 0..2000 {
+        let n = 1 + next_random(mut seed) % 60;
+        let letters = 1 + next_random(mut seed) % 3;
+        let got = longest_prefix(drawn(n, letters, c % 2 == 0, mut seed));
+        total += got.len();
+        for ch in got.chars() {
+            check = (check * 131 + ch as i64) % 1000000007;
+        }
+        check = (check * 131 + got.len()) % 1000000007;
+    }
+    println(f"2000 random strings: {total} letters in all, checksum {check}");
+}
