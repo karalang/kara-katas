@@ -1,0 +1,47 @@
+// LeetCode #1374: Generate a String With Characters That Have Odd Counts
+// -- the greedy arm: each place takes the smallest letter after which
+// the rest can still be filled. The places left must give one more to
+// every letter held an even number of times, and any extra must come in
+// pairs or start a letter not yet used. O(26² n)
+
+fn generate_the_string(n: i32) -> String {
+    let mut counts: Vec[i32] = Vec.filled(26, 0);
+    let mut s = String.new();
+    for placed in 0..n {
+        let left = n - placed - 1;
+        for letter in 0..26 {
+            counts[letter] += 1;
+            let even = counts.iter().filter(|c| c > 0 and c % 2 == 0).count();
+            let unused = counts.iter().any(|c| c == 0);
+            if even <= left and ((left - even) % 2 == 0 or unused) {
+                s.push((b'a' + letter as u8) as char);
+                break;
+            }
+            counts[letter] -= 1;
+        }
+    }
+    s
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn main() {
+    // LeetCode's three examples
+    let shown: Vec[String] = [4, 2, 7].iter().map(|n| generate_the_string(n)).collect();
+    println(shown.join(" "));
+    // every n from 1 to 500, the constraints' range
+    let mut letters = 0;
+    let mut bs = 0;
+    let mut check: i64 = 0;
+    for n in 1..501 {
+        let s = generate_the_string(n);
+        letters += s.len();
+        for b in s.bytes().iter() {
+            if b == b'b' {
+                bs += 1;
+            }
+            check = (check * 131 + b as i64) % 1000000007;
+        }
+    }
+    println(f"n from 1 to 500: {letters} letters, {bs} b's, checksum {check}");
+}
