@@ -1,0 +1,277 @@
+// LeetCode #1390: Four Divisors -- differential test of
+// the five arms against the statement read literally, with five more
+// properties.
+
+// ---- sum_four_divisors.kara ----
+fn a0_sum_four_divisors(nums: Vec[i32]) -> i32 {
+    let mut total: i32 = 0;
+    for v in nums.iter() {
+        let mut count = 0;
+        let mut sum: i32 = 0;
+        let mut d: i32 = 1;
+        while d * d <= v and count <= 4 {
+            if v % d == 0 {
+                count += 1;
+                sum += d;
+                if d * d != v {
+                    count += 1;
+                    sum += v / d;
+                }
+            }
+            d += 1;
+        }
+        if count == 4 {
+            total += sum;
+        }
+    }
+    total
+}
+
+// ---- sum_four_divisors_sieve.kara ----
+fn a1_sum_four_divisors(nums: Vec[i32]) -> i32 {
+    let most = nums.iter().max().unwrap_or(1);
+    let mut least = Vec.filled(most + 1, 0);
+    for p in 2..=most {
+        if least[p] == 0 {
+            let mut k = p;
+            while k <= most {
+                if least[k] == 0 {
+                    least[k] = p;
+                }
+                k += p;
+            }
+        }
+    }
+    let mut total: i32 = 0;
+    for v in nums.iter() {
+        if v < 6 {
+            continue;
+        }
+        let p = least[v];
+        let q = v / p;
+        if q != p and least[q] == q {
+            total += 1 + p + q + v;
+        } else if q % p == 0 and q / p == p {
+            total += 1 + p + q + v;
+        }
+    }
+    total
+}
+
+// ---- sum_four_divisors_counts.kara ----
+fn a2_sum_four_divisors(nums: Vec[i32]) -> i32 {
+    let most = nums.iter().max().unwrap_or(1);
+    let mut count = Vec.filled(most + 1, 0);
+    let mut sum = Vec.filled(most + 1, 0i32);
+    for d in 1..=most {
+        let mut k = d;
+        while k <= most {
+            count[k] += 1;
+            sum[k] += d;
+            k += d;
+        }
+    }
+    let mut total: i32 = 0;
+    for v in nums.iter() {
+        if count[v] == 4 {
+            total += sum[v];
+        }
+    }
+    total
+}
+
+// ---- sum_four_divisors_memo.kara ----
+fn a3_gives(v: i32) -> i32 {
+    let mut divisors: Vec[i32] = Vec.new();
+    let mut d: i32 = 1;
+    while d * d <= v {
+        if v % d == 0 {
+            divisors.push(d);
+            if d != v / d {
+                divisors.push(v / d);
+            }
+            if divisors.len() > 4 {
+                return 0;
+            }
+        }
+        d += 1;
+    }
+    if divisors.len() == 4 { divisors.iter().sum() } else { 0 }
+}
+
+fn a3_sum_four_divisors(nums: Vec[i32]) -> i32 {
+    let mut known: Map[i32, i32] = Map.new();
+    let mut total: i32 = 0;
+    for v in nums.iter() {
+        if not known.contains_key(v) {
+            known.insert(v, a3_gives(v));
+        }
+        total += known[v];
+    }
+    total
+}
+
+// ---- sum_four_divisors_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_sum_four_divisors(nums: Vec[i32]) -> i32 {
+        let mut ans: i32 = 0;
+        for n in nums.iter() {
+            let mut cnt = 0;
+            let mut sum: i32 = 0;
+            let mut i: i32 = 1;
+            while i * i <= n {
+                if n % i == 0 {
+                    cnt += 1;
+                    sum += i;
+                    if i != n / i {
+                        cnt += 1;
+                        sum += n / i;
+                    }
+                }
+                if cnt > 4 {
+                    break;
+                }
+                i += 1;
+            }
+            if cnt == 4 {
+                ans += sum;
+            }
+        }
+        ans
+    }
+}
+
+fn a4_sum_four_divisors(nums: Vec[i32]) -> i32 {
+    A4Solution.a4_sum_four_divisors(nums)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every number from 1 to the value tried
+// as a divisor, and the sum of the divisors of each value that has
+// exactly four of them
+fn literal(nums: Vec[i32]) -> i64 {
+    let mut total = 0;
+    for v in nums.iter() {
+        let mut count = 0;
+        let mut sum = 0;
+        for d in 1..=v {
+            if v % d == 0 {
+                count += 1;
+                sum += d;
+            }
+        }
+        if count == 4 {
+            total += sum;
+        }
+    }
+    total
+}
+
+fn arm(i: i64, nums: Vec[i32]) -> i64 {
+    match i {
+        0 => a0_sum_four_divisors(nums),
+        1 => a1_sum_four_divisors(nums),
+        2 => a2_sum_four_divisors(nums),
+        3 => a3_sum_four_divisors(nums),
+        _ => a4_sum_four_divisors(nums),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, nums: Vec[i32]) {
+    t.cases += 1;
+    let want = literal(nums);
+    t.check = (t.check * 131 + want * 7 + nums.len()) % 1000000007;
+    let star = arm(0, nums);
+    let reversed: Vec[i32] = nums.iter().rev().collect();
+    let mut twice = nums.clone();
+    twice.extend(nums.iter());
+    let mut with_six = nums.clone();
+    with_six.push(6);
+    let half = (nums.len() + 1) / 2;
+    let front: Vec[i32] = nums.iter().take(half).collect();
+    let back: Vec[i32] = nums.iter().skip(half).collect();
+    for i in 0..5 {
+        let got = arm(i, nums);
+        let what = f"arm {i} on {nums}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the values in reverse order: the same
+        let rv = arm(i, reversed);
+        expect(mut t, 2, rv == got, f"P2 {what}, reversed: {rv}");
+        // P3: the values written twice: twice as much
+        let tw = arm(i, twice);
+        expect(mut t, 3, tw == 2 * got, f"P3 {what}, twice: {tw}");
+        // P4: a 6 added, whose divisors 1, 2, 3 and 6 make 12: 12 more
+        let six = arm(i, with_six);
+        expect(mut t, 4, six == got + 12, f"P4 {what}, with 6: {six}");
+        // P5: the front half and the back half answered apart: the same
+        // in sum (a list of one value is its own front)
+        let parts = arm(i, front) + if back.is_empty() { 0 } else { arm(i, back) };
+        expect(mut t, 5, parts == got, f"P5 {what}, in halves: {parts}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    let mut cases: Vec[Vec[i32]] = Vec.new();
+    // LeetCode's three examples
+    cases.push([21, 4, 7]);
+    cases.push([21, 21]);
+    cases.push([1, 2, 3, 4, 5]);
+    // 2000 lists of 1 to 12 values: up to 3000, or up to 60 with the
+    // cubes of primes and the squares of primes thrown in, so that four
+    // divisors, three and five are all common. Every case is drawn
+    // before any arm answers.
+    let near: Vec[i32] = [8, 27, 125, 343, 1331, 2197, 4, 9, 25, 49, 121, 16, 81, 625];
+    let mut seed = 13901;
+    for c in 0..2000 {
+        let n = 1 + next_random(mut seed) % 12;
+        let nums: Vec[i32] = (0..n).map(|_| {
+            if c % 2 == 0 {
+                (1 + next_random(mut seed) % 3000) as i32
+            } else if next_random(mut seed) % 3 == 0 {
+                near[next_random(mut seed) % near.len()]
+            } else {
+                (1 + next_random(mut seed) % 60) as i32
+            }
+        }).collect();
+        cases.push(nums);
+    }
+    for nums in cases.iter() {
+        check_case(mut t, nums);
+    }
+    println(f"{t.cases} lists: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

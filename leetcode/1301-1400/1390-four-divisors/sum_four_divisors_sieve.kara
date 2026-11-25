@@ -1,0 +1,71 @@
+// LeetCode #1390: Four Divisors -- a smallest-prime-factor sieve up to
+// the largest value: a value has exactly four divisors when it is p q
+// for two different primes, or p^3 for one; then they are 1, p, q and
+// p q, or 1, p, p^2 and p^3. O(m log log m + n) for n values up to m
+
+fn sum_four_divisors(nums: Vec[i32]) -> i32 {
+    let most = nums.iter().max().unwrap_or(1);
+    let mut least = Vec.filled(most + 1, 0);
+    for p in 2..=most {
+        if least[p] == 0 {
+            let mut k = p;
+            while k <= most {
+                if least[k] == 0 {
+                    least[k] = p;
+                }
+                k += p;
+            }
+        }
+    }
+    let mut total: i32 = 0;
+    for v in nums.iter() {
+        if v < 6 {
+            continue;
+        }
+        let p = least[v];
+        let q = v / p;
+        if q != p and least[q] == q {
+            total += 1 + p + q + v;
+        } else if q % p == 0 and q / p == p {
+            total += 1 + p + q + v;
+        }
+    }
+    total
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples; a cube of a prime; a square of a prime,
+    // with three divisors; and the constraints' largest value
+    let mut shown: Vec[String] = Vec.new();
+    shown.push(f"{sum_four_divisors([21, 4, 7])}");
+    shown.push(f"{sum_four_divisors([21, 21])}");
+    shown.push(f"{sum_four_divisors([1, 2, 3, 4, 5])}");
+    shown.push(f"{sum_four_divisors([8, 27])}");
+    shown.push(f"{sum_four_divisors([49])}");
+    shown.push(f"{sum_four_divisors([100000])}");
+    println(shown.join(" "));
+    // the constraints' most: 10^4 values up to 10^5, and the largest 10^4
+    let mut seed = 1390;
+    let wide: Vec[i32] = (0..10000).map(|_| (1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000) as i32).collect();
+    let top: Vec[i32] = (90001..100001).map(|v| v as i32).collect();
+    println(f"10^4 values: {sum_four_divisors(wide)}, and {sum_four_divisors(top)} for 90001 to 10^5");
+    // 2000 random lists of 1 to 50 values, up to 10^5 or up to 100
+    let mut check: i64 = 0;
+    let mut total: i64 = 0;
+    for c in 0..2000 {
+        let n = 1 + next_random(mut seed) % 50;
+        let most = if c % 2 == 0 { 100000 } else { 100 };
+        let nums: Vec[i32] = (0..n).map(|_| (1 + next_random(mut seed) % most) as i32).collect();
+        let got = sum_four_divisors(nums);
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random lists: {total} in all, checksum {check}");
+}

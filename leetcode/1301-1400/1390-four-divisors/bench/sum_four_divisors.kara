@@ -1,0 +1,49 @@
+// LeetCode #1390 bench: the ★ arm (trial division up to the square root,
+// given up once past four divisors) over 10^4 values up to 10^5, one
+// value changed before each of 300 rounds.
+
+fn sum_four_divisors(nums: Vec[i32]) -> i32 {
+    let mut total: i32 = 0;
+    for v in nums.iter() {
+        let mut count = 0;
+        let mut sum: i32 = 0;
+        let mut d: i32 = 1;
+        while d * d <= v and count <= 4 {
+            if v % d == 0 {
+                count += 1;
+                sum += d;
+                if d * d != v {
+                    count += 1;
+                    sum += v / d;
+                }
+            }
+            d += 1;
+        }
+        if count == 4 {
+            total += sum;
+        }
+    }
+    total
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let n = 10000;
+    let mut seed = 1390;
+    let mut nums: Vec[i32] = Vec.new();
+    for _ in 0..n {
+        nums.push((1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000) as i32);
+    }
+    let mut check: i64 = 0;
+    for _ in 0..300 {
+        seed = (seed + check) % 2147483648;
+        let i = next_random(mut seed) % n;
+        nums[i] = (1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000) as i32;
+        check = (check * 131 + sum_four_divisors(nums)) % 1000000007;
+    }
+    println(f"300 rounds over 10^4 values up to 10^5: checksum {check}");
+}
