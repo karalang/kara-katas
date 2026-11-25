@@ -1,0 +1,293 @@
+// LeetCode #1353: Maximum Number of Events That Can Be Attended --
+// differential test of the five arms against the statement read
+// literally, with five more properties.
+//
+// The statement: events[i] = [startDay, endDay]; an event can be attended
+// on any day d with startDay <= d <= endDay, and only one event can be
+// attended on a day. Return the maximum number of events that can be
+// attended.
+
+// ---- max_events.kara ----
+fn a0_max_events(events: Vec[Vec[i32]]) -> i32 {
+    let mut by_start = events.clone();
+    by_start.sort_by_key(|e| e[0]);
+    let mut ends: PriorityQueue[i32] = PriorityQueue.new();
+    let mut next = 0;
+    let mut attended = 0;
+    let mut day = 1;
+    while next < by_start.len() or not ends.is_empty() {
+        if ends.is_empty() and by_start[next][0] > day {
+            day = by_start[next][0];
+        }
+        while next < by_start.len() and by_start[next][0] == day {
+            ends.push(by_start[next][1]);
+            next += 1;
+        }
+        while let Some(end) = ends.peek() {
+            if end >= day {
+                break;
+            }
+            ends.pop();
+        }
+        if not ends.is_empty() {
+            ends.pop();
+            attended += 1;
+        }
+        day += 1;
+    }
+    attended
+}
+
+// ---- max_events_dsu.kara ----
+fn a1_first_free(next: mut ref Vec[i64], day: i64) -> i64 {
+    let mut d = day;
+    while next[d] != d {
+        next[d] = next[next[d]];
+        d = next[d];
+    }
+    d
+}
+
+fn a1_max_events(events: Vec[Vec[i32]]) -> i32 {
+    let mut by_end = events.clone();
+    by_end.sort_by_key(|e| e[1]);
+    let last = by_end[by_end.len() - 1][1] as i64;
+    let mut next: Vec[i64] = (0..last + 2).collect();
+    let mut attended = 0;
+    for e in by_end.iter() {
+        let d = a1_first_free(mut next, e[0]);
+        if d <= e[1] {
+            attended += 1;
+            next[d] = d + 1;
+        }
+    }
+    attended
+}
+
+// ---- max_events_sorted.kara ----
+fn a2_max_events(events: Vec[Vec[i32]]) -> i32 {
+    let mut by_end = events.clone();
+    by_end.sort_by_key(|e| e[1]);
+    let last = by_end[by_end.len() - 1][1];
+    let mut free: SortedSet[i32] = (1..last + 1).collect();
+    let mut attended = 0;
+    for e in by_end.iter() {
+        if let Some(d) = free.range_inclusive(e[0], e[1]).next() {
+            free.remove(d);
+            attended += 1;
+        }
+    }
+    attended
+}
+
+// ---- max_events_tree.kara ----
+fn a3_find(free: Vec[i32], at: i64, lo: i64, hi: i64, from: i64) -> i64 {
+    if hi <= from or free[at] == 0 {
+        return -1;
+    }
+    if hi - lo == 1 {
+        return lo;
+    }
+    let mid = (lo + hi) / 2;
+    let left = a3_find(free, 2 * at, lo, mid, from);
+    if left >= 0 {
+        return left;
+    }
+    a3_find(free, 2 * at + 1, mid, hi, from)
+}
+
+fn a3_max_events(events: Vec[Vec[i32]]) -> i32 {
+    let mut by_end = events.clone();
+    by_end.sort_by_key(|e| e[1]);
+    let mut days = 1;
+    while days <= by_end[by_end.len() - 1][1] {
+        days *= 2;
+    }
+    let mut free: Vec[i32] = Vec.filled(2 * days, 0);
+    for d in 0..days {
+        free[days + d] = 1;
+    }
+    let mut at = days - 1;
+    while at >= 1 {
+        free[at] = free[2 * at] + free[2 * at + 1];
+        at -= 1;
+    }
+    let mut attended = 0;
+    for e in by_end.iter() {
+        let d = a3_find(free, 1, 0, days, e[0]);
+        if d >= 0 and d <= e[1] {
+            attended += 1;
+            let mut at = days + d;
+            while at >= 1 {
+                free[at] -= 1;
+                at /= 2;
+            }
+        }
+    }
+    attended
+}
+
+// ---- max_events_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_max_events(events: own Vec[Vec[i32]]) -> i32 {
+        let mut events = events;
+        events.sort();
+        let mut heap = PriorityQueue.new();
+        let mut i = 0;
+        let n = events.len();
+        let mut ans = 0;
+        let last_day = events.iter().map(|e| e[1]).max().unwrap();
+        for day in 1..=last_day {
+            while i < n and events[i][0] == day {
+                heap.push(events[i][1]);
+                i += 1;
+            }
+            while let Some(end) = heap.peek().cloned() { if not (end < day) { break; }
+                heap.pop();
+            }
+            if heap.pop().is_some() {
+                ans += 1;
+            }
+        }
+        ans
+    }
+}
+
+fn a4_max_events(events: own Vec[Vec[i32]]) -> i32 {
+    A4Solution.a4_max_events(events)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: each event in turn either missed or
+// attended on one of its days no other event has taken, every way tried
+fn most(events: Vec[Vec[i32]], i: i64, taken: mut ref Vec[bool]) -> i32 {
+    if i == events.len() {
+        return 0;
+    }
+    let mut best = most(events, i + 1, mut taken);
+    for d in events[i][0]..events[i][1] + 1 {
+        if not taken[d] {
+            taken[d] = true;
+            best = best.max(1 + most(events, i + 1, mut taken));
+            taken[d] = false;
+        }
+    }
+    best
+}
+
+fn literal(events: Vec[Vec[i32]]) -> i32 {
+    let last = events.iter().map(|e| e[1]).max().unwrap();
+    let mut taken: Vec[bool] = Vec.filled(last + 1, false);
+    most(events, 0, mut taken)
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, events: Vec[Vec[i32]]) -> i32 {
+    match i {
+        0 => a0_max_events(events),
+        1 => a1_max_events(events),
+        2 => a2_max_events(events),
+        3 => a3_max_events(events),
+        _ => a4_max_events(events.clone()),
+    }
+}
+
+fn check_case(t: mut ref Tally, events: Vec[Vec[i32]]) {
+    t.cases += 1;
+    let want = literal(events);
+    t.check = (t.check * 131 + want as i64 * 7 + events.len()) % 1000000007;
+    let star = a0_max_events(events);
+    let last = events.iter().map(|e| e[1]).max().unwrap();
+    let backwards: Vec[Vec[i32]] = events.iter().rev().cloned().collect();
+    let later: Vec[Vec[i32]] = events.iter().map(|e| [e[0] + 1000, e[1] + 1000]).collect();
+    // time run backwards: day d becomes day last + 1 - d
+    let mirrored: Vec[Vec[i32]] = events.iter().map(|e| [last + 1 - e[1], last + 1 - e[0]]).collect();
+    let mut doubled = events.clone();
+    doubled.push(events[0].clone());
+    for i in 0..5 {
+        let got = arm(i, events);
+        let what = f"arm {i} on {events}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the events in the opposite order: the same answer
+        let bw = arm(i, backwards);
+        expect(mut t, 2, bw == got, f"P2 {what}, backwards: {bw}");
+        // P3: every day 1000 later: the same answer
+        let lt = arm(i, later);
+        expect(mut t, 3, lt == got, f"P3 {what}, 1000 days later: {lt}");
+        // P4: time run backwards: the same answer
+        let mr = arm(i, mirrored);
+        expect(mut t, 4, mr == got, f"P4 {what}, time reversed: {mr}");
+        // P5: the first event held twice: the same answer or one more
+        let db = arm(i, doubled);
+        expect(mut t, 5, db == got or db == got + 1, f"P5 {what}, the first twice: {db}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 sets of 1 to 6 events in four kinds, 500 each: starting on day
+    // 1 to 3 and lasting up to 2 days, crowded; each a single day from 1
+    // to 6; starting on day 1 to 6 and lasting up to 6 days; and every
+    // event from day 1 to 1, 2 or 3, all the same choice. Every set is
+    // drawn before any arm answers.
+    let mut seed = 13531;
+    let mut cases: Vec[Vec[Vec[i32]]] = Vec.new();
+    for c in 0..2000 {
+        let kind = c / 500;
+        let n = 1 + next_random(mut seed) % 6;
+        let mut events: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..n {
+            let (s, e) = if kind == 0 {
+                let s = 1 + next_random(mut seed) % 3;
+                (s, s + next_random(mut seed) % 2)
+            } else if kind == 1 {
+                let s = 1 + next_random(mut seed) % 6;
+                (s, s)
+            } else if kind == 2 {
+                let s = 1 + next_random(mut seed) % 6;
+                (s, s + next_random(mut seed) % 6)
+            } else {
+                (1, 1 + c % 3)
+            };
+            events.push([s as i32, e as i32]);
+        }
+        cases.push(events);
+    }
+    for events in cases.iter() {
+        check_case(mut t, events);
+    }
+    println(f"{t.cases} sets: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

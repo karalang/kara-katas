@@ -1,0 +1,85 @@
+// LeetCode #1353: Maximum Number of Events That Can Be Attended -- a Rust
+// solution as LeetCode's Rust users write it (`events.sort_unstable()`, a
+// `BinaryHeap` of `Reverse(end)`, a loop over `1..=last_day`, and the
+// expired ends dropped by the let-chain `while let Some(&Reverse(end)) =
+// heap.peek() && end < day`), carried to Kāra by `karac fix`. Kāra's
+// `PriorityQueue` pops the smallest first, so the `Reverse` goes, and the
+// let-chain becomes a guard that leaves the loop (B-2026-11-21-71).
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_events(events: own Vec[Vec[i32]]) -> i32 {
+        let mut events = events;
+        events.sort();
+        let mut heap = PriorityQueue.new();
+        let mut i = 0;
+        let n = events.len();
+        let mut ans = 0;
+        let last_day = events.iter().map(|e| e[1]).max().unwrap();
+        for day in 1..=last_day {
+            while i < n and events[i][0] == day {
+                heap.push(events[i][1]);
+                i += 1;
+            }
+            while let Some(end) = heap.peek().cloned() { if not (end < day) { break; }
+                heap.pop();
+            }
+            if heap.pop().is_some() {
+                ans += 1;
+            }
+        }
+        ans
+    }
+}
+
+fn max_events(events: own Vec[Vec[i32]]) -> i32 {
+    Solution.max_events(events)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n events starting from day 1 to `days`, each lasting 1 to `span` days
+// and ending by day 10^5
+fn random_events(seed: mut ref i64, n: i64, days: i64, span: i64) -> Vec[Vec[i32]] {
+    let mut events: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..n {
+        let start = 1 + next_random(mut seed) % days;
+        let end = (start + next_random(mut seed) % span).min(100000);
+        events.push([start as i32, end as i32]);
+    }
+    events
+}
+
+fn main() {
+    // LeetCode's two examples; one event; three events of the same one
+    // day; and 10^5 events, the constraints' most: all on day 10^5, all
+    // over the whole 10^5 days, and at random
+    let e1 = max_events([[1, 2], [2, 3], [3, 4]]);
+    let e2 = max_events([[1, 2], [2, 3], [3, 4], [1, 2]]);
+    let one = max_events([[5, 5]]);
+    let same = max_events([[7, 7], [7, 7], [7, 7]]);
+    let last: Vec[Vec[i32]] = (0..100000).map(|_| [100000, 100000]).collect();
+    let whole: Vec[Vec[i32]] = (0..100000).map(|_| [1, 100000]).collect();
+    let mut seed = 1353;
+    let random = random_events(mut seed, 100000, 100000, 50);
+    println(f"{e1} {e2} {one} {same} {max_events(last)} {max_events(whole)} {max_events(random)}");
+    // 2000 random sets of 1 to 300 events, most of them few, crowded
+    // into 10 days or spread over 1000, lasting up to 1, 5 or 100 days
+    let mut total = 0;
+    let mut check = 0;
+    for c in 0..2000 {
+        let n = if c % 10 == 0 { 1 + next_random(mut seed) % 300 } else { 1 + next_random(mut seed) % 12 };
+        let days = if c % 2 == 0 { 10 } else { 1000 };
+        let span = if c % 3 == 0 { 1 } else if c % 3 == 1 { 5 } else { 100 };
+        let got = max_events(random_events(mut seed, n, days, span)) as i64;
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random sets: {total} events attended in all, checksum {check}");
+}
