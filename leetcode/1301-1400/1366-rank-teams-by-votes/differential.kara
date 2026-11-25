@@ -1,0 +1,294 @@
+// LeetCode #1366: Rank Teams by Votes -- differential test of the
+// five arms against the statement read literally, with five more
+// properties.
+//
+// The statement: each voter ranks every team; teams are ordered by who
+// got the most first-place votes; a tie there is resolved by second
+// places, and so on through every place; teams still tied are ranked
+// alphabetically. Return the teams as a string in that order.
+
+// ---- rank_teams.kara ----
+fn a0_rank_teams(votes: Vec[String]) -> String {
+    let places = votes[0].len();
+    let mut counts: Vec[Vec[i64]] = Vec.filled(26, Vec.filled(places, 0));
+    for vote in votes.iter() {
+        for (place, team) in vote.bytes().iter().enumerate() {
+            counts[team - b'A'][place] += 1;
+        }
+    }
+    let mut teams: Vec[u8] = votes[0].bytes().iter().collect();
+    teams.sort_by(|a, b| counts[b - b'A'].cmp(counts[a - b'A']).then(a.cmp(b)));
+    String.from_utf8(teams).unwrap()
+}
+
+// ---- rank_teams_keys.kara ----
+fn a1_rank_teams(votes: Vec[String]) -> String {
+    let places = votes[0].len();
+    let total = votes.len();
+    let mut keys: Vec[String] = Vec.new();
+    for team in votes[0].chars() {
+        let mut key = String.new();
+        for place in 0..places {
+            let got = votes.iter().filter(|vote| vote.chars().nth(place) == Some(team)).count();
+            key += f"{total - got:04}";
+        }
+        key.push(team);
+        keys.push(key);
+    }
+    keys.sort();
+    keys.iter().map(|key| key.chars().last().unwrap()).collect()
+}
+
+// ---- rank_teams_insertion.kara ----
+fn a2_ahead(counts: Vec[Vec[i64]], a: u8, b: u8) -> bool {
+    let (x, y) = (ref counts[a - b'A'], ref counts[b - b'A']);
+    for place in 0..x.len() {
+        if x[place] != y[place] {
+            return x[place] > y[place];
+        }
+    }
+    a < b
+}
+
+fn a2_rank_teams(votes: Vec[String]) -> String {
+    let places = votes[0].len();
+    let mut counts: Vec[Vec[i64]] = Vec.filled(26, Vec.filled(places, 0));
+    for vote in votes.iter() {
+        let bytes = vote.bytes();
+        for place in 0..places {
+            counts[bytes[place] - b'A'][place] += 1;
+        }
+    }
+    let mut order: Vec[u8] = Vec.new();
+    for team in votes[0].bytes().iter() {
+        let mut at = order.len();
+        order.push(team);
+        while at > 0 and a2_ahead(counts, team, order[at - 1]) {
+            order[at] = order[at - 1];
+            at -= 1;
+        }
+        order[at] = team;
+    }
+    String.from_utf8(order).unwrap()
+}
+
+// ---- rank_teams_beaten.kara ----
+fn a3_rank_teams(votes: Vec[String]) -> String {
+    let teams: Vec[char] = votes[0].chars().collect();
+    let places = teams.len();
+    let mut counts: Map[char, Vec[i64]] = Map.new();
+    for team in teams.iter() {
+        counts.insert(team, Vec.filled(places, 0));
+    }
+    for vote in votes.iter() {
+        for (place, team) in vote.chars().enumerate() {
+            counts.get_mut(team).unwrap()[place] += 1;
+        }
+    }
+    let mut ahead_of: Vec[i64] = Vec.filled(places, 0);
+    for i in 0..places {
+        for j in i + 1..places {
+            let (a, b) = (ref counts[teams[i]], ref counts[teams[j]]);
+            let mut i_first = teams[i] < teams[j];
+            for place in 0..places {
+                if a[place] != b[place] {
+                    i_first = a[place] > b[place];
+                    break;
+                }
+            }
+            if i_first {
+                ahead_of[j] += 1;
+            } else {
+                ahead_of[i] += 1;
+            }
+        }
+    }
+    let mut ranked: Vec[char] = Vec.filled(places, ' ');
+    for i in 0..places {
+        ranked[ahead_of[i]] = teams[i];
+    }
+    ranked.iter().collect()
+}
+
+// ---- rank_teams_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_rank_teams(votes: Vec[String]) -> String {
+        let n = votes[0].len();
+        let mut cnt = Vec.filled(26, Vec.filled(n, 0));
+        for v in ref votes {
+            for (i, c) in v.chars().enumerate() {
+                cnt[(c as u32 as u8 - b'A') as usize][i] += 1;
+            }
+        }
+        let mut teams: Vec[char] = votes[0].chars().collect();
+        teams.sort_by(|a, b| {
+            let (x, y) = ((a as u32 as u8 - b'A') as usize, (b as u32 as u8 - b'A') as usize);
+            cnt[y].cmp(cnt[x]).then(a.cmp(b))
+        });
+        teams.into_iter().collect()
+    }
+}
+
+fn a4_rank_teams(votes: Vec[String]) -> String {
+    A4Solution.a4_rank_teams(votes)
+}
+
+// ---- the differential -------------------------------------------------------
+
+// the teams of `group` put in order from place `place` on: split by how
+// many votes each got in that place, most first, each part ordered by
+// the places after it, and teams tied through every place by letter
+fn order_from(votes: Vec[String], group: Vec[char], place: i64) -> Vec[char] {
+    if group.len() <= 1 {
+        return group.clone();
+    }
+    if place == votes[0].len() {
+        let mut by_letter = group.clone();
+        by_letter.sort();
+        return by_letter;
+    }
+    let got = |team: char| votes.iter().filter(|vote| vote.chars().nth(place) == Some(team)).count();
+    let mut levels: Vec[i64] = group.iter().map(|team| got(team)).collect();
+    levels.sort();
+    levels.dedup();
+    levels.reverse();
+    let mut out: Vec[char] = Vec.new();
+    for level in levels {
+        let part: Vec[char] = group.iter().filter(|team| got(team) == level).collect();
+        out.extend(order_from(votes, part, place + 1));
+    }
+    out
+}
+
+// the statement read literally: the most first places first, ties
+// resolved by the next place, and so on, then by letter
+fn literal(votes: Vec[String]) -> String {
+    let teams: Vec[char] = votes[0].chars().collect();
+    order_from(votes, teams, 0).iter().collect()
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, votes: Vec[String]) -> String {
+    match i {
+        0 => a0_rank_teams(votes),
+        1 => a1_rank_teams(votes),
+        2 => a2_rank_teams(votes),
+        3 => a3_rank_teams(votes),
+        _ => a4_rank_teams(votes),
+    }
+}
+
+// every team renamed by the letter at the same rank in `to`, so that
+// alphabetical order is kept
+fn renamed(text: Str, from: Vec[char], to: Vec[char]) -> String {
+    text.chars().map(|c| to[from.iter().position(|f| f == c).unwrap()]).collect()
+}
+
+fn check_case(t: mut ref Tally, votes: Vec[String]) {
+    t.cases += 1;
+    let want = literal(votes);
+    t.check = (t.check * 131 + votes.len()) % 1000000007;
+    for b in want.bytes() {
+        t.check = (t.check * 31 + b) % 1000000007;
+    }
+    let reversed: Vec[String] = votes.iter().rev().cloned().collect();
+    let mut doubled = votes.clone();
+    doubled.extend(votes.clone());
+    // the teams in letter order, and the alphabet's last ones in the same
+    // order to rename them by
+    let mut from: Vec[char] = votes[0].chars().collect();
+    from.sort();
+    let to: Vec[char] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".chars().skip(26 - from.len()).collect();
+    let moved: Vec[String] = votes.iter().map(|vote| renamed(vote, from, to)).collect();
+    let star = arm(0, votes);
+    for i in 0..5 {
+        let got = arm(i, votes);
+        let what = f"arm {i} at {votes}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the votes counted in the opposite order, the same ranking
+        expect(mut t, 2, arm(i, reversed) == got, f"P2 {what}, reversed");
+        // P3: the teams renamed in the same letter order, the ranking
+        // renamed
+        expect(mut t, 3, arm(i, moved) == renamed(got, from, to), f"P3 {what}, renamed");
+        // P4: every vote cast twice, the same ranking
+        expect(mut t, 4, arm(i, doubled) == got, f"P4 {what}, doubled");
+        // P5: one more vote in the ranking's own order, the same ranking
+        let mut agreed = votes.clone();
+        agreed.push(got.clone());
+        expect(mut t, 5, arm(i, agreed) == got, f"P5 {what}, {got} added");
+        // P6: the ★ arm's ranking
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the letters shuffled into a new order
+fn shuffled(letters: Vec[char], seed: mut ref i64) -> Vec[char] {
+    let mut out = letters.clone();
+    for i in 1..out.len() {
+        let j = next_random(mut seed) % (i + 1);
+        let held = out[i];
+        out[i] = out[j];
+        out[j] = held;
+    }
+    out
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edge cases above; then 1500 random
+    // elections of up to 4 teams, where ties are common, and 500 of up to
+    // 26, each with up to 40 votes
+    let fixed: Vec[Vec[String]] = [
+        ["ABC", "ACB", "ABC", "ACB", "ACB"],
+        ["WXYZ", "XYZW"],
+        ["ZMNAGUEDSJYLBOPHRQICWFXTVK"],
+        ["BCA", "CAB", "CBA", "ABC", "ACB", "BAC"],
+        ["M", "M", "M", "M"],
+    ];
+    for votes in fixed {
+        check_case(mut t, votes);
+    }
+    let mut seed = 1366;
+    let alphabet: Vec[char] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".chars().collect();
+    for k in 0..2000 {
+        let teams = 1 + next_random(mut seed) % if k < 1500 { 4 } else { 26 };
+        let count = 1 + next_random(mut seed) % 40;
+        let chosen: Vec[char] = shuffled(alphabet, mut seed).iter().take(teams).collect();
+        let mut votes: Vec[String] = Vec.new();
+        for _ in 0..count {
+            votes.push(shuffled(chosen, mut seed).iter().collect());
+        }
+        check_case(mut t, votes);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

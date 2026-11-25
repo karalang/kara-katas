@@ -1,0 +1,93 @@
+// LeetCode #1366: Rank Teams by Votes -- the insertion arm: the places
+// counted as in the ★ arm, then the teams put in order by insertion, one
+// team ahead of another when, at the first place where their counts
+// differ, it has more, or at no such place, its letter comes first.
+// O(V T + T³)
+fn ahead(counts: Vec[Vec[i64]], a: u8, b: u8) -> bool {
+    let (x, y) = (ref counts[a - b'A'], ref counts[b - b'A']);
+    for place in 0..x.len() {
+        if x[place] != y[place] {
+            return x[place] > y[place];
+        }
+    }
+    a < b
+}
+
+fn rank_teams(votes: Vec[String]) -> String {
+    let places = votes[0].len();
+    let mut counts: Vec[Vec[i64]] = Vec.filled(26, Vec.filled(places, 0));
+    for vote in votes.iter() {
+        let bytes = vote.bytes();
+        for place in 0..places {
+            counts[bytes[place] - b'A'][place] += 1;
+        }
+    }
+    let mut order: Vec[u8] = Vec.new();
+    for team in votes[0].bytes().iter() {
+        let mut at = order.len();
+        order.push(team);
+        while at > 0 and ahead(counts, team, order[at - 1]) {
+            order[at] = order[at - 1];
+            at -= 1;
+        }
+        order[at] = team;
+    }
+    String.from_utf8(order).unwrap()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the letters shuffled into a new order
+fn shuffled(letters: Vec[char], seed: mut ref i64) -> Vec[char] {
+    let mut out = letters.clone();
+    for i in 1..out.len() {
+        let j = next_random(mut seed) % (i + 1);
+        let held = out[i];
+        out[i] = out[j];
+        out[j] = held;
+    }
+    out
+}
+
+fn main() {
+    // LeetCode's three examples; every order of three teams once, all
+    // tied; one team
+    let examples: Vec[Vec[String]] = [
+        ["ABC", "ACB", "ABC", "ACB", "ACB"],
+        ["WXYZ", "XYZW"],
+        ["ZMNAGUEDSJYLBOPHRQICWFXTVK"],
+        ["BCA", "CAB", "CBA", "ABC", "ACB", "BAC"],
+        ["M", "M", "M", "M"],
+    ];
+    let shown: Vec[String] = examples.iter().map(|votes| rank_teams(votes)).collect();
+    println(shown.join(" "));
+    // 2000 random elections: up to 26 teams drawn from the alphabet, up
+    // to 40 votes, each a random order; few teams and few votes tie often
+    let mut seed = 1366;
+    let alphabet: Vec[char] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".chars().collect();
+    let mut check: i64 = 0;
+    let mut first_a = 0;
+    for _ in 0..2000 {
+        let teams = 1 + next_random(mut seed) % if next_random(mut seed) % 2 == 0 { 4 } else { 26 };
+        let count = 1 + next_random(mut seed) % 40;
+        let chosen: Vec[char] = shuffled(alphabet, mut seed).iter().take(teams).collect();
+        let mut votes: Vec[String] = Vec.new();
+        for _ in 0..count {
+            votes.push(shuffled(chosen, mut seed).iter().collect());
+        }
+        let ranked = rank_teams(votes);
+        if ranked.starts_with("A") {
+            first_a += 1;
+        }
+        check = (check * 131 + ranked.len()) % 1000000007;
+        for b in ranked.bytes() {
+            check = (check * 31 + b) % 1000000007;
+        }
+    }
+    println(f"2000 random elections: {first_a} won by A, checksum {check}");
+}
