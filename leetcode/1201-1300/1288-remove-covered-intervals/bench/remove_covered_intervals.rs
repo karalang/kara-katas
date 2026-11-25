@@ -1,0 +1,35 @@
+// LeetCode #1288 bench, Rust: the same sort and sweep, workload and
+// checksum as remove_covered_intervals.kara.
+
+fn remove_covered_intervals(intervals: &Vec<Vec<i32>>) -> i32 {
+    let mut order = intervals.clone();
+    order.sort_by(|a, b| a[0].cmp(&b[0]).then(b[1].cmp(&a[1])));
+    let mut kept = 0;
+    let mut reach = 0;
+    for interval in order.iter() {
+        if interval[1] > reach {
+            kept += 1;
+            reach = interval[1];
+        }
+    }
+    kept
+}
+
+fn main() {
+    let mut seed: i64 = 1288;
+    let mut pool: Vec<Vec<i32>> = Vec::new();
+    for _ in 0..100000 {
+        seed = (seed * 1103515245 + 12345) % 2147483648;
+        let start = seed % 100000;
+        seed = (seed * 1103515245 + 12345) % 2147483648;
+        let end = start + 1 + seed % (100000 - start);
+        pool.push(vec![start as i32, end as i32]);
+    }
+    let mut check: i64 = 0;
+    for r in 0..3000i64 {
+        let at = ((check + r * 7919) % 99001) as usize;
+        let window = pool[at..at + 1000].to_vec();
+        check = (check * 131 + remove_covered_intervals(&window) as i64) % 1000000007;
+    }
+    println!("3000 windows of 1000 intervals: checksum {}", check);
+}

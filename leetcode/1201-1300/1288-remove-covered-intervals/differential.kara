@@ -1,0 +1,226 @@
+// LeetCode #1288: Remove Covered Intervals -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- remove_covered_intervals.kara ----
+fn a0_remove_covered_intervals(intervals: Vec[Vec[i32]]) -> i32 {
+    let mut order = intervals.clone();
+    order.sort_by(|a, b| a[0].cmp(b[0]).then(b[1].cmp(a[1])));
+    let mut kept = 0;
+    let mut reach = 0;
+    for interval in order.iter() {
+        if interval[1] > reach {
+            kept += 1;
+            reach = interval[1];
+        }
+    }
+    kept
+}
+
+// ---- remove_covered_intervals_pairs.kara ----
+fn a1_remove_covered_intervals(intervals: Vec[Vec[i32]]) -> i32 {
+    let kept = intervals.iter().enumerate().filter(|(i, inner)| {
+        not intervals.iter().enumerate().any(|(j, outer)| j != i and outer[0] <= inner[0] and inner[1] <= outer[1])
+    }).count();
+    kept as i32
+}
+
+// ---- remove_covered_intervals_ends.kara ----
+fn a2_remove_covered_intervals(intervals: Vec[Vec[i32]]) -> i32 {
+    let mut pairs: Vec[(i32, i32)] = intervals.iter().map(|interval| (interval[0], interval[1])).collect();
+    pairs.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+    let mut kept = 0;
+    let mut leftmost = i32.MAX;
+    for (start, _) in pairs.iter() {
+        if start < leftmost {
+            kept += 1;
+            leftmost = start;
+        }
+    }
+    kept
+}
+
+// ---- remove_covered_intervals_bucket.kara ----
+fn a3_remove_covered_intervals(intervals: Vec[Vec[i32]]) -> i32 {
+    let mut furthest = Vec.filled(100001, 0);
+    for interval in intervals.iter() {
+        let start = interval[0];
+        furthest[start] = furthest[start].max(interval[1]);
+    }
+    let mut kept = 0;
+    let mut reach = 0;
+    for end in furthest.iter() {
+        if end > reach {
+            kept += 1;
+            reach = end;
+        }
+    }
+    kept
+}
+
+// ---- remove_covered_intervals_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_remove_covered_intervals(intervals: own Vec[Vec[i32]]) -> i32 {
+        let mut intervals = intervals;
+        intervals.sort_by(|a, b| a[0].cmp(b[0]).then(b[1].cmp(a[1])));
+        let mut count = 0;
+        let mut max_end = 0;
+        for interval in intervals {
+            if interval[1] > max_end {
+                count += 1;
+                max_end = interval[1];
+            }
+        }
+        count
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n distinct intervals [l, r) with 0 <= l < r <= top, each end from two
+// draws so they reach 10^5
+fn drawn(n: i64, top: i64, seed: mut ref i64) -> Vec[Vec[i32]] {
+    let mut out: Vec[Vec[i32]] = Vec.new();
+    while out.len() < n {
+        let a = (next_random(mut seed) * 32768 + next_random(mut seed)) % (top + 1);
+        let b = (next_random(mut seed) * 32768 + next_random(mut seed)) % (top + 1);
+        if a == b {
+            continue;
+        }
+        let interval = [a.min(b) as i32, a.max(b) as i32];
+        if not out.iter().any(|other| other == interval) {
+            out.push(interval);
+        }
+    }
+    out
+}
+
+// the statement read literally: [a, b) is covered by [c, d) when c <= a
+// and b <= d; one covered interval is removed at a time, the rest searched
+// again, until none is covered, and what remains is counted
+fn literal(intervals: Vec[Vec[i32]]) -> i64 {
+    let mut left = intervals.clone();
+    loop {
+        let mut found = -1;
+        for i in 0..left.len() {
+            for j in 0..left.len() {
+                if i != j and left[j][0] <= left[i][0] and left[i][1] <= left[j][1] {
+                    found = i;
+                }
+            }
+        }
+        if found < 0 {
+            return left.len();
+        }
+        left.remove(found);
+    }
+}
+
+fn arm(i: i64, intervals: Vec[Vec[i32]]) -> i64 {
+    let intervals = intervals.clone();
+    match i {
+        0 => a0_remove_covered_intervals(intervals),
+        1 => a1_remove_covered_intervals(intervals),
+        2 => a2_remove_covered_intervals(intervals),
+        3 => a3_remove_covered_intervals(intervals),
+        _ => A4Solution.a4_remove_covered_intervals(intervals),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, intervals: Vec[Vec[i32]]) {
+    t.cases += 1;
+    let want = literal(intervals);
+    let star = arm(0, intervals);
+    t.check = (t.check * 131 + star) % 1000000007;
+    t.check = (t.check * 131 + intervals.len()) % 1000000007;
+    let reversed: Vec[Vec[i32]] = intervals.iter().rev().map(|interval| interval.clone()).collect();
+    let first = intervals.iter().map(|interval| interval[0]).min().unwrap();
+    let last = intervals.iter().map(|interval| interval[1]).max().unwrap();
+    let span = [first, last];
+    let mut spanned = intervals.clone();
+    if not intervals.iter().any(|interval| interval == span) {
+        spanned.push(span);
+    }
+    let shifted: Vec[Vec[i32]] = intervals.iter().map(|interval| [interval[0] + 1, interval[1] + 1]).collect();
+    for i in 0..5 {
+        let got = arm(i, intervals);
+        let what = f"arm {i} on {intervals}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: at least one interval is left, and no more than were given
+        expect(mut t, 2, got >= 1 and got <= intervals.len(), f"P2 {what}: {got} left");
+        // P3: the order of the intervals does not matter
+        let back = arm(i, reversed);
+        expect(mut t, 3, back == got, f"P3 {what}: {back} reversed");
+        // P4: one interval from the first start to the last end covers
+        // every other, so it alone is left
+        let one = arm(i, spanned);
+        expect(mut t, 4, one == 1, f"P4 {what}: {one} with [{first}, {last}) added");
+        // P5: every interval moved one to the right is covered as before
+        if last < 100000 {
+            let moved = arm(i, shifted);
+            expect(mut t, 5, moved == got, f"P5 {what}: {moved} moved right");
+        }
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // the edges: one interval, the widest, intervals that touch, share a
+    // start or an end, overlap, or nest. Every case is drawn before any arm
+    // answers.
+    let mut cases: Vec[Vec[Vec[i32]]] = Vec.new();
+    cases.push([[0, 1]]);
+    cases.push([[0, 100000]]);
+    cases.push([[0, 1], [1, 2]]);
+    cases.push([[0, 2], [0, 1]]);
+    cases.push([[0, 2], [1, 2]]);
+    cases.push([[1, 3], [0, 2]]);
+    cases.push([[0, 100000], [1, 99999]]);
+    cases.push([[2, 3], [1, 4], [0, 5]]);
+    cases.push([[0, 5], [1, 4], [2, 3]]);
+    cases.push([[1, 2], [1, 3], [1, 4]]);
+    cases.push([[1, 4], [2, 4], [3, 4]]);
+    // 1992 random cases of 1 to 30 intervals over 0 to 10, 100 or 10^5
+    let mut seed = 12881;
+    for i in 0..1992 {
+        let n = 1 + next_random(mut seed) % 30;
+        let top = if i % 3 == 0 { 10 } else if i % 3 == 1 { 100 } else { 100000 };
+        cases.push(drawn(n, top, mut seed));
+    }
+    for intervals in cases.iter() {
+        check_case(mut t, intervals);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

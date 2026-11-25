@@ -1,0 +1,76 @@
+// LeetCode #1288: Remove Covered Intervals -- the ★ sweep turned round:
+// the intervals as `(start, end)` tuples sorted by end from the furthest
+// down, and by start among equal ends, so every interval that could cover
+// another comes before it; one sweep keeps the leftmost start so far, and
+// an interval is kept when it starts left of it. O(n log n)
+
+fn remove_covered_intervals(intervals: Vec[Vec[i32]]) -> i32 {
+    let mut pairs: Vec[(i32, i32)] = intervals.iter().map(|interval| (interval[0], interval[1])).collect();
+    pairs.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+    let mut kept = 0;
+    let mut leftmost = i32.MAX;
+    for (start, _) in pairs.iter() {
+        if start < leftmost {
+            kept += 1;
+            leftmost = start;
+        }
+    }
+    kept
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n distinct intervals [l, r) with 0 <= l < r <= top, each end from two
+// draws so they reach 10^5
+fn drawn(n: i64, top: i64, seed: mut ref i64) -> Vec[Vec[i32]] {
+    let mut out: Vec[Vec[i32]] = Vec.new();
+    while out.len() < n {
+        let a = (next_random(mut seed) * 32768 + next_random(mut seed)) % (top + 1);
+        let b = (next_random(mut seed) * 32768 + next_random(mut seed)) % (top + 1);
+        if a == b {
+            continue;
+        }
+        let interval = [a.min(b) as i32, a.max(b) as i32];
+        if not out.iter().any(|other| other == interval) {
+            out.push(interval);
+        }
+    }
+    out
+}
+
+fn main() {
+    // LeetCode's two examples, and three more
+    let shown: Vec[String] = [
+        remove_covered_intervals([[1, 4], [3, 6], [2, 8]]),
+        remove_covered_intervals([[1, 4], [2, 3]]),
+        remove_covered_intervals([[0, 10], [5, 12]]),
+        remove_covered_intervals([[3, 10], [4, 10], [5, 11]]),
+        remove_covered_intervals([[1, 2], [1, 4], [3, 4]]),
+    ].iter().map(|k| f"{k}").collect();
+    println(shown.join(" "));
+    // the constraints' most: 1000 intervals drawn over 0 to 10^5, 1000
+    // nested in each other, and 1000 each overlapping the next
+    let mut seed = 1288;
+    let big = drawn(1000, 100000, mut seed);
+    let nested: Vec[Vec[i32]] = (0..1000).map(|i| [i as i32, (2000 - i) as i32]).collect();
+    let chain: Vec[Vec[i32]] = (0..1000).map(|i| [i as i32, (i + 1000) as i32]).collect();
+    let kept = [remove_covered_intervals(big), remove_covered_intervals(nested), remove_covered_intervals(chain)];
+    println(f"10^3 intervals: {kept[0]} {kept[1]} {kept[2]}");
+    // 2000 random cases of 1 to 30 intervals over 0 to 10, 100 or 10^5
+    let mut check: i64 = 0;
+    let mut total: i64 = 0;
+    for i in 0..2000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let top = if i % 3 == 0 { 10 } else if i % 3 == 1 { 100 } else { 100000 };
+        let intervals = drawn(n, top, mut seed);
+        let k = remove_covered_intervals(intervals);
+        total += k;
+        check = (check * 131 + k) % 1000000007;
+    }
+    println(f"2000 random cases: {total} in all, checksum {check}");
+}
