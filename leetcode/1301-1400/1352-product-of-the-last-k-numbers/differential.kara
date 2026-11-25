@@ -1,0 +1,412 @@
+// LeetCode #1352: Product of the Last K Numbers -- differential test of
+// the five arms against the statement read literally, with five more
+// properties.
+//
+// The statement: a stream of integers; add(num) appends num, and
+// getProduct(k) returns the product of the last k numbers, the list
+// always holding at least k. Any product of a contiguous run of the
+// numbers fits in a 32-bit integer.
+
+// ---- product_of_numbers.kara ----
+struct A0ProductOfNumbers {
+    prefix: Vec[i64],
+}
+
+impl A0ProductOfNumbers {
+    fn new() -> A0ProductOfNumbers {
+        A0ProductOfNumbers { prefix: [1] }
+    }
+
+    fn add(mut ref self, num: i32) {
+        if num == 0 {
+            self.prefix = [1];
+        } else {
+            let last = self.prefix[self.prefix.len() - 1];
+            self.prefix.push(last * num);
+        }
+    }
+
+    fn get_product(self, k: i32) -> i32 {
+        let n = self.prefix.len();
+        if k >= n {
+            return 0;
+        }
+        (self.prefix[n - 1] / self.prefix[n - 1 - k]) as i32
+    }
+}
+
+// ---- product_of_numbers_walk.kara ----
+struct A1ProductOfNumbers {
+    nums: Vec[i32],
+}
+
+impl A1ProductOfNumbers {
+    fn new() -> A1ProductOfNumbers {
+        A1ProductOfNumbers { nums: Vec.new() }
+    }
+
+    fn add(mut ref self, num: i32) {
+        self.nums.push(num);
+    }
+
+    fn get_product(self, k: i32) -> i32 {
+        let mut product: i64 = 1;
+        for x in self.nums.iter().rev().take(k) {
+            if x == 0 {
+                return 0;
+            }
+            product *= x;
+        }
+        product as i32
+    }
+}
+
+// ---- product_of_numbers_blocks.kara ----
+const BLOCK: i64 = 200;
+
+struct A2ProductOfNumbers {
+    nums: Vec[i32],
+    blocks: Vec[i64],
+}
+
+impl A2ProductOfNumbers {
+    fn new() -> A2ProductOfNumbers {
+        A2ProductOfNumbers { nums: Vec.new(), blocks: Vec.new() }
+    }
+
+    fn add(mut ref self, num: i32) {
+        self.nums.push(num);
+        if self.nums.len() % BLOCK == 0 {
+            let start = self.nums.len() - BLOCK;
+            let mut p: i64 = 1;
+            for i in start..self.nums.len() {
+                p *= self.nums[i];
+            }
+            self.blocks.push(p);
+        }
+    }
+
+    fn get_product(self, k: i32) -> i32 {
+        let n = self.nums.len();
+        let from = n - k;
+        let mut product: i64 = 1;
+        let mut i = n;
+        // the numbers after the last full block
+        while i > from and i % BLOCK != 0 {
+            i -= 1;
+            product *= self.nums[i];
+        }
+        // whole blocks
+        while i - BLOCK >= from {
+            product *= self.blocks[i / BLOCK - 1];
+            i -= BLOCK;
+        }
+        // what is left of the block where the k numbers start
+        while i > from {
+            i -= 1;
+            product *= self.nums[i];
+        }
+        product as i32
+    }
+}
+
+// ---- product_of_numbers_tree.kara ----
+struct A3ProductOfNumbers {
+    tree: Vec[i64],
+    size: i64,
+    count: i64,
+}
+
+// a node's product: across a zero it stays 0; one too large to matter is
+// capped, since every run the calls ask for is below 2^31
+fn a3_join(a: i64, b: i64) -> i64 {
+    (a * b).min(2147483648)
+}
+
+impl A3ProductOfNumbers {
+    fn new() -> A3ProductOfNumbers {
+        A3ProductOfNumbers { tree: [1, 1], size: 1, count: 0 }
+    }
+
+    fn add(mut ref self, num: i32) {
+        if self.count == self.size {
+            let mut grown: Vec[i64] = Vec.filled(4 * self.size, 1);
+            for i in 0..self.count {
+                grown[2 * self.size + i] = self.tree[self.size + i];
+            }
+            self.size *= 2;
+            let mut at = self.size - 1;
+            while at >= 1 {
+                grown[at] = a3_join(grown[2 * at], grown[2 * at + 1]);
+                at -= 1;
+            }
+            self.tree = grown;
+        }
+        let mut at = self.size + self.count;
+        self.tree[at] = num;
+        self.count += 1;
+        while at > 1 {
+            at /= 2;
+            self.tree[at] = a3_join(self.tree[2 * at], self.tree[2 * at + 1]);
+        }
+    }
+
+    // the product of the places [lo, hi)
+    fn range(self, lo: i64, hi: i64) -> i64 {
+        let mut product: i64 = 1;
+        let mut (l, r) = (lo + self.size, hi + self.size);
+        while l < r {
+            if l % 2 == 1 {
+                product *= self.tree[l];
+                l += 1;
+            }
+            if r % 2 == 1 {
+                r -= 1;
+                product *= self.tree[r];
+            }
+            l /= 2;
+            r /= 2;
+        }
+        product
+    }
+
+    fn get_product(self, k: i32) -> i32 {
+        self.range(self.count - k, self.count) as i32
+    }
+}
+
+// ---- product_of_numbers_solution.kara ----
+struct A4ProductOfNumbers {
+    prefix: Vec[i32],
+}
+
+impl A4ProductOfNumbers {
+    fn new() -> Self {
+        A4ProductOfNumbers { prefix: [1] }
+    }
+
+    fn add(mut ref self, num: i32) {
+        if num == 0 {
+            self.prefix = [1];
+        } else {
+            let last = *self.prefix.last().unwrap();
+            self.prefix.push(last * num);
+        }
+    }
+
+    fn get_product(self, k: i32) -> i32 {
+        let n = self.prefix.len();
+        let k = k as i64;
+        if k >= n {
+            0
+        } else {
+            self.prefix[n - 1] / self.prefix[n - 1 - k]
+        }
+    }
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a number to add: 0 one time in `zero`, otherwise 1, or 2 to 100 one
+// time in `big`, taken back to 1 when the product of the numbers since
+// the last zero would reach 2^31; `since` is that product
+fn draw(seed: mut ref i64, since: mut ref i64, zero: i64, big: i64) -> i64 {
+    if next_random(mut seed) % zero == 0 {
+        *since = 1;
+        return 0;
+    }
+    let mut num = 1;
+    if next_random(mut seed) % big == 0 {
+        num = 2 + next_random(mut seed) % 99;
+    }
+    if *since * num >= 2147483648 {
+        num = 1;
+    }
+    *since *= num;
+    num
+}
+
+// a session is a list of calls: a number n >= 0 is add(n), and -k is
+// getProduct(k)
+
+// the statement read literally: the numbers kept in a list, and each
+// product taken over the last k of them, first to last
+fn literal(calls: Vec[i64]) -> Vec[i32] {
+    let mut nums: Vec[i64] = Vec.new();
+    let mut out: Vec[i32] = Vec.new();
+    for c in calls.iter() {
+        if c >= 0 {
+            nums.push(c);
+        } else {
+            let mut product = 1;
+            for i in nums.len() + c..nums.len() {
+                product *= nums[i];
+            }
+            out.push(product as i32);
+        }
+    }
+    out
+}
+
+fn answers(i: i64, calls: Vec[i64]) -> Vec[i32] {
+    let mut out: Vec[i32] = Vec.new();
+    if i == 0 {
+        let mut p = A0ProductOfNumbers.new();
+        for c in calls.iter() {
+            if c >= 0 { p.add(c as i32); } else { out.push(p.get_product(-c as i32)); }
+        }
+    } else if i == 1 {
+        let mut p = A1ProductOfNumbers.new();
+        for c in calls.iter() {
+            if c >= 0 { p.add(c as i32); } else { out.push(p.get_product(-c as i32)); }
+        }
+    } else if i == 2 {
+        let mut p = A2ProductOfNumbers.new();
+        for c in calls.iter() {
+            if c >= 0 { p.add(c as i32); } else { out.push(p.get_product(-c as i32)); }
+        }
+    } else if i == 3 {
+        let mut p = A3ProductOfNumbers.new();
+        for c in calls.iter() {
+            if c >= 0 { p.add(c as i32); } else { out.push(p.get_product(-c as i32)); }
+        }
+    } else {
+        let mut p = A4ProductOfNumbers.new();
+        for c in calls.iter() {
+            if c >= 0 { p.add(c as i32); } else { out.push(p.get_product(-c as i32)); }
+        }
+    }
+    out
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, calls: Vec[i64]) {
+    t.cases += 1;
+    let want = literal(calls);
+    t.check = (t.check * 131 + want.len() * 7 + calls.len()) % 1000000007;
+    for w in want.iter() {
+        t.check = (t.check * 131 + w as i64) % 1000000007;
+    }
+    let star = answers(0, calls);
+    // three numbers and a zero added first
+    let mut after: Vec[i64] = [7, 3, 5, 0];
+    for c in calls.iter() {
+        after.push(c);
+    }
+    // a 1 added after every number, each k doubled
+    let mut spaced: Vec[i64] = Vec.new();
+    // every number above 1 made 1, zeros kept
+    let ones: Vec[i64] = calls.iter().map(|c| if c > 1 { 1 } else { c }).collect();
+    // a product of the last 1 before every product
+    let mut lasts: Vec[i64] = Vec.new();
+    let mut last_added: Vec[i32] = Vec.new();
+    let mut previous = 0;
+    for c in calls.iter() {
+        if c >= 0 {
+            spaced.push(c);
+            spaced.push(1);
+            lasts.push(c);
+            previous = c;
+        } else {
+            spaced.push(2 * c);
+            lasts.push(-1);
+            last_added.push(previous as i32);
+        }
+    }
+    for i in 0..5 {
+        let got = answers(i, calls);
+        let what = f"arm {i} on {calls}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: numbers and a zero added before the session: no product
+        // reaches back to them, so the same answers
+        let af = answers(i, after);
+        expect(mut t, 2, af == got, f"P2 {what}, after 7 3 5 0: {af}");
+        // P3: a 1 after every number, each k doubled: the same answers
+        let sp = answers(i, spaced);
+        expect(mut t, 3, sp == got, f"P3 {what}, spaced by 1s: {sp}");
+        // P4: every number above 1 made 1: each product 0 where it was
+        // 0, and 1 elsewhere
+        let on = answers(i, ones);
+        let mut zeros_kept = on.len() == got.len();
+        for k in 0..on.len().min(got.len()) {
+            if on[k] != (if got[k] == 0 { 0 } else { 1 }) {
+                zeros_kept = false;
+            }
+        }
+        expect(mut t, 4, zeros_kept, f"P4 {what}, every number 0 or 1: {on}");
+        // P5: the product of the last 1 is the last number added
+        let ls = answers(i, lasts);
+        expect(mut t, 5, ls == last_added, f"P5 {what}, the last 1: {ls}");
+        // P6: the ★ arm's answers
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 sessions in four kinds, 500 each, every call after the first an
+    // add two times in three and otherwise a product of the last 1 to all
+    // of the numbers: 1 to 30 calls, a zero one number in 4 and a number
+    // above 1 one in 2; a zero one in 12 and above 1 one in 3; no zero;
+    // and 300 to 700 calls, a zero one in 400 and above 1 one in 40, long
+    // enough to fill blocks of 200. Every session is drawn before any arm
+    // answers.
+    let mut seed = 13521;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..2000 {
+        let kind = c / 500;
+        let (n, zero, big) = if kind == 0 {
+            (1 + next_random(mut seed) % 30, 4, 2)
+        } else if kind == 1 {
+            (1 + next_random(mut seed) % 30, 12, 3)
+        } else if kind == 2 {
+            (1 + next_random(mut seed) % 30, 1000000000, 2)
+        } else {
+            (300 + next_random(mut seed) % 401, 400, 40)
+        };
+        let mut since = 1;
+        let mut added = 0;
+        let mut calls: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            if added == 0 or next_random(mut seed) % 3 > 0 {
+                calls.push(draw(mut seed, mut since, zero, big));
+                added += 1;
+            } else {
+                calls.push(-(1 + next_random(mut seed) % added));
+            }
+        }
+        cases.push(calls);
+    }
+    for calls in cases.iter() {
+        check_case(mut t, calls);
+    }
+    println(f"{t.cases} sessions: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

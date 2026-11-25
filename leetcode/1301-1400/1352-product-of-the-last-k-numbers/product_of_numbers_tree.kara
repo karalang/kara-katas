@@ -1,0 +1,166 @@
+// LeetCode #1352: Product of the Last K Numbers -- the tree arm: a
+// segment tree over the numbers, each node the product of its range, an
+// empty place 1; it doubles its leaves when they run out. A product is
+// the tree's answer for the last k places, its walk written first with
+// Rust's `let (mut l, mut r) = ..` and carried to `let mut (l, r)` by
+// `karac fix`. O(log N) for each call, amortized
+
+struct ProductOfNumbers {
+    tree: Vec[i64],
+    size: i64,
+    count: i64,
+}
+
+// a node's product: across a zero it stays 0; one too large to matter is
+// capped, since every run the calls ask for is below 2^31
+fn join(a: i64, b: i64) -> i64 {
+    (a * b).min(2147483648)
+}
+
+impl ProductOfNumbers {
+    fn new() -> ProductOfNumbers {
+        ProductOfNumbers { tree: [1, 1], size: 1, count: 0 }
+    }
+
+    fn add(mut ref self, num: i32) {
+        if self.count == self.size {
+            let mut grown: Vec[i64] = Vec.filled(4 * self.size, 1);
+            for i in 0..self.count {
+                grown[2 * self.size + i] = self.tree[self.size + i];
+            }
+            self.size *= 2;
+            let mut at = self.size - 1;
+            while at >= 1 {
+                grown[at] = join(grown[2 * at], grown[2 * at + 1]);
+                at -= 1;
+            }
+            self.tree = grown;
+        }
+        let mut at = self.size + self.count;
+        self.tree[at] = num;
+        self.count += 1;
+        while at > 1 {
+            at /= 2;
+            self.tree[at] = join(self.tree[2 * at], self.tree[2 * at + 1]);
+        }
+    }
+
+    // the product of the places [lo, hi)
+    fn range(self, lo: i64, hi: i64) -> i64 {
+        let mut product: i64 = 1;
+        let mut (l, r) = (lo + self.size, hi + self.size);
+        while l < r {
+            if l % 2 == 1 {
+                product *= self.tree[l];
+                l += 1;
+            }
+            if r % 2 == 1 {
+                r -= 1;
+                product *= self.tree[r];
+            }
+            l /= 2;
+            r /= 2;
+        }
+        product
+    }
+
+    fn get_product(self, k: i32) -> i32 {
+        self.range(self.count - k, self.count) as i32
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a number to add: 0 one time in `zero`, otherwise 1, or 2 to 100 one
+// time in `big`, taken back to 1 when the product of the numbers since
+// the last zero would reach 2^31, as the constraints promise it never
+// does; `since` is that product
+fn draw(seed: mut ref i64, since: mut ref i64, zero: i64, big: i64) -> i32 {
+    if next_random(mut seed) % zero == 0 {
+        *since = 1;
+        return 0;
+    }
+    let mut num = 1;
+    if next_random(mut seed) % big == 0 {
+        num = 2 + next_random(mut seed) % 99;
+    }
+    if *since * num >= 2147483648 {
+        num = 1;
+    }
+    *since *= num;
+    num as i32
+}
+
+fn main() {
+    // LeetCode's example
+    let mut p = ProductOfNumbers.new();
+    p.add(3);
+    p.add(0);
+    p.add(2);
+    p.add(5);
+    p.add(4);
+    let a = p.get_product(2);
+    let b = p.get_product(3);
+    let c = p.get_product(4);
+    p.add(8);
+    let d = p.get_product(2);
+    println(f"{a} {b} {c} {d}");
+    // one number; k reaching exactly back to the first number and one
+    // further; a zero then the product after it; and a product just
+    // below 2^31, 65536 * 32767 * 1
+    let mut p = ProductOfNumbers.new();
+    p.add(7);
+    let one = p.get_product(1);
+    p.add(6);
+    let all = p.get_product(2);
+    p.add(0);
+    p.add(9);
+    let past = p.get_product(2);
+    let after = p.get_product(1);
+    let mut q = ProductOfNumbers.new();
+    q.add(65536);
+    q.add(32767);
+    q.add(1);
+    let near = q.get_product(3);
+    println(f"{one} {all} {past} {after} {near}");
+    // 4 * 10^4 calls, the constraints' most: 39,000 numbers, mostly 1,
+    // then 1000 products of the last 1 to 4 * 10^4
+    let mut seed = 1352;
+    let mut since = 1;
+    let mut p = ProductOfNumbers.new();
+    for _ in 0..39000 {
+        p.add(draw(mut seed, mut since, 5000, 30));
+    }
+    let mut check = 0;
+    for _ in 0..1000 {
+        let k = 1 + next_random(mut seed) % 40000;
+        check = (check * 131 + p.get_product(k as i32)) % 1000000007;
+    }
+    println(f"4 * 10^4 calls: checksum {check}");
+    // 500 random sessions of 1 to 60 calls, adds and products mixed
+    let mut check = 0;
+    let mut total = 0;
+    for c in 0..500 {
+        let mut p = ProductOfNumbers.new();
+        let mut since = 1;
+        let mut added = 0;
+        let calls = 1 + next_random(mut seed) % 60;
+        let (zero, big) = if c % 2 == 0 { (8, 3) } else { (30, 2) };
+        for _ in 0..calls {
+            if added == 0 or next_random(mut seed) % 3 > 0 {
+                p.add(draw(mut seed, mut since, zero, big));
+                added += 1;
+            } else {
+                let got = p.get_product((1 + next_random(mut seed) % added) as i32) as i64;
+                total += got;
+                check = (check * 131 + got) % 1000000007;
+            }
+        }
+    }
+    println(f"500 random sessions: products total {total}, checksum {check}");
+}
