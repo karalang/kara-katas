@@ -90,8 +90,8 @@ stopped at the first step not aligned failed as the lowest arm's lowest
 moved up one place at most a step did, but for P6. And the solution's
 flips read from the last crashed both lanes, `call of unknown function
 i64.max`: once the iterator is adapted (`.rev()`, `.skip(1)`,
-`.filter(..)`), `mx.max(f)` passes `karac check` and is not lowered
-(B-2026-11-25-23).
+`.filter(..)`), `mx.max(f)` passed `karac check` and was not lowered,
+which B-2026-11-25-23 fixed.
 
 | # | mutation | failures by property |
 |---|---|---|
