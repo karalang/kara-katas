@@ -1,0 +1,118 @@
+// LeetCode #1376: Time Needed to Inform All Employees -- a Rust solution
+// as LeetCode's Rust users write it (a `Vec<Vec<usize>>` of reports built
+// with `vec![vec![]; n]`, and a recursive `fn dfs` nested in the method,
+// taking `&Vec<Vec<usize>>` and `&Vec<i32>`), carried to Kāra by `karac
+// fix`.
+
+struct Solution {}
+
+fn dfs(u: i64, children: ref Vec[Vec[i64]], inform_time: ref Vec[i32]) -> i32 {
+    let mut best: i32 = 0;
+    for v in ref children[u] {
+        best = best.max(dfs(v, children, inform_time));
+    }
+    best + inform_time[u]
+}
+
+impl Solution {
+    pub fn num_of_minutes(n: i32, head_id: i32, manager: Vec[i32], inform_time: Vec[i32]) -> i32 {
+        let n = n as i64;
+        let mut children = Vec.filled(n, Vec.new());
+        for (i, m) in manager.iter().enumerate() {
+            if m >= 0 {
+                children[m].push(i);
+            }
+        }
+        dfs(head_id, children, inform_time)
+    }
+}
+
+fn num_of_minutes(n: i32, head_id: i32, manager: Vec[i32], inform_time: Vec[i32]) -> i32 {
+    Solution.num_of_minutes(n, head_id, manager, inform_time)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A company of n employees, labelled in a random order. Taking the
+// employees one by one in that order, each after the first reports to
+// one taken before it: any of them (kind 0), one of the last three
+// taken, so the chain runs deep (kind 1), one of the first three, so it
+// runs wide (kind 2), or one of the last half (kind 3). A manager takes
+// 1 to 1000 minutes to inform (kinds 0 and 2) or 1 to 5 (kinds 1 and 3);
+// an employee with no reports takes 0.
+struct Company {
+    head: i32,
+    manager: Vec[i32],
+    inform: Vec[i32],
+}
+
+fn company(seed: mut ref i64, n: i64, kind: i64) -> Company {
+    let mut order: Vec[i64] = (0..n).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        order.swap(i, j);
+    }
+    let mut manager = Vec.filled(n, -1);
+    let mut inform = Vec.filled(n, 0);
+    for k in 1..n {
+        let back = if kind == 0 {
+            next_random(mut seed) % k
+        } else if kind == 1 {
+            k - 1 - next_random(mut seed) % k.min(3)
+        } else if kind == 2 {
+            next_random(mut seed) % k.min(3)
+        } else {
+            k / 2 + next_random(mut seed) % (k - k / 2)
+        };
+        manager[order[k]] = order[back] as i32;
+    }
+    for i in 0..n {
+        if manager[i] >= 0 {
+            let m = manager[i];
+            if inform[m] == 0 {
+                inform[m] = if kind % 2 == 0 { 1 + next_random(mut seed) % 1000 } else { 1 + next_random(mut seed) % 5 } as i32;
+            }
+        }
+    }
+    Company { head: order[0] as i32, manager, inform }
+}
+
+fn main() {
+    // LeetCode's two examples; 10^5 employees, the constraints' most, in
+    // a chain from 0 down, in a chain from n - 1 down, all reporting to
+    // one head, and as a binary heap
+    let n = 100000;
+    let mut shown: Vec[String] = Vec.new();
+    shown.push(f"{num_of_minutes(1, 0, [-1], [0])}");
+    shown.push(f"{num_of_minutes(6, 2, [2, 2, -1, 2, 2, 2], [0, 0, 1, 0, 0, 0])}");
+    let down: Vec[i32] = (0..n).map(|i| (i - 1) as i32).collect();
+    let down_time: Vec[i32] = (0..n).map(|i| if i == n - 1 { 0 } else { 1000 }).collect();
+    shown.push(f"{num_of_minutes(n as i32, 0, down, down_time)}");
+    let up: Vec[i32] = (0..n).map(|i| if i == n - 1 { -1 } else { (i + 1) as i32 }).collect();
+    let up_time: Vec[i32] = (0..n).map(|i| if i == 0 { 0 } else { 1 + (i % 1000) as i32 }).collect();
+    shown.push(f"{num_of_minutes(n as i32, (n - 1) as i32, up, up_time)}");
+    let star: Vec[i32] = (0..n).map(|i| if i == 0 { -1 } else { 0 }).collect();
+    let star_time: Vec[i32] = (0..n).map(|i| if i == 0 { 1000 } else { 0 }).collect();
+    shown.push(f"{num_of_minutes(n as i32, 0, star, star_time)}");
+    let heap: Vec[i32] = (0..n).map(|i| if i == 0 { -1 } else { ((i - 1) / 2) as i32 }).collect();
+    let heap_time: Vec[i32] = (0..n).map(|i| if 2 * i + 1 < n { 1 + (i * 7 % 1000) as i32 } else { 0 }).collect();
+    shown.push(f"{num_of_minutes(n as i32, 0, heap, heap_time)}");
+    println(shown.join(" "));
+    // 2000 random companies of 1 to 300 employees, 500 of each kind
+    let mut seed = 1376;
+    let mut total: i64 = 0;
+    let mut check: i64 = 0;
+    for c in 0..2000 {
+        let n = 1 + next_random(mut seed) % 300;
+        let co = company(mut seed, n, c % 4);
+        let got = num_of_minutes(n as i32, co.head, co.manager, co.inform) as i64;
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random companies: {total} minutes in all, checksum {check}");
+}
