@@ -1,0 +1,45 @@
+// LeetCode #1365: How Many Numbers Are Smaller Than the Current Number --
+// the ★ arm: the values counted, 0 to 100, and the counts summed so that
+// below[v] holds how many values are less than v; each answer is then a
+// lookup. O(n + V) for V = 101 values
+fn smaller_numbers_than_current(nums: Vec[i32]) -> Vec[i32] {
+    let mut below: Vec[i32] = Vec.filled(102, 0);
+    for x in nums.iter() {
+        below[x + 1] += 1;
+    }
+    for v in 1..102 {
+        below[v] += below[v - 1];
+    }
+    nums.iter().map(|x| below[x]).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples; one value; the range's two ends
+    let cases: Vec[Vec[i32]] = [[8, 1, 2, 2, 3], [6, 5, 4, 8], [7, 7, 7, 7], [5], [100, 0, 100, 0]];
+    let shown: Vec[String] = cases.iter().map(|nums| f"{smaller_numbers_than_current(nums)}").collect();
+    println(shown.join(" "));
+    // 2000 random arrays of up to 500 values from 0 to 100, folded into a
+    // checksum
+    let mut seed = 1365;
+    let mut check: i64 = 0;
+    let mut total: i64 = 0;
+    for _ in 0..2000 {
+        let n = 2 + next_random(mut seed) % 499;
+        let mut nums: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            nums.push((next_random(mut seed) % 101) as i32);
+        }
+        for c in smaller_numbers_than_current(nums) {
+            total += c;
+            check = (check * 131 + c) % 1000000007;
+        }
+    }
+    println(f"2000 random arrays: {total} smaller in all, checksum {check}");
+}

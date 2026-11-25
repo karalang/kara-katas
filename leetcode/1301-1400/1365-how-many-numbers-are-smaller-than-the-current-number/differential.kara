@@ -1,0 +1,221 @@
+// LeetCode #1365: How Many Numbers Are Smaller Than the Current
+// Number -- differential test of the five arms against the statement
+// read literally, with five more properties.
+//
+// The statement: given the array nums, for each nums[i] find out how many
+// numbers in the array are smaller than it, that is, the number of valid
+// j with j != i and nums[j] < nums[i].
+
+// ---- smaller_numbers_than_current.kara ----
+fn a0_smaller_numbers_than_current(nums: Vec[i32]) -> Vec[i32] {
+    let mut below: Vec[i32] = Vec.filled(102, 0);
+    for x in nums.iter() {
+        below[x + 1] += 1;
+    }
+    for v in 1..102 {
+        below[v] += below[v - 1];
+    }
+    nums.iter().map(|x| below[x]).collect()
+}
+
+// ---- smaller_numbers_than_current_brute.kara ----
+fn a1_smaller_numbers_than_current(nums: Vec[i32]) -> Vec[i32] {
+    let mut out: Vec[i32] = Vec.new();
+    for x in nums.iter() {
+        let mut smaller = 0;
+        for y in nums.iter() {
+            if y < x {
+                smaller += 1;
+            }
+        }
+        out.push(smaller);
+    }
+    out
+}
+
+// ---- smaller_numbers_than_current_search.kara ----
+fn a2_first_not_less(sorted: Vec[i32], x: i32) -> i64 {
+    let mut lo = 0;
+    let mut hi = sorted.len();
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if sorted[mid] < x {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    lo
+}
+
+fn a2_smaller_numbers_than_current(nums: Vec[i32]) -> Vec[i32] {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    nums.iter().map(|x| a2_first_not_less(sorted, x) as i32).collect()
+}
+
+// ---- smaller_numbers_than_current_rank.kara ----
+fn a3_smaller_numbers_than_current(nums: Vec[i32]) -> Vec[i32] {
+    let n = nums.len();
+    let mut order: Vec[i64] = (0..n).collect();
+    order.sort_by_key(|i| nums[i]);
+    let mut out: Vec[i32] = Vec.filled(n, 0);
+    let mut start = 0;
+    for k in 0..n {
+        if k > 0 and nums[order[k]] != nums[order[k - 1]] {
+            start = k;
+        }
+        out[order[k]] = start as i32;
+    }
+    out
+}
+
+// ---- smaller_numbers_than_current_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_smaller_numbers_than_current(nums: Vec[i32]) -> Vec[i32] {
+        let mut sorted = nums.clone();
+        sorted.sort();
+        nums.iter()
+            .map(|x| sorted.iter().position(|y| y == x).unwrap() as i32)
+            .collect()
+    }
+}
+
+fn a4_smaller_numbers_than_current(nums: Vec[i32]) -> Vec[i32] {
+    A4Solution.a4_smaller_numbers_than_current(nums)
+}
+
+// ---- the differential -------------------------------------------------------
+
+// the statement read literally: for each i, every j other than i with
+// nums[j] < nums[i] counted
+fn literal(nums: Vec[i32]) -> Vec[i32] {
+    let n = nums.len();
+    let mut out: Vec[i32] = Vec.new();
+    for i in 0..n {
+        let mut valid = 0;
+        for j in 0..n {
+            if j != i and nums[j] < nums[i] {
+                valid += 1;
+            }
+        }
+        out.push(valid);
+    }
+    out
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, nums: Vec[i32]) -> Vec[i32] {
+    match i {
+        0 => a0_smaller_numbers_than_current(nums),
+        1 => a1_smaller_numbers_than_current(nums),
+        2 => a2_smaller_numbers_than_current(nums),
+        3 => a3_smaller_numbers_than_current(nums),
+        _ => a4_smaller_numbers_than_current(nums),
+    }
+}
+
+fn check_case(t: mut ref Tally, nums: Vec[i32]) {
+    t.cases += 1;
+    let n = nums.len();
+    let want = literal(nums);
+    t.check = (t.check * 131 + n) % 1000000007;
+    for c in want.iter() {
+        t.check = (t.check * 31 + c) % 1000000007;
+    }
+    let top = nums.iter().max().unwrap();
+    let low = nums.iter().min().unwrap();
+    // every value moved up by as much as fits under 100, or down to 0
+    let shift = if top < 100 { 100 - top } else { -low };
+    let shifted: Vec[i32] = nums.iter().map(|x| x + shift).collect();
+    let reversed: Vec[i32] = nums.iter().rev().collect();
+    let star = arm(0, nums);
+    for i in 0..5 {
+        let got = arm(i, nums);
+        let what = f"arm {i} at {nums}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: every value moved by the same amount, the same answer
+        expect(mut t, 2, arm(i, shifted) == got, f"P2 {what}, moved by {shift}");
+        // P3: the array reversed, the answer reversed
+        let back: Vec[i32] = arm(i, reversed).iter().rev().collect();
+        expect(mut t, 3, back == got, f"P3 {what}, reversed");
+        // P4: the answers ordered as the values: smaller where smaller,
+        // equal where equal, and each below n
+        let mut ordered = got.len() == n;
+        for a in 0..n {
+            for b in 0..n {
+                if ordered and ((nums[a] < nums[b]) != (got[a] < got[b]) or (nums[a] == nums[b]) != (got[a] == got[b])) {
+                    ordered = false;
+                }
+            }
+            if ordered and got[a] >= n {
+                ordered = false;
+            }
+        }
+        expect(mut t, 4, ordered, f"P4 {what}: {got}");
+        // P5: a value above every other put at the end leaves the answers
+        // as they were and gets n
+        if top < 100 {
+            let mut more = nums.clone();
+            more.push(top + 1);
+            let mut after = got.clone();
+            after.push(n as i32);
+            expect(mut t, 5, arm(i, more) == after, f"P5 {what}, {top + 1} at the end");
+        }
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edge cases above; then 1000 random arrays
+    // of up to 60 values and 100 of up to 500, the values from a range of
+    // 3, 10 or all 101 so that some repeat often
+    let fixed: Vec[Vec[i32]] = [[8, 1, 2, 2, 3], [6, 5, 4, 8], [7, 7, 7, 7], [5], [100, 0, 100, 0]];
+    for nums in fixed {
+        check_case(mut t, nums);
+    }
+    let mut seed = 1365;
+    for k in 0..1100 {
+        let n = 2 + next_random(mut seed) % if k < 1000 { 59 } else { 499 };
+        let span = [3, 10, 101][next_random(mut seed) % 3];
+        let base = next_random(mut seed) % (102 - span);
+        let mut nums: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            nums.push((base + next_random(mut seed) % span) as i32);
+        }
+        check_case(mut t, nums);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

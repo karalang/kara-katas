@@ -1,0 +1,41 @@
+// LeetCode #1365 bench -- the ★ arm: the values counted and the counts
+// summed, so below[v] holds how many values are less than v.
+fn smaller_numbers_than_current(nums: Vec[i32]) -> Vec[i32] {
+    let mut below: Vec[i32] = Vec.filled(102, 0);
+    for x in nums.iter() {
+        below[x + 1] += 1;
+    }
+    for v in 1..102 {
+        below[v] += below[v - 1];
+    }
+    nums.iter().map(|x| below[x]).collect()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 20 arrays of 500 values from 0 to 100, the constraints' most, built
+    // once; then 2 * 10^5 rounds, each setting one value of one array, both
+    // drawn from the checksum so far, and folding three of the answers
+    // into the checksum
+    let mut seed = 1365;
+    let mut arrays: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..20 {
+        let mut nums: Vec[i32] = Vec.new();
+        for _ in 0..500 {
+            nums.push((next_random(mut seed) % 101) as i32);
+        }
+        arrays.push(nums);
+    }
+    let mut check: i64 = 0;
+    for r in 0..200000 {
+        let k = check % 20;
+        arrays[k][(check / 20) % 500] = ((check / 10000) % 101) as i32;
+        let got = smaller_numbers_than_current(arrays[k]);
+        check = (check * 31 + got[0] + got[check % 500] * 7 + got[499] * 13 + r) % 1000000007;
+    }
+    println(f"200000 rounds over 20 arrays of 500 values: checksum {check}");
+}
