@@ -1,0 +1,76 @@
+// LeetCode #1391 bench: the ★ arm (a breadth-first search over a
+// `VecDeque`) on a 299 by 300 grid whose streets snake through every
+// cell, one cell broken before each of 3000 rounds and mended after it.
+
+fn street_ways() -> Vec[Vec[(i64, i64)]] {
+    [
+        [],
+        [(0, -1), (0, 1)],
+        [(-1, 0), (1, 0)],
+        [(0, -1), (1, 0)],
+        [(0, 1), (1, 0)],
+        [(0, -1), (-1, 0)],
+        [(0, 1), (-1, 0)],
+    ]
+}
+
+fn has_valid_path(grid: Vec[Vec[i32]]) -> bool {
+    let m = grid.len();
+    let n = grid[0].len();
+    let ways = street_ways();
+    let mut seen = Vec.filled(m * n, false);
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    queue.push_back((0, 0));
+    seen[0] = true;
+    while let Some((r, c)) = queue.pop_front() {
+        if r == m - 1 and c == n - 1 {
+            return true;
+        }
+        for (dr, dc) in ways[grid[r][c]].iter() {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr < 0 or nr >= m or nc < 0 or nc >= n or seen[nr * n + nc] {
+                continue;
+            }
+            if ways[grid[nr][nc]].contains((-dr, -dc)) {
+                seen[nr * n + nc] = true;
+                queue.push_back((nr, nc));
+            }
+        }
+    }
+    false
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let m = 299;
+    let n = 300;
+    // left to right along the even rows, right to left along the odd
+    let mut grid: Vec[Vec[i32]] = Vec.filled(m, Vec.filled(n, 1i32));
+    for r in 0..m - 1 {
+        if r % 2 == 0 {
+            grid[r][n - 1] = 3;
+            grid[r + 1][n - 1] = 5;
+        } else {
+            grid[r][0] = 4;
+            grid[r + 1][0] = 6;
+        }
+    }
+    let mut seed = 1391;
+    let mut check: i64 = 0;
+    let whole = has_valid_path(grid);
+    for _ in 0..3000 {
+        seed = (seed + check) % 2147483648;
+        let cell = next_random(mut seed) % (m * n);
+        let (r, c) = (cell / n, cell % n);
+        let street = grid[r][c];
+        grid[r][c] = street % 6 + 1;
+        let got = has_valid_path(grid);
+        grid[r][c] = street;
+        check = (check * 131 + (if got { 2 } else { 1 }) * (cell + 1)) % 1000000007;
+    }
+    println(f"3000 rounds over a 299 by 300 snake, whole {whole}: checksum {check}");
+}

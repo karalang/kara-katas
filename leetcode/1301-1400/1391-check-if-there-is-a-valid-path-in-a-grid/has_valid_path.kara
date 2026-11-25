@@ -1,0 +1,141 @@
+// LeetCode #1391: Check if There is a Valid Path in a Grid -- the ★ arm:
+// a breadth-first search from the top-left cell over a `VecDeque`, each
+// street's two openings looked up in a table, and a neighbour entered only
+// when its own street opens back towards the cell. O(m n)
+
+// each street's two openings, as (row step, column step)
+fn street_ways() -> Vec[Vec[(i64, i64)]] {
+    [
+        [],
+        [(0, -1), (0, 1)],
+        [(-1, 0), (1, 0)],
+        [(0, -1), (1, 0)],
+        [(0, 1), (1, 0)],
+        [(0, -1), (-1, 0)],
+        [(0, 1), (-1, 0)],
+    ]
+}
+
+fn has_valid_path(grid: Vec[Vec[i32]]) -> bool {
+    let m = grid.len();
+    let n = grid[0].len();
+    let ways = street_ways();
+    let mut seen = Vec.filled(m * n, false);
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    queue.push_back((0, 0));
+    seen[0] = true;
+    while let Some((r, c)) = queue.pop_front() {
+        if r == m - 1 and c == n - 1 {
+            return true;
+        }
+        for (dr, dc) in ways[grid[r][c]].iter() {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr < 0 or nr >= m or nc < 0 or nc >= n or seen[nr * n + nc] {
+                continue;
+            }
+            // the neighbour's street must open back towards this cell
+            if ways[grid[nr][nc]].contains((-dr, -dc)) {
+                seen[nr * n + nc] = true;
+                queue.push_back((nr, nc));
+            }
+        }
+    }
+    false
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the street joining two sides (0 up, 1 right, 2 down, 3 left)
+fn street_joining(a: i64, b: i64) -> i32 {
+    let sides: Vec[(i64, i64)] = [(-1, -1), (3, 1), (0, 2), (3, 2), (1, 2), (3, 0), (1, 0)];
+    for s in 1..7 {
+        let (x, y) = sides[s];
+        if (x == a and y == b) or (x == b and y == a) {
+            return s as i32;
+        }
+    }
+    0
+}
+
+// an m by n grid of random streets with a path planted through it, right
+// and down from the top-left cell; when broken, one cell of the path is
+// given a random street again
+fn planted(m: i64, n: i64, broken: bool, seed: mut ref i64) -> Vec[Vec[i32]] {
+    let mut grid: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..m {
+        let mut row: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            row.push((1 + next_random(mut seed) % 6) as i32);
+        }
+        grid.push(row);
+    }
+    let mut path: Vec[(i64, i64)] = Vec.new();
+    let mut r = 0;
+    let mut c = 0;
+    let mut came = -1;
+    while r != m - 1 or c != n - 1 {
+        let go = if r == m - 1 { 1 } else if c == n - 1 { 2 } else if next_random(mut seed) % 2 == 0 { 1 } else { 2 };
+        let from = if came >= 0 { came } else { (go + 1 + next_random(mut seed) % 3) % 4 };
+        grid[r][c] = street_joining(from, go);
+        path.push((r, c));
+        if go == 1 {
+            c += 1;
+            came = 3;
+        } else {
+            r += 1;
+            came = 0;
+        }
+    }
+    if came >= 0 {
+        grid[r][c] = street_joining(came, (came + 1 + next_random(mut seed) % 3) % 4);
+    }
+    path.push((r, c));
+    if broken {
+        let (pr, pc) = path[next_random(mut seed) % path.len()];
+        grid[pr][pc] = (1 + next_random(mut seed) % 6) as i32;
+    }
+    grid
+}
+
+fn main() {
+    // LeetCode's five examples; a loop of four streets that reaches the
+    // corner, and one that turns back short of it; one cell
+    let shown: Vec[bool] = [
+        has_valid_path([[2, 4, 3], [6, 5, 2]]),
+        has_valid_path([[1, 2, 1], [1, 2, 1]]),
+        has_valid_path([[1, 1, 2]]),
+        has_valid_path([[1, 1, 1, 1, 1, 1, 3]]),
+        has_valid_path([[2], [2], [2], [2], [2], [2], [6]]),
+        has_valid_path([[4, 3], [6, 5]]),
+        has_valid_path([[4, 3, 1], [6, 5, 1]]),
+        has_valid_path([[5]]),
+    ];
+    println(Vec[String].from_iter(shown.iter().map(|b| f"{b}")).join(" "));
+    // the constraints' most: 300 by 300, a path planted, every other one
+    // then broken
+    let mut seed = 1391;
+    let mut big: Vec[String] = Vec.new();
+    for g in 0..6 {
+        let grid = planted(300, 300, g % 2 == 1, mut seed);
+        big.push(f"{has_valid_path(grid)}");
+    }
+    println(f"300 by 300, planted, every other one broken: {big.join(" ")}");
+    // 2000 random grids of 1 to 12 by 1 to 12, every other one broken
+    let mut check: i64 = 0;
+    let mut found = 0;
+    for c in 0..2000 {
+        let m = 1 + next_random(mut seed) % 12;
+        let n = 1 + next_random(mut seed) % 12;
+        let got = has_valid_path(planted(m, n, c % 2 == 1, mut seed));
+        if got {
+            found += 1;
+        }
+        check = (check * 131 + (if got { 2 } else { 1 }) * (m * 13 + n)) % 1000000007;
+    }
+    println(f"2000 random grids: {found} with a path, checksum {check}");
+}

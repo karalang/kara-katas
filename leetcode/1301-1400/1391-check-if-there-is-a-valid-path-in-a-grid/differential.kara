@@ -1,0 +1,442 @@
+// LeetCode #1391: Check if There is a Valid Path in a Grid -- differential test of
+// the five arms against the statement read literally, with five more
+// properties.
+
+// ---- has_valid_path.kara ----
+fn a0_street_ways() -> Vec[Vec[(i64, i64)]] {
+    [
+        [],
+        [(0, -1), (0, 1)],
+        [(-1, 0), (1, 0)],
+        [(0, -1), (1, 0)],
+        [(0, 1), (1, 0)],
+        [(0, -1), (-1, 0)],
+        [(0, 1), (-1, 0)],
+    ]
+}
+
+fn a0_has_valid_path(grid: Vec[Vec[i32]]) -> bool {
+    let m = grid.len();
+    let n = grid[0].len();
+    let ways = a0_street_ways();
+    let mut seen = Vec.filled(m * n, false);
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    queue.push_back((0, 0));
+    seen[0] = true;
+    while let Some((r, c)) = queue.pop_front() {
+        if r == m - 1 and c == n - 1 {
+            return true;
+        }
+        for (dr, dc) in ways[grid[r][c]].iter() {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr < 0 or nr >= m or nc < 0 or nc >= n or seen[nr * n + nc] {
+                continue;
+            }
+            // the neighbour's street must open back towards this cell
+            if ways[grid[nr][nc]].contains((-dr, -dc)) {
+                seen[nr * n + nc] = true;
+                queue.push_back((nr, nc));
+            }
+        }
+    }
+    false
+}
+
+// ---- has_valid_path_stack.kara ----
+fn a1_opens(street: i32, dr: i64, dc: i64) -> bool {
+    match (dr, dc) {
+        (-1, 0) => street == 2 or street == 5 or street == 6,
+        (1, 0) => street == 2 or street == 3 or street == 4,
+        (0, -1) => street == 1 or street == 3 or street == 5,
+        _ => street == 1 or street == 4 or street == 6,
+    }
+}
+
+fn a1_has_valid_path(grid: Vec[Vec[i32]]) -> bool {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut reached: Set[(i64, i64)] = Set.new();
+    let mut stack: Vec[(i64, i64)] = [(0, 0)];
+    reached.insert((0, 0));
+    while let Some((r, c)) = stack.pop() {
+        if (r, c) == (m - 1, n - 1) {
+            return true;
+        }
+        for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr >= 0 and nr < m and nc >= 0 and nc < n
+                and a1_opens(grid[r][c], dr, dc) and a1_opens(grid[nr][nc], -dr, -dc)
+                and reached.insert((nr, nc))
+            {
+                stack.push((nr, nc));
+            }
+        }
+    }
+    false
+}
+
+// ---- has_valid_path_union.kara ----
+struct A2Joins {
+    parent: Vec[i64],
+    size: Vec[i64],
+}
+
+impl A2Joins {
+    fn a2_new(count: i64) -> A2Joins {
+        A2Joins { parent: (0..count).collect(), size: Vec.filled(count, 1) }
+    }
+
+    fn a2_root(mut ref self, x: i64) -> i64 {
+        let mut x = x;
+        while self.parent[x] != x {
+            self.parent[x] = self.parent[self.parent[x]];
+            x = self.parent[x];
+        }
+        x
+    }
+
+    fn a2_join(mut ref self, a: i64, b: i64) {
+        let mut a = self.a2_root(a);
+        let mut b = self.a2_root(b);
+        if a == b {
+            return;
+        }
+        if self.size[a] < self.size[b] {
+            a, b = b, a;
+        }
+        self.parent[b] = a;
+        self.size[a] += self.size[b];
+    }
+}
+
+fn a2_has_valid_path(grid: Vec[Vec[i32]]) -> bool {
+    let m = grid.len();
+    let n = grid[0].len();
+    // the streets that open right, and those that open left, down and up
+    let right = [1, 4, 6];
+    let left = [1, 3, 5];
+    let down = [2, 3, 4];
+    let up = [2, 5, 6];
+    let mut joins = A2Joins.a2_new(m * n);
+    for r in 0..m {
+        for c in 0..n {
+            let here = grid[r][c];
+            if c + 1 < n and right.contains(here) and left.contains(grid[r][c + 1]) {
+                joins.a2_join(r * n + c, r * n + c + 1);
+            }
+            if r + 1 < m and down.contains(here) and up.contains(grid[r + 1][c]) {
+                joins.a2_join(r * n + c, (r + 1) * n + c);
+            }
+        }
+    }
+    joins.a2_root(0) == joins.a2_root(m * n - 1)
+}
+
+// ---- has_valid_path_follow.kara ----
+fn a3_has_valid_path(grid: Vec[Vec[i32]]) -> bool {
+    let m = grid.len();
+    let n = grid[0].len();
+    let bits = [0, 2 | 8, 1 | 4, 8 | 4, 2 | 4, 8 | 1, 2 | 1];
+    if m == 1 and n == 1 {
+        return true;
+    }
+    for side in [1, 2, 4, 8] {
+        if bits[grid[0][0]] & side == 0 {
+            continue;
+        }
+        let mut r = 0;
+        let mut c = 0;
+        let mut out = side;
+        loop {
+            match out {
+                1 => r -= 1,
+                2 => c += 1,
+                4 => r += 1,
+                _ => c -= 1,
+            }
+            if r < 0 or r >= m or c < 0 or c >= n or (r == 0 and c == 0) {
+                break;
+            }
+            // the side this cell is entered by is opposite the one left by
+            let entered = if out < 4 { out * 4 } else { out / 4 };
+            let open = bits[grid[r][c]];
+            if open & entered == 0 {
+                break;
+            }
+            if r == m - 1 and c == n - 1 {
+                return true;
+            }
+            out = open ^ entered;
+        }
+    }
+    false
+}
+
+// ---- has_valid_path_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_has_valid_path(grid: Vec[Vec[i32]]) -> bool {
+        let dirs: Array[Array[(i32, i32), 2], 7] = [
+            [(0, 0), (0, 0)],
+            [(0, -1), (0, 1)],
+            [(-1, 0), (1, 0)],
+            [(0, -1), (1, 0)],
+            [(0, 1), (1, 0)],
+            [(0, -1), (-1, 0)],
+            [(0, 1), (-1, 0)],
+        ];
+        let m = grid.len();
+        let n = grid[0].len();
+        let mut visited = Vec.filled(m, Vec.filled(n, false));
+        let mut stack = [(0, 0)];
+        visited[0][0] = true;
+        while let Some((i, j)) = stack.pop() {
+            if i == m - 1 and j == n - 1 {
+                return true;
+            }
+            for (di, dj) in dirs[grid[i][j]].iter() {
+                let ni = i as i32 + di;
+                let nj = j as i32 + dj;
+                if ni < 0 or nj < 0 or ni >= m as i32 or nj >= n as i32 {
+                    continue;
+                }
+                let (ni, nj) = (ni as i64, nj as i64);
+                if visited[ni][nj] {
+                    continue;
+                }
+                if dirs[grid[ni][nj]].iter().any(|(x, y)| x == -di and y == -dj) {
+                    visited[ni][nj] = true;
+                    stack.push((ni, nj));
+                }
+            }
+        }
+        false
+    }
+}
+
+fn a4_has_valid_path(grid: Vec[Vec[i32]]) -> bool {
+    A4Solution.a4_has_valid_path(grid)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the street joining two sides (0 up, 1 right, 2 down, 3 left)
+fn street_joining(a: i64, b: i64) -> i32 {
+    let sides: Vec[(i64, i64)] = [(-1, -1), (3, 1), (0, 2), (3, 2), (1, 2), (3, 0), (1, 0)];
+    for s in 1..7 {
+        let (x, y) = sides[s];
+        if (x == a and y == b) or (x == b and y == a) {
+            return s as i32;
+        }
+    }
+    0
+}
+
+// an m by n grid of random streets with a path planted through it, right
+// and down from the top-left cell; when broken, one cell of the path is
+// given a random street again
+fn planted(m: i64, n: i64, broken: bool, seed: mut ref i64) -> Vec[Vec[i32]] {
+    let mut grid: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..m {
+        let mut row: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            row.push((1 + next_random(mut seed) % 6) as i32);
+        }
+        grid.push(row);
+    }
+    let mut path: Vec[(i64, i64)] = Vec.new();
+    let mut r = 0;
+    let mut c = 0;
+    let mut came = -1;
+    while r != m - 1 or c != n - 1 {
+        let go = if r == m - 1 { 1 } else if c == n - 1 { 2 } else if next_random(mut seed) % 2 == 0 { 1 } else { 2 };
+        let from = if came >= 0 { came } else { (go + 1 + next_random(mut seed) % 3) % 4 };
+        grid[r][c] = street_joining(from, go);
+        path.push((r, c));
+        if go == 1 {
+            c += 1;
+            came = 3;
+        } else {
+            r += 1;
+            came = 0;
+        }
+    }
+    if came >= 0 {
+        grid[r][c] = street_joining(came, (came + 1 + next_random(mut seed) % 3) % 4);
+    }
+    path.push((r, c));
+    if broken {
+        let (pr, pc) = path[next_random(mut seed) % path.len()];
+        grid[pr][pc] = (1 + next_random(mut seed) % 6) as i32;
+    }
+    grid
+}
+
+// the statement read literally: the cells a path can reach, grown from
+// the top-left cell a sweep at a time, a neighbour joining when both
+// streets open towards each other, until a sweep adds none
+fn literal(grid: Vec[Vec[i32]]) -> bool {
+    let m = grid.len();
+    let n = grid[0].len();
+    // the side each street opens towards: up, right, down, left
+    let opens: Vec[Vec[bool]] = [
+        [false, false, false, false],
+        [false, true, false, true],
+        [true, false, true, false],
+        [false, false, true, true],
+        [false, true, true, false],
+        [true, false, false, true],
+        [true, true, false, false],
+    ];
+    let steps: Vec[(i64, i64)] = [(-1, 0), (0, 1), (1, 0), (0, -1)];
+    let mut reached = Vec.filled(m, Vec.filled(n, false));
+    reached[0][0] = true;
+    let mut grew = true;
+    while grew {
+        grew = false;
+        for r in 0..m {
+            for c in 0..n {
+                if not reached[r][c] {
+                    continue;
+                }
+                for side in 0..4 {
+                    let (dr, dc) = steps[side];
+                    let (nr, nc) = (r + dr, c + dc);
+                    if nr >= 0 and nr < m and nc >= 0 and nc < n and not reached[nr][nc]
+                        and opens[grid[r][c]][side] and opens[grid[nr][nc]][(side + 2) % 4]
+                    {
+                        reached[nr][nc] = true;
+                        grew = true;
+                    }
+                }
+            }
+        }
+    }
+    reached[m - 1][n - 1]
+}
+
+fn arm(i: i64, grid: Vec[Vec[i32]]) -> bool {
+    match i {
+        0 => a0_has_valid_path(grid),
+        1 => a1_has_valid_path(grid),
+        2 => a2_has_valid_path(grid),
+        3 => a3_has_valid_path(grid),
+        _ => a4_has_valid_path(grid),
+    }
+}
+
+// the grid reflected in its main diagonal, each street turned to match
+fn transposed(grid: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    let turn = [0, 2, 1, 6, 4, 5, 3];
+    let mut out: Vec[Vec[i32]] = Vec.new();
+    for c in 0..grid[0].len() {
+        out.push(grid.iter().map(|row| turn[row[c]]).collect());
+    }
+    out
+}
+
+// the grid turned half round, each street turned to match
+fn rotated(grid: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    let turn = [0, 1, 2, 6, 5, 4, 3];
+    grid.iter().rev().map(|row| row.iter().rev().map(|s| turn[s]).collect()).collect()
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, grid: Vec[Vec[i32]]) {
+    t.cases += 1;
+    let m = grid.len();
+    let n = grid[0].len();
+    let want = literal(grid);
+    t.check = (t.check * 131 + (if want { 2 } else { 1 }) * (m * 13 + n)) % 1000000007;
+    let star = arm(0, grid);
+    let flipped = transposed(grid);
+    let turned = rotated(grid);
+    let one = m * n == 1;
+    let mut shut_start = grid.clone();
+    shut_start[0][0] = 5;
+    let mut shut_end = grid.clone();
+    shut_end[m - 1][n - 1] = 4;
+    for i in 0..5 {
+        let got = arm(i, grid);
+        let what = f"arm {i} on {grid}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the grid reflected in its diagonal: the same
+        let fl = arm(i, flipped);
+        expect(mut t, 2, fl == got, f"P2 {what}, transposed: {fl}");
+        // P3: the grid turned half round, so the path runs back: the same
+        let tu = arm(i, turned);
+        expect(mut t, 3, tu == got, f"P3 {what}, turned: {tu}");
+        // P4: the start made street 5, open only off the grid: no path,
+        // unless the start is the corner
+        let ss = arm(i, shut_start);
+        expect(mut t, 4, ss == one, f"P4 {what}, start shut: {ss}");
+        // P5: the corner made street 4, open only off the grid: no path,
+        // unless it is the start
+        let se = arm(i, shut_end);
+        expect(mut t, 5, se == one, f"P5 {what}, corner shut: {se}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    let mut cases: Vec[Vec[Vec[i32]]] = Vec.new();
+    // LeetCode's five examples
+    cases.push([[2, 4, 3], [6, 5, 2]]);
+    cases.push([[1, 2, 1], [1, 2, 1]]);
+    cases.push([[1, 1, 2]]);
+    cases.push([[1, 1, 1, 1, 1, 1, 3]]);
+    cases.push([[2], [2], [2], [2], [2], [2], [6]]);
+    // 1998 grids of 1 to 12 by 1 to 12, each of random streets with a
+    // path planted from corner to corner; every other one then has a cell
+    // of its path given a random street again, and every third has no
+    // path planted at all. Every case is drawn before any arm answers.
+    let mut seed = 13911;
+    for c in 0..1998 {
+        let m = 1 + next_random(mut seed) % 12;
+        let n = 1 + next_random(mut seed) % 12;
+        let mut grid = planted(m, n, c % 2 == 1, mut seed);
+        if c % 3 == 2 {
+            for r in 0..m {
+                for k in 0..n {
+                    grid[r][k] = (1 + next_random(mut seed) % 6) as i32;
+                }
+            }
+        }
+        cases.push(grid);
+    }
+    for grid in cases.iter() {
+        check_case(mut t, grid);
+    }
+    println(f"{t.cases} grids: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
