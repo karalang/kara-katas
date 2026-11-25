@@ -1,0 +1,380 @@
+// LeetCode #1368: Minimum Cost to Make at Least One Valid Path in a Grid
+// -- differential test of the five arms against the statement read
+// literally, with five more properties.
+//
+// The statement: each cell of an m by n grid holds a sign, 1 to 4,
+// pointing right, left, down or up to the next cell to visit. A valid
+// path starts at the top left and ends at the bottom right following
+// the signs. A cell's sign can be changed at cost 1, once per cell.
+// Return the minimum cost to make the grid have at least one valid path.
+
+// ---- min_cost.kara ----
+fn a0_min_cost(grid: Vec[Vec[i32]]) -> i32 {
+    let (m, n) = (grid.len(), grid[0].len());
+    // signs 1 to 4: right, left, down, up
+    let moves = [(0, 1), (0, -1), (1, 0), (-1, 0)];
+    let mut cost: Vec[Vec[i32]] = Vec.filled(m, Vec.filled(n, i32.MAX));
+    let mut deque: VecDeque[(i64, i64)] = VecDeque.new();
+    cost[0][0] = 0;
+    deque.push_back((0, 0));
+    while let Some((r, c)) = deque.pop_front() {
+        for d in 0..4 {
+            let (nr, nc) = (r + moves[d].0, c + moves[d].1);
+            if nr < 0 or nr >= m or nc < 0 or nc >= n {
+                continue;
+            }
+            let step: i32 = if grid[r][c] == (d + 1) as i32 { 0 } else { 1 };
+            if cost[r][c] + step < cost[nr][nc] {
+                cost[nr][nc] = cost[r][c] + step;
+                if step == 0 {
+                    deque.push_front((nr, nc));
+                } else {
+                    deque.push_back((nr, nc));
+                }
+            }
+        }
+    }
+    cost[m - 1][n - 1]
+}
+
+// ---- min_cost_dijkstra.kara ----
+fn a1_min_cost(grid: Vec[Vec[i32]]) -> i32 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut best: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, i64.MAX));
+    let mut queue: PriorityQueue[(i64, i64, i64)] = PriorityQueue.new();
+    best[0][0] = 0;
+    queue.push((0, 0, 0));
+    while let Some((cost, r, c)) = queue.pop() {
+        if cost > best[r][c] {
+            continue;
+        }
+        if r == m - 1 and c == n - 1 {
+            return cost as i32;
+        }
+        let neighbours = [(r, c + 1, 1), (r, c - 1, 2), (r + 1, c, 3), (r - 1, c, 4)];
+        for (nr, nc, sign) in neighbours {
+            if nr >= 0 and nr < m and nc >= 0 and nc < n {
+                let next = cost + if grid[r][c] == sign { 0 } else { 1 };
+                if next < best[nr][nc] {
+                    best[nr][nc] = next;
+                    queue.push((next, nr, nc));
+                }
+            }
+        }
+    }
+    best[m - 1][n - 1] as i32
+}
+
+// ---- min_cost_layers.kara ----
+fn a2_follow(grid: Vec[Vec[i32]], cost: mut ref Vec[Vec[i64]], layer: mut ref Vec[(i64, i64)], r: i64, c: i64, k: i64) {
+    let (m, n) = (grid.len(), grid[0].len());
+    let mut (r, c) = (r, c);
+    while r >= 0 and r < m and c >= 0 and c < n and cost[r][c] < 0 {
+        cost[r][c] = k;
+        layer.push((r, c));
+        match grid[r][c] {
+            1 => c += 1,
+            2 => c -= 1,
+            3 => r += 1,
+            _ => r -= 1,
+        }
+    }
+}
+
+fn a2_min_cost(grid: Vec[Vec[i32]]) -> i32 {
+    let (m, n) = (grid.len(), grid[0].len());
+    let mut cost: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, -1));
+    let mut layer: Vec[(i64, i64)] = Vec.new();
+    a2_follow(grid, mut cost, mut layer, 0, 0, 0);
+    let mut k = 0;
+    while cost[m - 1][n - 1] < 0 {
+        k += 1;
+        let mut next: Vec[(i64, i64)] = Vec.new();
+        for (r, c) in layer.iter() {
+            for (nr, nc) in [(r, c + 1), (r, c - 1), (r + 1, c), (r - 1, c)] {
+                a2_follow(grid, mut cost, mut next, nr, nc, k);
+            }
+        }
+        layer = next;
+    }
+    cost[m - 1][n - 1] as i32
+}
+
+// ---- min_cost_sweeps.kara ----
+fn a3_min_cost(grid: Vec[Vec[i32]]) -> i32 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let big = m * n;
+    let mut cost: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, big));
+    cost[0][0] = 0;
+    let mut pass = 0;
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for i in 0..m * n {
+            let at = if pass % 2 == 0 { i } else { m * n - 1 - i };
+            let (r, c) = (at / n, at % n);
+            if cost[r][c] == big {
+                continue;
+            }
+            for sign in 1..5 {
+                let (nr, nc) = match sign {
+                    1 => (r, c + 1),
+                    2 => (r, c - 1),
+                    3 => (r + 1, c),
+                    _ => (r - 1, c),
+                };
+                if nr < 0 or nr >= m or nc < 0 or nc >= n {
+                    continue;
+                }
+                let through = cost[r][c] + if grid[r][c] == sign { 0 } else { 1 };
+                if through < cost[nr][nc] {
+                    cost[nr][nc] = through;
+                    changed = true;
+                }
+            }
+        }
+        pass += 1;
+    }
+    cost[m - 1][n - 1] as i32
+}
+
+// ---- min_cost_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_min_cost(grid: Vec[Vec[i32]]) -> i32 {
+        let (m, n) = (grid.len(), grid[0].len());
+        let dirs = [(0, 1), (0, -1), (1, 0), (-1, 0)];
+        let mut dist = Vec.filled(m, Vec.filled(n, i32.MAX));
+        let mut q = VecDeque.new();
+        dist[0][0] = 0;
+        q.push_back((0usize, 0usize));
+        while let Some((i, j)) = q.pop_front() {
+            for (k, (di, dj)) in dirs.iter().enumerate() {
+                let ni = i as i32 + di;
+                let nj = j as i32 + dj;
+                if ni < 0 or nj < 0 or ni >= m as i32 or nj >= n as i32 {
+                    continue;
+                }
+                let (ni, nj) = (ni as usize, nj as usize);
+                let w: i32 = if grid[i][j] == k as i32 + 1 { 0 } else { 1 };
+                if dist[i][j] + w < dist[ni][nj] {
+                    dist[ni][nj] = dist[i][j] + w;
+                    if w == 0 {
+                        q.push_front((ni, nj));
+                    } else {
+                        q.push_back((ni, nj));
+                    }
+                }
+            }
+        }
+        dist[m - 1][n - 1]
+    }
+}
+
+fn a4_min_cost(grid: Vec[Vec[i32]]) -> i32 {
+    A4Solution.a4_min_cost(grid)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// an m by n grid of signs drawn at random from 1 to 4
+fn random_grid(seed: mut ref i64, m: i64, n: i64) -> Vec[Vec[i32]] {
+    let mut grid: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..m {
+        let mut row: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            row.push((1 + next_random(mut seed) % 4) as i32);
+        }
+        grid.push(row);
+    }
+    grid
+}
+
+// the cheapest path from (r, c) to the bottom right that does not cross
+// itself or the cells in `seen`, each step costing 1 when the cell's
+// sign points elsewhere; -1 when there is none
+fn cheapest(grid: Vec[Vec[i32]], seen: mut ref Vec[Vec[bool]], r: i64, c: i64) -> i64 {
+    let (m, n) = (grid.len(), grid[0].len());
+    if r == m - 1 and c == n - 1 {
+        return 0;
+    }
+    seen[r][c] = true;
+    let mut best = -1;
+    for (sign, nr, nc) in [(1, r, c + 1), (2, r, c - 1), (3, r + 1, c), (4, r - 1, c)] {
+        if nr >= 0 and nr < m and nc >= 0 and nc < n and not seen[nr][nc] {
+            let rest = cheapest(grid, mut seen, nr, nc);
+            if rest >= 0 {
+                let total = rest + if grid[r][c] == sign { 0 } else { 1 };
+                if best < 0 or total < best {
+                    best = total;
+                }
+            }
+        }
+    }
+    seen[r][c] = false;
+    best
+}
+
+// the statement read literally: every way through the grid that visits
+// no cell twice, each costing the cells on it whose sign must change;
+// the cheapest of them. Changing a cell twice is never needed, so the
+// simple paths are all that need trying
+fn literal(grid: Vec[Vec[i32]]) -> i64 {
+    let mut seen: Vec[Vec[bool]] = Vec.filled(grid.len(), Vec.filled(grid[0].len(), false));
+    cheapest(grid, mut seen, 0, 0)
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, grid: Vec[Vec[i32]]) -> i64 {
+    let got = match i {
+        0 => a0_min_cost(grid),
+        1 => a1_min_cost(grid),
+        2 => a2_min_cost(grid),
+        3 => a3_min_cost(grid),
+        _ => a4_min_cost(grid),
+    };
+    got
+}
+
+// the grid flipped over its diagonal, right and down swapped, left and up
+fn transposed(grid: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    let swap = [0, 3, 4, 1, 2];
+    let mut out: Vec[Vec[i32]] = Vec.new();
+    for c in 0..grid[0].len() {
+        let mut row: Vec[i32] = Vec.new();
+        for r in 0..grid.len() {
+            row.push(swap[grid[r][c]] as i32);
+        }
+        out.push(row);
+    }
+    out
+}
+
+// whether following the signs from the top left reaches the bottom right
+fn signs_reach(grid: Vec[Vec[i32]]) -> bool {
+    let (m, n) = (grid.len(), grid[0].len());
+    let mut (r, c) = (0, 0);
+    for _ in 0..m * n {
+        if r == m - 1 and c == n - 1 {
+            return true;
+        }
+        match grid[r][c] {
+            1 => c += 1,
+            2 => c -= 1,
+            3 => r += 1,
+            _ => r -= 1,
+        }
+        if r < 0 or r >= m or c < 0 or c >= n {
+            return false;
+        }
+    }
+    r == m - 1 and c == n - 1
+}
+
+// the cost of going all the way right then all the way down, or down
+// first when `down_first`
+fn staircase(grid: Vec[Vec[i32]], down_first: bool) -> i64 {
+    let (m, n) = (grid.len(), grid[0].len());
+    let mut cost = 0;
+    let mut (r, c) = (0, 0);
+    while r < m - 1 or c < n - 1 {
+        let go_down = if down_first { r < m - 1 } else { c == n - 1 };
+        if go_down {
+            if grid[r][c] != 3 {
+                cost += 1;
+            }
+            r += 1;
+        } else {
+            if grid[r][c] != 1 {
+                cost += 1;
+            }
+            c += 1;
+        }
+    }
+    cost
+}
+
+fn check_case(t: mut ref Tally, grid: Vec[Vec[i32]], cell: (i64, i64, i32)) {
+    t.cases += 1;
+    let small = grid.len() * grid[0].len() <= 16;
+    let star = arm(0, grid);
+    let want = if small { literal(grid) } else { star };
+    t.check = (t.check * 131 + want) % 1000000007;
+    let flipped = transposed(grid);
+    let mut changed = grid.clone();
+    changed[cell.0][cell.1] = cell.2;
+    let reach = signs_reach(grid);
+    let bound = staircase(grid, false).min(staircase(grid, true));
+    for i in 0..5 {
+        let got = arm(i, grid);
+        let what = f"arm {i} at {grid}";
+        // P1: the statement read literally, on grids of up to 16 cells
+        if small {
+            expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        }
+        // P2: the grid transposed with its signs, the same cost
+        expect(mut t, 2, arm(i, flipped) == got, f"P2 {what}, transposed");
+        // P3: cost 0 exactly when the signs already lead there
+        expect(mut t, 3, (got == 0) == reach, f"P3 {what}: signs reach {reach}, got {got}");
+        // P4: one cell's sign changed moves the cost by at most 1
+        let moved = arm(i, changed);
+        expect(mut t, 4, moved - got <= 1 and got - moved <= 1, f"P4 {what}, {cell}: {got} to {moved}");
+        // P5: no more than either staircase path costs
+        expect(mut t, 5, got <= bound, f"P5 {what}: {got} above {bound}");
+        // P6: the ★ arm's cost
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's three examples and one cell; then 1500 random grids of 1
+    // to 4 by 1 to 4, which the literal reading checks, and 500 of 1 to 12
+    // by 1 to 12; each with one cell given a random sign for P4
+    check_case(mut t, [[1, 1, 1, 1], [2, 2, 2, 2], [1, 1, 1, 1], [2, 2, 2, 2]], (1, 1, 4));
+    check_case(mut t, [[1, 1, 3], [3, 2, 2], [1, 1, 4]], (0, 2, 1));
+    check_case(mut t, [[1, 2], [4, 3]], (0, 1, 3));
+    check_case(mut t, [[4]], (0, 0, 1));
+    let mut seed = 1368;
+    for k in 0..2000 {
+        let side = if k < 1500 { 4 } else { 12 };
+        let m = 1 + next_random(mut seed) % side;
+        let n = 1 + next_random(mut seed) % side;
+        let grid = random_grid(mut seed, m, n);
+        let r = next_random(mut seed) % m;
+        let c = next_random(mut seed) % n;
+        let sign = (1 + next_random(mut seed) % 4) as i32;
+        check_case(mut t, grid, (r, c, sign));
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
