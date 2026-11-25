@@ -1,0 +1,86 @@
+// LeetCode #1362: Closest Divisors -- the divisors arm: each target
+// factored by trial division into primes and their powers, every divisor
+// built from them, and the largest whose square is at most the target
+// paired with its cofactor; the closer of the two pairs is the answer.
+// O(√num) to factor, then the divisors, at most 1344 below 10^9
+fn divisors(m: i64) -> Vec[i64] {
+    let mut all: Vec[i64] = [1];
+    let mut rest = m;
+    let mut p = 2;
+    while p * p <= rest {
+        if rest % p == 0 {
+            let mut power = 0;
+            while rest % p == 0 {
+                rest /= p;
+                power += 1;
+            }
+            let count = all.len();
+            let mut factor = 1;
+            for _ in 0..power {
+                factor *= p;
+                for i in 0..count {
+                    all.push(all[i] * factor);
+                }
+            }
+        }
+        p += 1;
+    }
+    if rest > 1 {
+        let count = all.len();
+        for i in 0..count {
+            all.push(all[i] * rest);
+        }
+    }
+    all
+}
+
+fn best(m: i64) -> (i64, i64) {
+    let mut small = 1;
+    for d in divisors(m) {
+        if d * d <= m and d > small {
+            small = d;
+        }
+    }
+    (small, m / small)
+}
+
+fn closest_divisors(num: i32) -> Vec[i32] {
+    let (a, b) = best(num as i64 + 1);
+    let (c, d) = best(num as i64 + 2);
+    if b - a <= d - c {
+        [a as i32, b as i32]
+    } else {
+        [c as i32, d as i32]
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the pair, smaller first, since either order is an answer
+fn show(pair: Vec[i32]) -> String {
+    let (a, b) = (pair[0].min(pair[1]), pair[0].max(pair[1]));
+    f"[{a},{b}]"
+}
+
+fn main() {
+    // LeetCode's three examples; the constraints' two ends; num + 2 a
+    // square; num + 1 twice a prime and num + 2 the prime 10^9 + 7
+    let nums = [8, 123, 999, 1, 1000000000, 23, 1000000005];
+    let shown: Vec[String] = nums.iter().map(|num| show(closest_divisors(num))).collect();
+    println(shown.join(" "));
+    // 500 random numbers up to 10^9, folded into a checksum
+    let mut seed = 1362;
+    let mut check: i64 = 0;
+    for _ in 0..500 {
+        let num = (1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000) as i32;
+        let pair = closest_divisors(num);
+        let (a, b) = (pair[0].min(pair[1]) as i64, pair[0].max(pair[1]) as i64);
+        check = (check * 131 + a * 7 + b) % 1000000007;
+    }
+    println(f"500 random numbers: checksum {check}");
+}

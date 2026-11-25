@@ -1,0 +1,284 @@
+// LeetCode #1362: Closest Divisors -- differential test of the five
+// arms against the statement read literally, with five more properties.
+//
+// The statement: given an integer num, find the closest two integers in
+// absolute difference whose product equals num + 1 or num + 2, in either
+// order.
+
+// ---- closest_divisors.kara ----
+fn a0_isqrt(x: i64) -> i64 {
+    let mut r = (x as f64).sqrt() as i64;
+    while r * r > x {
+        r -= 1;
+    }
+    while (r + 1) * (r + 1) <= x {
+        r += 1;
+    }
+    r
+}
+
+fn a0_closest_divisors(num: i32) -> Vec[i32] {
+    let (one, two) = (num as i64 + 1, num as i64 + 2);
+    let mut d = a0_isqrt(two);
+    while d > 0 {
+        if one % d == 0 {
+            return [d as i32, (one / d) as i32];
+        }
+        if two % d == 0 {
+            return [d as i32, (two / d) as i32];
+        }
+        d -= 1;
+    }
+    [1, num + 1]
+}
+
+// ---- closest_divisors_separate.kara ----
+fn a1_closest_pair(m: i64) -> (i64, i64) {
+    let mut d = (m as f64).sqrt() as i64;
+    while d * d > m {
+        d -= 1;
+    }
+    while (d + 1) * (d + 1) <= m {
+        d += 1;
+    }
+    while m % d != 0 {
+        d -= 1;
+    }
+    (d, m / d)
+}
+
+fn a1_closest_divisors(num: i32) -> Vec[i32] {
+    let (a, b) = a1_closest_pair(num as i64 + 1);
+    let (c, d) = a1_closest_pair(num as i64 + 2);
+    if b - a <= d - c {
+        [a as i32, b as i32]
+    } else {
+        [c as i32, d as i32]
+    }
+}
+
+// ---- closest_divisors_ascending.kara ----
+fn a2_closest_divisors(num: i32) -> Vec[i32] {
+    let one = num as i64 + 1;
+    let two = num as i64 + 2;
+    let mut best_one = 1;
+    let mut best_two = 1;
+    let mut d = 1;
+    while d * d <= two {
+        if d * d <= one and one % d == 0 {
+            best_one = d;
+        }
+        if two % d == 0 {
+            best_two = d;
+        }
+        d += 1;
+    }
+    let (a, b) = (best_one, one / best_one);
+    let (c, e) = (best_two, two / best_two);
+    if b - a <= e - c {
+        [a as i32, b as i32]
+    } else {
+        [c as i32, e as i32]
+    }
+}
+
+// ---- closest_divisors_divisors.kara ----
+fn a3_divisors(m: i64) -> Vec[i64] {
+    let mut all: Vec[i64] = [1];
+    let mut rest = m;
+    let mut p = 2;
+    while p * p <= rest {
+        if rest % p == 0 {
+            let mut power = 0;
+            while rest % p == 0 {
+                rest /= p;
+                power += 1;
+            }
+            let count = all.len();
+            let mut factor = 1;
+            for _ in 0..power {
+                factor *= p;
+                for i in 0..count {
+                    all.push(all[i] * factor);
+                }
+            }
+        }
+        p += 1;
+    }
+    if rest > 1 {
+        let count = all.len();
+        for i in 0..count {
+            all.push(all[i] * rest);
+        }
+    }
+    all
+}
+
+fn a3_best(m: i64) -> (i64, i64) {
+    let mut small = 1;
+    for d in a3_divisors(m) {
+        if d * d <= m and d > small {
+            small = d;
+        }
+    }
+    (small, m / small)
+}
+
+fn a3_closest_divisors(num: i32) -> Vec[i32] {
+    let (a, b) = a3_best(num as i64 + 1);
+    let (c, d) = a3_best(num as i64 + 2);
+    if b - a <= d - c {
+        [a as i32, b as i32]
+    } else {
+        [c as i32, d as i32]
+    }
+}
+
+// ---- closest_divisors_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_closest_divisors(num: i32) -> Vec[i32] {
+        let mut i = ((num + 2) as f64).sqrt() as i32;
+        while i > 0 {
+            if (num + 1) % i == 0 {
+                return [i, (num + 1) / i];
+            }
+            if (num + 2) % i == 0 {
+                return [i, (num + 2) / i];
+            }
+            i -= 1;
+        }
+        Vec.new()
+    }
+}
+
+fn a4_closest_divisors(num: i32) -> Vec[i32] {
+    A4Solution.a4_closest_divisors(num)
+}
+
+// ---- the differential -------------------------------------------------------
+
+// the statement read literally: every pair of positive integers whose
+// product is num + 1 or num + 2, the first factor tried from 1 to the
+// product, and the pair of least difference kept, smaller first
+fn literal(num: i64) -> (i64, i64) {
+    let mut best = (1, num + 1);
+    for m in [num + 1, num + 2] {
+        for a in 1..m + 1 {
+            if m % a == 0 {
+                let b = m / a;
+                if (a - b).abs() < best.1 - best.0 {
+                    best = (a.min(b), a.max(b));
+                }
+            }
+        }
+    }
+    best
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+// an arm's answer, smaller first, since either order is an answer
+fn arm(i: i64, num: i64) -> (i64, i64) {
+    let pair = match i {
+        0 => a0_closest_divisors(num as i32),
+        1 => a1_closest_divisors(num as i32),
+        2 => a2_closest_divisors(num as i32),
+        3 => a3_closest_divisors(num as i32),
+        _ => a4_closest_divisors(num as i32),
+    };
+    let (a, b) = (pair[0] as i64, pair[1] as i64);
+    (a.min(b), a.max(b))
+}
+
+fn check_case(t: mut ref Tally, num: i64) {
+    t.cases += 1;
+    let small = num <= 2000;
+    let want = if small { literal(num) } else { (0, 0) };
+    t.check = (t.check * 131 + want.0 * 7 + want.1 + num) % 1000000007;
+    // k² - 2 and k² - 1, for a k drawn from num, have a square target
+    let k = 2 + num % 30000;
+    let star = arm(0, num);
+    for i in 0..5 {
+        let (a, b) = arm(i, num);
+        let what = f"arm {i} at {num}";
+        // P1: the statement read literally, for num up to 2000
+        if small {
+            expect(mut t, 1, (a, b) == want, f"P1 {what}: literal {want}, got ({a}, {b})");
+        }
+        // P2: the product is num + 1 or num + 2
+        expect(mut t, 2, a * b == num + 1 or a * b == num + 2, f"P2 {what}: ({a}, {b})");
+        // P3: the closest pair for its own product: nothing from a + 1 up
+        // to the product's square root divides it
+        let mut closer = a + 1;
+        while closer * closer <= a * b and (a * b) % closer != 0 {
+            closer += 1;
+        }
+        expect(mut t, 3, a >= 1 and closer * closer > a * b, f"P3 {what}: ({a}, {b}), {closer} divides");
+        // P4: a neighbour's answer on a shared target is no closer: num - 1
+        // may answer for num + 1, and num + 1 for num + 2
+        if num > 1 {
+            let (c, d) = arm(i, num - 1);
+            if c * d == num + 1 {
+                expect(mut t, 4, b - a <= d - c, f"P4 {what}: ({a}, {b}), num - 1 ({c}, {d})");
+            }
+        }
+        if num < 1000000000 {
+            let (c, d) = arm(i, num + 1);
+            if c * d == num + 2 {
+                expect(mut t, 4, b - a <= d - c, f"P4 {what}: ({a}, {b}), num + 1 ({c}, {d})");
+            }
+        }
+        // P5: num + 1 or num + 2 a square k², the answer (k, k)
+        for square in [k * k - 2, k * k - 1] {
+            expect(mut t, 5, arm(i, square) == (k, k), f"P5 arm {i} at {square}: {arm(i, square)}");
+        }
+        // P6: the ★ arm's answer
+        expect(mut t, 6, (a, b) == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // every num from 1 to 2000; the constraints' last ten; then 200
+    // random numbers up to 10^9
+    for num in 1..2001 {
+        check_case(mut t, num);
+    }
+    for num in 999999991..1000000001 {
+        check_case(mut t, num);
+    }
+    let mut seed = 1362;
+    for _ in 0..200 {
+        let num = 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000;
+        check_case(mut t, num);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
