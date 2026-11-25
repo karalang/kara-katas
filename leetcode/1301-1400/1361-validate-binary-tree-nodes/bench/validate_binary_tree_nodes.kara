@@ -1,0 +1,117 @@
+// LeetCode #1361 bench -- the ★ arm: every node's parents counted, one root
+// and no node with two, then a search from the root that must reach all n.
+fn validate_binary_tree_nodes(n: i32, left_child: Vec[i32], right_child: Vec[i32]) -> bool {
+    let mut parents: Vec[i64] = Vec.filled(n, 0);
+    for i in 0..n {
+        for child in [left_child[i], right_child[i]] {
+            if child != -1 {
+                parents[child] += 1;
+            }
+        }
+    }
+    let mut root = -1;
+    for i in 0..n {
+        if parents[i] > 1 {
+            return false;
+        }
+        if parents[i] == 0 {
+            if root != -1 {
+                return false;
+            }
+            root = i;
+        }
+    }
+    if root == -1 {
+        return false;
+    }
+    let mut seen: Vec[bool] = Vec.filled(n, false);
+    let mut queue = [root];
+    let mut head = 0;
+    while head < queue.len() {
+        let node = queue[head];
+        head += 1;
+        if seen[node] {
+            return false;
+        }
+        seen[node] = true;
+        for child in [left_child[node], right_child[node]] {
+            if child != -1 {
+                queue.push(child);
+            }
+        }
+    }
+    head == n
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n nodes made into one binary tree, each node after the first hung on a
+// free side of a node already placed; then, one time in two, broken or
+// not: a free side pointed at any node, an edge cut, or an edge moved to
+// any node
+fn random_case(seed: mut ref i64, n: i64) -> (Vec[i32], Vec[i32]) {
+    let mut left: Vec[i32] = Vec.filled(n, -1);
+    let mut right: Vec[i32] = Vec.filled(n, -1);
+    let mut order: Vec[i64] = (0..n).collect();
+    for i in 1..n {
+        let j = next_random(mut seed) % (i + 1);
+        let held = order[i];
+        order[i] = order[j];
+        order[j] = held;
+    }
+    for i in 1..n {
+        loop {
+            let parent = order[next_random(mut seed) % i];
+            if next_random(mut seed) % 2 == 0 {
+                if left[parent] == -1 {
+                    left[parent] = order[i] as i32;
+                    break;
+                }
+            } else if right[parent] == -1 {
+                right[parent] = order[i] as i32;
+                break;
+            }
+        }
+    }
+    let node = next_random(mut seed) % n;
+    let other = (next_random(mut seed) % n) as i32;
+    match next_random(mut seed) % 6 {
+        0 => {
+            if left[node] == -1 {
+                left[node] = other;
+            } else if right[node] == -1 {
+                right[node] = other;
+            }
+        }
+        1 => {
+            left[node] = -1;
+        }
+        2 => {
+            if right[node] != -1 {
+                right[node] = other;
+            }
+        }
+        _ => {}
+    }
+    (left, right)
+}
+
+fn main() {
+    // 20 sets of 5000 nodes made once; then 5000 questions, each set drawn
+    // from the checksum so far, every answer folded into it
+    let mut seed = 1361;
+    let mut sets: Vec[(Vec[i32], Vec[i32])] = Vec.new();
+    for _ in 0..20 {
+        sets.push(random_case(mut seed, 5000));
+    }
+    let mut check: i64 = 0;
+    for r in 0..5000 {
+        let (left, right) = ref sets[check % 20];
+        let got = validate_binary_tree_nodes(5000, left, right);
+        check = (check * 31 + if got { 1 } else { 0 } + r) % 1000000007;
+    }
+    println(f"5000 questions: checksum {check}");
+}

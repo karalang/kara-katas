@@ -1,0 +1,464 @@
+// LeetCode #1361: Validate Binary Tree Nodes -- differential test of
+// the five arms against the statement read literally, with five more
+// properties.
+//
+// The statement: n nodes numbered 0 to n - 1, node i with children
+// left_child[i] and right_child[i], -1 for none; return true if and only
+// if all the nodes form exactly one valid binary tree.
+
+// ---- validate_binary_tree_nodes.kara ----
+fn a0_validate_binary_tree_nodes(n: i32, left_child: Vec[i32], right_child: Vec[i32]) -> bool {
+    let mut parents: Vec[i64] = Vec.filled(n, 0);
+    for i in 0..n {
+        for child in [left_child[i], right_child[i]] {
+            if child != -1 {
+                parents[child] += 1;
+            }
+        }
+    }
+    let mut root = -1;
+    for i in 0..n {
+        if parents[i] > 1 {
+            return false;
+        }
+        if parents[i] == 0 {
+            if root != -1 {
+                return false;
+            }
+            root = i;
+        }
+    }
+    if root == -1 {
+        return false;
+    }
+    let mut seen: Vec[bool] = Vec.filled(n, false);
+    let mut queue = [root];
+    let mut head = 0;
+    while head < queue.len() {
+        let node = queue[head];
+        head += 1;
+        if seen[node] {
+            return false;
+        }
+        seen[node] = true;
+        for child in [left_child[node], right_child[node]] {
+            if child != -1 {
+                queue.push(child);
+            }
+        }
+    }
+    head == n
+}
+
+// ---- validate_binary_tree_nodes_dsu.kara ----
+fn a1_find(leader: mut ref Vec[i64], node: i64) -> i64 {
+    let mut at = node;
+    while leader[at] != at {
+        leader[at] = leader[leader[at]];
+        at = leader[at];
+    }
+    at
+}
+
+fn a1_validate_binary_tree_nodes(n: i32, left_child: Vec[i32], right_child: Vec[i32]) -> bool {
+    let mut leader: Vec[i64] = (0..n as i64).collect();
+    let mut has_parent: Vec[bool] = Vec.filled(n, false);
+    let mut sets = n;
+    for parent in 0..n {
+        for child in [left_child[parent], right_child[parent]] {
+            if child == -1 {
+                continue;
+            }
+            if has_parent[child] {
+                return false;
+            }
+            has_parent[child] = true;
+            let (a, b) = (a1_find(mut leader, parent), a1_find(mut leader, child));
+            if a == b {
+                return false;
+            }
+            leader[b] = a;
+            sets -= 1;
+        }
+    }
+    sets == 1
+}
+
+// ---- validate_binary_tree_nodes_dfs.kara ----
+fn a2_walk(node: i64, left_child: Vec[i32], right_child: Vec[i32], marked: mut ref Vec[bool]) -> i64 {
+    if node == -1 {
+        return 0;
+    }
+    if marked[node] {
+        return -1;
+    }
+    marked[node] = true;
+    let left = a2_walk(left_child[node], left_child, right_child, mut marked);
+    let right = a2_walk(right_child[node], left_child, right_child, mut marked);
+    if left < 0 or right < 0 {
+        return -1;
+    }
+    1 + left + right
+}
+
+fn a2_validate_binary_tree_nodes(n: i32, left_child: Vec[i32], right_child: Vec[i32]) -> bool {
+    let mut is_child: Vec[bool] = Vec.filled(n, false);
+    for i in 0..n {
+        if left_child[i] != -1 {
+            is_child[left_child[i]] = true;
+        }
+        if right_child[i] != -1 {
+            is_child[right_child[i]] = true;
+        }
+    }
+    let roots: Vec[i64] = (0..n as i64).filter(|i| not is_child[i]).collect();
+    if roots.len() != 1 {
+        return false;
+    }
+    let mut marked: Vec[bool] = Vec.filled(n, false);
+    a2_walk(roots[0], left_child, right_child, mut marked) == n
+}
+
+// ---- validate_binary_tree_nodes_climb.kara ----
+fn a3_validate_binary_tree_nodes(n: i32, left_child: Vec[i32], right_child: Vec[i32]) -> bool {
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    for i in 0..n {
+        for child in [left_child[i], right_child[i]] {
+            if child != -1 {
+                if parent[child] != -1 or child == i {
+                    return false;
+                }
+                parent[child] = i;
+            }
+        }
+    }
+    let mut root = -1;
+    for i in 0..n {
+        if parent[i] == -1 {
+            if root != -1 {
+                return false;
+            }
+            root = i;
+        }
+    }
+    if root == -1 {
+        return false;
+    }
+    let mut reaches: Vec[bool] = Vec.filled(n, false);
+    reaches[root] = true;
+    for start in 0..n {
+        let mut path: Vec[i64] = Vec.new();
+        let mut at: i64 = start;
+        while not reaches[at] {
+            if path.len() > n {
+                return false;
+            }
+            path.push(at);
+            at = parent[at];
+        }
+        for node in path {
+            reaches[node] = true;
+        }
+    }
+    true
+}
+
+// ---- validate_binary_tree_nodes_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_validate_binary_tree_nodes(n: i32, left_child: Vec[i32], right_child: Vec[i32]) -> bool {
+        let n = n as i64;
+        let mut indeg = Vec.filled(n, 0);
+        for i in 0..n {
+            if left_child[i] != -1 {
+                indeg[left_child[i]] += 1;
+            }
+            if right_child[i] != -1 {
+                indeg[right_child[i]] += 1;
+            }
+        }
+        let mut root = -1;
+        for i in 0..n {
+            if indeg[i] > 1 {
+                return false;
+            }
+            if indeg[i] == 0 {
+                if root != -1 {
+                    return false;
+                }
+                root = i as i32;
+            }
+        }
+        if root == -1 {
+            return false;
+        }
+        let mut stack = [root as i64];
+        let mut seen = Vec.filled(n, false);
+        let mut count = 0;
+        while let Some(u) = stack.pop() {
+            if seen[u] {
+                return false;
+            }
+            seen[u] = true;
+            count += 1;
+            for c in [left_child[u], right_child[u]].iter() {
+                if c != -1 {
+                    stack.push(c);
+                }
+            }
+        }
+        count == n
+    }
+}
+
+fn a4_validate_binary_tree_nodes(n: i32, left_child: Vec[i32], right_child: Vec[i32]) -> bool {
+    A4Solution.a4_validate_binary_tree_nodes(n, left_child, right_child)
+}
+
+// ---- the differential -------------------------------------------------------
+
+// the statement read literally: the nodes form one binary tree when some
+// node, the root, reaches every node by exactly one path. Paths from each
+// candidate root are counted by length, 0 to n, each count held at 2,
+// which is already too many; a path of n edges goes round a cycle
+fn literal(n: i64, left: Vec[i32], right: Vec[i32]) -> bool {
+    for root in 0..n {
+        let mut paths: Vec[i64] = Vec.filled(n, 0);
+        let mut ending: Vec[i64] = Vec.filled(n, 0);
+        ending[root] = 1;
+        let mut cycle = false;
+        for length in 0..n + 1 {
+            let mut next: Vec[i64] = Vec.filled(n, 0);
+            for node in 0..n {
+                if ending[node] == 0 {
+                    continue;
+                }
+                if length == n {
+                    cycle = true;
+                }
+                paths[node] = (paths[node] + ending[node]).min(2);
+                for child in [left[node], right[node]] {
+                    if child != -1 {
+                        next[child] = (next[child] + ending[node]).min(2);
+                    }
+                }
+            }
+            ending = next;
+        }
+        if not cycle and paths.iter().all(|p| p == 1) {
+            return true;
+        }
+    }
+    false
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, left: Vec[i32], right: Vec[i32]) -> bool {
+    let n = left.len() as i32;
+    match i {
+        0 => a0_validate_binary_tree_nodes(n, left, right),
+        1 => a1_validate_binary_tree_nodes(n, left, right),
+        2 => a2_validate_binary_tree_nodes(n, left, right),
+        3 => a3_validate_binary_tree_nodes(n, left, right),
+        _ => a4_validate_binary_tree_nodes(n, left, right),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n nodes made into one binary tree, each node after the first hung on a
+// free side of a node already placed; then, one time in two, broken or
+// not: a free side pointed at any node, an edge cut, or an edge moved to
+// any node
+fn random_case(seed: mut ref i64, most: i64) -> (Vec[i32], Vec[i32]) {
+    let n = 1 + next_random(mut seed) % most;
+    let mut left: Vec[i32] = Vec.filled(n, -1);
+    let mut right: Vec[i32] = Vec.filled(n, -1);
+    let mut order: Vec[i64] = (0..n).collect();
+    for i in 1..n {
+        let j = next_random(mut seed) % (i + 1);
+        let held = order[i];
+        order[i] = order[j];
+        order[j] = held;
+    }
+    for i in 1..n {
+        loop {
+            let parent = order[next_random(mut seed) % i];
+            if next_random(mut seed) % 2 == 0 {
+                if left[parent] == -1 {
+                    left[parent] = order[i] as i32;
+                    break;
+                }
+            } else if right[parent] == -1 {
+                right[parent] = order[i] as i32;
+                break;
+            }
+        }
+    }
+    let node = next_random(mut seed) % n;
+    let other = (next_random(mut seed) % n) as i32;
+    match next_random(mut seed) % 6 {
+        0 => {
+            if left[node] == -1 {
+                left[node] = other;
+            } else if right[node] == -1 {
+                right[node] = other;
+            }
+        }
+        1 => {
+            left[node] = -1;
+        }
+        2 => {
+            if right[node] != -1 {
+                right[node] = other;
+            }
+        }
+        _ => {}
+    }
+    (left, right)
+}
+
+// the first free side, as (node, 0 for left or 1 for right), or (-1, 0)
+fn free_side(left: Vec[i32], right: Vec[i32]) -> (i64, i64) {
+    for i in 0..left.len() {
+        if left[i] == -1 {
+            return (i, 0);
+        }
+        if right[i] == -1 {
+            return (i, 1);
+        }
+    }
+    (-1, 0)
+}
+
+fn check_case(t: mut ref Tally, seed: mut ref i64, left: Vec[i32], right: Vec[i32]) {
+    t.cases += 1;
+    let n = left.len();
+    let small = n <= 10;
+    let want = if small { literal(n, left, right) } else { false };
+    t.check = (t.check * 131 + n + if want { 1 } else { 0 }) % 1000000007;
+    // the nodes renamed by a random permutation
+    let mut name: Vec[i64] = (0..n).collect();
+    for i in 1..n {
+        let j = next_random(mut seed) % (i + 1);
+        let held = name[i];
+        name[i] = name[j];
+        name[j] = held;
+    }
+    let rename = |c: i32| if c == -1 { -1 } else { name[c] as i32 };
+    let mut renamed_left: Vec[i32] = Vec.filled(n, -1);
+    let mut renamed_right: Vec[i32] = Vec.filled(n, -1);
+    for i in 0..n {
+        renamed_left[name[i]] = rename(left[i]);
+        renamed_right[name[i]] = rename(right[i]);
+    }
+    // a new node, n, hung on the first free side
+    let (at, side) = free_side(left, right);
+    let mut grown_left = left.clone();
+    let mut grown_right = right.clone();
+    grown_left.push(-1);
+    grown_right.push(-1);
+    if at != -1 {
+        if side == 0 {
+            grown_left[at] = n as i32;
+        } else {
+            grown_right[at] = n as i32;
+        }
+    }
+    let star = arm(0, left, right);
+    for i in 0..5 {
+        let got = arm(i, left, right);
+        let what = f"arm {i} at {left}, {right}";
+        // P1: the statement read literally, for n up to 10
+        if small {
+            expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        }
+        // P2: the nodes renamed, the same answer
+        expect(mut t, 2, arm(i, renamed_left, renamed_right) == got, f"P2 {what}, renamed");
+        // P3: every node's two children swapped, the same answer
+        expect(mut t, 3, arm(i, right, left) == got, f"P3 {what}, mirrored");
+        // P4: a new node hung on a free side, the same answer
+        if at != -1 {
+            expect(mut t, 4, arm(i, grown_left, grown_right) == got, f"P4 {what}, grown");
+        }
+        // P5: a tree with that free side pointed at any node, or with an
+        // edge cut, is no longer one
+        if got and at != -1 {
+            let target = (next_random(mut seed) % n) as i32;
+            let mut more_left = left.clone();
+            let mut more_right = right.clone();
+            if side == 0 {
+                more_left[at] = target;
+            } else {
+                more_right[at] = target;
+            }
+            expect(mut t, 5, not arm(i, more_left, more_right), f"P5 {what}, side to {target}");
+        }
+        if got and n > 1 {
+            let mut cut_left = left.clone();
+            let mut cut_right = right.clone();
+            for j in 0..n {
+                if cut_left[j] != -1 {
+                    cut_left[j] = -1;
+                    break;
+                }
+                if cut_right[j] != -1 {
+                    cut_right[j] = -1;
+                    break;
+                }
+            }
+            expect(mut t, 5, not arm(i, cut_left, cut_right), f"P5 {what}, an edge cut");
+        }
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    let mut seed = 1361;
+    // LeetCode's three examples, one node and a cycle under the root;
+    // then 1500 random sets of up to 10 nodes and 500 of up to 40
+    let fixed: Vec[(Vec[i32], Vec[i32])] = [
+        ([1, -1, 3, -1], [2, -1, -1, -1]),
+        ([1, -1, 3, -1], [2, 3, -1, -1]),
+        ([1, 0], [-1, -1]),
+        ([-1], [-1]),
+        ([1, 2, -1, -1], [-1, -1, 1, -1]),
+    ];
+    for (left, right) in fixed {
+        check_case(mut t, mut seed, left, right);
+    }
+    for k in 0..2000 {
+        let most = if k < 1500 { 10 } else { 40 };
+        let (left, right) = random_case(mut seed, most);
+        check_case(mut t, mut seed, left, right);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
