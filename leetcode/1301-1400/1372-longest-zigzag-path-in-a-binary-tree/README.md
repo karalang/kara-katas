@@ -76,15 +76,18 @@ look for an empty place for P4's new leaf.
 | P6 | the ★ arm's length |
 
 The literal reading walks a cursor down from each node, `for start in
-nodes.iter() { let mut at = start; .. at = child; }`, and that loop,
-written so, passes `karac check` and then stops every lane with invalid
-MIR: `at` is a `ref TreeNode`, and the child handle the walk takes is
-let through as a borrow it is not (B-2026-11-25-22). Until it is fixed,
-the results below come from a copy whose one line reads `let mut at:
-TreeNode = start;`: all 60,090 checks pass on every arm, `2003 cases:
-checksum 853740259, 60090 checks over 5 arms: 0 failures`, under `karac
-__mir-run`, `karac run` and `karac __mir-llvm-run`. Python, with the ★
-arm's recursion, gives the same checksum.
+nodes.iter() { let mut at = start; .. at = child; }`. Written so, it
+passed `karac check` and then stopped every lane with invalid MIR: `at`
+is a `ref TreeNode`, and the child handle the walk takes was let through
+as a borrow it is not (B-2026-11-25-22, and B-2026-11-25-64 for the
+child read into a local first, as this loop does). Since kara
+a04a0d1cf7, `karac check` refuses the assignment and `karac fix`
+declares the cursor `let mut at: TreeNode = start;`, which counts the
+handle, and the differential carries that line. All 60,090 checks pass
+on every arm, `2003 cases: checksum 853740259, 60090 checks over 5 arms:
+0 failures`, under `karac __mir-run`, `karac run` and `karac
+__mir-llvm-run`. Python, with the ★ arm's recursion, gives the same
+checksum.
 
 ## Mutation testing
 
