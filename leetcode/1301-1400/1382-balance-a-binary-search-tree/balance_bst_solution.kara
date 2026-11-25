@@ -1,0 +1,234 @@
+// LeetCode #1382: Balance a Binary Search Tree -- a Rust solution as
+// LeetCode's Rust users write it (`Option<Rc<RefCell<TreeNode>>>`
+// parameters, the values read through `.borrow()`, the middle of
+// `l..=r` taken as `l + (r - l) / 2` on `i32`s, `TreeNode::new`
+// filled in and wrapped in `Rc::new(RefCell::new(..))`, and `Self::`
+// for the recursion), carried to Kāra by `karac fix`
+
+struct Solution {}
+
+impl Solution {
+    pub fn balance_bst(root: Option[TreeNode]) -> Option[TreeNode] {
+        let mut vals = Vec.new();
+        Solution.inorder(root, mut vals);
+        Solution.build(vals, 0, vals.len() as i32 - 1)
+    }
+
+    fn inorder(node: Option[TreeNode], vals: mut ref Vec[i32]) {
+        if let Some(n) = node {
+            Solution.inorder(n.left, mut vals);
+            vals.push(n.val);
+            Solution.inorder(n.right, mut vals);
+        }
+    }
+
+    fn build(vals: Slice[i32], l: i32, r: i32) -> Option[TreeNode] {
+        if l > r {
+            return None;
+        }
+        let m = l + (r - l) / 2;
+        let node = TreeNode.new(vals[m as usize]);
+        node.left = Solution.build(vals, l, m - 1);
+        node.right = Solution.build(vals, m + 1, r);
+        Some(node)
+    }
+}
+
+fn balance_bst(root: TreeNode) -> TreeNode {
+    Solution.balance_bst(Some(root)).unwrap()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// LeetCode's own `TreeNode::new`
+impl TreeNode {
+    fn new(val: i32) -> TreeNode {
+        TreeNode { val, left: None, right: None }
+    }
+}
+
+// LeetCode's level-order list, `None` for a missing child
+fn from_level(values: Vec[Option[i32]]) -> TreeNode {
+    let root = TreeNode.new(values[0].unwrap());
+    let mut queue: VecDeque[TreeNode] = VecDeque.new();
+    queue.push_back(root);
+    let mut i = 1;
+    while i < values.len() {
+        let Some(node) = queue.pop_front() else {
+            break;
+        };
+        if let Some(v) = values[i] {
+            let child = TreeNode.new(v);
+            node.left = Some(child);
+            queue.push_back(child);
+        }
+        i += 1;
+        if i < values.len() {
+            if let Some(v) = values[i] {
+                let child = TreeNode.new(v);
+                node.right = Some(child);
+                queue.push_back(child);
+            }
+            i += 1;
+        }
+    }
+    root
+}
+
+// a search tree of `values`, put in one by one in their order
+fn search_tree(values: Vec[i32]) -> TreeNode {
+    let root = TreeNode.new(values[0]);
+    for v in values[1..].iter() {
+        let mut at = root;
+        loop {
+            let next = if v < at.val { at.left } else { at.right };
+            match next {
+                Some(child) => at = child,
+                None => {
+                    if v < at.val {
+                        at.left = Some(TreeNode.new(v));
+                    } else {
+                        at.right = Some(TreeNode.new(v));
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    root
+}
+
+// `values` hung each under the one before, left when less: a search
+// tree when every value lies between those before it, as in a rising
+// or falling run or one taken from both ends in turn
+fn chain(values: Vec[i32]) -> TreeNode {
+    let root = TreeNode.new(values[0]);
+    let mut at = root;
+    for v in values[1..].iter() {
+        let next = TreeNode.new(v);
+        if v < at.val {
+            at.left = Some(next);
+        } else {
+            at.right = Some(next);
+        }
+        at = next;
+    }
+    root
+}
+
+fn in_order(node: Option[TreeNode], out: mut ref Vec[i32]) {
+    if let Some(n) = node {
+        in_order(n.left, mut out);
+        out.push(n.val);
+        in_order(n.right, mut out);
+    }
+}
+
+// the tree's height, or -1 when some node's two sides differ by more
+// than one
+fn balanced_height(node: Option[TreeNode]) -> i64 {
+    let Some(n) = node else {
+        return 0;
+    };
+    let l = balanced_height(n.left);
+    let r = balanced_height(n.right);
+    if l < 0 or r < 0 or (l - r).abs() > 1 {
+        return -1;
+    }
+    1 + l.max(r)
+}
+
+// the balanced tree's height when it holds the same values in the same
+// order and is balanced, otherwise -1
+fn verdict(root: TreeNode) -> i64 {
+    let mut before: Vec[i32] = Vec.new();
+    in_order(Some(root), mut before);
+    let balanced = balance_bst(root);
+    let mut after: Vec[i32] = Vec.new();
+    in_order(Some(balanced), mut after);
+    if after != before {
+        return -1;
+    }
+    balanced_height(Some(balanced))
+}
+
+fn main() {
+    // LeetCode's two examples; one node; a chain of 7 down the left; a
+    // zigzag of 6; and a tree already balanced
+    let examples: Vec[Vec[Option[i32]]] = [
+        [Some(1), None, Some(2), None, Some(3), None, Some(4)],
+        [Some(2), Some(1), Some(3)],
+        [Some(5)],
+        [Some(7), Some(6), None, Some(5), None, Some(4), None, Some(3), None, Some(2), None, Some(1)],
+        [Some(1), None, Some(6), Some(2), None, None, Some(5), Some(3), None, None, Some(4)],
+        [Some(4), Some(2), Some(6), Some(1), Some(3), Some(5), Some(7)],
+    ];
+    let heights: Vec[String] = examples.iter().map(|e| f"{verdict(from_level(e))}").collect();
+    println(heights.join(" "));
+    // the constraints' most, 10^4 nodes: a chain up the right, a chain
+    // down the left
+    let up = TreeNode.new(1);
+    let mut top = up;
+    for v in 2..10001 {
+        let next = TreeNode.new(v as i32);
+        top.right = Some(next);
+        top = next;
+    }
+    let down = TreeNode.new(10000);
+    let mut top = down;
+    for v in (1..10000).rev() {
+        let next = TreeNode.new(v as i32);
+        top.left = Some(next);
+        top = next;
+    }
+    println(f"chains of 10000 nodes: heights {verdict(up)} {verdict(down)}");
+    // 2000 random search trees of 1 to 300 different values up to 10^5,
+    // put in at random, rising, falling, and from both ends in turn
+    let mut seed = 1382;
+    let mut balanced = 0;
+    let mut heights = 0;
+    let mut check: i64 = 0;
+    for c in 0..2000 {
+        let n = 1 + next_random(mut seed) % 300;
+        let step = 1 + next_random(mut seed) % 99990;
+        let start = next_random(mut seed) % 99991;
+        let mut values: Vec[i32] = (0..n).map(|k| (1 + (start + k * step) % 99991) as i32).collect();
+        match c % 4 {
+            0 => {
+                for i in (1..n).rev() {
+                    let j = next_random(mut seed) % (i + 1);
+                    values.swap(i, j);
+                }
+            }
+            1 => values.sort(),
+            2 => {
+                values.sort();
+                values.reverse();
+            }
+            _ => {
+                values.sort();
+                let ends: Vec[i32] = (0..n).map(|k| if k % 2 == 0 { values[k / 2] } else { values[n - 1 - k / 2] }).collect();
+                values = ends;
+            }
+        }
+        let root = if c % 4 == 0 { search_tree(values) } else { chain(values) };
+        let h = verdict(root);
+        if h >= 0 {
+            balanced += 1;
+            heights += h;
+        }
+        check = (check * 131 + h + 1) % 1000000007;
+    }
+    println(f"2000 random trees: {balanced} balanced, heights {heights} in all, checksum {check}");
+}

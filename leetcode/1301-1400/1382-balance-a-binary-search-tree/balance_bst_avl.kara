@@ -1,0 +1,287 @@
+// LeetCode #1382: Balance a Binary Search Tree -- the values read off in
+// order and put one by one into an AVL tree, which rotates wherever a
+// node's two sides come to differ by two; the AVL tree then copied into
+// `TreeNode`s. Put in rising, the values leave it as low as a tree of
+// them can be. O(n log n)
+
+shared struct Avl {
+    val: i32,
+    mut height: i64,
+    mut left: Option[Avl],
+    mut right: Option[Avl],
+}
+
+fn height(node: Option[Avl]) -> i64 {
+    match node {
+        Some(n) => n.height,
+        None => 0,
+    }
+}
+
+fn update(node: Avl) {
+    node.height = 1 + height(node.left).max(height(node.right));
+}
+
+fn rotate_left(node: Avl) -> Avl {
+    let r = node.right.unwrap();
+    node.right = r.left;
+    r.left = Some(node);
+    update(node);
+    update(r);
+    r
+}
+
+fn rotate_right(node: Avl) -> Avl {
+    let l = node.left.unwrap();
+    node.left = l.right;
+    l.right = Some(node);
+    update(node);
+    update(l);
+    l
+}
+
+fn insert(node: Option[Avl], val: i32) -> Avl {
+    let Some(n) = node else {
+        return Avl { val, height: 1, left: None, right: None };
+    };
+    if val < n.val {
+        n.left = Some(insert(n.left, val));
+    } else {
+        n.right = Some(insert(n.right, val));
+    }
+    update(n);
+    let lean = height(n.left) - height(n.right);
+    if lean > 1 {
+        let l = n.left.unwrap();
+        if val > l.val {
+            n.left = Some(rotate_left(l));
+        }
+        return rotate_right(n);
+    }
+    if lean < -1 {
+        let r = n.right.unwrap();
+        if val < r.val {
+            n.right = Some(rotate_right(r));
+        }
+        return rotate_left(n);
+    }
+    n
+}
+
+fn read(node: Option[TreeNode], values: mut ref Vec[i32]) {
+    if let Some(n) = node {
+        read(n.left, mut values);
+        values.push(n.val);
+        read(n.right, mut values);
+    }
+}
+
+fn copy(node: Option[Avl]) -> Option[TreeNode] {
+    let n = node?;
+    Some(TreeNode { val: n.val, left: copy(n.left), right: copy(n.right) })
+}
+
+fn balance_bst(root: TreeNode) -> TreeNode {
+    let mut values: Vec[i32] = Vec.new();
+    read(Some(root), mut values);
+    let mut avl: Option[Avl] = None;
+    for v in values.iter() {
+        avl = Some(insert(avl, v));
+    }
+    copy(avl).unwrap()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// LeetCode's own `TreeNode::new`
+impl TreeNode {
+    fn new(val: i32) -> TreeNode {
+        TreeNode { val, left: None, right: None }
+    }
+}
+
+// LeetCode's level-order list, `None` for a missing child
+fn from_level(values: Vec[Option[i32]]) -> TreeNode {
+    let root = TreeNode.new(values[0].unwrap());
+    let mut queue: VecDeque[TreeNode] = VecDeque.new();
+    queue.push_back(root);
+    let mut i = 1;
+    while i < values.len() {
+        let Some(node) = queue.pop_front() else {
+            break;
+        };
+        if let Some(v) = values[i] {
+            let child = TreeNode.new(v);
+            node.left = Some(child);
+            queue.push_back(child);
+        }
+        i += 1;
+        if i < values.len() {
+            if let Some(v) = values[i] {
+                let child = TreeNode.new(v);
+                node.right = Some(child);
+                queue.push_back(child);
+            }
+            i += 1;
+        }
+    }
+    root
+}
+
+// a search tree of `values`, put in one by one in their order
+fn search_tree(values: Vec[i32]) -> TreeNode {
+    let root = TreeNode.new(values[0]);
+    for v in values[1..].iter() {
+        let mut at = root;
+        loop {
+            let next = if v < at.val { at.left } else { at.right };
+            match next {
+                Some(child) => at = child,
+                None => {
+                    if v < at.val {
+                        at.left = Some(TreeNode.new(v));
+                    } else {
+                        at.right = Some(TreeNode.new(v));
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    root
+}
+
+// `values` hung each under the one before, left when less: a search
+// tree when every value lies between those before it, as in a rising
+// or falling run or one taken from both ends in turn
+fn chain(values: Vec[i32]) -> TreeNode {
+    let root = TreeNode.new(values[0]);
+    let mut at = root;
+    for v in values[1..].iter() {
+        let next = TreeNode.new(v);
+        if v < at.val {
+            at.left = Some(next);
+        } else {
+            at.right = Some(next);
+        }
+        at = next;
+    }
+    root
+}
+
+fn in_order(node: Option[TreeNode], out: mut ref Vec[i32]) {
+    if let Some(n) = node {
+        in_order(n.left, mut out);
+        out.push(n.val);
+        in_order(n.right, mut out);
+    }
+}
+
+// the tree's height, or -1 when some node's two sides differ by more
+// than one
+fn balanced_height(node: Option[TreeNode]) -> i64 {
+    let Some(n) = node else {
+        return 0;
+    };
+    let l = balanced_height(n.left);
+    let r = balanced_height(n.right);
+    if l < 0 or r < 0 or (l - r).abs() > 1 {
+        return -1;
+    }
+    1 + l.max(r)
+}
+
+// the balanced tree's height when it holds the same values in the same
+// order and is balanced, otherwise -1
+fn verdict(root: TreeNode) -> i64 {
+    let mut before: Vec[i32] = Vec.new();
+    in_order(Some(root), mut before);
+    let balanced = balance_bst(root);
+    let mut after: Vec[i32] = Vec.new();
+    in_order(Some(balanced), mut after);
+    if after != before {
+        return -1;
+    }
+    balanced_height(Some(balanced))
+}
+
+fn main() {
+    // LeetCode's two examples; one node; a chain of 7 down the left; a
+    // zigzag of 6; and a tree already balanced
+    let examples: Vec[Vec[Option[i32]]] = [
+        [Some(1), None, Some(2), None, Some(3), None, Some(4)],
+        [Some(2), Some(1), Some(3)],
+        [Some(5)],
+        [Some(7), Some(6), None, Some(5), None, Some(4), None, Some(3), None, Some(2), None, Some(1)],
+        [Some(1), None, Some(6), Some(2), None, None, Some(5), Some(3), None, None, Some(4)],
+        [Some(4), Some(2), Some(6), Some(1), Some(3), Some(5), Some(7)],
+    ];
+    let heights: Vec[String] = examples.iter().map(|e| f"{verdict(from_level(e))}").collect();
+    println(heights.join(" "));
+    // the constraints' most, 10^4 nodes: a chain up the right, a chain
+    // down the left
+    let up = TreeNode.new(1);
+    let mut top = up;
+    for v in 2..10001 {
+        let next = TreeNode.new(v as i32);
+        top.right = Some(next);
+        top = next;
+    }
+    let down = TreeNode.new(10000);
+    let mut top = down;
+    for v in (1..10000).rev() {
+        let next = TreeNode.new(v as i32);
+        top.left = Some(next);
+        top = next;
+    }
+    println(f"chains of 10000 nodes: heights {verdict(up)} {verdict(down)}");
+    // 2000 random search trees of 1 to 300 different values up to 10^5,
+    // put in at random, rising, falling, and from both ends in turn
+    let mut seed = 1382;
+    let mut balanced = 0;
+    let mut heights = 0;
+    let mut check: i64 = 0;
+    for c in 0..2000 {
+        let n = 1 + next_random(mut seed) % 300;
+        let step = 1 + next_random(mut seed) % 99990;
+        let start = next_random(mut seed) % 99991;
+        let mut values: Vec[i32] = (0..n).map(|k| (1 + (start + k * step) % 99991) as i32).collect();
+        match c % 4 {
+            0 => {
+                for i in (1..n).rev() {
+                    let j = next_random(mut seed) % (i + 1);
+                    values.swap(i, j);
+                }
+            }
+            1 => values.sort(),
+            2 => {
+                values.sort();
+                values.reverse();
+            }
+            _ => {
+                values.sort();
+                let ends: Vec[i32] = (0..n).map(|k| if k % 2 == 0 { values[k / 2] } else { values[n - 1 - k / 2] }).collect();
+                values = ends;
+            }
+        }
+        let root = if c % 4 == 0 { search_tree(values) } else { chain(values) };
+        let h = verdict(root);
+        if h >= 0 {
+            balanced += 1;
+            heights += h;
+        }
+        check = (check * 131 + h + 1) % 1000000007;
+    }
+    println(f"2000 random trees: {balanced} balanced, heights {heights} in all, checksum {check}");
+}

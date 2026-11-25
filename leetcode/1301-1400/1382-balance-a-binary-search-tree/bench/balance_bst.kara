@@ -1,0 +1,97 @@
+// LeetCode #1382: Balance a Binary Search Tree -- the ★ arm: the values
+// read off in order, then a new tree built with the middle value at the
+// root and each half built the same way beneath it. O(n). Bench workload.
+
+fn values_in_order(node: Option[TreeNode], values: mut ref Vec[i32]) {
+    if let Some(n) = node {
+        values_in_order(n.left, mut values);
+        values.push(n.val);
+        values_in_order(n.right, mut values);
+    }
+}
+
+// the values from `lo` up to but not including `hi`, as a balanced tree
+fn build(values: Vec[i32], lo: i64, hi: i64) -> Option[TreeNode] {
+    if lo >= hi {
+        return None;
+    }
+    let mid = (lo + hi) / 2;
+    Some(TreeNode { val: values[mid], left: build(values, lo, mid), right: build(values, mid + 1, hi) })
+}
+
+fn balance_bst(root: TreeNode) -> TreeNode {
+    let mut values: Vec[i32] = Vec.new();
+    values_in_order(Some(root), mut values);
+    build(values, 0, values.len()).unwrap()
+}
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+impl TreeNode {
+    fn new(val: i32) -> TreeNode {
+        TreeNode { val, left: None, right: None }
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a search tree of `values`, put in one by one in their order
+fn search_tree(values: Vec[i32]) -> TreeNode {
+    let root = TreeNode.new(values[0]);
+    for v in values[1..].iter() {
+        let mut at = root;
+        loop {
+            let next = if v < at.val { at.left } else { at.right };
+            match next {
+                Some(child) => at = child,
+                None => {
+                    if v < at.val {
+                        at.left = Some(TreeNode.new(v));
+                    } else {
+                        at.right = Some(TreeNode.new(v));
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    root
+}
+
+// 10 search trees of 10^4 different values up to 10^5, the constraints'
+// most, put in at random, built once; then 500 rounds, each balancing
+// one tree, drawn from the checksum so far, walking down the balanced
+// tree by drawn turns, and keeping it in the old one's place
+fn main() {
+    let mut seed = 1382;
+    let mut trees: Vec[TreeNode] = Vec.new();
+    for _ in 0..10 {
+        let step = 1 + next_random(mut seed) % 99990;
+        let start = next_random(mut seed) % 99991;
+        let mut values: Vec[i32] = (0..10000).map(|k| (1 + (start + k * step) % 99991) as i32).collect();
+        for i in (1..10000).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            values.swap(i, j);
+        }
+        trees.push(search_tree(values));
+    }
+    let mut check: i64 = 0;
+    for _ in 0..500 {
+        let t = (check + next_random(mut seed)) % 10;
+        let balanced = balance_bst(trees[t]);
+        let mut at = Some(balanced);
+        while let Some(node) = at {
+            check = (check * 131 + node.val) % 1000000007;
+            at = if next_random(mut seed) % 2 == 0 { node.left } else { node.right };
+        }
+        trees[t] = balanced;
+    }
+    println(f"500 rounds over 10 trees of 10000 nodes: checksum {check}");
+}
