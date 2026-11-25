@@ -83,7 +83,9 @@ The differential's own Mend loop turned up a gap: `let by = b'z' as
 i64 - top;` with `top: i64` draws W0310, an unnecessary cast, and
 `karac fix` deletes it in `c as u32 as i64 + by` but offers nothing
 for the byte literal, though the deletion is just as safe there
-(B-2026-11-25-21). The cast stays, as written.
+(B-2026-11-25-21). Since that fix `karac fix` deletes it there too,
+and the differential reads `let by = b'z' - top;`, with the same
+checksum.
 
 ## Mutation testing
 

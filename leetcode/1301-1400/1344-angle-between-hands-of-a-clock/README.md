@@ -41,15 +41,17 @@ design says, since `f64` has no total order; but its advice, to wrap the
 values in `F64` or drop an `Ord` bound the program never wrote, does not
 fit the call, and following it gives a second error. The documented
 float method, `gap.min(360.0 - gap)`, is not named, and `karac fix` has
-no fix. That is ledger row B-2026-11-24-48; the arms use the method. A
-fourth arm read the face as 60 minute marks, the hour hand `minutes as
-f64 / 12.0` marks past its hour; a twelfth is not exact in binary, and
-at 1:05 it printed `2.5000000000000018` where Python prints `2.5`. That
-was the program's mistake, caught by the oracle, and the walk arm, in
-whole half degrees, took its place. The Rust solution takes one round of
-2 fixes by `karac fix`'s count, from 2 errors: `struct Solution;` to
-`struct Solution {}` and `Solution::` to `Solution.`. Its output matches
-on the first run.
+no fix. That is ledger row B-2026-11-24-48; the arms use the method. The
+same call over float literals alone, `min(1.5, 2.5)`, passes `karac
+check` and then stops the interpreter with "call of unknown function
+min" (B-2026-11-25-36). A fourth arm read the face as 60 minute marks,
+the hour hand `minutes as f64 / 12.0` marks past its hour; a twelfth is
+not exact in binary, and at 1:05 it printed `2.5000000000000018` where
+Python prints `2.5`. That was the program's mistake, caught by the
+oracle, and the walk arm, in whole half degrees, took its place. The
+Rust solution takes one round of 2 fixes by `karac fix`'s count, from 2
+errors: `struct Solution;` to `struct Solution {}` and `Solution::` to
+`Solution.`. Its output matches on the first run.
 
 ## Differential
 
