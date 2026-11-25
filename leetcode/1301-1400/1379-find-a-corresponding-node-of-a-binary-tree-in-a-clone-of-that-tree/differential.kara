@@ -1,0 +1,337 @@
+// LeetCode #1379: Find a Corresponding Node of a Binary Tree in a Clone of
+// That Tree -- differential test of the five arms against the statement
+// read literally, with five more properties.
+
+// ---- get_target_copy.kara ----
+fn a0_find(o: TreeNode, c: TreeNode, target: TreeNode) -> Option[TreeNode] {
+    if o.ref_eq(target) {
+        return Some(c);
+    }
+    if let (Some(lo), Some(lc)) = (o.left, c.left) {
+        if let Some(found) = a0_find(lo, lc, target) {
+            return Some(found);
+        }
+    }
+    if let (Some(ro), Some(rc)) = (o.right, c.right) {
+        return a0_find(ro, rc, target);
+    }
+    None
+}
+
+fn a0_get_target_copy(original: TreeNode, cloned: TreeNode, target: TreeNode) -> TreeNode {
+    a0_find(original, cloned, target).unwrap()
+}
+
+// ---- get_target_copy_bfs.kara ----
+fn a1_get_target_copy(original: TreeNode, cloned: TreeNode, target: TreeNode) -> TreeNode {
+    let mut queue: VecDeque[(TreeNode, TreeNode)] = VecDeque.new();
+    queue.push_back((original, cloned));
+    while let Some((o, c)) = queue.pop_front() {
+        if o.ref_eq(target) {
+            return c;
+        }
+        if let (Some(lo), Some(lc)) = (o.left, c.left) {
+            queue.push_back((lo, lc));
+        }
+        if let (Some(ro), Some(rc)) = (o.right, c.right) {
+            queue.push_back((ro, rc));
+        }
+    }
+    cloned
+}
+
+// ---- get_target_copy_path.kara ----
+fn a2_turns_to(node: TreeNode, target: TreeNode, turns: mut ref Vec[bool]) -> bool {
+    if node.ref_eq(target) {
+        return true;
+    }
+    if let Some(l) = node.left {
+        if a2_turns_to(l, target, mut turns) {
+            turns.push(true);
+            return true;
+        }
+    }
+    if let Some(r) = node.right {
+        if a2_turns_to(r, target, mut turns) {
+            turns.push(false);
+            return true;
+        }
+    }
+    false
+}
+
+fn a2_get_target_copy(original: TreeNode, cloned: TreeNode, target: TreeNode) -> TreeNode {
+    let mut turns: Vec[bool] = Vec.new();
+    a2_turns_to(original, target, mut turns);
+    let mut at = cloned;
+    for left in turns.iter().rev() {
+        at = if left { at.left.unwrap() } else { at.right.unwrap() };
+    }
+    at
+}
+
+// ---- get_target_copy_rank.kara ----
+fn a3_rank_of(root: TreeNode, target: TreeNode) -> i64 {
+    let mut queue: VecDeque[TreeNode] = VecDeque.new();
+    queue.push_back(root);
+    let mut k = 0;
+    while let Some(node) = queue.pop_front() {
+        if node.ref_eq(target) {
+            return k;
+        }
+        k += 1;
+        if let Some(l) = node.left {
+            queue.push_back(l);
+        }
+        if let Some(r) = node.right {
+            queue.push_back(r);
+        }
+    }
+    k
+}
+
+fn a3_node_at(root: TreeNode, k: i64) -> TreeNode {
+    let mut queue: VecDeque[TreeNode] = VecDeque.new();
+    queue.push_back(root);
+    let mut seen = 0;
+    while let Some(node) = queue.pop_front() {
+        if seen == k {
+            return node;
+        }
+        seen += 1;
+        if let Some(l) = node.left {
+            queue.push_back(l);
+        }
+        if let Some(r) = node.right {
+            queue.push_back(r);
+        }
+    }
+    root
+}
+
+fn a3_get_target_copy(original: TreeNode, cloned: TreeNode, target: TreeNode) -> TreeNode {
+    a3_node_at(cloned, a3_rank_of(original, target))
+}
+
+// ---- get_target_copy_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_get_target_copy(
+        original: Option[TreeNode],
+        cloned: Option[TreeNode],
+        target: Option[TreeNode],
+    ) -> Option[TreeNode] {
+        let (o, c) = (original?, cloned?);
+        if o.ref_eq(target.as_ref()?) {
+            return Some(c);
+        }
+        let (left_o, left_c) = (o.left.clone(), c.left.clone());
+        if let Some(found) = A4Solution.a4_get_target_copy(left_o, left_c, target.clone()) {
+            return Some(found);
+        }
+        let (right_o, right_c) = (o.right.clone(), c.right.clone());
+        A4Solution.a4_get_target_copy(right_o, right_c, target)
+    }
+}
+
+fn a4_get_target_copy(original: TreeNode, cloned: TreeNode, target: TreeNode) -> TreeNode {
+    A4Solution.a4_get_target_copy(Some(original), Some(cloned), Some(target)).unwrap()
+}
+
+// ---- the differential -------------------------------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn clone_tree(node: TreeNode) -> TreeNode {
+    let copy = TreeNode { val: node.val, left: None, right: None };
+    if let Some(l) = node.left {
+        copy.left = Some(clone_tree(l));
+    }
+    if let Some(r) = node.right {
+        copy.right = Some(clone_tree(r));
+    }
+    copy
+}
+
+fn pairs(original: TreeNode, cloned: TreeNode) -> Vec[(TreeNode, TreeNode)] {
+    let mut out: Vec[(TreeNode, TreeNode)] = [(original, cloned)];
+    let mut i = 0;
+    while i < out.len() {
+        let (o, c) = out[i];
+        if let (Some(lo), Some(lc)) = (o.left, c.left) {
+            out.push((lo, lc));
+        }
+        if let (Some(ro), Some(rc)) = (o.right, c.right) {
+            out.push((ro, rc));
+        }
+        i += 1;
+    }
+    out
+}
+
+// every node of a tree with its place, the turns from the root written
+// as a string of `L` and `R`
+fn places(root: TreeNode) -> Vec[(TreeNode, String)] {
+    let mut out: Vec[(TreeNode, String)] = [(root, "")];
+    let mut i = 0;
+    while i < out.len() {
+        let (node, place) = out[i].clone();
+        if let Some(l) = node.left {
+            out.push((l, f"{place}L"));
+        }
+        if let Some(r) = node.right {
+            out.push((r, f"{place}R"));
+        }
+        i += 1;
+    }
+    out
+}
+
+// The statement read literally: the target's place in the original, the
+// turns from the root to it, and the clone's node at the same place.
+fn literal(original: TreeNode, cloned: TreeNode, target: TreeNode) -> TreeNode {
+    let mut want = "";
+    for (node, place) in places(original).iter() {
+        if node.ref_eq(target) {
+            want = place.clone();
+        }
+    }
+    let mut found = cloned;
+    for (node, place) in places(cloned).iter() {
+        if place == want {
+            found = node;
+        }
+    }
+    found
+}
+
+fn random_tree(seed: mut ref i64, n: i64, kind: i64) -> TreeNode {
+    let mut values: Vec[i32] = (1..n + 1).map(|v| (v * 37 % 100003) as i32).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        values.swap(i, j);
+    }
+    let root = TreeNode { val: values[0], left: None, right: None };
+    let mut open: Vec[(TreeNode, bool)] = [(root, true), (root, false)];
+    for k in 1..n {
+        let at = if kind == 0 {
+            next_random(mut seed) % open.len()
+        } else if kind == 1 {
+            open.len() - 1 - next_random(mut seed) % 2
+        } else {
+            next_random(mut seed) % 2
+        };
+        let (parent, left) = open.remove(at);
+        let node = TreeNode { val: values[k], left: None, right: None };
+        if left {
+            parent.left = Some(node);
+        } else {
+            parent.right = Some(node);
+        }
+        open.push((node, true));
+        open.push((node, false));
+    }
+    root
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, original: TreeNode, cloned: TreeNode, target: TreeNode) -> TreeNode {
+    match i {
+        0 => a0_get_target_copy(original, cloned, target),
+        1 => a1_get_target_copy(original, cloned, target),
+        2 => a2_get_target_copy(original, cloned, target),
+        3 => a3_get_target_copy(original, cloned, target),
+        _ => a4_get_target_copy(original, cloned, target),
+    }
+}
+
+fn check_case(t: mut ref Tally, original: TreeNode, k: i64) {
+    t.cases += 1;
+    let cloned = clone_tree(original);
+    let both = pairs(original, cloned);
+    let target = both[k].0;
+    let want = literal(original, cloned, target);
+    t.check = (t.check * 131 + want.val * 13 + both.len()) % 1000000007;
+    let star = a0_get_target_copy(original, cloned, target);
+    // the same tree with every value 1, and its clone
+    let alike = clone_tree(original);
+    let alike_pairs = pairs(alike, clone_tree(alike));
+    for p in alike_pairs.iter() {
+        p.0.val = 1;
+        p.1.val = 1;
+    }
+    let (alike_o, alike_c) = alike_pairs[0];
+    let (alike_target, alike_copy) = alike_pairs[k];
+    for i in 0..5 {
+        let got = arm(i, original, cloned, target);
+        let what = f"arm {i} on {both.len()} nodes, node {k}";
+        // P1: the statement read literally
+        expect(mut t, 1, got.ref_eq(want), f"P1 {what}: literal {want.val}, got {got.val}");
+        // P2: a node of the clone, none of the original
+        let in_clone = both.iter().any(|p| p.1.ref_eq(got));
+        let in_original = both.iter().any(|p| p.0.ref_eq(got));
+        expect(mut t, 2, in_clone and not in_original, f"P2 {what}: in the clone {in_clone}, in the original {in_original}");
+        // P3: the target's value
+        expect(mut t, 3, got.val == target.val, f"P3 {what}: value {got.val}, target's {target.val}");
+        // P4: every value made 1, the same place found
+        let a = arm(i, alike_o, alike_c, alike_target);
+        expect(mut t, 4, a.ref_eq(alike_copy), f"P4 {what}, every value 1");
+        // P5: the trees asked the other way round, for the target's own
+        // copy: the target
+        let back = arm(i, cloned, original, both[k].1);
+        expect(mut t, 5, back.ref_eq(target), f"P5 {what}, the other way round: {back.val}");
+        // P6: the ★ arm's node
+        expect(mut t, 6, got.ref_eq(star), f"P6 {what}, ★: {star.val}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2001 trees of 1 to 30 nodes, a third of each kind, each with a node
+    // asked for at random, and a tree of one node. Every case is drawn
+    // before any arm answers.
+    let mut seed = 13791;
+    let mut cases: Vec[(TreeNode, i64)] = [(TreeNode { val: 7, left: None, right: None }, 0)];
+    for c in 0..2001 {
+        let n = 1 + next_random(mut seed) % 30;
+        let tree = random_tree(mut seed, n, c % 3);
+        let k = next_random(mut seed) % n;
+        cases.push((tree, k));
+    }
+    for (tree, k) in cases.iter() {
+        check_case(mut t, tree, k);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

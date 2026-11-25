@@ -1,0 +1,86 @@
+// LeetCode #1379 bench -- the ★ arm: the two trees walked together, depth
+// first; the clone's node where the original's is the target itself is
+// the answer.
+
+fn find(o: TreeNode, c: TreeNode, target: TreeNode) -> Option[TreeNode] {
+    if o.ref_eq(target) {
+        return Some(c);
+    }
+    if let (Some(lo), Some(lc)) = (o.left, c.left) {
+        if let Some(found) = find(lo, lc, target) {
+            return Some(found);
+        }
+    }
+    if let (Some(ro), Some(rc)) = (o.right, c.right) {
+        return find(ro, rc, target);
+    }
+    None
+}
+
+fn get_target_copy(original: TreeNode, cloned: TreeNode, target: TreeNode) -> TreeNode {
+    find(original, cloned, target).unwrap()
+}
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn clone_tree(node: TreeNode) -> TreeNode {
+    let copy = TreeNode { val: node.val, left: None, right: None };
+    if let Some(l) = node.left {
+        copy.left = Some(clone_tree(l));
+    }
+    if let Some(r) = node.right {
+        copy.right = Some(clone_tree(r));
+    }
+    copy
+}
+
+fn main() {
+    // 10 trees of 10^4 nodes, the constraints' most, each node hung on an
+    // empty child place chosen at random, with their clones and their
+    // nodes in the order they were hung, built once; then 3000 rounds,
+    // each asking one tree's clone for the copy of one node, both drawn
+    // from the checksum so far
+    let n = 10000;
+    let mut seed = 1379;
+    let mut originals: Vec[TreeNode] = Vec.new();
+    let mut clones: Vec[TreeNode] = Vec.new();
+    let mut nodes_of: Vec[Vec[TreeNode]] = Vec.new();
+    for _ in 0..10 {
+        let root = TreeNode { val: 1, left: None, right: None };
+        let mut nodes: Vec[TreeNode] = [root];
+        let mut open: Vec[(TreeNode, bool)] = [(root, true), (root, false)];
+        for k in 1..n {
+            let (parent, left) = open.swap_remove(next_random(mut seed) % open.len());
+            let node = TreeNode { val: (k + 1) as i32, left: None, right: None };
+            if left {
+                parent.left = Some(node);
+            } else {
+                parent.right = Some(node);
+            }
+            open.push((node, true));
+            open.push((node, false));
+            nodes.push(node);
+        }
+        originals.push(root);
+        clones.push(clone_tree(root));
+        nodes_of.push(nodes);
+    }
+    let mut check: i64 = 0;
+    for r in 0..3000 {
+        let t = check % 10;
+        let target = nodes_of[t][(check / 10 + r) % n];
+        let found = get_target_copy(originals[t], clones[t], target);
+        let own = if found.ref_eq(target) { 0 } else { 1 };
+        check = (check * 31 + found.val * 2 + own + r) % 1000000007;
+    }
+    println(f"3000 rounds over 10 trees of 10000 nodes: checksum {check}");
+}
