@@ -1,0 +1,379 @@
+// LeetCode #1372: Longest ZigZag Path in a Binary Tree -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+//
+// The statement: a zigzag path starts at any node, picks a direction,
+// moves to that child, switches direction and moves again, as long as it
+// can. Its length is the number of nodes visited less 1. Return the
+// longest zigzag path in the tree.
+
+// ---- longest_zig_zag.kara ----
+fn a0_lengths(node: TreeNode, best: mut ref i64) -> (i64, i64) {
+    let mut left = 0;
+    let mut right = 0;
+    if let Some(l) = node.left {
+        left = 1 + a0_lengths(l, mut best).1;
+    }
+    if let Some(r) = node.right {
+        right = 1 + a0_lengths(r, mut best).0;
+    }
+    *best = (*best).max(left).max(right);
+    (left, right)
+}
+
+fn a0_longest_zig_zag(root: Option[TreeNode]) -> i32 {
+    let mut best = 0;
+    if let Some(r) = root {
+        a0_lengths(r, mut best);
+    }
+    best as i32
+}
+
+// ---- longest_zig_zag_topdown.kara ----
+fn a1_walk(node: TreeNode, from_left: bool, length: i64, best: mut ref i64) {
+    *best = (*best).max(length);
+    if let Some(l) = node.left {
+        a1_walk(l, true, if from_left { 1 } else { length + 1 }, mut best);
+    }
+    if let Some(r) = node.right {
+        a1_walk(r, false, if from_left { length + 1 } else { 1 }, mut best);
+    }
+}
+
+fn a1_longest_zig_zag(root: Option[TreeNode]) -> i32 {
+    let mut best = 0;
+    if let Some(r) = root {
+        if let Some(l) = r.left {
+            a1_walk(l, true, 1, mut best);
+        }
+        if let Some(rr) = r.right {
+            a1_walk(rr, false, 1, mut best);
+        }
+    }
+    best as i32
+}
+
+// ---- longest_zig_zag_queue.kara ----
+fn a2_longest_zig_zag(root: Option[TreeNode]) -> i32 {
+    let Some(r) = root else {
+        return 0;
+    };
+    let mut best = 0;
+    let mut queue: VecDeque[(TreeNode, bool, i64)] = VecDeque.new();
+    queue.push_back((r, true, 0));
+    while let Some((node, from_left, length)) = queue.pop_front() {
+        best = best.max(length);
+        if let Some(l) = node.left {
+            queue.push_back((l, true, if from_left and length > 0 { 1 } else { length + 1 }));
+        }
+        if let Some(rr) = node.right {
+            queue.push_back((rr, false, if from_left or length == 0 { length + 1 } else { 1 }));
+        }
+    }
+    best as i32
+}
+
+// ---- longest_zig_zag_order.kara ----
+fn a3_longest_zig_zag(root: Option[TreeNode]) -> i32 {
+    let Some(r) = root else {
+        return 0;
+    };
+    // (node, parent's place, a left child)
+    let mut order: Vec[(TreeNode, i64, bool)] = [(r, -1, false)];
+    let mut i = 0;
+    while i < order.len() {
+        let node = order[i].0;
+        if let Some(l) = node.left {
+            order.push((l, i, true));
+        }
+        if let Some(rr) = node.right {
+            order.push((rr, i, false));
+        }
+        i += 1;
+    }
+    // go_left[k], go_right[k]: the longest zigzag from node k going that
+    // way first
+    let mut go_left: Vec[i64] = Vec.filled(order.len(), 0);
+    let mut go_right: Vec[i64] = Vec.filled(order.len(), 0);
+    let mut best = 0;
+    for k in (0..order.len()).rev() {
+        best = best.max(go_left[k]).max(go_right[k]);
+        let (_, parent, is_left) = order[k];
+        if parent >= 0 {
+            if is_left {
+                go_left[parent] = 1 + go_right[k];
+            } else {
+                go_right[parent] = 1 + go_left[k];
+            }
+        }
+    }
+    best as i32
+}
+
+// ---- longest_zig_zag_solution.kara ----
+struct A4Solution {}
+
+fn a4_dfs(node: Option[TreeNode], is_left: bool, len: i32, ans: mut ref i32) {
+    if let Some(n) = node {
+        *ans = (*ans).max(len);
+        if is_left {
+            a4_dfs(n.left, true, 1, mut ans);
+            a4_dfs(n.right, false, len + 1, mut ans);
+        } else {
+            a4_dfs(n.left, true, len + 1, mut ans);
+            a4_dfs(n.right, false, 1, mut ans);
+        }
+    }
+}
+
+impl A4Solution {
+    pub fn a4_longest_zig_zag(root: Option[TreeNode]) -> i32 {
+        let mut ans = 0;
+        a4_dfs(root, true, 0, mut ans);
+        a4_dfs(root, false, 0, mut ans);
+        ans
+    }
+}
+
+fn a4_longest_zig_zag(root: Option[TreeNode]) -> i32 {
+    A4Solution.a4_longest_zig_zag(root)
+}
+
+// ---- the differential -------------------------------------------------------
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// LeetCode's level-order list, `None` for a missing child
+fn from_level(values: Vec[Option[i32]]) -> Option[TreeNode] {
+    if values.len() == 0 or values[0].is_none() {
+        return None;
+    }
+    let root = TreeNode { val: values[0].unwrap(), left: None, right: None };
+    let mut queue: VecDeque[TreeNode] = VecDeque.new();
+    queue.push_back(root);
+    let mut i = 1;
+    while i < values.len() {
+        let Some(node) = queue.pop_front() else {
+            break;
+        };
+        if let Some(v) = values[i] {
+            let child = TreeNode { val: v, left: None, right: None };
+            node.left = Some(child);
+            queue.push_back(child);
+        }
+        i += 1;
+        if i < values.len() {
+            if let Some(v) = values[i] {
+                let child = TreeNode { val: v, left: None, right: None };
+                node.right = Some(child);
+                queue.push_back(child);
+            }
+            i += 1;
+        }
+    }
+    Some(root)
+}
+
+// n nodes valued from 1 to 100, each hung on an empty child place of the
+// tree so far chosen at random
+fn random_tree(seed: mut ref i64, n: i64) -> Option[TreeNode] {
+    let root = TreeNode { val: (1 + next_random(mut seed) % 100) as i32, left: None, right: None };
+    let mut places: Vec[(TreeNode, bool)] = [(root, true), (root, false)];
+    for _ in 1..n {
+        let k = next_random(mut seed) % places.len();
+        let (parent, left) = places.swap_remove(k);
+        let node = TreeNode { val: (1 + next_random(mut seed) % 100) as i32, left: None, right: None };
+        if left {
+            parent.left = Some(node);
+        } else {
+            parent.right = Some(node);
+        }
+        places.push((node, true));
+        places.push((node, false));
+    }
+    Some(root)
+}
+
+// the statement read literally: from every node, in both directions, the
+// path walked child by child, switching sides each step, as far as it
+// goes; the longest of them
+fn literal(root: Option[TreeNode]) -> i64 {
+    let mut nodes: Vec[TreeNode] = Vec.new();
+    if let Some(r) = root {
+        nodes.push(r);
+    }
+    let mut i = 0;
+    while i < nodes.len() {
+        let node = nodes[i];
+        if let Some(l) = node.left {
+            nodes.push(l);
+        }
+        if let Some(r) = node.right {
+            nodes.push(r);
+        }
+        i += 1;
+    }
+    let mut best = 0;
+    for start in nodes.iter() {
+        for first_left in [true, false] {
+            let mut at = start;
+            let mut go_left = first_left;
+            let mut visited = 1;
+            loop {
+                let next = if go_left { at.left } else { at.right };
+                let Some(child) = next else {
+                    break;
+                };
+                at = child;
+                visited += 1;
+                go_left = not go_left;
+            }
+            best = best.max(visited - 1);
+        }
+    }
+    best
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, root: Option[TreeNode]) -> i64 {
+    let got = match i {
+        0 => a0_longest_zig_zag(root),
+        1 => a1_longest_zig_zag(root),
+        2 => a2_longest_zig_zag(root),
+        3 => a3_longest_zig_zag(root),
+        _ => a4_longest_zig_zag(root),
+    };
+    got
+}
+
+// a new tree, every node's children swapped
+fn mirrored(node: Option[TreeNode]) -> Option[TreeNode] {
+    let Some(n) = node else {
+        return None;
+    };
+    Some(TreeNode { val: n.val, left: mirrored(n.right), right: mirrored(n.left) })
+}
+
+// the most edges on a path down from the root
+fn height(node: Option[TreeNode]) -> i64 {
+    let Some(n) = node else {
+        return -1;
+    };
+    1 + height(n.left).max(height(n.right))
+}
+
+// the nodes, parents first
+fn listed(root: TreeNode) -> Vec[TreeNode] {
+    let mut nodes: Vec[TreeNode] = [root];
+    let mut i = 0;
+    while i < nodes.len() {
+        let node = nodes[i];
+        if let Some(l) = node.left {
+            nodes.push(l);
+        }
+        if let Some(r) = node.right {
+            nodes.push(r);
+        }
+        i += 1;
+    }
+    nodes
+}
+
+fn check_case(t: mut ref Tally, root: TreeNode, spot: i64) {
+    t.cases += 1;
+    let tree = Some(root);
+    let want = literal(tree);
+    t.check = (t.check * 131 + want) % 1000000007;
+    let nodes = listed(root);
+    let n = nodes.len();
+    let mirror = mirrored(tree);
+    // the tree hung as the left child of a new root
+    let raised = Some(TreeNode { val: 0, left: tree, right: None });
+    let tall = height(tree);
+    let star = arm(0, tree);
+    let mut answers: Vec[i64] = Vec.new();
+    for i in 0..5 {
+        let got = arm(i, tree);
+        answers.push(got);
+        let what = f"arm {i} at a tree of {n} nodes";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the tree mirrored, the same length
+        expect(mut t, 2, arm(i, mirror) == got, f"P2 {what}, mirrored");
+        // P3: the tree under a new root, at most 1 longer and never shorter
+        let up = arm(i, raised);
+        expect(mut t, 3, up == got or up == got + 1, f"P3 {what}: {got}, then {up}");
+        // P5: no longer than the tree is tall, and at least 1 when there
+        // are two nodes
+        expect(mut t, 5, got <= tall and (n == 1 or got >= 1), f"P5 {what}: {got}, height {tall}");
+        // P6: the ★ arm's length
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+    // a leaf hung on the first empty place from node `spot` on, parents
+    // first, left before right
+    for j in 0..n {
+        let node = nodes[(spot + j) % n];
+        let leaf = TreeNode { val: 0, left: None, right: None };
+        if node.left.is_none() {
+            node.left = Some(leaf);
+            break;
+        }
+        if node.right.is_none() {
+            node.right = Some(leaf);
+            break;
+        }
+    }
+    for i in 0..5 {
+        // P4: one leaf more, at most 1 longer and never shorter
+        let grown = arm(i, tree);
+        expect(mut t, 4, grown == answers[i] or grown == answers[i] + 1, f"P4 arm {i} at a tree of {n} nodes: {answers[i]}, then {grown}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's three examples; then 1500 random trees of 1 to 12 nodes
+    // and 500 of 1 to 200, each with a random node from which to look for
+    // a place for P4's leaf
+    for level in [[Some(1), None, Some(1), Some(1), Some(1), None, None, Some(1), Some(1), None, Some(1), None, None, None, Some(1)], [Some(1), Some(1), Some(1), None, Some(1), None, None, Some(1), Some(1), None, Some(1)], [Some(1)]] {
+        check_case(mut t, from_level(level).unwrap(), 0);
+    }
+    let mut seed = 1372;
+    for k in 0..2000 {
+        let n = 1 + next_random(mut seed) % if k < 1500 { 12 } else { 200 };
+        let root = random_tree(mut seed, n).unwrap();
+        let spot = next_random(mut seed) % n;
+        check_case(mut t, root, spot);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

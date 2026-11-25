@@ -1,0 +1,122 @@
+// LeetCode #1372: Longest ZigZag Path in a Binary Tree -- a Rust solution
+// as LeetCode's Rust users write it, carried to Kāra by `karac fix`.
+
+struct Solution {}
+
+fn dfs(node: Option[TreeNode], is_left: bool, len: i32, ans: mut ref i32) {
+    if let Some(n) = node {
+        *ans = (*ans).max(len);
+        if is_left {
+            dfs(n.left, true, 1, mut ans);
+            dfs(n.right, false, len + 1, mut ans);
+        } else {
+            dfs(n.left, true, len + 1, mut ans);
+            dfs(n.right, false, 1, mut ans);
+        }
+    }
+}
+
+impl Solution {
+    pub fn longest_zig_zag(root: Option[TreeNode]) -> i32 {
+        let mut ans = 0;
+        dfs(root, true, 0, mut ans);
+        dfs(root, false, 0, mut ans);
+        ans
+    }
+}
+
+fn longest_zig_zag(root: Option[TreeNode]) -> i32 {
+    Solution.longest_zig_zag(root)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// LeetCode's level-order list, `None` for a missing child
+fn from_level(values: Vec[Option[i32]]) -> Option[TreeNode] {
+    if values.len() == 0 or values[0].is_none() {
+        return None;
+    }
+    let root = TreeNode { val: values[0].unwrap(), left: None, right: None };
+    let mut queue: VecDeque[TreeNode] = VecDeque.new();
+    queue.push_back(root);
+    let mut i = 1;
+    while i < values.len() {
+        let Some(node) = queue.pop_front() else {
+            break;
+        };
+        if let Some(v) = values[i] {
+            let child = TreeNode { val: v, left: None, right: None };
+            node.left = Some(child);
+            queue.push_back(child);
+        }
+        i += 1;
+        if i < values.len() {
+            if let Some(v) = values[i] {
+                let child = TreeNode { val: v, left: None, right: None };
+                node.right = Some(child);
+                queue.push_back(child);
+            }
+            i += 1;
+        }
+    }
+    Some(root)
+}
+
+// n nodes valued from 1 to 100, each hung on an empty child place of the
+// tree so far chosen at random
+fn random_tree(seed: mut ref i64, n: i64) -> Option[TreeNode] {
+    let root = TreeNode { val: (1 + next_random(mut seed) % 100) as i32, left: None, right: None };
+    let mut places: Vec[(TreeNode, bool)] = [(root, true), (root, false)];
+    for _ in 1..n {
+        let k = next_random(mut seed) % places.len();
+        let (parent, left) = places.swap_remove(k);
+        let node = TreeNode { val: (1 + next_random(mut seed) % 100) as i32, left: None, right: None };
+        if left {
+            parent.left = Some(node);
+        } else {
+            parent.right = Some(node);
+        }
+        places.push((node, true));
+        places.push((node, false));
+    }
+    Some(root)
+}
+
+fn main() {
+    // LeetCode's three examples, and a zigzag of 10^4 nodes, each the
+    // left child of the one before and then the right, by turns
+    let e1 = longest_zig_zag(from_level([Some(1), None, Some(1), Some(1), Some(1), None, None, Some(1), Some(1), None, Some(1), None, None, None, Some(1)]));
+    let e2 = longest_zig_zag(from_level([Some(1), Some(1), Some(1), None, Some(1), None, None, Some(1), Some(1), None, Some(1)]));
+    let e3 = longest_zig_zag(from_level([Some(1)]));
+    let mut zig: Option[TreeNode] = None;
+    for k in 0..10000 {
+        zig = if k % 2 == 0 {
+            Some(TreeNode { val: 1, left: zig, right: None })
+        } else {
+            Some(TreeNode { val: 1, left: None, right: zig })
+        };
+    }
+    println(f"{e1} {e2} {e3} {longest_zig_zag(zig)}");
+    // 2000 random trees of 1 to 300 nodes
+    let mut seed = 1372;
+    let mut total = 0;
+    let mut check: i64 = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 300;
+        let got = longest_zig_zag(random_tree(mut seed, n)) as i64;
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random trees: lengths total {total}, checksum {check}");
+}
