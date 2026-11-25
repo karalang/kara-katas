@@ -1,0 +1,95 @@
+// LeetCode #1395: Count Number of Teams -- the ★ arm's counts by Fenwick
+// trees: the ratings ranked by sorting, one tree over the ranks of the
+// soldiers to the left, filled as the line is walked, and the counts on
+// the right found by subtracting from the counts of all. O(n log n)
+
+struct Fenwick {
+    tree: Vec[i64],
+}
+
+impl Fenwick {
+    fn new(size: i64) -> Fenwick {
+        Fenwick { tree: Vec.filled(size + 1, 0) }
+    }
+
+    // one more at rank r (counted from 1)
+    fn add(mut ref self, r: i64) {
+        let mut i = r;
+        while i < self.tree.len() {
+            self.tree[i] += 1;
+            i += i & -i;
+        }
+    }
+
+    // how many at the ranks 1 to r
+    fn upto(ref self, r: i64) -> i64 {
+        let mut i = r;
+        let mut total = 0;
+        while i > 0 {
+            total += self.tree[i];
+            i -= i & -i;
+        }
+        total
+    }
+}
+
+fn num_teams(rating: Vec[i32]) -> i32 {
+    let n = rating.len();
+    let mut sorted = rating.clone();
+    sorted.sort();
+    let mut left = Fenwick.new(n);
+    let mut teams = 0;
+    for j in 0..n {
+        // rank of rating[j] among all, from 1
+        let r = sorted.binary_search(rating[j]).unwrap() + 1;
+        let less_left = left.upto(r - 1);
+        let greater_left = j - less_left;
+        let less_right = r - 1 - less_left;
+        let greater_right = n - r - greater_left;
+        teams += less_left * greater_right + greater_left * less_right;
+        left.add(r);
+    }
+    teams as i32
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n distinct ratings: 1 to n shuffled, each times a scale from 1 to `most`
+fn drawn(n: i64, most: i64, seed: mut ref i64) -> Vec[i32] {
+    let mut out: Vec[i32] = (1..=n).map(|v| v as i32).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        out.swap(i, j);
+    }
+    let scale = (1 + next_random(mut seed) % most) as i32;
+    out.iter().map(|v| v * scale).collect()
+}
+
+fn main() {
+    // LeetCode's three examples; one team falling; none
+    let lines = [[2, 5, 3, 4, 1], [2, 1, 3], [1, 2, 3, 4], [3, 2, 1], [1, 3, 2]];
+    let shown: Vec[String] = lines.iter().map(|r| f"{num_teams(r)}").collect();
+    println(shown.join(" "));
+    // the constraints' most, 1000 soldiers: rising, falling, and shuffled
+    let mut seed = 1395;
+    let mut big: Vec[String] = Vec.new();
+    big.push(f"{num_teams((1..=1000).collect())}");
+    big.push(f"{num_teams((99001..=100000).rev().collect())}");
+    big.push(f"{num_teams(drawn(1000, 100, mut seed))}");
+    println(f"1000 soldiers: {big.join(" ")}");
+    // 2000 random lines of 3 to 40 soldiers
+    let mut check: i64 = 0;
+    let mut total: i64 = 0;
+    for _ in 0..2000 {
+        let n = 3 + next_random(mut seed) % 38;
+        let got = num_teams(drawn(n, 100, mut seed));
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random lines: {total} teams in all, checksum {check}");
+}
