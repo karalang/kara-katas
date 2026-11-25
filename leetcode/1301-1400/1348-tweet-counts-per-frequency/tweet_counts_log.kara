@@ -1,0 +1,116 @@
+// LeetCode #1348: Tweet Counts Per Frequency -- the log arm: every tweet
+// in one list of name and time, in the order recorded; a query walks the
+// whole list, keeping the tweets of its name in range. O(1) to record,
+// O(N) to answer for N tweets in all
+
+fn chunk_size(freq: Str) -> i32 {
+    match freq {
+        "minute" => 60,
+        "hour" => 3600,
+        _ => 86400,
+    }
+}
+
+struct TweetCounts {
+    log: Vec[(String, i32)],
+}
+
+impl TweetCounts {
+    fn new() -> TweetCounts {
+        TweetCounts { log: Vec.new() }
+    }
+
+    fn record_tweet(mut ref self, name: Str, time: i32) {
+        self.log.push((name.to_string(), time));
+    }
+
+    fn get_tweet_counts_per_frequency(self, freq: Str, name: Str, start: i32, end: i32) -> Vec[i32] {
+        let size = chunk_size(freq);
+        let mut counts: Vec[i32] = Vec.filled((end - start) / size + 1, 0);
+        for (who, t) in self.log.iter() {
+            if who == name and t >= start and t <= end {
+                counts[(t - start) / size] += 1;
+            }
+        }
+        counts
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn fold(check: i64, counts: Vec[i32]) -> i64 {
+    let mut c = (check * 131 + counts.len()) % 1000000007;
+    for n in counts.iter() {
+        c = (c * 131 + n as i64) % 1000000007;
+    }
+    c
+}
+
+fn main() {
+    // LeetCode's example
+    let mut tc = TweetCounts.new();
+    tc.record_tweet("tweet3", 0);
+    tc.record_tweet("tweet3", 60);
+    tc.record_tweet("tweet3", 10);
+    let q1 = tc.get_tweet_counts_per_frequency("minute", "tweet3", 0, 59);
+    let q2 = tc.get_tweet_counts_per_frequency("minute", "tweet3", 0, 60);
+    tc.record_tweet("tweet3", 120);
+    let q3 = tc.get_tweet_counts_per_frequency("hour", "tweet3", 0, 210);
+    println(f"{q1} {q2} {q3}");
+    // a name never recorded; a span of one second; a tweet at the last
+    // second, 10^9, counted by the day over the widest span, 10^4; and
+    // the same time recorded twice
+    let mut tc = TweetCounts.new();
+    tc.record_tweet("late", 1000000000);
+    tc.record_tweet("late", 1000000000);
+    tc.record_tweet("late", 999990000);
+    let none = tc.get_tweet_counts_per_frequency("minute", "nobody", 0, 120);
+    let one = tc.get_tweet_counts_per_frequency("hour", "late", 1000000000, 1000000000);
+    let day = tc.get_tweet_counts_per_frequency("day", "late", 999990000, 1000000000);
+    let minutes = tc.get_tweet_counts_per_frequency("minute", "late", 999990000, 1000000000);
+    println(f"{none} {one} {day} {minutes.len()} {minutes[0]} {minutes[166]}");
+    // 10^4 calls, the constraints' most: 5000 tweets under three names
+    // at times from 0 to 10^4, then 5000 queries over spans of up to 10^4
+    let mut seed = 1348;
+    let names = ["alpha", "beta", "gamma"];
+    let freqs = ["minute", "hour", "day"];
+    let mut tc = TweetCounts.new();
+    for _ in 0..5000 {
+        let name = ref names[next_random(mut seed) % 3];
+        tc.record_tweet(name, (next_random(mut seed) % 10001) as i32);
+    }
+    let mut check = 0;
+    for _ in 0..5000 {
+        let freq = ref freqs[next_random(mut seed) % 3];
+        let name = ref names[next_random(mut seed) % 3];
+        let start = next_random(mut seed) % 10001;
+        let end = start + next_random(mut seed) % 10001;
+        check = fold(check, tc.get_tweet_counts_per_frequency(freq, name, start as i32, end as i32));
+    }
+    println(f"10^4 calls: checksum {check}");
+    // 500 random sessions of 1 to 40 calls, records and queries mixed,
+    // under two names, at times near 0 or near 10^9
+    let mut check = 0;
+    for c in 0..500 {
+        let base = if c % 2 == 0 { 0 } else { 1000000000 - 5000 };
+        let mut tc = TweetCounts.new();
+        let calls = 1 + next_random(mut seed) % 40;
+        for _ in 0..calls {
+            let name = ref names[next_random(mut seed) % 2];
+            if next_random(mut seed) % 3 < 2 {
+                tc.record_tweet(name, (base + next_random(mut seed) % 5001) as i32);
+            } else {
+                let freq = ref freqs[next_random(mut seed) % 3];
+                let start = base + next_random(mut seed) % 5001;
+                let end = (start + next_random(mut seed) % 300).min(base + 5000);
+                check = fold(check, tc.get_tweet_counts_per_frequency(freq, name, start as i32, end as i32));
+            }
+        }
+    }
+    println(f"500 random sessions: checksum {check}");
+}

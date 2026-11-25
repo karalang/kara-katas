@@ -1,0 +1,421 @@
+// LeetCode #1348: Tweet Counts Per Frequency -- differential test of the
+// five arms against the statement read literally, with five more
+// properties.
+//
+// The statement: record a tweet's name and time in seconds; asked for a
+// name, a frequency (every minute, hour or day: chunks of 60, 3600 or
+// 86400 seconds) and a period [startTime, endTime], return the number of
+// that name's tweets in each chunk, the chunks [startTime, startTime +
+// size - 1], [startTime + size, startTime + 2 * size - 1], and so on, the
+// last one ending at endTime and so maybe shorter.
+
+// ---- tweet_counts.kara ----
+fn a0_chunk_size(freq: Str) -> i32 {
+    match freq {
+        "minute" => 60,
+        "hour" => 3600,
+        _ => 86400,
+    }
+}
+
+struct A0TweetCounts {
+    times: Map[String, Vec[i32]],
+}
+
+impl A0TweetCounts {
+    fn new() -> A0TweetCounts {
+        A0TweetCounts { times: Map.new() }
+    }
+
+    fn record_tweet(mut ref self, name: Str, time: i32) {
+        if not self.times.contains_key(name) {
+            self.times[name.to_string()] = Vec.new();
+        }
+        self.times[name].push(time);
+    }
+
+    fn get_tweet_counts_per_frequency(self, freq: Str, name: Str, start: i32, end: i32) -> Vec[i32] {
+        let size = a0_chunk_size(freq);
+        let mut counts: Vec[i32] = Vec.filled((end - start) / size + 1, 0);
+        if let Some(times) = self.times.get(name) {
+            for t in times.iter() {
+                if t >= start and t <= end {
+                    counts[(t - start) / size] += 1;
+                }
+            }
+        }
+        counts
+    }
+}
+
+// ---- tweet_counts_sorted.kara ----
+fn a1_chunk_size(freq: Str) -> i32 {
+    match freq {
+        "minute" => 60,
+        "hour" => 3600,
+        _ => 86400,
+    }
+}
+
+struct A1TweetCounts {
+    times: Map[String, SortedMap[i32, i32]],
+}
+
+impl A1TweetCounts {
+    fn new() -> A1TweetCounts {
+        A1TweetCounts { times: Map.new() }
+    }
+
+    fn record_tweet(mut ref self, name: Str, time: i32) {
+        let at = self.times.entry(name.to_string()).or_insert_with(SortedMap.new);
+        at[time] = at.get(time).unwrap_or(0) + 1;
+    }
+
+    fn get_tweet_counts_per_frequency(self, freq: Str, name: Str, start: i32, end: i32) -> Vec[i32] {
+        let size = a1_chunk_size(freq);
+        let mut counts: Vec[i32] = Vec.filled((end - start) / size + 1, 0);
+        if let Some(at) = self.times.get(name) {
+            for (t, n) in at.range_inclusive(start, end) {
+                counts[(t - start) / size] += n;
+            }
+        }
+        counts
+    }
+}
+
+// ---- tweet_counts_search.kara ----
+fn a2_chunk_size(freq: Str) -> i32 {
+    match freq {
+        "minute" => 60,
+        "hour" => 3600,
+        _ => 86400,
+    }
+}
+
+struct A2TweetCounts {
+    times: Map[String, Vec[i32]],
+}
+
+impl A2TweetCounts {
+    fn new() -> A2TweetCounts {
+        A2TweetCounts { times: Map.new() }
+    }
+
+    fn record_tweet(mut ref self, name: Str, time: i32) {
+        if not self.times.contains_key(name) {
+            self.times[name.to_string()] = Vec.new();
+        }
+        let at = self.times[name].partition_point(|t| t <= time);
+        self.times[name].insert(at, time);
+    }
+
+    fn get_tweet_counts_per_frequency(self, freq: Str, name: Str, start: i32, end: i32) -> Vec[i32] {
+        let size = a2_chunk_size(freq);
+        let chunks = (end - start) / size + 1;
+        let mut counts: Vec[i32] = Vec.filled(chunks, 0);
+        if let Some(times) = self.times.get(name) {
+            for c in 0..chunks {
+                let from = start + c * size;
+                let to = (from + size - 1).min(end);
+                let lo = times.partition_point(|t| t < from);
+                let hi = times.partition_point(|t| t <= to);
+                counts[c] = (hi - lo) as i32;
+            }
+        }
+        counts
+    }
+}
+
+// ---- tweet_counts_log.kara ----
+fn a3_chunk_size(freq: Str) -> i32 {
+    match freq {
+        "minute" => 60,
+        "hour" => 3600,
+        _ => 86400,
+    }
+}
+
+struct A3TweetCounts {
+    log: Vec[(String, i32)],
+}
+
+impl A3TweetCounts {
+    fn new() -> A3TweetCounts {
+        A3TweetCounts { log: Vec.new() }
+    }
+
+    fn record_tweet(mut ref self, name: Str, time: i32) {
+        self.log.push((name.to_string(), time));
+    }
+
+    fn get_tweet_counts_per_frequency(self, freq: Str, name: Str, start: i32, end: i32) -> Vec[i32] {
+        let size = a3_chunk_size(freq);
+        let mut counts: Vec[i32] = Vec.filled((end - start) / size + 1, 0);
+        for (who, t) in self.log.iter() {
+            if who == name and t >= start and t <= end {
+                counts[(t - start) / size] += 1;
+            }
+        }
+        counts
+    }
+}
+
+// ---- tweet_counts_solution.kara ----
+struct A4TweetCounts {
+    tweets: Map[String, SortedMap[i32, i32]],
+}
+
+impl A4TweetCounts {
+    fn new() -> Self {
+        A4TweetCounts {
+            tweets: Map.new(),
+        }
+    }
+
+    fn record_tweet(mut ref self, tweet_name: own String, time: i32) {
+        *self
+            .tweets
+            .entry(tweet_name)
+            .or_insert_with(SortedMap.new)
+            .entry(time)
+            .or_insert(0) += 1;
+    }
+
+    fn get_tweet_counts_per_frequency(self, freq: String, tweet_name: String, start_time: i32, end_time: i32) -> Vec[i32] {
+        let size = match freq.as_str() {
+            "minute" => 60,
+            "hour" => 3600,
+            _ => 86400,
+        };
+        let mut res = Vec.filled((end_time - start_time) / size + 1, 0i32);
+        if let Some(m) = self.tweets.get(tweet_name) {
+            for (t, c) in m.range_inclusive(start_time, end_time) {
+                res[((t - start_time) / size) as usize] += c;
+            }
+        }
+        res
+    }
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Query {
+    freq: String,
+    name: String,
+    start: i32,
+    end: i32,
+}
+
+// the statement read literally: the chunks laid out one after another
+// from the start, each `size` seconds or what is left before the end, and
+// every tweet ever recorded tested against each
+fn literal(records: Vec[(String, i32)], q: Query) -> Vec[i32] {
+    let size: i32 = if q.freq == "minute" { 60 } else if q.freq == "hour" { 3600 } else { 86400 };
+    let mut counts: Vec[i32] = Vec.new();
+    let mut from = q.start;
+    while from <= q.end {
+        let to = if from + size - 1 < q.end { from + size - 1 } else { q.end };
+        let mut n = 0;
+        for (who, t) in records.iter() {
+            if who == q.name and from <= t and t <= to {
+                n += 1;
+            }
+        }
+        counts.push(n);
+        from += size;
+    }
+    counts
+}
+
+// arm i given every record, then asked every query
+fn answers(i: i64, records: Vec[(String, i32)], queries: Vec[Query]) -> Vec[Vec[i32]] {
+    let mut out: Vec[Vec[i32]] = Vec.new();
+    if i == 0 {
+        let mut tc = A0TweetCounts.new();
+        for (n, t) in records.iter() {
+            tc.record_tweet(n, t);
+        }
+        for q in queries.iter() {
+            out.push(tc.get_tweet_counts_per_frequency(q.freq, q.name, q.start, q.end));
+        }
+    } else if i == 1 {
+        let mut tc = A1TweetCounts.new();
+        for (n, t) in records.iter() {
+            tc.record_tweet(n, t);
+        }
+        for q in queries.iter() {
+            out.push(tc.get_tweet_counts_per_frequency(q.freq, q.name, q.start, q.end));
+        }
+    } else if i == 2 {
+        let mut tc = A2TweetCounts.new();
+        for (n, t) in records.iter() {
+            tc.record_tweet(n, t);
+        }
+        for q in queries.iter() {
+            out.push(tc.get_tweet_counts_per_frequency(q.freq, q.name, q.start, q.end));
+        }
+    } else if i == 3 {
+        let mut tc = A3TweetCounts.new();
+        for (n, t) in records.iter() {
+            tc.record_tweet(n, t);
+        }
+        for q in queries.iter() {
+            out.push(tc.get_tweet_counts_per_frequency(q.freq, q.name, q.start, q.end));
+        }
+    } else {
+        let mut tc = A4TweetCounts.new();
+        for (n, t) in records.iter() {
+            tc.record_tweet(n.clone(), t);
+        }
+        for q in queries.iter() {
+            out.push(tc.get_tweet_counts_per_frequency(q.freq, q.name, q.start, q.end));
+        }
+    }
+    out
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn sum(v: Vec[i32]) -> i32 {
+    v.iter().sum()
+}
+
+fn check_case(tl: mut ref Tally, records: Vec[(String, i32)], queries: Vec[Query]) {
+    tl.cases += 1;
+    let mut want: Vec[Vec[i32]] = Vec.new();
+    for q in queries.iter() {
+        let w = literal(records, q);
+        tl.check = (tl.check * 131 + w.len()) % 1000000007;
+        for n in w.iter() {
+            tl.check = (tl.check * 131 + n as i64) % 1000000007;
+        }
+        want.push(w);
+    }
+    let star = answers(0, records, queries);
+    // the records in the opposite order
+    let backwards: Vec[(String, i32)] = records.iter().rev().cloned().collect();
+    // every time moved up near the last second, 10^9
+    let lift: i32 = 1000000000 - 20000;
+    let lifted: Vec[(String, i32)] = records.iter().map(|(n, t)| (n.clone(), t + lift)).collect();
+    let lifted_q: Vec[Query] = queries.iter().map(|q| Query { freq: q.freq.clone(), name: q.name.clone(), start: q.start + lift, end: q.end + lift }).collect();
+    // each query asked by the day, one chunk, since no span reaches a day
+    let daily: Vec[Query] = queries.iter().map(|q| Query { freq: "day".to_string(), name: q.name.clone(), start: q.start, end: q.end }).collect();
+    for i in 0..5 {
+        let got = answers(i, records, queries);
+        let what = f"arm {i} on {records}";
+        // P1: the statement read literally
+        expect(mut tl, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the records in the opposite order: the same answers
+        let bw = answers(i, backwards, queries);
+        expect(mut tl, 2, bw == got, f"P2 {what}, backwards: {bw}");
+        // P3: every time moved up by the same amount: the same answers
+        let lf = answers(i, lifted, lifted_q);
+        expect(mut tl, 3, lf == got, f"P3 {what}, lifted: {lf}");
+        // P4: each answer's counts add up to its query's one day chunk
+        let dy = answers(i, records, daily);
+        let mut adds = true;
+        for k in 0..got.len() {
+            if dy[k].len() != 1 or dy[k][0] != sum(got[k]) {
+                adds = false;
+            }
+        }
+        expect(mut tl, 4, adds, f"P4 {what}, by the day: {dy}");
+        // P5: one more tweet of each query's name at its start: that
+        // query's first chunk one higher, the rest the same
+        let mut one_more = true;
+        for k in 0..queries.len() {
+            let q = ref queries[k];
+            let mut more = records.clone();
+            more.push((q.name.clone(), q.start));
+            let asked: Vec[Query] = [Query { freq: q.freq.clone(), name: q.name.clone(), start: q.start, end: q.end }];
+            let a = answers(i, more, asked);
+            let mut expected = got[k].clone();
+            expected[0] += 1;
+            if a[0] != expected {
+                one_more = false;
+            }
+        }
+        expect(mut tl, 5, one_more, f"P5 {what}, one more at each start");
+        // P6: the ★ arm's answers
+        expect(mut tl, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut tl = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 cases in four kinds, 500 each, of 0 to 15 tweets under the
+    // names a and b and 1 to 4 queries of either name at any frequency:
+    // times and periods within 200 seconds; within 10^4, the constraints'
+    // widest period; at 0, 59, 60, 61, 119 and 120, either side of the
+    // first minutes' edges; and at 0, 3599, 3600 and 7200, the hours'.
+    // Every case is drawn before any arm answers.
+    let mut seed = 13481;
+    let names = ["a", "b"];
+    let freqs = ["minute", "hour", "day"];
+    let edges1: Vec[i32] = [0, 59, 60, 61, 119, 120];
+    let edges2: Vec[i32] = [0, 3599, 3600, 7200];
+    let mut cases: Vec[(Vec[(String, i32)], Vec[Query])] = Vec.new();
+    for c in 0..2000 {
+        let kind = c / 500;
+        let span = if kind == 0 { 200 } else if kind == 1 { 10000 } else if kind == 2 { 120 } else { 7200 };
+        let mut records: Vec[(String, i32)] = Vec.new();
+        for _ in 0..next_random(mut seed) % 16 {
+            let name = names[next_random(mut seed) % 2].clone();
+            let t = if kind == 2 {
+                edges1[next_random(mut seed) % 6]
+            } else if kind == 3 {
+                edges2[next_random(mut seed) % 4]
+            } else {
+                (next_random(mut seed) % (span + 1)) as i32
+            };
+            records.push((name, t));
+        }
+        let mut queries: Vec[Query] = Vec.new();
+        for _ in 0..1 + next_random(mut seed) % 4 {
+            let freq = freqs[next_random(mut seed) % 3].clone();
+            let name = names[next_random(mut seed) % 2].clone();
+            let (start, end) = if kind >= 2 {
+                let edges = if kind == 2 { ref edges1 } else { ref edges2 };
+                let a = edges[next_random(mut seed) % edges.len()];
+                let b = edges[next_random(mut seed) % edges.len()];
+                if a <= b { (a, b) } else { (b, a) }
+            } else {
+                let a = (next_random(mut seed) % (span + 1)) as i32;
+                let b = (next_random(mut seed) % (span + 1)) as i32;
+                if a <= b { (a, b) } else { (b, a) }
+            };
+            queries.push(Query { freq: freq, name: name, start: start, end: end });
+        }
+        cases.push((records, queries));
+    }
+    for (records, queries) in cases.iter() {
+        check_case(mut tl, records, queries);
+    }
+    println(f"{tl.cases} cases: checksum {tl.check}, {tl.checks} checks over 5 arms: {tl.failures} failures");
+    if tl.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| tl.by[p] > 0).map(|p| f"P{p} {tl.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
