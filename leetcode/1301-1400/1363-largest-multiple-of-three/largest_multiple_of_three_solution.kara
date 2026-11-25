@@ -1,0 +1,93 @@
+// LeetCode #1363: Largest Multiple of Three -- a Rust solution as
+// LeetCode's Rust users write it, carried to Kāra by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn largest_multiple_of_three(digits: own Vec[i32]) -> String {
+        let mut digits = digits;
+        digits.sort_by(|a, b| b.cmp(a));
+        let sum: i32 = digits.iter().sum();
+        let r = sum % 3;
+        if r != 0 {
+            let mut removed = false;
+            for i in (0..digits.len()).rev() {
+                if digits[i] % 3 == r {
+                    digits.remove(i);
+                    removed = true;
+                    break;
+                }
+            }
+            if not removed {
+                let mut count = 0;
+                let mut i = digits.len();
+                while i > 0 and count < 2 {
+                    i -= 1;
+                    if digits[i] % 3 == 3 - r {
+                        digits.remove(i);
+                        count += 1;
+                    }
+                }
+            }
+        }
+        if digits.is_empty() {
+            return String.new();
+        }
+        if digits[0] == 0 {
+            return "0".to_string();
+        }
+        Vec[String].from_iter(digits.iter().map(|d| d.to_string())).join("")
+    }
+}
+
+fn largest_multiple_of_three(digits: own Vec[i32]) -> String {
+    Solution.largest_multiple_of_three(digits)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a string's length and its digits folded into a checksum
+fn fold(check: i64, s: Str) -> i64 {
+    let mut c = (check * 131 + s.len()) % 1000000007;
+    for b in s.bytes() {
+        c = (c * 31 + b) % 1000000007;
+    }
+    c
+}
+
+fn main() {
+    // LeetCode's three examples; all zeros; one digit kept of two; two
+    // removed of residue 2 when no 1 is there
+    let cases: Vec[Vec[i32]] = [[8, 1, 9], [8, 6, 7, 1, 0], [1], [0, 0, 0, 0, 0, 0], [2, 2], [5, 8, 9]];
+    let shown: Vec[String] = cases.iter().map(|digits| f"\"{largest_multiple_of_three(digits.clone())}\"").collect();
+    println(shown.join(" "));
+    // 10^4 digits, the constraints' most, and 2000 random arrays of up to
+    // 30, each answer folded into a checksum
+    let mut seed = 1363;
+    let mut long: Vec[i32] = Vec.new();
+    for _ in 0..10000 {
+        long.push((next_random(mut seed) % 10) as i32);
+    }
+    let answer = largest_multiple_of_three(long);
+    println(f"10^4 digits: {answer.len()} kept, checksum {fold(0, answer)}");
+    let mut check: i64 = 0;
+    let mut empty = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let mut digits: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            digits.push((next_random(mut seed) % 10) as i32);
+        }
+        let answer = largest_multiple_of_three(digits);
+        if answer.is_empty() {
+            empty += 1;
+        }
+        check = fold(check, answer);
+    }
+    println(f"2000 random arrays: {empty} with none, checksum {check}");
+}

@@ -1,0 +1,89 @@
+// LeetCode #1363: Largest Multiple of Three -- the ★ arm: the digits
+// counted, and their sum's residue r mod 3 put right by dropping the
+// smallest digit of residue r, or failing that the two smallest of
+// residue 3 - r; the rest written from 9 down, a lead 0 meaning the
+// answer is "0". O(n)
+fn largest_multiple_of_three(digits: Vec[i32]) -> String {
+    let mut count: Vec[i64] = Vec.filled(10, 0);
+    let mut sum = 0;
+    for d in digits.iter() {
+        count[d] += 1;
+        sum += d;
+    }
+    let r = sum % 3;
+    if r != 0 {
+        let mut dropped = false;
+        for d in [r, r + 3, r + 6] {
+            if count[d] > 0 {
+                count[d] -= 1;
+                dropped = true;
+                break;
+            }
+        }
+        let mut left = if dropped { 0 } else { 2 };
+        for d in [3 - r, 6 - r, 9 - r] {
+            while left > 0 and count[d] > 0 {
+                count[d] -= 1;
+                left -= 1;
+            }
+        }
+    }
+    let mut out = String.new();
+    for d in (0..10).rev() {
+        for _ in 0..count[d] {
+            out.push((b'0' + d as u8) as char);
+        }
+    }
+    if out.starts_with("0") {
+        return "0".to_string();
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a string's length and its digits folded into a checksum
+fn fold(check: i64, s: Str) -> i64 {
+    let mut c = (check * 131 + s.len()) % 1000000007;
+    for b in s.bytes() {
+        c = (c * 31 + b) % 1000000007;
+    }
+    c
+}
+
+fn main() {
+    // LeetCode's three examples; all zeros; one digit kept of two; two
+    // removed of residue 2 when no 1 is there
+    let cases: Vec[Vec[i32]] = [[8, 1, 9], [8, 6, 7, 1, 0], [1], [0, 0, 0, 0, 0, 0], [2, 2], [5, 8, 9]];
+    let shown: Vec[String] = cases.iter().map(|digits| f"\"{largest_multiple_of_three(digits)}\"").collect();
+    println(shown.join(" "));
+    // 10^4 digits, the constraints' most, and 2000 random arrays of up to
+    // 30, each answer folded into a checksum
+    let mut seed = 1363;
+    let mut long: Vec[i32] = Vec.new();
+    for _ in 0..10000 {
+        long.push((next_random(mut seed) % 10) as i32);
+    }
+    let answer = largest_multiple_of_three(long);
+    println(f"10^4 digits: {answer.len()} kept, checksum {fold(0, answer)}");
+    let mut check: i64 = 0;
+    let mut empty = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let mut digits: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            digits.push((next_random(mut seed) % 10) as i32);
+        }
+        let answer = largest_multiple_of_three(digits);
+        if answer.is_empty() {
+            empty += 1;
+        }
+        check = fold(check, answer);
+    }
+    println(f"2000 random arrays: {empty} with none, checksum {check}");
+}

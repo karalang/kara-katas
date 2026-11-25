@@ -1,0 +1,389 @@
+// LeetCode #1363: Largest Multiple of Three -- differential test of
+// the five arms against the statement read literally, with five more
+// properties.
+//
+// The statement: given an array of digits, return the largest multiple
+// of three that can be formed by concatenating some of the given digits
+// in any order, as a string with no unnecessary leading zeros, or "" if
+// there is none.
+
+// ---- largest_multiple_of_three.kara ----
+fn a0_largest_multiple_of_three(digits: Vec[i32]) -> String {
+    let mut count: Vec[i64] = Vec.filled(10, 0);
+    let mut sum = 0;
+    for d in digits.iter() {
+        count[d] += 1;
+        sum += d;
+    }
+    let r = sum % 3;
+    if r != 0 {
+        let mut dropped = false;
+        for d in [r, r + 3, r + 6] {
+            if count[d] > 0 {
+                count[d] -= 1;
+                dropped = true;
+                break;
+            }
+        }
+        let mut left = if dropped { 0 } else { 2 };
+        for d in [3 - r, 6 - r, 9 - r] {
+            while left > 0 and count[d] > 0 {
+                count[d] -= 1;
+                left -= 1;
+            }
+        }
+    }
+    let mut out = String.new();
+    for d in (0..10).rev() {
+        for _ in 0..count[d] {
+            out.push((b'0' + d as u8) as char);
+        }
+    }
+    if out.starts_with("0") {
+        return "0".to_string();
+    }
+    out
+}
+
+// ---- largest_multiple_of_three_residues.kara ----
+fn a1_largest_multiple_of_three(digits: Vec[i32]) -> String {
+    let mut sorted = digits.clone();
+    sorted.sort_by(|a, b| b.cmp(a));
+    let mut lists: Vec[Vec[i32]] = [Vec.new(), Vec.new(), Vec.new()];
+    let mut sum = 0;
+    for d in sorted {
+        lists[d % 3].push(d);
+        sum += d;
+    }
+    let r = sum % 3;
+    if r != 0 {
+        if lists[r].len() > 0 {
+            lists[r].pop();
+        } else {
+            lists[3 - r].pop();
+            lists[3 - r].pop();
+        }
+    }
+    let mut kept: Vec[i32] = Vec.new();
+    for list in lists {
+        kept.extend(list);
+    }
+    kept.sort_by(|a, b| b.cmp(a));
+    if kept.len() > 0 and kept[0] == 0 {
+        return "0".to_string();
+    }
+    Vec[String].from_iter(kept.iter().map(|d| d.to_string())).join("")
+}
+
+// ---- largest_multiple_of_three_search.kara ----
+fn a2_build(count: Vec[i64]) -> String {
+    let mut out = String.new();
+    let mut d = 9;
+    while d >= 0 {
+        for _ in 0..count[d] {
+            out += d.to_string();
+        }
+        d -= 1;
+    }
+    if out.starts_with("0") {
+        return "0".to_string();
+    }
+    out
+}
+
+// the count with the smallest `drop` digits of residue `r` taken out
+fn a2_without(count: Vec[i64], r: i64, drop: i64) -> Vec[i64] {
+    let mut left = count.clone();
+    let mut need = drop;
+    for d in [r, r + 3, r + 6] {
+        while need > 0 and left[d] > 0 {
+            left[d] -= 1;
+            need -= 1;
+        }
+    }
+    left
+}
+
+fn a2_largest_multiple_of_three(digits: Vec[i32]) -> String {
+    let mut count: Vec[i64] = Vec.filled(10, 0);
+    for d in digits.iter() {
+        count[d] += 1;
+    }
+    let c1 = count[1] + count[4] + count[7];
+    let c2 = count[2] + count[5] + count[8];
+    let mut best = String.new();
+    for drop1 in 0..3 {
+        for drop2 in 0..3 {
+            if drop1 > c1 or drop2 > c2 or (c1 - drop1) % 3 != (c2 - drop2) % 3 {
+                continue;
+            }
+            let answer = a2_build(a2_without(a2_without(count, 1, drop1), 2, drop2));
+            if answer.len() > best.len() or (answer.len() == best.len() and answer > best) {
+                best = answer;
+            }
+        }
+    }
+    best
+}
+
+// ---- largest_multiple_of_three_dp.kara ----
+fn a3_better(a: Vec[i64], b: Vec[i64]) -> bool {
+    let (sa, sb) = (a.iter().sum(), b.iter().sum());
+    if sa != sb {
+        return sa > sb;
+    }
+    let mut d = 9;
+    while d >= 0 {
+        if a[d] != b[d] {
+            return a[d] > b[d];
+        }
+        d -= 1;
+    }
+    false
+}
+
+fn a3_largest_multiple_of_three(digits: Vec[i32]) -> String {
+    // best[r]: a choice whose sum has residue r, None where there is none
+    let mut best: Vec[Option[Vec[i64]]] = [Some(Vec.filled(10, 0)), None, None];
+    for d in digits.iter() {
+        let mut next = best.clone();
+        for r in 0..3 {
+            if let Some(choice) = best[r].clone() {
+                let mut taken = choice;
+                taken[d] += 1;
+                let to = (r + d) % 3;
+                let replace = match next[to].clone() {
+                    Some(held) => a3_better(taken, held),
+                    None => true,
+                };
+                if replace {
+                    next[to] = Some(taken);
+                }
+            }
+        }
+        best = next;
+    }
+    let count = best[0].clone().unwrap();
+    let mut out = String.new();
+    let mut d = 9;
+    while d >= 0 {
+        out += d.to_string().repeat(count[d]);
+        d -= 1;
+    }
+    if out.starts_with("0") {
+        return "0".to_string();
+    }
+    out
+}
+
+// ---- largest_multiple_of_three_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_largest_multiple_of_three(digits: own Vec[i32]) -> String {
+        let mut digits = digits;
+        digits.sort_by(|a, b| b.cmp(a));
+        let sum: i32 = digits.iter().sum();
+        let r = sum % 3;
+        if r != 0 {
+            let mut removed = false;
+            for i in (0..digits.len()).rev() {
+                if digits[i] % 3 == r {
+                    digits.remove(i);
+                    removed = true;
+                    break;
+                }
+            }
+            if not removed {
+                let mut count = 0;
+                let mut i = digits.len();
+                while i > 0 and count < 2 {
+                    i -= 1;
+                    if digits[i] % 3 == 3 - r {
+                        digits.remove(i);
+                        count += 1;
+                    }
+                }
+            }
+        }
+        if digits.is_empty() {
+            return String.new();
+        }
+        if digits[0] == 0 {
+            return "0".to_string();
+        }
+        Vec[String].from_iter(digits.iter().map(|d| d.to_string())).join("")
+    }
+}
+
+fn a4_largest_multiple_of_three(digits: own Vec[i32]) -> String {
+    A4Solution.a4_largest_multiple_of_three(digits)
+}
+
+// ---- the differential -------------------------------------------------------
+
+// a string of digits written without unnecessary leading zeros
+fn trimmed(s: Str) -> String {
+    let mut t = s;
+    while let Some(rest) = t.strip_prefix("0") {
+        t = rest;
+    }
+    if t.is_empty() and not s.is_empty() {
+        return "0".to_string();
+    }
+    t.to_string()
+}
+
+// the larger of two numbers written as digit strings with no leading zeros
+fn larger(a: Str, b: Str) -> bool {
+    a.len() > b.len() or (a.len() == b.len() and a > b)
+}
+
+// the statement read literally: every nonempty choice of the digits
+// whose sum is a multiple of three, each written in its largest order,
+// from the largest digit down, and the largest number of them kept
+fn literal(digits: Vec[i32]) -> String {
+    let n = digits.len();
+    let mut best = String.new();
+    for mask in 1..(1 << n) {
+        let mut chosen: Vec[i32] = Vec.new();
+        for i in 0..n {
+            if (mask >> i) & 1 == 1 {
+                chosen.push(digits[i]);
+            }
+        }
+        let sum: i64 = chosen.iter().map(|d| d as i64).sum();
+        if sum % 3 != 0 {
+            continue;
+        }
+        chosen.sort();
+        chosen.reverse();
+        let mut written = String.new();
+        for d in chosen {
+            written += d.to_string();
+        }
+        let number = trimmed(written);
+        if best.is_empty() or larger(number, best) {
+            best = number;
+        }
+    }
+    best
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, digits: Vec[i32]) -> String {
+    match i {
+        0 => a0_largest_multiple_of_three(digits),
+        1 => a1_largest_multiple_of_three(digits),
+        2 => a2_largest_multiple_of_three(digits),
+        3 => a3_largest_multiple_of_three(digits),
+        _ => a4_largest_multiple_of_three(digits.clone()),
+    }
+}
+
+// how many of each digit a string or an array holds
+fn tally_of(s: Str) -> Vec[i64] {
+    let mut count: Vec[i64] = Vec.filled(10, 0);
+    for b in s.bytes() {
+        count[b - b'0'] += 1;
+    }
+    count
+}
+
+fn check_case(t: mut ref Tally, digits: Vec[i32]) {
+    t.cases += 1;
+    let small = digits.len() <= 12;
+    let want = if small { literal(digits) } else { String.new() };
+    t.check = (t.check * 131 + want.len() + digits.len()) % 1000000007;
+    for b in want.bytes() {
+        t.check = (t.check * 31 + b) % 1000000007;
+    }
+    let mut have: Vec[i64] = Vec.filled(10, 0);
+    for d in digits.iter() {
+        have[d] += 1;
+    }
+    let reversed: Vec[i32] = digits.iter().rev().collect();
+    let mut nines = digits.clone();
+    nines.extend([9, 9, 9]);
+    let mut zero = digits.clone();
+    zero.push(0);
+    let star = arm(0, digits);
+    for i in 0..5 {
+        let got = arm(i, digits);
+        let what = f"arm {i} at {digits}";
+        // P1: the statement read literally, for up to 12 digits
+        if small {
+            expect(mut t, 1, got == want, f"P1 {what}: literal \"{want}\", got \"{got}\"");
+        }
+        // P2: a multiple of three, written with no unnecessary leading zero
+        let used = tally_of(got);
+        let mut sum = 0;
+        for d in 0..10 {
+            sum += d * used[d];
+        }
+        expect(mut t, 2, sum % 3 == 0 and trimmed(got) == got, f"P2 {what}: \"{got}\"");
+        // P3: made of the given digits, none used more often than given
+        expect(mut t, 3, (0..10).all(|d| used[d] <= have[d]), f"P3 {what}: \"{got}\"");
+        // P4: the digits given in the opposite order, the same answer
+        expect(mut t, 4, arm(i, reversed) == got, f"P4 {what}, reversed");
+        // P5: three 9s more put 999 in front; a 0 more puts a 0 at the end,
+        // where the answer is a number other than 0
+        let with_nines = arm(i, nines);
+        if got != "0" {
+            expect(mut t, 5, with_nines == f"999{got}", f"P5 {what}, three 9s: \"{with_nines}\"");
+        }
+        let with_zero = arm(i, zero);
+        let after_zero = if got.is_empty() or got == "0" { "0".to_string() } else { f"{got}0" };
+        expect(mut t, 5, with_zero == after_zero, f"P5 {what}, a 0: \"{with_zero}\"");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: \"{star}\"");
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edge cases above; then 1500 random arrays
+    // of up to 12 digits, 300 of up to 200, and one of 10^4
+    let fixed: Vec[Vec[i32]] = [[8, 1, 9], [8, 6, 7, 1, 0], [1], [0, 0, 0, 0, 0, 0], [2, 2], [5, 8, 9]];
+    for digits in fixed {
+        check_case(mut t, digits);
+    }
+    let mut seed = 1363;
+    for k in 0..1801 {
+        let most = if k < 1500 { 12 } else if k < 1800 { 200 } else { 10000 };
+        let n = if k == 1800 { 10000 } else { 1 + next_random(mut seed) % most };
+        let mut digits: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            digits.push((next_random(mut seed) % 10) as i32);
+        }
+        check_case(mut t, digits);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
