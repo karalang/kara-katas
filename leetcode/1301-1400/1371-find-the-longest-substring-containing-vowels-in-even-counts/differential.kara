@@ -1,0 +1,266 @@
+// LeetCode #1371: Find the Longest Substring Containing Vowels in Even
+// Counts -- differential test of the five arms against the statement
+// read literally, with five more properties.
+//
+// The statement: given the string s, return the size of the longest
+// substring containing each vowel an even number of times; that is,
+// 'a', 'e', 'i', 'o' and 'u' must each appear an even number of times.
+
+// ---- find_the_longest_substring.kara ----
+fn a0_find_the_longest_substring(s: Str) -> i32 {
+    let mut first: Vec[i64] = Vec.filled(32, -2);
+    first[0] = -1;
+    let mut bits = 0;
+    let mut best = 0;
+    for (i, c) in s.chars().enumerate() {
+        match c {
+            'a' => bits ^= 1,
+            'e' => bits ^= 2,
+            'i' => bits ^= 4,
+            'o' => bits ^= 8,
+            'u' => bits ^= 16,
+            _ => {}
+        }
+        if first[bits] == -2 {
+            first[bits] = i;
+        } else {
+            best = best.max(i - first[bits]);
+        }
+    }
+    best as i32
+}
+
+// ---- find_the_longest_substring_map.kara ----
+fn a1_find_the_longest_substring(s: Str) -> i32 {
+    let bit: Map[char, i64] = Map.from([('a', 1), ('e', 2), ('i', 4), ('o', 8), ('u', 16)]);
+    let mut first: Map[i64, i64] = Map.new();
+    first.insert(0, -1);
+    let mut bits = 0;
+    let mut best = 0;
+    for (i, c) in s.chars().enumerate() {
+        bits ^= bit.get(c).cloned().unwrap_or(0);
+        match first.get(bits) {
+            Some(at) => best = best.max(i - at),
+            None => {
+                first.insert(bits, i);
+            }
+        }
+    }
+    best as i32
+}
+
+// ---- find_the_longest_substring_twopass.kara ----
+fn a2_find_the_longest_substring(s: Str) -> i32 {
+    let bytes = s.bytes();
+    // prefix[k]: the bits of the first k letters
+    let mut prefix: Vec[i64] = [0];
+    for b in bytes.iter() {
+        let flip = match b {
+            b'a' => 1,
+            b'e' => 2,
+            b'i' => 4,
+            b'o' => 8,
+            b'u' => 16,
+            _ => 0,
+        };
+        prefix.push(prefix[prefix.len() - 1] ^ flip);
+    }
+    let mut lo: Vec[i64] = Vec.filled(32, -1);
+    let mut hi: Vec[i64] = Vec.filled(32, -1);
+    for k in 0..prefix.len() {
+        let p = prefix[k];
+        if lo[p] < 0 {
+            lo[p] = k;
+        }
+        hi[p] = k;
+    }
+    let mut best = 0;
+    for p in 0..32 {
+        if lo[p] >= 0 {
+            best = best.max(hi[p] - lo[p]);
+        }
+    }
+    best as i32
+}
+
+// ---- find_the_longest_substring_brute.kara ----
+fn a3_find_the_longest_substring(s: Str) -> i32 {
+    let letters: Vec[char] = s.chars().collect();
+    let n = letters.len();
+    let mut best = 0;
+    for start in 0..n {
+        if n - start <= best {
+            break;
+        }
+        let mut counts: Vec[i64] = Vec.filled(5, 0);
+        for end in start..n {
+            match "aeiou".find(letters[end].to_string()) {
+                Some(v) => counts[v] += 1,
+                None => {}
+            }
+            if counts.iter().all(|c| c % 2 == 0) {
+                best = best.max(end - start + 1);
+            }
+        }
+    }
+    best as i32
+}
+
+// ---- find_the_longest_substring_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_find_the_longest_substring(s: String) -> i32 {
+        let mut pos = Vec.filled(32, -1i32);
+        let mut mask = 0usize;
+        let mut ans: i32 = 0;
+        pos[0] = 0;
+        for (i, c) in s.chars().enumerate() {
+            match c {
+                'a' => mask ^= 1 << 0,
+                'e' => mask ^= 1 << 1,
+                'i' => mask ^= 1 << 2,
+                'o' => mask ^= 1 << 3,
+                'u' => mask ^= 1 << 4,
+                _ => {}
+            }
+            if pos[mask] != -1 {
+                ans = ans.max(i as i32 + 1 - pos[mask]);
+            } else {
+                pos[mask] = i as i32 + 1;
+            }
+        }
+        ans
+    }
+}
+
+fn a4_find_the_longest_substring(s: String) -> i32 {
+    A4Solution.a4_find_the_longest_substring(s)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every substring, and in each every vowel
+// counted; the longest in which every count is even
+fn literal(s: Str) -> i64 {
+    let letters: Vec[char] = s.chars().collect();
+    let n = letters.len();
+    let mut best = 0;
+    for i in 0..n {
+        for j in i + 1..n + 1 {
+            let mut even = true;
+            for v in "aeiou".chars() {
+                let mut count = 0;
+                for k in i..j {
+                    if letters[k] == v {
+                        count += 1;
+                    }
+                }
+                if count % 2 == 1 {
+                    even = false;
+                }
+            }
+            if even and j - i > best {
+                best = j - i;
+            }
+        }
+    }
+    best
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, s: Str) -> i64 {
+    let got = match i {
+        0 => a0_find_the_longest_substring(s),
+        1 => a1_find_the_longest_substring(s),
+        2 => a2_find_the_longest_substring(s),
+        3 => a3_find_the_longest_substring(s),
+        _ => a4_find_the_longest_substring(s.to_string()),
+    };
+    got
+}
+
+fn check_case(t: mut ref Tally, s: Str) {
+    t.cases += 1;
+    let want = literal(s);
+    t.check = (t.check * 131 + want) % 1000000007;
+    let n = s.len();
+    let reversed: String = s.chars().rev().collect();
+    let plain: String = s.chars().map(|c| if "aeiou".contains(c.to_string()) { c } else { 'z' }).collect();
+    let doubled = f"{s}{s}";
+    let longer = f"{s}b";
+    let star = arm(0, s);
+    for i in 0..5 {
+        let got = arm(i, s);
+        let what = f"arm {i} at {s}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the string reversed, the same length
+        expect(mut t, 2, arm(i, reversed) == got, f"P2 {what}, reversed");
+        // P3: every consonant made a z, the same length
+        expect(mut t, 3, arm(i, plain) == got, f"P3 {what}, as {plain}");
+        // P4: the string twice over has every vowel an even number of
+        // times, so all of it counts
+        expect(mut t, 4, arm(i, doubled) == 2 * n, f"P4 {what}, doubled");
+        // P5: a consonant added at the end lengthens the answer by at
+        // most 1
+        let more = arm(i, longer);
+        expect(mut t, 5, more == got or more == got + 1, f"P5 {what}: {got}, then {more}");
+        // P6: the ★ arm's length
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's three examples, one vowel and two of it; then 1500
+    // random strings of 1 to 20 letters and 500 of 1 to 40, drawn from the
+    // first 1 to 10 of "aeioubcxyz", or from the whole alphabet
+    for s in ["eleetminicoworoep", "leetcodeisgreat", "bcbcbc", "a", "aa"] {
+        check_case(mut t, s);
+    }
+    let pool: Vec[char] = "aeioubcxyz".chars().collect();
+    let mut seed = 1371;
+    for k in 0..2000 {
+        let len = 1 + next_random(mut seed) % if k < 1500 { 20 } else { 40 };
+        let kinds = 1 + next_random(mut seed) % 11;
+        let mut s = String.new();
+        for _ in 0..len {
+            let r = next_random(mut seed);
+            if kinds == 11 {
+                s.push((b'a' + (r % 26) as u8) as char);
+            } else {
+                s.push(pool[r % kinds]);
+            }
+        }
+        check_case(mut t, s);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

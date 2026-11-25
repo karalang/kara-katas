@@ -1,0 +1,75 @@
+// LeetCode #1371: Find the Longest Substring Containing Vowels in Even
+// Counts -- a Rust solution as LeetCode's Rust users write it, carried to
+// Kāra by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn find_the_longest_substring(s: String) -> i32 {
+        let mut pos = Vec.filled(32, -1i32);
+        let mut mask = 0usize;
+        let mut ans: i32 = 0;
+        pos[0] = 0;
+        for (i, c) in s.chars().enumerate() {
+            match c {
+                'a' => mask ^= 1 << 0,
+                'e' => mask ^= 1 << 1,
+                'i' => mask ^= 1 << 2,
+                'o' => mask ^= 1 << 3,
+                'u' => mask ^= 1 << 4,
+                _ => {}
+            }
+            if pos[mask] != -1 {
+                ans = ans.max(i as i32 + 1 - pos[mask]);
+            } else {
+                pos[mask] = i as i32 + 1;
+            }
+        }
+        ans
+    }
+}
+
+fn find_the_longest_substring(s: String) -> i32 {
+    Solution.find_the_longest_substring(s)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples; one vowel, two of it, and a string of
+    // 2000 letters cycling through the alphabet
+    let mut cycle = String.new();
+    for i in 0..2000 {
+        cycle.push((b'a' + (i % 26) as u8) as char);
+    }
+    let shown: Vec[String] = ["eleetminicoworoep", "leetcodeisgreat", "bcbcbc", "a", "aa", cycle.as_str()].iter().map(|s| f"{find_the_longest_substring(s.to_string())}").collect();
+    println(shown.join(" "));
+    // 2000 random strings of 1 to 300 letters, drawn from the first 1 to
+    // 10 of "aeioubcxyz", or from the whole alphabet
+    let pool: Vec[char] = "aeioubcxyz".chars().collect();
+    let mut seed = 1371;
+    let mut total = 0;
+    let mut check: i64 = 0;
+    for _ in 0..2000 {
+        let len = 1 + next_random(mut seed) % 300;
+        let kinds = 1 + next_random(mut seed) % 11;
+        let mut s = String.new();
+        for _ in 0..len {
+            let r = next_random(mut seed);
+            if kinds == 11 {
+                s.push((b'a' + (r % 26) as u8) as char);
+            } else {
+                s.push(pool[r % kinds]);
+            }
+        }
+        let got = find_the_longest_substring(s) as i64;
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random strings: lengths total {total}, checksum {check}");
+}
