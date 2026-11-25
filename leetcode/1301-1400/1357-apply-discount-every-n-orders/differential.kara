@@ -1,0 +1,400 @@
+// LeetCode #1357: Apply Discount Every n Orders -- differential test of
+// the five arms against the statement read literally, with five more
+// properties.
+//
+// The statement: a supermarket sells the products `products[i]` at
+// `prices[i]`; a customer's bill is the sum of `price * amount` over what
+// they buy, and every n-th customer gets `discount` percent off, the bill
+// becoming `x - (discount * x) / 100`.
+
+// ---- cashier.kara ----
+struct A0Cashier {
+    n: i32,
+    discount: i32,
+    served: i32,
+    price: Map[i32, i32],
+}
+
+impl A0Cashier {
+    fn new(n: i32, discount: i32, products: Vec[i32], prices: Vec[i32]) -> A0Cashier {
+        let mut price: Map[i32, i32] = Map.new();
+        for i in 0..products.len() {
+            price.insert(products[i], prices[i]);
+        }
+        A0Cashier { n, discount, served: 0, price }
+    }
+
+    fn get_bill(mut ref self, product: Vec[i32], amount: Vec[i32]) -> f64 {
+        self.served += 1;
+        let mut bill = 0.0;
+        for i in 0..product.len() {
+            bill += (self.price[product[i]] * amount[i]) as f64;
+        }
+        if self.served % self.n == 0 {
+            bill * (100 - self.discount) as f64 / 100.0
+        } else {
+            bill
+        }
+    }
+}
+
+// ---- cashier_array.kara ----
+struct A1Cashier {
+    n: i32,
+    discount: i32,
+    until: i32,
+    price: Vec[i32],
+}
+
+impl A1Cashier {
+    fn new(n: i32, discount: i32, products: Vec[i32], prices: Vec[i32]) -> A1Cashier {
+        let mut price: Vec[i32] = Vec.filled(201, 0);
+        for i in 0..products.len() {
+            price[products[i]] = prices[i];
+        }
+        A1Cashier { n, discount, until: n, price }
+    }
+
+    fn get_bill(mut ref self, product: Vec[i32], amount: Vec[i32]) -> f64 {
+        let mut bill = 0.0;
+        for i in 0..product.len() {
+            bill += (self.price[product[i]] * amount[i]) as f64;
+        }
+        self.until -= 1;
+        if self.until == 0 {
+            self.until = self.n;
+            bill * (1.0 - self.discount as f64 / 100.0)
+        } else {
+            bill
+        }
+    }
+}
+
+// ---- cashier_scan.kara ----
+struct A2Cashier {
+    n: i32,
+    discount: i32,
+    served: i32,
+    products: Vec[i32],
+    prices: Vec[i32],
+}
+
+impl A2Cashier {
+    fn new(n: i32, discount: i32, products: Vec[i32], prices: Vec[i32]) -> A2Cashier {
+        A2Cashier { n, discount, served: 0, products: products.clone(), prices: prices.clone() }
+    }
+
+    fn get_bill(mut ref self, product: Vec[i32], amount: Vec[i32]) -> f64 {
+        self.served += 1;
+        let mut bill: i64 = 0;
+        for i in 0..product.len() {
+            let mut at = 0;
+            while self.products[at] != product[i] {
+                at += 1;
+            }
+            bill += self.prices[at] as i64 * amount[i] as i64;
+        }
+        if self.served % self.n == 0 {
+            (bill * (100 - self.discount)) as f64 / 100.0
+        } else {
+            bill as f64
+        }
+    }
+}
+
+// ---- cashier_sorted.kara ----
+struct A3Cashier {
+    n: i32,
+    discount: i32,
+    served: i32,
+    items: Vec[(i32, i32)],
+}
+
+impl A3Cashier {
+    fn new(n: i32, discount: i32, products: Vec[i32], prices: Vec[i32]) -> A3Cashier {
+        let mut items: Vec[(i32, i32)] = Vec.new();
+        for i in 0..products.len() {
+            items.push((products[i], prices[i]));
+        }
+        items.sort();
+        A3Cashier { n, discount, served: 0, items }
+    }
+
+    fn get_bill(mut ref self, product: Vec[i32], amount: Vec[i32]) -> f64 {
+        self.served += 1;
+        let mut bill = 0.0;
+        for i in 0..product.len() {
+            let at = self.items.partition_point(|item| item.0 < product[i]);
+            bill += (self.items[at].1 * amount[i]) as f64;
+        }
+        if self.served % self.n == 0 {
+            bill * (100 - self.discount) as f64 / 100.0
+        } else {
+            bill
+        }
+    }
+}
+
+// ---- cashier_solution.kara ----
+struct A4Cashier {
+    n: i32,
+    discount: i32,
+    count: i32,
+    items: Vec[(i32, i32)],
+}
+
+impl A4Cashier {
+    fn new(n: i32, discount: i32, products: Vec[i32], prices: Vec[i32]) -> Self {
+        let mut items: Vec[(i32, i32)] = products.clone().into_iter().zip(prices.iter()).collect();
+        items.sort();
+        A4Cashier { n, discount, count: 0, items }
+    }
+
+    fn get_bill(mut ref self, product: Vec[i32], amount: Vec[i32]) -> f64 {
+        self.count += 1;
+        let mut bill = 0.0;
+        for (p, a) in product.iter().zip(amount.iter()) {
+            let i = {
+                let at = self.items.partition_point(|(id, _)| id <= p);
+                if self.items.partition_point(|(id, _)| id < p) < at {
+                    at - 1
+                } else {
+                    panic("the binary search found no match")
+                }
+            };
+            bill += (self.items[i].1 * a) as f64;
+        }
+        if self.count % self.n == 0 {
+            bill * (100 - self.discount) as f64 / 100.0
+        } else {
+            bill
+        }
+    }
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a bill in cents
+fn cents(bill: f64) -> i64 {
+    (bill * 100.0).round() as i64
+}
+
+struct Session {
+    n: i32,
+    discount: i32,
+    products: Vec[i32],
+    prices: Vec[i32],
+    bills: Vec[(Vec[i32], Vec[i32])],
+}
+
+// the statement read literally, in cents: each customer's products looked
+// up among the products in turn, the price times the amount summed, and
+// every n-th customer's bill x made x - (discount * x) / 100
+fn literal(s: Session) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    let mut customer = 0;
+    for (product, amount) in s.bills.iter() {
+        customer += 1;
+        let mut x: i64 = 0;
+        for j in 0..product.len() {
+            for i in 0..s.products.len() {
+                if s.products[i] == product[j] {
+                    x += s.prices[i] * amount[j];
+                }
+            }
+        }
+        if customer % s.n == 0 {
+            out.push(x * 100 - s.discount * x);
+        } else {
+            out.push(x * 100);
+        }
+    }
+    out
+}
+
+fn run(i: i64, s: Session) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    match i {
+        0 => {
+            let mut c = A0Cashier.new(s.n, s.discount, s.products, s.prices);
+            for (p, a) in s.bills.iter() {
+                out.push(cents(c.get_bill(p, a)));
+            }
+        }
+        1 => {
+            let mut c = A1Cashier.new(s.n, s.discount, s.products, s.prices);
+            for (p, a) in s.bills.iter() {
+                out.push(cents(c.get_bill(p, a)));
+            }
+        }
+        2 => {
+            let mut c = A2Cashier.new(s.n, s.discount, s.products, s.prices);
+            for (p, a) in s.bills.iter() {
+                out.push(cents(c.get_bill(p, a)));
+            }
+        }
+        3 => {
+            let mut c = A3Cashier.new(s.n, s.discount, s.products, s.prices);
+            for (p, a) in s.bills.iter() {
+                out.push(cents(c.get_bill(p, a)));
+            }
+        }
+        _ => {
+            let mut c = A4Cashier.new(s.n, s.discount, s.products, s.prices);
+            for (p, a) in s.bills.iter() {
+                out.push(cents(c.get_bill(p, a)));
+            }
+        }
+    }
+    out
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, s: Session) {
+    t.cases += 1;
+    let want = literal(s);
+    for x in want.iter() {
+        t.check = (t.check * 131 + x) % 1000000007;
+    }
+    t.check = (t.check * 131 + s.bills.len()) % 1000000007;
+    let backwards = Session {
+        n: s.n,
+        discount: s.discount,
+        products: s.products.iter().rev().cloned().collect(),
+        prices: s.prices.iter().rev().cloned().collect(),
+        bills: s.bills.clone(),
+    };
+    let doubled = Session {
+        n: s.n,
+        discount: s.discount,
+        products: s.products.clone(),
+        prices: s.prices.iter().map(|p| 2 * p).collect(),
+        bills: s.bills.clone(),
+    };
+    let undiscounted = Session {
+        n: s.n,
+        discount: 0,
+        products: s.products.clone(),
+        prices: s.prices.clone(),
+        bills: s.bills.clone(),
+    };
+    let everyone = Session {
+        n: 1,
+        discount: s.discount,
+        products: s.products.clone(),
+        prices: s.prices.clone(),
+        bills: s.bills.clone(),
+    };
+    let star = run(0, s);
+    for i in 0..5 {
+        let got = run(i, s);
+        let what = f"arm {i} on n {s.n}, discount {s.discount}, {s.products} at {s.prices}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the products listed in the opposite order: the same bills
+        let bw = run(i, backwards);
+        expect(mut t, 2, bw == got, f"P2 {what}, backwards: {bw}");
+        // P3: every price doubled: every bill doubled
+        let db = run(i, doubled);
+        let twice: Vec[i64] = got.iter().map(|x| 2 * x).collect();
+        expect(mut t, 3, db == twice, f"P3 {what}, doubled: {db}");
+        // P4: no discount: every bill the sum of price times amount, and no
+        // bill above that sum with the discount
+        let un = run(i, undiscounted);
+        let mut plain = true;
+        for (k, (p, a)) in s.bills.iter().enumerate() {
+            let mut x: i64 = 0;
+            for j in 0..p.len() {
+                let at = s.products.iter().position(|q| q == p[j]).unwrap();
+                x += s.prices[at] * a[j];
+            }
+            if un[k] != x * 100 or got[k] > x * 100 {
+                plain = false;
+            }
+        }
+        expect(mut t, 4, plain, f"P4 {what}, undiscounted: {un}");
+        // P5: every customer discounted: each bill the undiscounted one cut
+        // by the discount
+        let ev = run(i, everyone);
+        let mut cut = true;
+        for k in 0..un.len() {
+            if ev[k] * 100 != un[k] * (100 - s.discount) {
+                cut = false;
+            }
+        }
+        expect(mut t, 5, cut, f"P5 {what}, everyone: {ev}");
+        // P6: the ★ arm's bills
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 sessions in four kinds, 500 each, by discount: 0, 100, 50, and
+    // from 0 to 100. Each sells 1 to 8 of the products 1 to 200 at prices
+    // from 1 to 1000, with n from 1 to 5, and serves 1 to 10 customers, each
+    // buying 1 to 8 of them 1 to 1000 times. Every session is drawn before
+    // any arm answers.
+    let mut seed = 13571;
+    let mut cases: Vec[Session] = Vec.new();
+    for c in 0..2000 {
+        let kind = c / 500;
+        let discount = if kind == 0 { 0 } else if kind == 1 { 100 } else if kind == 2 { 50 } else { next_random(mut seed) % 101 };
+        let k = 1 + next_random(mut seed) % 8;
+        let mut products: Vec[i32] = Vec.new();
+        while products.len() < k {
+            let p = (1 + next_random(mut seed) % 200) as i32;
+            if not products.contains(p) {
+                products.push(p);
+            }
+        }
+        let prices: Vec[i32] = (0..k).map(|_| (1 + next_random(mut seed) % 1000) as i32).collect();
+        let n = (1 + next_random(mut seed) % 5) as i32;
+        let mut bills: Vec[(Vec[i32], Vec[i32])] = Vec.new();
+        for _ in 0..1 + next_random(mut seed) % 10 {
+            let m = 1 + next_random(mut seed) % k;
+            let mut product: Vec[i32] = Vec.new();
+            let mut amount: Vec[i32] = Vec.new();
+            for _ in 0..m {
+                let p = products[next_random(mut seed) % k];
+                if not product.contains(p) {
+                    product.push(p);
+                    amount.push((1 + next_random(mut seed) % 1000) as i32);
+                }
+            }
+            bills.push((product, amount));
+        }
+        cases.push(Session { n, discount: discount as i32, products, prices, bills });
+    }
+    for s in cases.iter() {
+        check_case(mut t, s);
+    }
+    println(f"{t.cases} sessions: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

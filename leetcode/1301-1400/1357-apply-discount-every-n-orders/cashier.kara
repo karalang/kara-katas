@@ -1,0 +1,106 @@
+// LeetCode #1357: Apply Discount Every n Orders -- the ★ arm: the prices
+// in a `Map` from product to price, and a count of the customers so far;
+// every n-th customer's bill is cut by the discount. O(k) for a bill of k
+// products
+struct Cashier {
+    n: i32,
+    discount: i32,
+    served: i32,
+    price: Map[i32, i32],
+}
+
+impl Cashier {
+    fn new(n: i32, discount: i32, products: Vec[i32], prices: Vec[i32]) -> Cashier {
+        let mut price: Map[i32, i32] = Map.new();
+        for i in 0..products.len() {
+            price.insert(products[i], prices[i]);
+        }
+        Cashier { n, discount, served: 0, price }
+    }
+
+    fn get_bill(mut ref self, product: Vec[i32], amount: Vec[i32]) -> f64 {
+        self.served += 1;
+        let mut bill = 0.0;
+        for i in 0..product.len() {
+            bill += (self.price[product[i]] * amount[i]) as f64;
+        }
+        if self.served % self.n == 0 {
+            bill * (100 - self.discount) as f64 / 100.0
+        } else {
+            bill
+        }
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a bill in cents
+fn cents(bill: f64) -> i64 {
+    (bill * 100.0).round() as i64
+}
+
+fn main() {
+    // LeetCode's example
+    let mut c = Cashier.new(3, 50, [1, 2, 3, 4, 5, 6, 7], [100, 200, 300, 400, 300, 200, 100]);
+    let bills = [
+        c.get_bill([1, 2], [1, 2]),
+        c.get_bill([3, 7], [10, 10]),
+        c.get_bill([1, 2, 3, 4, 5, 6, 7], [1, 1, 1, 1, 1, 1, 1]),
+        c.get_bill([4], [10]),
+        c.get_bill([7, 3], [10, 10]),
+        c.get_bill([7, 5, 3, 1, 6, 4, 2], [10, 10, 10, 9, 9, 9, 7]),
+        c.get_bill([2, 3, 5], [5, 3, 2]),
+    ];
+    let shown: Vec[i64] = bills.iter().map(|b| cents(b)).collect();
+    println(f"{shown}");
+    // every customer discounted, by 100% and by 0%; one customer of n =
+    // 10^4; and the largest bill, 200 products of price 1000 bought 1000
+    // times each, at 99% off
+    let mut free = Cashier.new(1, 100, [5], [7]);
+    let mut full = Cashier.new(1, 0, [5], [7]);
+    let mut rare = Cashier.new(10000, 50, [5], [7]);
+    let ids: Vec[i32] = (1..201).collect();
+    let mut big = Cashier.new(1, 99, ids, Vec.filled(200, 1000));
+    let most = big.get_bill(ids, Vec.filled(200, 1000));
+    println(f"{cents(free.get_bill([5], [3]))} {cents(full.get_bill([5], [3]))} {cents(rare.get_bill([5], [3]))} {cents(most)}");
+    // 300 random cashiers, each of 1 to 200 products with prices from 1 to
+    // 1000, n from 1 to 10 and a discount from 0 to 100, then 1 to 40 bills
+    // of 1 to 20 products each, bought 1 to 1000 times
+    let mut seed = 1357;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..300 {
+        let k = 1 + next_random(mut seed) % 200;
+        let mut products: Vec[i32] = (1..201).collect();
+        for i in 0..200 {
+            let j = i + next_random(mut seed) % (200 - i);
+            products.swap(i, j);
+        }
+        products.truncate(k);
+        let prices: Vec[i32] = (0..k).map(|_| (1 + next_random(mut seed) % 1000) as i32).collect();
+        let n = (1 + next_random(mut seed) % 10) as i32;
+        let discount = (next_random(mut seed) % 101) as i32;
+        let mut cashier = Cashier.new(n, discount, products, prices);
+        for _ in 0..1 + next_random(mut seed) % 40 {
+            let m = 1 + next_random(mut seed) % 20;
+            let mut picked: Vec[i32] = Vec.new();
+            let mut amount: Vec[i32] = Vec.new();
+            for _ in 0..m {
+                let p = products[next_random(mut seed) % k];
+                if not picked.contains(p) {
+                    picked.push(p);
+                    amount.push((1 + next_random(mut seed) % 1000) as i32);
+                }
+            }
+            let got = cents(cashier.get_bill(picked, amount));
+            total += got;
+            check = (check * 131 + got) % 1000000007;
+        }
+    }
+    println(f"300 random cashiers: {total} cents billed, checksum {check}");
+}
