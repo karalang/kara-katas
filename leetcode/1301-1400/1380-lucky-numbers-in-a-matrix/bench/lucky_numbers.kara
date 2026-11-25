@@ -1,0 +1,66 @@
+// LeetCode #1380 bench -- the ★ arm: each row's least value and each
+// column's greatest found in one pass, then every cell that is both.
+
+fn lucky_numbers(matrix: Vec[Vec[i32]]) -> Vec[i32] {
+    let m = matrix.len();
+    let n = matrix[0].len();
+    let mut row_min = Vec.filled(m, i32.MAX);
+    let mut col_max = Vec.filled(n, i32.MIN);
+    for i in 0..m {
+        for j in 0..n {
+            row_min[i] = row_min[i].min(matrix[i][j]);
+            col_max[j] = col_max[j].max(matrix[i][j]);
+        }
+    }
+    let mut lucky: Vec[i32] = Vec.new();
+    for i in 0..m {
+        for j in 0..n {
+            if matrix[i][j] == row_min[i] and matrix[i][j] == col_max[j] {
+                lucky.push(matrix[i][j]);
+            }
+        }
+    }
+    lucky
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 20 matrices of 50 by 50, the constraints' most, built once: the
+    // values 1 to 2500 rising along each row and down each column, so a
+    // corner is lucky, then 300 random swaps of two cells; then 20000
+    // rounds, each swapping two cells of one matrix, all drawn from the
+    // checksum so far, and finding that matrix's lucky numbers
+    let n = 50;
+    let mut seed = 1380;
+    let mut grids: Vec[Vec[Vec[i32]]] = Vec.new();
+    for _ in 0..20 {
+        let mut grid: Vec[Vec[i32]] = (0..n).map(|i| (0..n).map(|j| (i * n + j + 1) as i32).collect()).collect();
+        for _ in 0..300 {
+            let (a, b) = (next_random(mut seed) % (n * n), next_random(mut seed) % (n * n));
+            let t = grid[a / n][a % n];
+            grid[a / n][a % n] = grid[b / n][b % n];
+            grid[b / n][b % n] = t;
+        }
+        grids.push(grid);
+    }
+    let mut check: i64 = 0;
+    for r in 0..20000 {
+        let grid = mut ref grids[check % 20];
+        let a = (check / 20) % (n * n);
+        let b = (check / 7 + r) % (n * n);
+        let t = grid[a / n][a % n];
+        grid[a / n][a % n] = grid[b / n][b % n];
+        grid[b / n][b % n] = t;
+        let lucky = lucky_numbers(grids[check % 20]);
+        let mut got: i64 = lucky.len();
+        for v in lucky.iter() {
+            got = got * 2503 + v;
+        }
+        check = (check * 31 + got + r) % 1000000007;
+    }
+    println(f"20000 rounds over 20 matrices of 50 by 50: checksum {check}");
+}

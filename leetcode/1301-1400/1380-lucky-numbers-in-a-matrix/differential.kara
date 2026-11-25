@@ -1,0 +1,292 @@
+// LeetCode #1380: Lucky Numbers in a Matrix -- differential test of the
+// five arms against the statement read literally, with five more
+// properties.
+
+// ---- lucky_numbers.kara ----
+fn a0_lucky_numbers(matrix: Vec[Vec[i32]]) -> Vec[i32] {
+    let m = matrix.len();
+    let n = matrix[0].len();
+    let mut row_min = Vec.filled(m, i32.MAX);
+    let mut col_max = Vec.filled(n, i32.MIN);
+    for i in 0..m {
+        for j in 0..n {
+            row_min[i] = row_min[i].min(matrix[i][j]);
+            col_max[j] = col_max[j].max(matrix[i][j]);
+        }
+    }
+    let mut lucky: Vec[i32] = Vec.new();
+    for i in 0..m {
+        for j in 0..n {
+            if matrix[i][j] == row_min[i] and matrix[i][j] == col_max[j] {
+                lucky.push(matrix[i][j]);
+            }
+        }
+    }
+    lucky
+}
+
+// ---- lucky_numbers_maxmin.kara ----
+fn a1_lucky_numbers(matrix: Vec[Vec[i32]]) -> Vec[i32] {
+    let n = matrix[0].len();
+    let mut best_row_min = i32.MIN;
+    for row in matrix.iter() {
+        best_row_min = best_row_min.max(row.iter().min().unwrap());
+    }
+    let mut least_col_max = i32.MAX;
+    for j in 0..n {
+        least_col_max = least_col_max.min(matrix.iter().map(|row| row[j]).max().unwrap());
+    }
+    if best_row_min == least_col_max { [best_row_min] } else { [] }
+}
+
+// ---- lucky_numbers_brute.kara ----
+fn a2_lucky_numbers(matrix: Vec[Vec[i32]]) -> Vec[i32] {
+    let mut lucky: Vec[i32] = Vec.new();
+    for i in 0..matrix.len() {
+        for j in 0..matrix[i].len() {
+            let v = matrix[i][j];
+            let least_in_row = matrix[i].iter().all(|x| x >= v);
+            let greatest_in_column = matrix.iter().all(|row| row[j] <= v);
+            if least_in_row and greatest_in_column {
+                lucky.push(v);
+            }
+        }
+    }
+    lucky
+}
+
+// ---- lucky_numbers_sets.kara ----
+fn a3_lucky_numbers(matrix: Vec[Vec[i32]]) -> Vec[i32] {
+    let mut row_mins: Set[i32] = Set.new();
+    for row in matrix.iter() {
+        row_mins.insert(row.iter().min().unwrap());
+    }
+    let mut lucky: Vec[i32] = Vec.new();
+    for j in 0..matrix[0].len() {
+        let top = matrix.iter().map(|row| row[j]).max().unwrap();
+        if row_mins.contains(top) {
+            lucky.push(top);
+        }
+    }
+    lucky
+}
+
+// ---- lucky_numbers_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_lucky_numbers(matrix: Vec[Vec[i32]]) -> Vec[i32] {
+        let row_min: Vec[i32] = matrix.iter().map(|r| *r.iter().min().unwrap()).collect();
+        let col_max: Vec[i32] = (0..matrix[0].len())
+            .map(|j| matrix.iter().map(|r| r[j]).max().unwrap())
+            .collect();
+        let mut ans = Vec.new();
+        for i in 0..matrix.len() {
+            for j in 0..matrix[0].len() {
+                if matrix[i][j] == row_min[i] and matrix[i][j] == col_max[j] {
+                    ans.push(matrix[i][j]);
+                }
+            }
+        }
+        ans
+    }
+}
+
+fn a4_lucky_numbers(matrix: Vec[Vec[i32]]) -> Vec[i32] {
+    A4Solution.a4_lucky_numbers(matrix)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// The statement read literally: a lucky number is the minimum of its row
+// and the maximum of its column, read off each cell's row and column
+// sorted.
+fn literal(matrix: Vec[Vec[i32]]) -> Vec[i32] {
+    let mut lucky: Vec[i32] = Vec.new();
+    for i in 0..matrix.len() {
+        for j in 0..matrix[i].len() {
+            let mut row = matrix[i].clone();
+            row.sort();
+            let mut column: Vec[i32] = matrix.iter().map(|r| r[j]).collect();
+            column.sort();
+            let v = matrix[i][j];
+            if row[0] == v and column[column.len() - 1] == v {
+                lucky.push(v);
+            }
+        }
+    }
+    lucky
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, matrix: Vec[Vec[i32]]) -> Vec[i32] {
+    let mut got = match i {
+        0 => a0_lucky_numbers(matrix),
+        1 => a1_lucky_numbers(matrix),
+        2 => a2_lucky_numbers(matrix),
+        3 => a3_lucky_numbers(matrix),
+        _ => a4_lucky_numbers(matrix),
+    };
+    // any order is an answer
+    got.sort();
+    got
+}
+
+fn check_case(t: mut ref Tally, matrix: Vec[Vec[i32]], order: Vec[i64], cols: Vec[i64]) {
+    t.cases += 1;
+    let m = matrix.len();
+    let n = matrix[0].len();
+    let mut want = literal(matrix);
+    want.sort();
+    t.check = (t.check * 131 + want.iter().sum() * 13 + want.len() * 7 + m * n) % 1000000007;
+    let star = arm(0, matrix);
+    // turned over and negated: a row's least becomes a column's greatest
+    let turned: Vec[Vec[i32]] = (0..n).map(|j| (0..m).map(|i| -matrix[i][j]).collect()).collect();
+    let mut negated: Vec[i32] = want.iter().map(|v| -v).collect();
+    negated.sort();
+    // the rows taken in `order` and the columns in `cols`
+    let shuffled: Vec[Vec[i32]] = order.iter().map(|i| cols.iter().map(|j| matrix[i][j]).collect()).collect();
+    // a row of values greater than all, the least of them first
+    let mut top: i32 = 0;
+    for row in matrix.iter() {
+        for v in row.iter() {
+            top = top.max(v);
+        }
+    }
+    let mut grown = matrix.clone();
+    grown.push((0..n).map(|j| top + 1 + ((j * 7) % n) as i32).collect());
+    for i in 0..5 {
+        let got = arm(i, matrix);
+        let what = f"arm {i} on {matrix}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: turned over and negated, the lucky numbers negated
+        let tn = arm(i, turned);
+        expect(mut t, 2, tn == negated, f"P2 {what}, turned and negated: {tn}");
+        // P3: rows and columns shuffled, the same
+        let sh = arm(i, shuffled);
+        expect(mut t, 3, sh == got, f"P3 {what}, shuffled: {sh}");
+        // P4: at most one, the values being different
+        expect(mut t, 4, got.len() <= 1, f"P4 {what}: {got}");
+        // P5: a row greater than all added: its least alone
+        let gr = arm(i, grown);
+        expect(mut t, 5, gr == [top + 1], f"P5 {what}, a greater row: {gr}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's three examples
+    let examples: Vec[Vec[Vec[i32]]] = [
+        [[3, 7, 8], [9, 11, 13], [15, 16, 17]],
+        [[1, 10, 4, 2], [9, 3, 8, 7], [15, 16, 17, 12]],
+        [[7, 8], [1, 2]],
+    ];
+    let mut cases: Vec[(Vec[Vec[i32]], Vec[i64], Vec[i64])] = Vec.new();
+    for e in examples.iter() {
+        let order: Vec[i64] = (0..e.len()).rev().collect();
+        let cols: Vec[i64] = (0..e[0].len()).rev().collect();
+        cases.push((e.clone(), order, cols));
+    }
+    // 2000 matrices of 1 to 6 rows and columns holding different values
+    // from 1 to 60: half at random and half with a lucky number planted,
+    // as in the arms' harness; each with its rows and columns shuffled.
+    // Every case is drawn before any arm answers.
+    let mut seed = 13801;
+    for c in 0..2000 {
+        let m = 1 + next_random(mut seed) % 6;
+        let n = 1 + next_random(mut seed) % 6;
+        let cells = m * n;
+        let mut pool: Vec[i32] = (1..61).map(|v| v as i32).collect();
+        for i in (1..60).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            pool.swap(i, j);
+        }
+        let mut values: Vec[i32] = pool[0..cells].to_vec();
+        let mut grid: Vec[Vec[i32]] = Vec.filled(m, Vec.filled(n, 0));
+        if c % 2 == 1 {
+            values.sort();
+            let (r, col) = (next_random(mut seed) % m, next_random(mut seed) % n);
+            let mut low = 0;
+            let mut high = cells - 1;
+            for i in 0..m {
+                if i != r {
+                    grid[i][col] = values[low];
+                    low += 1;
+                }
+            }
+            grid[r][col] = values[low];
+            low += 1;
+            for j in 0..n {
+                if j != col {
+                    grid[r][j] = values[high];
+                    high -= 1;
+                }
+            }
+            let mut rest: Vec[i32] = values[low..high + 1].to_vec();
+            for i in (1..rest.len()).rev() {
+                let j = next_random(mut seed) % (i + 1);
+                rest.swap(i, j);
+            }
+            let mut k = 0;
+            for i in 0..m {
+                for j in 0..n {
+                    if i != r and j != col {
+                        grid[i][j] = rest[k];
+                        k += 1;
+                    }
+                }
+            }
+        } else {
+            for i in 0..m {
+                for j in 0..n {
+                    grid[i][j] = values[i * n + j];
+                }
+            }
+        }
+        let mut order: Vec[i64] = (0..m).collect();
+        for i in (1..m).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            order.swap(i, j);
+        }
+        let mut cols: Vec[i64] = (0..n).collect();
+        for i in (1..n).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            cols.swap(i, j);
+        }
+        cases.push((grid, order, cols));
+    }
+    for (grid, order, cols) in cases.iter() {
+        check_case(mut t, grid, order, cols);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
