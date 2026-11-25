@@ -1,0 +1,76 @@
+// LeetCode #1400: Construct K Palindrome Strings -- the ★ arm: a
+// palindrome holds at most one letter an odd number of times, its
+// middle, and any letters split into pairs can be shared out; so k
+// palindromes can be made exactly when there are at least k letters and
+// at most k letters that appear an odd number of times. The letters
+// counted in an array of 26. O(n)
+
+fn can_construct(s: String, k: i32) -> bool {
+    if s.len() < k {
+        return false;
+    }
+    let mut count: Vec[i64] = Vec.filled(26, 0);
+    for b in s.bytes().iter() {
+        count[b - b'a'] += 1;
+    }
+    let odd = count.iter().filter(|c| c % 2 == 1).count();
+    odd <= k
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n letters drawn from the first `letters` of the alphabet
+fn drawn(n: i64, letters: i64, seed: mut ref i64) -> String {
+    let out: Vec[char] = (0..n).map(|_| (97 + next_random(mut seed) % letters) as u8 as char).collect();
+    out.iter().collect()
+}
+
+fn main() {
+    // LeetCode's three examples; more palindromes than letters; one
+    // letter; every letter its own palindrome
+    let shown: Vec[String] = [
+        can_construct("annabelle", 2),
+        can_construct("leetcode", 3),
+        can_construct("true", 4),
+        can_construct("ab", 3),
+        can_construct("a", 1),
+        can_construct("abcdefghijklmnopqrstuvwxyz", 26),
+    ].iter().map(|b| f"{b}").collect();
+    println(shown.join(" "));
+    // the constraints' most: 10^5 letters, from the whole alphabet and
+    // from 3 letters, against k from 1 to 30 and 10^5
+    let mut seed = 1400;
+    let wide = drawn(100000, 26, mut seed);
+    let narrow = drawn(100000, 3, mut seed);
+    let mut yes = 0;
+    for k in 1..=30 {
+        if can_construct(wide, k) {
+            yes += 1;
+        }
+        if can_construct(narrow, k) {
+            yes += 1;
+        }
+    }
+    println(f"10^5 letters: {yes} of 60 true, {can_construct(wide, 100000)} {can_construct(narrow, 100001)}");
+    // 2000 random cases of 1 to 20 letters from the first 1 to 26, k from
+    // 1 to 25
+    let mut check: i64 = 0;
+    let mut count = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 20;
+        let letters = 1 + next_random(mut seed) % 26;
+        let s = drawn(n, letters, mut seed);
+        let k = 1 + next_random(mut seed) % 25;
+        let got = can_construct(s, k as i32);
+        if got {
+            count += 1;
+        }
+        check = (check * 131 + (if got { k } else { 0 })) % 1000000007;
+    }
+    println(f"2000 random cases: {count} true, checksum {check}");
+}
