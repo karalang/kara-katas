@@ -1,0 +1,69 @@
+// LeetCode #1370: Increasing Decreasing String -- the sorted arm: the
+// letters sorted, then walked forward and backward over and over, each
+// walk taking the first unused copy of every letter it passes and
+// marking it used. O(n log n + n r) for r rounds
+fn sort_string(s: Str) -> String {
+    let mut letters: Vec[char] = s.chars().collect();
+    letters.sort();
+    let n = letters.len();
+    let mut used: Vec[bool] = Vec.filled(n, false);
+    let mut out = String.new();
+    let mut taken = 0;
+    while taken < n {
+        // forward: the first unused copy of each letter, smallest first
+        let mut last = ' ';
+        for i in 0..n {
+            if not used[i] and letters[i] != last {
+                used[i] = true;
+                out.push(letters[i]);
+                last = letters[i];
+                taken += 1;
+            }
+        }
+        // backward: the same, largest first
+        last = ' ';
+        for i in (0..n).rev() {
+            if not used[i] and letters[i] != last {
+                used[i] = true;
+                out.push(letters[i]);
+                last = letters[i];
+                taken += 1;
+            }
+        }
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's examples, and one letter seven times
+    let shown: Vec[String] = ["aaaabbbbcccc", "rat", "leetcode", "ggggggg", "spo"].iter().map(|s| sort_string(s)).collect();
+    println(shown.join(" "));
+    // 2000 random strings of 1 to 500 letters, from the first 1 to 26
+    // letters of the alphabet
+    let mut seed = 1370;
+    let mut check: i64 = 0;
+    let mut same = 0;
+    for _ in 0..2000 {
+        let len = 1 + next_random(mut seed) % 500;
+        let letters = 1 + next_random(mut seed) % 26;
+        let mut s = String.new();
+        for _ in 0..len {
+            s.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+        }
+        let got = sort_string(s);
+        if got == s {
+            same += 1;
+        }
+        for b in got.bytes() {
+            check = (check * 31 + b) % 1000000007;
+        }
+    }
+    println(f"2000 random strings: {same} unchanged, checksum {check}");
+}

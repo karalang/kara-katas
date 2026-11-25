@@ -1,0 +1,63 @@
+// LeetCode #1370: Increasing Decreasing String -- the map arm: the
+// letters counted in a `SortedMap`, then its keys walked up and down in
+// turn, each walk taking one of every letter and dropping the letters
+// it uses up. O(n log 26)
+fn sort_string(s: Str) -> String {
+    let mut counts: SortedMap[char, i64] = SortedMap.new();
+    for c in s.chars() {
+        *counts.entry(c).or_insert(0) += 1;
+    }
+    let mut out = String.new();
+    let mut up = true;
+    while not counts.is_empty() {
+        let mut keys: Vec[char] = counts.keys().collect();
+        if not up {
+            keys.reverse();
+        }
+        for c in keys {
+            out.push(c);
+            let left = counts[c] - 1;
+            if left == 0 {
+                counts.remove(c);
+            } else {
+                counts.insert(c, left);
+            }
+        }
+        up = not up;
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's examples, and one letter seven times
+    let shown: Vec[String] = ["aaaabbbbcccc", "rat", "leetcode", "ggggggg", "spo"].iter().map(|s| sort_string(s)).collect();
+    println(shown.join(" "));
+    // 2000 random strings of 1 to 500 letters, from the first 1 to 26
+    // letters of the alphabet
+    let mut seed = 1370;
+    let mut check: i64 = 0;
+    let mut same = 0;
+    for _ in 0..2000 {
+        let len = 1 + next_random(mut seed) % 500;
+        let letters = 1 + next_random(mut seed) % 26;
+        let mut s = String.new();
+        for _ in 0..len {
+            s.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+        }
+        let got = sort_string(s);
+        if got == s {
+            same += 1;
+        }
+        for b in got.bytes() {
+            check = (check * 31 + b) % 1000000007;
+        }
+    }
+    println(f"2000 random strings: {same} unchanged, checksum {check}");
+}
