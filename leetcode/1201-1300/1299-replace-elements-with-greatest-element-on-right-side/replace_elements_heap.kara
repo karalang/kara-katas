@@ -1,0 +1,65 @@
+// LeetCode #1299: Replace Elements with Greatest Element on Right Side -- the
+// heap arm: every number with its place in a largest-first `PriorityQueue`;
+// for each place from the left, the entries at or before it popped off the
+// top as they come up, the top left then being the greatest after it.
+// O(n log n)
+
+fn replace_elements(arr: Vec[i64]) -> Vec[i64] {
+    let n = arr.len();
+    let mut heap: PriorityQueue[(i64, i64)] = PriorityQueue.max_first();
+    for i in 0..n {
+        heap.push((arr[i], i));
+    }
+    let mut out: Vec[i64] = Vec.new();
+    for i in 0..n {
+        while let Some((_, at)) = heap.peek() {
+            if at > i {
+                break;
+            }
+            heap.pop();
+        }
+        out.push(match heap.peek() {
+            Some((value, _)) => value,
+            None => -1,
+        });
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    parts.join(",")
+}
+
+fn main() {
+    // LeetCode's two examples, then rising, falling, all equal, and the
+    // greatest at either end
+    println(f"{show(replace_elements([17, 18, 5, 4, 6, 1]))} {show(replace_elements([400]))}");
+    println(f"{show(replace_elements([1, 2, 3, 4]))} {show(replace_elements([4, 3, 2, 1]))} {show(replace_elements([7, 7, 7]))} {show(replace_elements([9, 1, 2]))} {show(replace_elements([1, 2, 9]))}");
+    // random arrays of 1 to 300 numbers, up to 10, 1000 or 10^5; then one of
+    // 3000
+    let mut seed = 1299;
+    let mut total = 0;
+    let mut check = 0;
+    for i in 0..3001 {
+        let n = if i < 3000 { 1 + next_random(mut seed) % 300 } else { 3000 };
+        let top = if i % 3 == 0 { 10 } else if i % 3 == 1 { 1000 } else { 100000 };
+        let mut arr: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            arr.push(1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % top);
+        }
+        let out = replace_elements(arr);
+        for x in out.iter() {
+            total += x;
+            check = (check * 131 + x + 1) % 1000000007;
+        }
+    }
+    println(f"3001 random arrays: sum of answers {total}, checksum {check}");
+}

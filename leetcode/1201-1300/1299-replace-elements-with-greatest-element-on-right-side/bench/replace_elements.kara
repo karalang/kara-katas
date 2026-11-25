@@ -1,0 +1,44 @@
+// LeetCode #1299 bench: the ★ arm (one walk from the right end, each place
+// given the greatest seen so far) over 50 arrays of 10^4 numbers up to 10^5,
+// built once; then 1000 passes, each setting one number of every array from the
+// checksum so far, answering it, and folding two of its answers, chosen by the
+// checksum, into the checksum.
+
+fn replace_elements(arr: Vec[i64]) -> Vec[i64] {
+    let n = arr.len();
+    let mut out: Vec[i64] = Vec.filled(n, -1);
+    let mut greatest = -1;
+    for i in (0..n).rev() {
+        out[i] = greatest;
+        if arr[i] > greatest {
+            greatest = arr[i];
+        }
+    }
+    out
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1299;
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..50 {
+        let mut arr: Vec[i64] = Vec.new();
+        for _ in 0..10000 {
+            arr.push(1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000);
+        }
+        arrays.push(arr);
+    }
+    let mut check = 0;
+    for p in 0..1000 {
+        for t in 0..arrays.len() {
+            arrays[t][check % 10000] = 1 + check * 7919 % 100000;
+            let out = replace_elements(arrays[t]);
+            check = (check * 31 + out[check % 10000] + out[(check / 7) % 10000] + p) % 1000000007;
+        }
+    }
+    println(f"1000 passes over 50 arrays of 10^4: checksum {check}");
+}
