@@ -1,0 +1,49 @@
+// LeetCode #1388: Pizza With 3n Slices -- the ★ arm: the slices you get
+// are any n of the 3n with no two side by side around the circle, so the
+// answer is the better of two straight runs, without the last slice and
+// without the first; in each, best[i][j] is the most from at most j
+// slices, no two adjacent, among the first i. O(n^2). Bench workload.
+
+fn best_in_line(slices: Slice[i32], n: i64) -> i32 {
+    let len = slices.len();
+    let mut best: Vec[Vec[i32]] = Vec.filled(len + 1, Vec.filled(n + 1, 0));
+    for i in 1..len + 1 {
+        for j in 1..n + 1 {
+            let skip = best[i - 1][j];
+            let take = if i >= 2 { best[i - 2][j - 1] } else { 0 } + slices[i - 1];
+            best[i][j] = skip.max(take);
+        }
+    }
+    best[len][n]
+}
+
+fn max_size_slices(slices: Vec[i32]) -> i32 {
+    let n = slices.len() / 3;
+    let len = slices.len();
+    best_in_line(slices[0..len - 1], n).max(best_in_line(slices[1..len], n))
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// 498 slices, the constraints' most, of up to 1000, drawn once; then
+// 1000 rounds, each giving one slice a new size and asking for the most
+// you can get, all drawn from the checksum so far
+fn main() {
+    let len = 498;
+    let mut seed = 1388;
+    let mut slices: Vec[i32] = Vec.new();
+    for _ in 0..len {
+        slices.push((1 + next_random(mut seed) % 1000) as i32);
+    }
+    let mut check: i64 = 0;
+    for _ in 0..1000 {
+        seed = (seed + check) % 2147483648;
+        let at = next_random(mut seed) % len;
+        slices[at] = (1 + next_random(mut seed) % 1000) as i32;
+        check = (check * 131 + max_size_slices(slices)) % 1000000007;
+    }
+    println(f"1000 rounds over 498 slices: checksum {check}");
+}

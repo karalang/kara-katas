@@ -1,0 +1,242 @@
+// LeetCode #1388: Pizza With 3n Slices -- differential test of
+// the five arms against the statement read literally, with five more
+// properties.
+
+// ---- max_size_slices.kara ----
+fn a0_best_in_line(slices: Slice[i32], n: i64) -> i32 {
+    let len = slices.len();
+    let mut best: Vec[Vec[i32]] = Vec.filled(len + 1, Vec.filled(n + 1, 0));
+    for i in 1..len + 1 {
+        for j in 1..n + 1 {
+            let skip = best[i - 1][j];
+            let take = if i >= 2 { best[i - 2][j - 1] } else { 0 } + slices[i - 1];
+            best[i][j] = skip.max(take);
+        }
+    }
+    best[len][n]
+}
+
+fn a0_max_size_slices(slices: Vec[i32]) -> i32 {
+    let n = slices.len() / 3;
+    let len = slices.len();
+    a0_best_in_line(slices[0..len - 1], n).max(a0_best_in_line(slices[1..len], n))
+}
+
+// ---- max_size_slices_greedy.kara ----
+fn a1_max_size_slices(slices: Vec[i32]) -> i32 {
+    let len = slices.len();
+    let mut value: Vec[i32] = slices.clone();
+    let mut left: Vec[i64] = (0..len).map(|i| (i + len - 1) % len).collect();
+    let mut right: Vec[i64] = (0..len).map(|i| (i + 1) % len).collect();
+    let mut gone: Vec[bool] = Vec.filled(len, false);
+    let mut queue: PriorityQueue[(i32, i64)] = PriorityQueue.max_first();
+    for i in 0..len {
+        queue.push((value[i], i));
+    }
+    let mut total: i32 = 0;
+    let mut taken = 0;
+    while taken < len / 3 {
+        let (v, i) = queue.pop().unwrap();
+        if gone[i] or v != value[i] {
+            continue;
+        }
+        total += v;
+        taken += 1;
+        let (l, r) = (left[i], right[i]);
+        value[i] = value[l] + value[r] - value[i];
+        gone[l] = true;
+        gone[r] = true;
+        left[i] = left[l];
+        right[i] = right[r];
+        right[left[i]] = i;
+        left[right[i]] = i;
+        queue.push((value[i], i));
+    }
+    total
+}
+
+// ---- max_size_slices_memo.kara ----
+fn a2_most(slices: Slice[i32], i: i64, j: i64, memo: mut ref Vec[Vec[i32]]) -> i32 {
+    if j == 0 or i >= slices.len() {
+        return 0;
+    }
+    if memo[i][j] >= 0 {
+        return memo[i][j];
+    }
+    let without = a2_most(slices, i + 1, j, mut memo);
+    let with = slices[i] + a2_most(slices, i + 2, j - 1, mut memo);
+    memo[i][j] = without.max(with);
+    memo[i][j]
+}
+
+fn a2_max_size_slices(slices: Vec[i32]) -> i32 {
+    let len = slices.len();
+    let n = len / 3;
+    let mut first: Vec[Vec[i32]] = Vec.filled(len, Vec.filled(n + 1, -1));
+    let mut last: Vec[Vec[i32]] = Vec.filled(len, Vec.filled(n + 1, -1));
+    a2_most(slices[0..len - 1], 0, n, mut first).max(a2_most(slices[1..len], 0, n, mut last))
+}
+
+// ---- max_size_slices_rolling.kara ----
+fn a3_best_in_line(slices: Slice[i32], n: i64) -> i32 {
+    let mut two_back: Vec[i32] = Vec.filled(n + 1, 0);
+    let mut one_back: Vec[i32] = Vec.filled(n + 1, 0);
+    for s in slices.iter() {
+        let mut row: Vec[i32] = Vec.filled(n + 1, 0);
+        for j in 1..n + 1 {
+            row[j] = one_back[j].max(two_back[j - 1] + s);
+        }
+        two_back = one_back;
+        one_back = row;
+    }
+    one_back[n]
+}
+
+fn a3_max_size_slices(slices: Vec[i32]) -> i32 {
+    let n = slices.len() / 3;
+    let len = slices.len();
+    a3_best_in_line(slices[0..len - 1], n).max(a3_best_in_line(slices[1..len], n))
+}
+
+// ---- max_size_slices_solution.kara ----
+struct A4Solution {}
+
+fn a4_calc(s: Slice[i32], n: i64) -> i32 {
+    let m = s.len();
+    let mut dp = Vec.filled(m + 2, Vec.filled(n + 1, 0i32));
+    for i in (0..m).rev() {
+        for j in 1..=n {
+            dp[i][j] = dp[i + 1][j].max(s[i] + dp[i + 2][j - 1]);
+        }
+    }
+    dp[0][n]
+}
+
+impl A4Solution {
+    pub fn a4_max_size_slices(slices: Vec[i32]) -> i32 {
+        let n = slices.len() / 3;
+        let len = slices.len();
+        a4_calc(slices[..len - 1], n).max(a4_calc(slices[1..], n))
+    }
+}
+
+fn a4_max_size_slices(slices: Vec[i32]) -> i32 {
+    A4Solution.a4_max_size_slices(slices)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: the game played every way. You take any
+// slice that is left, Alice the next one anticlockwise and Bob the next
+// one clockwise, around what is left, until nothing is
+fn play(left: Vec[i32]) -> i64 {
+    let m = left.len();
+    let mut best = 0;
+    for i in 0..m {
+        let alice = (i + m - 1) % m;
+        let bob = (i + 1) % m;
+        let rest: Vec[i32] = (0..m).filter(|j| j != i and j != alice and j != bob).map(|j| left[j]).collect();
+        best = best.max(left[i] + play(rest));
+    }
+    best
+}
+
+fn arm(i: i64, slices: Vec[i32]) -> i64 {
+    match i {
+        0 => a0_max_size_slices(slices),
+        1 => a1_max_size_slices(slices),
+        2 => a2_max_size_slices(slices),
+        3 => a3_max_size_slices(slices),
+        _ => a4_max_size_slices(slices),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, slices: Vec[i32], turn: i64) {
+    t.cases += 1;
+    let want = play(slices);
+    t.check = (t.check * 131 + want * 7 + slices.len() * 3 + turn) % 1000000007;
+    let star = arm(0, slices);
+    let len = slices.len();
+    let n = len / 3;
+    let turned: Vec[i32] = (0..len).map(|j| slices[(j + turn) % len]).collect();
+    let mut flipped = slices.clone();
+    flipped.reverse();
+    let fatter: Vec[i32] = slices.iter().map(|s| s + 5).collect();
+    let mut sizes = slices.clone();
+    sizes.sort();
+    sizes.reverse();
+    let largest = sizes[0];
+    let mut most = 0;
+    for j in 0..n {
+        most += sizes[j];
+    }
+    for i in 0..5 {
+        let got = arm(i, slices);
+        let what = f"arm {i} on {slices}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the pizza turned: the same
+        let tn = arm(i, turned);
+        expect(mut t, 2, tn == got, f"P2 {what}, turned by {turn}: {tn}");
+        // P3: the pizza flipped over: the same
+        let fl = arm(i, flipped);
+        expect(mut t, 3, fl == got, f"P3 {what}, flipped: {fl}");
+        // P4: every slice 5 larger: 5 more for each of your n slices
+        let ft = arm(i, fatter);
+        expect(mut t, 4, ft == got + 5 * n, f"P4 {what}, 5 larger: {ft}");
+        // P5: at least the largest slice, at most the n largest together
+        expect(mut t, 5, largest <= got and got <= most, f"P5 {what}: outside {largest} to {most}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    let mut cases: Vec[(Vec[i32], i64)] = Vec.new();
+    // LeetCode's two examples
+    cases.push(([1, 2, 3, 4, 5, 6], 1));
+    cases.push(([8, 9, 8, 6, 1, 1], 4));
+    // 2000 pizzas of 3 to 12 slices, of up to 990, leaving room inside
+    // the constraints for P4, or up to 3, so that sizes tie; each with a
+    // turn for P2. Every case is drawn before any arm answers.
+    let mut seed = 13881;
+    for c in 0..2000 {
+        let len = 3 * (1 + next_random(mut seed) % 4);
+        let most = if c % 2 == 0 { 990 } else { 3 };
+        let slices: Vec[i32] = (0..len).map(|_| (1 + next_random(mut seed) % most) as i32).collect();
+        let turn = next_random(mut seed) % len;
+        cases.push((slices, turn));
+    }
+    for (slices, turn) in cases.iter() {
+        check_case(mut t, slices, turn);
+    }
+    println(f"{t.cases} pizzas: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
