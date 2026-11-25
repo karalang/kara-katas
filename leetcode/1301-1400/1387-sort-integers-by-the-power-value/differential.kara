@@ -1,0 +1,262 @@
+// LeetCode #1387: Sort Integers by The Power Value -- differential test of
+// the five arms against the statement read literally, with five more
+// properties.
+
+// ---- get_kth.kara ----
+fn a0_get_kth(lo: i32, hi: i32, k: i32) -> i32 {
+    let mut known: Map[i64, i32] = Map.new();
+    known.insert(1, 0);
+    let mut keyed: Vec[(i32, i32)] = Vec.new();
+    for x in lo..hi + 1 {
+        let mut path: Vec[i64] = Vec.new();
+        let mut v: i64 = x;
+        while not known.contains_key(v) {
+            path.push(v);
+            v = if v % 2 == 0 { v / 2 } else { 3 * v + 1 };
+        }
+        let mut steps = known[v];
+        while let Some(p) = path.pop() {
+            steps += 1;
+            known.insert(p, steps);
+        }
+        keyed.push((known[x], x));
+    }
+    keyed.sort();
+    keyed[k - 1].1
+}
+
+// ---- get_kth_plain.kara ----
+fn a1_power(x: i32) -> i32 {
+    let mut v: i64 = x;
+    let mut steps = 0;
+    while v != 1 {
+        v = if v % 2 == 0 { v / 2 } else { 3 * v + 1 };
+        steps += 1;
+    }
+    steps
+}
+
+fn a1_get_kth(lo: i32, hi: i32, k: i32) -> i32 {
+    let mut values: Vec[i32] = (lo..hi + 1).collect();
+    values.sort_by(|a, b| a1_power(a).cmp(a1_power(b)).then(a.cmp(b)));
+    values[k - 1]
+}
+
+// ---- get_kth_buckets.kara ----
+fn a2_power(x: i64, memo: mut ref Map[i64, i32]) -> i32 {
+    if x == 1 {
+        return 0;
+    }
+    if let Some(p) = memo.get(x) {
+        return p;
+    }
+    let next = if x % 2 == 0 { x / 2 } else { 3 * x + 1 };
+    let p = 1 + a2_power(next, mut memo);
+    memo.insert(x, p);
+    p
+}
+
+fn a2_get_kth(lo: i32, hi: i32, k: i32) -> i32 {
+    let mut memo: Map[i64, i32] = Map.new();
+    let mut by_power: SortedMap[i32, Vec[i32]] = SortedMap.new();
+    for x in lo..hi + 1 {
+        let p = a2_power(x, mut memo);
+        let mut values = by_power.get(p).cloned().unwrap_or(Vec.new());
+        values.push(x);
+        by_power.insert(p, values);
+    }
+    let mut left = k;
+    for (_, values) in by_power.iter() {
+        if left <= values.len() {
+            return values[left - 1];
+        }
+        left -= values.len() as i32;
+    }
+    -1
+}
+
+// ---- get_kth_table.kara ----
+fn a3_get_kth(lo: i32, hi: i32, k: i32) -> i32 {
+    let mut powers: Vec[i32] = Vec.filled(hi + 1, 0);
+    let mut queue: PriorityQueue[(i32, i32)] = PriorityQueue.new();
+    for x in 1..hi + 1 {
+        let mut v: i64 = x;
+        let mut steps: i32 = 0;
+        while v >= x and v != 1 {
+            v = if v % 2 == 0 { v / 2 } else { 3 * v + 1 };
+            steps += 1;
+        }
+        powers[x] = steps + powers[v];
+        if x >= lo {
+            queue.push((powers[x], x));
+        }
+    }
+    let mut kth = 0;
+    for _ in 0..k {
+        kth = queue.pop().unwrap().1;
+    }
+    kth
+}
+
+// ---- get_kth_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_get_kth(lo: i32, hi: i32, k: i32) -> i32 {
+        let mut v: Vec[(i32, i32)] = (lo..=hi)
+            .map(|x| {
+                let mut n = x as i64;
+                let mut steps = 0;
+                while n != 1 {
+                    n = if n % 2 == 0 { n / 2 } else { 3 * n + 1 };
+                    steps += 1;
+                }
+                (steps, x)
+            })
+            .collect();
+        v.sort();
+        v[(k - 1) as usize].1
+    }
+}
+
+fn a4_get_kth(lo: i32, hi: i32, k: i32) -> i32 {
+    A4Solution.a4_get_kth(lo, hi, k)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the power of x as the statement defines it: the steps to 1, halving an
+// even value and taking 3x + 1 of an odd one (none for a value below 1,
+// which only a wrong answer gives, so that a property asked of it fails
+// rather than walks forever)
+fn steps(x: i64) -> i64 {
+    let mut v = x;
+    let mut count = 0;
+    while v > 1 {
+        if v % 2 == 0 {
+            v = v / 2;
+        } else {
+            v = 3 * v + 1;
+        }
+        count += 1;
+    }
+    count
+}
+
+// whether a comes before b: a smaller power, or the same power and a
+// smaller value
+fn before(a: i64, b: i64) -> bool {
+    let (pa, pb) = (steps(a), steps(b));
+    pa < pb or (pa == pb and a < b)
+}
+
+// the statement read literally: the value of the range with exactly k - 1
+// values of the range before it
+fn literal(lo: i32, hi: i32, k: i32) -> i64 {
+    for x in lo..hi + 1 {
+        let mut ahead = 0;
+        for y in lo..hi + 1 {
+            if before(y, x) {
+                ahead += 1;
+            }
+        }
+        if ahead == k - 1 {
+            return x;
+        }
+    }
+    -1
+}
+
+fn arm(i: i64, lo: i32, hi: i32, k: i32) -> i64 {
+    match i {
+        0 => a0_get_kth(lo, hi, k),
+        1 => a1_get_kth(lo, hi, k),
+        2 => a2_get_kth(lo, hi, k),
+        3 => a3_get_kth(lo, hi, k),
+        _ => a4_get_kth(lo, hi, k),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, lo: i32, hi: i32, k: i32) {
+    t.cases += 1;
+    let want = literal(lo, hi, k);
+    t.check = (t.check * 131 + want * 7 + lo * 3 + hi + k) % 1000000007;
+    let star = arm(0, lo, hi, k);
+    for i in 0..5 {
+        let got = arm(i, lo, hi, k);
+        let what = f"arm {i} on {lo} to {hi}, k {k}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: a value of the range
+        expect(mut t, 2, lo <= got and got <= hi, f"P2 {what}: {got}, outside");
+        // P3: before the k + 1-th, when there is one
+        let next = if k < hi - lo + 1 { arm(i, lo, hi, k + 1) } else { got };
+        expect(mut t, 3, k == hi - lo + 1 or before(got, next), f"P3 {what}: {got}, then {next}");
+        // P4: the first has no value of the range before it
+        let first = arm(i, lo, hi, 1);
+        let mut ahead = 0;
+        for y in lo..hi + 1 {
+            if before(y, first) {
+                ahead += 1;
+            }
+        }
+        expect(mut t, 4, ahead == 0, f"P4 {what}: first {first}, {ahead} before it");
+        // P5: the range one wider: the same k-th or one before it
+        let wider = if hi < 1000 { arm(i, lo, hi + 1, k) } else { got };
+        expect(mut t, 5, wider == got or before(wider, got), f"P5 {what}, to {hi + 1}: {wider}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    let mut cases: Vec[(i32, i32, i32)] = Vec.new();
+    // LeetCode's two examples and the last value of all
+    cases.push((12, 15, 2));
+    cases.push((7, 11, 4));
+    cases.push((1000, 1000, 1));
+    // 2000 ranges of 1 to 60 values: anywhere up to 1000, or inside 1 to
+    // 80, where powers are small and tie often; each at a random k. Every
+    // case is drawn before any arm answers.
+    let mut seed = 13871;
+    for c in 0..2000 {
+        let top = if c % 2 == 0 { 1000 } else { 80 };
+        let lo = 1 + next_random(mut seed) % top;
+        let len = 1 + next_random(mut seed) % 60;
+        let hi = (lo + len - 1).min(top);
+        let k = 1 + next_random(mut seed) % (hi - lo + 1);
+        cases.push((lo as i32, hi as i32, k as i32));
+    }
+    for (lo, hi, k) in cases.iter() {
+        check_case(mut t, lo, hi, k);
+    }
+    println(f"{t.cases} ranges: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

@@ -1,0 +1,64 @@
+// LeetCode #1387: Sort Integers by The Power Value -- the powers of the
+// values up to hi kept in a `Vec` as they are found, a walk stopping at
+// the first value below its start, whose power is already there; the
+// (power, value) pairs pushed onto a `PriorityQueue`, least first, and
+// popped k times. O(m log m) after the walks
+
+fn get_kth(lo: i32, hi: i32, k: i32) -> i32 {
+    let mut powers: Vec[i32] = Vec.filled(hi + 1, 0);
+    let mut queue: PriorityQueue[(i32, i32)] = PriorityQueue.new();
+    for x in 1..hi + 1 {
+        let mut v: i64 = x;
+        let mut steps: i32 = 0;
+        while v >= x and v != 1 {
+            v = if v % 2 == 0 { v / 2 } else { 3 * v + 1 };
+            steps += 1;
+        }
+        powers[x] = steps + powers[v];
+        if x >= lo {
+            queue.push((powers[x], x));
+        }
+    }
+    let mut kth = 0;
+    for _ in 0..k {
+        kth = queue.pop().unwrap().1;
+    }
+    kth
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; one value; the first and the last of the
+    // whole range 1 to 1000; and a range whose powers tie
+    let mut shown: Vec[String] = Vec.new();
+    shown.push(f"{get_kth(12, 15, 2)}");
+    shown.push(f"{get_kth(7, 11, 4)}");
+    shown.push(f"{get_kth(1, 1, 1)}");
+    shown.push(f"{get_kth(1, 1000, 1)}");
+    shown.push(f"{get_kth(1, 1000, 1000)}");
+    shown.push(f"{get_kth(12, 13, 1)}");
+    println(shown.join(" "));
+    // the constraints' most: every k over 1 to 1000
+    let mut check: i64 = 0;
+    for k in 1..1001 {
+        check = (check * 131 + get_kth(1, 1000, k as i32)) % 1000000007;
+    }
+    println(f"every k over 1 to 1000: checksum {check}");
+    // 2000 random ranges inside 1 to 1000, at a random k
+    let mut seed = 1387;
+    let mut check: i64 = 0;
+    for _ in 0..2000 {
+        let a = 1 + next_random(mut seed) % 1000;
+        let b = 1 + next_random(mut seed) % 1000;
+        let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
+        let k = 1 + next_random(mut seed) % (hi - lo + 1);
+        check = (check * 131 + get_kth(lo as i32, hi as i32, k as i32)) % 1000000007;
+    }
+    println(f"2000 random ranges: checksum {check}");
+}
