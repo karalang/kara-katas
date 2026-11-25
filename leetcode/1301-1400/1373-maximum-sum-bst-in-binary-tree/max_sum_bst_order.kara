@@ -1,0 +1,193 @@
+// LeetCode #1373: Maximum Sum BST in Binary Tree -- the order arm: the ★
+// arm's summaries without recursion; the nodes listed parents first with
+// their parent's place and side, then the list read backwards, so every
+// subtree is summed before its parent, each summary written into arrays
+// by place. O(n)
+fn max_sum_bst(root: Option[TreeNode]) -> i32 {
+    let Some(r) = root else {
+        return 0;
+    };
+    // (node, parent's place, a left child)
+    let mut order: Vec[(TreeNode, i64, bool)] = [(r, -1, false)];
+    let mut i = 0;
+    while i < order.len() {
+        let node = order[i].0;
+        if let Some(l) = node.left {
+            order.push((l, i, true));
+        }
+        if let Some(rr) = node.right {
+            order.push((rr, i, false));
+        }
+        i += 1;
+    }
+    let n = order.len();
+    // each node's left and right subtree, as (search tree, low, high, sum);
+    // a missing child stays the empty search tree
+    let empty = (true, i64.MAX, i64.MIN, 0);
+    let mut lefts: Vec[(bool, i64, i64, i64)] = Vec.filled(n, empty);
+    let mut rights: Vec[(bool, i64, i64, i64)] = Vec.filled(n, empty);
+    let mut best = 0;
+    for k in (0..n).rev() {
+        let (node, parent, is_left) = order[k];
+        let key = node.val as i64;
+        let (ls, llo, lhi, lsum) = lefts[k];
+        let (rs, rlo, rhi, rsum) = rights[k];
+        let mine = if ls and rs and lhi < key and key < rlo {
+            let sum = lsum + key + rsum;
+            best = best.max(sum);
+            (true, llo.min(key), rhi.max(key), sum)
+        } else {
+            (false, 0, 0, 0)
+        };
+        if parent >= 0 {
+            if is_left {
+                lefts[parent] = mine;
+            } else {
+                rights[parent] = mine;
+            }
+        }
+    }
+    best as i32
+}
+
+// ---- test harness ---------------------------------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// LeetCode's level-order list, `None` for a missing child
+fn from_level(values: Vec[Option[i32]]) -> Option[TreeNode] {
+    if values.len() == 0 or values[0].is_none() {
+        return None;
+    }
+    let root = TreeNode { val: values[0].unwrap(), left: None, right: None };
+    let mut queue: VecDeque[TreeNode] = VecDeque.new();
+    queue.push_back(root);
+    let mut i = 1;
+    while i < values.len() {
+        let Some(node) = queue.pop_front() else {
+            break;
+        };
+        if let Some(v) = values[i] {
+            let child = TreeNode { val: v, left: None, right: None };
+            node.left = Some(child);
+            queue.push_back(child);
+        }
+        i += 1;
+        if i < values.len() {
+            if let Some(v) = values[i] {
+                let child = TreeNode { val: v, left: None, right: None };
+                node.right = Some(child);
+                queue.push_back(child);
+            }
+            i += 1;
+        }
+    }
+    Some(root)
+}
+
+// n nodes valued from -range to range, each hung on an empty child place
+// of the tree so far chosen at random
+fn random_tree(seed: mut ref i64, n: i64, range: i64) -> TreeNode {
+    let root = TreeNode { val: (next_random(mut seed) % (2 * range + 1) - range) as i32, left: None, right: None };
+    let mut places: Vec[(TreeNode, bool)] = [(root, true), (root, false)];
+    for _ in 1..n {
+        let k = next_random(mut seed) % places.len();
+        let (parent, left) = places.swap_remove(k);
+        let node = TreeNode { val: (next_random(mut seed) % (2 * range + 1) - range) as i32, left: None, right: None };
+        if left {
+            parent.left = Some(node);
+        } else {
+            parent.right = Some(node);
+        }
+        places.push((node, true));
+        places.push((node, false));
+    }
+    root
+}
+
+// n keys from -range to range put into a search tree one by one, a key
+// already there skipped; then `noise` nodes, found by random walks from
+// the root, given a random value, which may break the order there
+fn random_search_tree(seed: mut ref i64, n: i64, range: i64, noise: i64) -> TreeNode {
+    let root = TreeNode { val: (next_random(mut seed) % (2 * range + 1) - range) as i32, left: None, right: None };
+    for _ in 1..n {
+        let key = (next_random(mut seed) % (2 * range + 1) - range) as i32;
+        let mut at = root;
+        loop {
+            if key == at.val {
+                break;
+            }
+            let next = if key < at.val { at.left } else { at.right };
+            match next {
+                Some(child) => at = child,
+                None => {
+                    let node = TreeNode { val: key, left: None, right: None };
+                    if key < at.val {
+                        at.left = Some(node);
+                    } else {
+                        at.right = Some(node);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    for _ in 0..noise {
+        let mut at = root;
+        for _ in 0..next_random(mut seed) % 8 {
+            let next = if next_random(mut seed) % 2 == 0 { at.left } else { at.right };
+            match next {
+                Some(child) => at = child,
+                None => break,
+            }
+        }
+        at.val = (next_random(mut seed) % (2 * range + 1) - range) as i32;
+    }
+    root
+}
+
+fn main() {
+    // LeetCode's three examples and two more; a chain of 10^4 nodes valued
+    // 1 to 10^4, each the right child of the one before, one search tree
+    let examples: Vec[Vec[Option[i32]]] = [
+        [Some(1), Some(4), Some(3), Some(2), Some(4), Some(2), Some(5), None, None, None, None, None, None, Some(4), Some(6)],
+        [Some(4), Some(3), None, Some(1), Some(2)],
+        [Some(-4), Some(-2), Some(-5)],
+        [Some(2), Some(1), Some(3)],
+        [Some(5), Some(4), Some(8), Some(3), None, Some(6), Some(3)],
+    ];
+    let mut shown: Vec[String] = examples.iter().map(|level| f"{max_sum_bst(from_level(level))}").collect();
+    let mut chain: Option[TreeNode] = None;
+    for v in 0..10000 {
+        chain = Some(TreeNode { val: (10000 - v) as i32, left: None, right: chain });
+    }
+    shown.push(f"{max_sum_bst(chain)}");
+    println(shown.join(" "));
+    // 2000 random trees of 1 to 300 nodes: half with values at random, half
+    // search trees with a few values changed
+    let mut seed = 1373;
+    let mut total = 0;
+    let mut check: i64 = 0;
+    for k in 0..2000 {
+        let n = 1 + next_random(mut seed) % 300;
+        let range = if next_random(mut seed) % 2 == 0 { 10 } else { 10000 };
+        let root = if k % 2 == 0 {
+            random_tree(mut seed, n, range)
+        } else {
+            random_search_tree(mut seed, n, range, next_random(mut seed) % 4)
+        };
+        let got = max_sum_bst(Some(root)) as i64;
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random trees: sums total {total}, checksum {check}");
+}
