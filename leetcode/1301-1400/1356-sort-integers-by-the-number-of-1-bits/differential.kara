@@ -1,0 +1,242 @@
+// LeetCode #1356: Sort Integers by The Number of 1 Bits -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+//
+// The statement: sort the integers of `arr` in ascending order by the
+// number of 1's in their binary representation, and in case two or more
+// integers have the same number of 1's, in ascending order by value.
+
+// ---- sort_by_bits.kara ----
+fn a0_sort_by_bits(arr: Vec[i32]) -> Vec[i32] {
+    let mut sorted = arr.clone();
+    sorted.sort_by_key(|x| (x.count_ones(), x));
+    sorted
+}
+
+// ---- sort_by_bits_insertion.kara ----
+fn a1_bits(x: i32) -> i32 {
+    let mut v = x;
+    let mut count = 0;
+    while v != 0 {
+        v &= v - 1;
+        count += 1;
+    }
+    count
+}
+
+fn a1_comes_before(a: i32, b: i32) -> bool {
+    let (ba, bb) = (a1_bits(a), a1_bits(b));
+    ba < bb or (ba == bb and a < b)
+}
+
+fn a1_sort_by_bits(arr: Vec[i32]) -> Vec[i32] {
+    let mut out = arr.clone();
+    for i in 1..out.len() {
+        let x = out[i];
+        let mut j = i;
+        while j > 0 and a1_comes_before(x, out[j - 1]) {
+            out[j] = out[j - 1];
+            j -= 1;
+        }
+        out[j] = x;
+    }
+    out
+}
+
+// ---- sort_by_bits_buckets.kara ----
+const TOP: i64 = 10000;
+
+fn a2_sort_by_bits(arr: Vec[i32]) -> Vec[i32] {
+    let mut seen: Vec[i64] = Vec.filled(TOP + 1, 0);
+    for x in arr.iter() {
+        seen[x] += 1;
+    }
+    let mut out: Vec[i32] = Vec.new();
+    for b in 0..15 {
+        for v in 0..TOP + 1 {
+            if v.count_ones() == b {
+                for _ in 0..seen[v] {
+                    out.push(v as i32);
+                }
+            }
+        }
+    }
+    out
+}
+
+// ---- sort_by_bits_packed.kara ----
+fn a3_sort_by_bits(arr: Vec[i32]) -> Vec[i32] {
+    let mut packed: Vec[i32] = arr.iter().map(|x| x.count_ones() as i32 * 16384 + x).collect();
+    packed.sort();
+    packed.iter().map(|p| p % 16384).collect()
+}
+
+// ---- sort_by_bits_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_sort_by_bits(arr: own Vec[i32]) -> Vec[i32] {
+        let mut arr = arr;
+        arr.sort_by(|a, b| a.count_ones().cmp(b.count_ones()).then(a.cmp(b)));
+        arr
+    }
+}
+
+fn a4_sort_by_bits(arr: Vec[i32]) -> Vec[i32] {
+    A4Solution.a4_sort_by_bits(arr.clone())
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the 1's of x's binary representation, each of its 14 places read
+fn ones(x: i32) -> i64 {
+    let mut count = 0;
+    for k in 0..14 {
+        if (x >> k) & 1 == 1 {
+            count += 1;
+        }
+    }
+    count
+}
+
+// the statement read literally: again and again, of the integers left, the
+// one with the fewest 1's, the smallest of those, taken out and put next
+fn literal(arr: Vec[i32]) -> Vec[i32] {
+    let mut left = arr.clone();
+    let mut out: Vec[i32] = Vec.new();
+    while left.len() > 0 {
+        let mut best = 0;
+        for i in 1..left.len() {
+            let (a, b) = (left[i], left[best]);
+            if ones(a) < ones(b) or (ones(a) == ones(b) and a < b) {
+                best = i;
+            }
+        }
+        out.push(left[best]);
+        left.remove(best);
+    }
+    out
+}
+
+// how many times each value from 0 to 10^4 occurs
+fn tally(v: Vec[i32]) -> Vec[i64] {
+    let mut seen: Vec[i64] = Vec.filled(10001, 0);
+    for x in v.iter() {
+        seen[x] += 1;
+    }
+    seen
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, arr: Vec[i32]) -> Vec[i32] {
+    match i {
+        0 => a0_sort_by_bits(arr),
+        1 => a1_sort_by_bits(arr),
+        2 => a2_sort_by_bits(arr),
+        3 => a3_sort_by_bits(arr),
+        _ => a4_sort_by_bits(arr),
+    }
+}
+
+fn check_case(t: mut ref Tally, arr: Vec[i32]) {
+    t.cases += 1;
+    let want = literal(arr);
+    for x in want.iter() {
+        t.check = (t.check * 131 + x + 1) % 1000000007;
+    }
+    t.check = (t.check * 131 + arr.len()) % 1000000007;
+    let backwards: Vec[i32] = arr.iter().rev().cloned().collect();
+    let mut twice = arr.clone();
+    twice.extend(arr.iter().cloned());
+    let star = a0_sort_by_bits(arr);
+    for i in 0..5 {
+        let got = arm(i, arr);
+        let what = f"arm {i} on {arr}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the same integers, each as often as in arr
+        expect(mut t, 2, got.len() == arr.len() and tally(got) == tally(arr), f"P2 {what}: {got}");
+        // P3: the integers in the opposite order: the same answer
+        let bw = arm(i, backwards);
+        expect(mut t, 3, bw == got, f"P3 {what}, backwards: {bw}");
+        // P4: in order: each integer's 1's no fewer than the one before,
+        // and its value larger or equal where they tie
+        let mut ordered = true;
+        for k in 1..got.len() {
+            let (a, b) = (got[k - 1], got[k]);
+            if ones(a) > ones(b) or (ones(a) == ones(b) and a > b) {
+                ordered = false;
+            }
+        }
+        expect(mut t, 4, ordered, f"P4 {what}: {got}");
+        // P5: arr twice over: each integer of the answer twice, in place
+        let tw = arm(i, twice);
+        let mut doubled: Vec[i32] = Vec.new();
+        for x in got.iter() {
+            doubled.push(x);
+            doubled.push(x);
+        }
+        expect(mut t, 5, tw == doubled, f"P5 {what}, twice: {tw}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 arrays of 1 to 12 integers in four kinds, 500 each: from 0 to
+    // 15; from 0 to 100; from 0 to 10^4; and powers of two and their
+    // neighbours, 2^k - 1, 2^k and 2^k + 1 up to 10^4. Every array is drawn
+    // before any arm answers.
+    let mut seed = 13561;
+    let mut cases: Vec[Vec[i32]] = Vec.new();
+    for c in 0..2000 {
+        let kind = c / 500;
+        let n = 1 + next_random(mut seed) % 12;
+        let mut arr: Vec[i32] = Vec.new();
+        for _ in 0..n {
+            let x = if kind == 0 {
+                next_random(mut seed) % 16
+            } else if kind == 1 {
+                next_random(mut seed) % 101
+            } else if kind == 2 {
+                next_random(mut seed) % 10001
+            } else {
+                (1 << (next_random(mut seed) % 14)) - 1 + next_random(mut seed) % 3
+            };
+            arr.push(x as i32);
+        }
+        cases.push(arr);
+    }
+    for arr in cases.iter() {
+        check_case(mut t, arr);
+    }
+    println(f"{t.cases} arrays: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
