@@ -36,22 +36,25 @@ Every arm gives the same output under `karac __mir-run`, `karac run` and
 
 The Mend loop: the first draft of the ★ arm returned `min(gap, 360.0 -
 gap)`, and the harness kept `largest = max(largest, a)`, both on `f64`.
-`karac check` refuses the free `min` and `max` there (E0200), as the
-design says, since `f64` has no total order; but its advice, to wrap the
-values in `F64` or drop an `Ord` bound the program never wrote, does not
-fit the call, and following it gives a second error. The documented
-float method, `gap.min(360.0 - gap)`, is not named, and `karac fix` has
-no fix. That is ledger row B-2026-11-24-48; the arms use the method. The
-same call over float literals alone, `min(1.5, 2.5)`, passes `karac
-check` and then stops the interpreter with "call of unknown function
-min" (B-2026-11-25-36). A fourth arm read the face as 60 minute marks,
-the hour hand `minutes as f64 / 12.0` marks past its hour; a twelfth is
-not exact in binary, and at 1:05 it printed `2.5000000000000018` where
-Python prints `2.5`. That was the program's mistake, caught by the
-oracle, and the walk arm, in whole half degrees, took its place. The
-Rust solution takes one round of 2 fixes by `karac fix`'s count, from 2
-errors: `struct Solution;` to `struct Solution {}` and `Solution::` to
-`Solution.`. Its output matches on the first run.
+`karac check` refused the free `min` and `max` there (E0200), since
+`f64` has no total order, with advice, to wrap the values in `F64` or
+drop an `Ord` bound the program never wrote, that did not fit the call;
+and over float literals alone, `min(1.5, 2.5)`, it passed check and then
+stopped the interpreter with "call of unknown function min". Those were
+ledger rows B-2026-11-24-48 and B-2026-11-25-36, and the arms were
+written with the float method `gap.min(360.0 - gap)`. Since kara
+46f8e5961a the free `min` and `max` take any `PartialOrd` pair, a float
+by IEEE minNum and maxNum (a NaN argument gives the other one), so the ★
+arm is its first draft again, `min(gap, 360.0 - gap)` and `largest =
+max(largest, a)`, with the same output; the other arms keep the method.
+A fourth arm read the face as 60 minute marks, the hour hand `minutes as
+f64 / 12.0` marks past its hour; a twelfth is not exact in binary, and
+at 1:05 it printed `2.5000000000000018` where Python prints `2.5`. That
+was the program's mistake, caught by the oracle, and the walk arm, in
+whole half degrees, took its place. The Rust solution takes one round of
+2 fixes by `karac fix`'s count, from 2 errors: `struct Solution;` to
+`struct Solution {}` and `Solution::` to `Solution.`. Its output matches
+on the first run.
 
 ## Differential
 

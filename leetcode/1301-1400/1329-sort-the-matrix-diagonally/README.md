@@ -58,8 +58,10 @@ The harness was first written with Rust's habit for test data, `let ex1:
 Vec[Vec[i32]] = [[3, 3, 1, 1].to_vec(), ...].to_vec();`, and `check`
 refused each such line with "expected 'Vec[Vec[i32]]', found
 'Vec[Vec[i64]]'" and the advice to annotate the binding, which already
-was annotated (kara B-2026-11-24-43). A list literal is already a `Vec` where a
-`Vec` is wanted, so the harness writes `[[3, 3, 1, 1], ...]`.
+was annotated (kara B-2026-11-24-43). A list literal is already a `Vec`
+where a `Vec` is wanted, so the harness writes `[[3, 3, 1, 1], ...]`.
+Since kara bfee4ce6ba the `.to_vec()` form checks too: the literals
+behind it take the wanted `i32`.
 
 ## Differential
 

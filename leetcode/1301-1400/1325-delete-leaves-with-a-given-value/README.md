@@ -51,13 +51,17 @@ on a `shared struct` whose fields all compare, `karac fix` applied that
 derive too, and a program that asked whether two handles were the same
 object then asked whether their contents were equal. The arm is written
 with `ref_eq`; the gap is B-2026-11-24-38, and the derive's line,
-indented by the width of `shared `, is B-2026-11-24-39. The first Rust
-arm takes one round of 36 fixes by `karac fix`'s count, from 12 errors:
-its two `use` lines deleted, `struct Solution;` to `struct Solution {}`,
-`Option<Rc<RefCell<TreeNode>>>` to `Option[TreeNode]`, `Self::` to
-`Solution.`, `node.borrow_mut().left.take()` to `node.left.take()`, `let
-mut n = node.borrow_mut();` to `let n = node;`, `&&` to `and`, and `::`
-to `.`. The second takes one round of 37 fixes from 12 errors: the same
+indented by the width of `shared `, is B-2026-11-24-39. Both are fixed
+(kara a605738803, 8021d3ea6f): `==` on a `shared` handle is now refused
+with both readings named, `a.ref_eq(b)` and the derive, and neither
+applied, and a derive line above a `pub` or `shared` declaration lines
+up with it. The first Rust arm takes one round of 36 fixes by `karac
+fix`'s count, from 12 errors: its two `use` lines deleted, `struct
+Solution;` to `struct Solution {}`, `Option<Rc<RefCell<TreeNode>>>` to
+`Option[TreeNode]`, `Self::` to `Solution.`,
+`node.borrow_mut().left.take()` to `node.left.take()`, `let mut n =
+node.borrow_mut();` to `let n = node;`, `&&` to `and`, and `::` to `.`.
+The second takes one round of 37 fixes from 12 errors: the same
 rewrites, with every `node.borrow()` and `node.borrow_mut()` before a
 field dropped, since a `shared struct`'s fields read and write directly.
 Both outputs match on the first run.

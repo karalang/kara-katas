@@ -1,4 +1,4 @@
-// LeetCode #1345: Jump Game IV -- differential test of the five arms
+// LeetCode #1345: Jump Game IV -- differential test of the six arms
 // against the statement read literally, with five more properties.
 //
 // The statement: given an array of integers arr, you are initially
@@ -203,6 +203,48 @@ impl A4Solution {
 fn a4_min_jumps(arr: Vec[i32]) -> i32 {
     A4Solution.a4_min_jumps(arr)
 }
+
+// ---- min_jumps_getmut.kara ----
+struct A5Solution {}
+
+impl A5Solution {
+    pub fn a5_min_jumps(arr: Vec[i32]) -> i32 {
+        let n = arr.len();
+        let mut map: Map[i32, Vec[i64]] = Map.new();
+        for i in 0..n {
+            map.entry(arr[i]).or_insert(Vec.new()).push(i);
+        }
+        let mut dist = Vec.filled(n, i32.MAX);
+        dist[0] = 0;
+        let mut q: VecDeque[(i64, i32)] = VecDeque.new();
+        q.push_back((0, 0));
+        while let Some((i, d)) = q.pop_front() {
+            if i == n - 1 {
+                return d;
+            }
+            if let Some(list) = map.get_mut(arr[i]) {
+                for j in list.iter() {
+                    if dist[j] == i32.MAX {
+                        dist[j] = d + 1;
+                        q.push_back((j, d + 1));
+                    }
+                }
+                list.clear();
+            }
+            for j in [i.wrapping_sub(1).rem_euclid(i64.MAX), i + 1] {
+                if j < n and dist[j] == i32.MAX {
+                    dist[j] = d + 1;
+                    q.push_back((j, d + 1));
+                }
+            }
+        }
+        dist[n - 1]
+    }
+}
+
+fn a5_min_jumps(arr: Vec[i32]) -> i32 {
+    A5Solution.a5_min_jumps(arr)
+}
 // ---- the differential -------------------------------------------------------
 
 fn next_random(seed: mut ref i64) -> i64 {
@@ -259,7 +301,8 @@ fn arm(i: i64, arr: Vec[i32]) -> i32 {
         1 => a1_min_jumps(arr),
         2 => a2_min_jumps(arr),
         3 => a3_min_jumps(arr),
-        _ => a4_min_jumps(arr),
+        4 => a4_min_jumps(arr),
+        _ => a5_min_jumps(arr),
     }
 }
 
@@ -275,7 +318,7 @@ fn check_case(t: mut ref Tally, arr: Vec[i32]) {
     // a value no other index holds, put in front
     let mut fresh: Vec[i32] = [-1000];
     fresh.extend(arr.iter().cloned());
-    for i in 0..5 {
+    for i in 0..6 {
         let got = arm(i, arr);
         let what = f"arm {i} on {arr}";
         // P1: the statement read literally
@@ -330,7 +373,7 @@ fn main() {
     for arr in cases.iter() {
         check_case(mut t, arr);
     }
-    println(f"{t.cases} arrays: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    println(f"{t.cases} arrays: checksum {t.check}, {t.checks} checks over 6 arms: {t.failures} failures");
     if t.failures > 0 {
         let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
         println(f"failures by property: {parts.join(", ")}");
