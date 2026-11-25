@@ -1,0 +1,318 @@
+// LeetCode #1360: Number of Days Between Two Dates -- differential test
+// of the five arms against the statement read literally, with five more
+// properties.
+//
+// The statement: count the number of days between two dates, given as
+// strings YYYY-MM-DD, valid dates between the years 1971 and 2100.
+
+// ---- days_between_dates.kara ----
+fn a0_is_leap(year: i64) -> bool {
+    (year % 4 == 0 and year % 100 != 0) or year % 400 == 0
+}
+
+fn a0_days_from_1971(date: Str) -> i64 {
+    let year = i64.parse(date[0..4]).unwrap();
+    let month = i64.parse(date[5..7]).unwrap();
+    let day = i64.parse(date[8..10]).unwrap();
+    let lengths = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut days = day - 1;
+    for y in 1971..year {
+        days += if a0_is_leap(y) { 366 } else { 365 };
+    }
+    for m in 1..month {
+        days += lengths[m - 1];
+        if m == 2 and a0_is_leap(year) {
+            days += 1;
+        }
+    }
+    days
+}
+
+fn a0_days_between_dates(date1: Str, date2: Str) -> i32 {
+    (a0_days_from_1971(date1) - a0_days_from_1971(date2)).abs() as i32
+}
+
+// ---- days_between_dates_civil.kara ----
+fn a1_days_from_civil(date: Str) -> i64 {
+    let mut year = i64.parse(date[0..4]).unwrap();
+    let month = i64.parse(date[5..7]).unwrap();
+    let day = i64.parse(date[8..10]).unwrap();
+    if month <= 2 {
+        year -= 1;
+    }
+    let era = year / 400;
+    let year_of_era = year - era * 400;
+    let from_march = if month > 2 { month - 3 } else { month + 9 };
+    let day_of_year = (153 * from_march + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    era * 146097 + day_of_era
+}
+
+fn a1_days_between_dates(date1: Str, date2: Str) -> i32 {
+    (a1_days_from_civil(date1) - a1_days_from_civil(date2)).abs() as i32
+}
+
+// ---- days_between_dates_walk.kara ----
+fn a2_month_length(year: i64, month: i64) -> i64 {
+    match month {
+        2 => if (year % 4 == 0 and year % 100 != 0) or year % 400 == 0 { 29 } else { 28 },
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
+}
+
+fn a2_parts(date: Str) -> (i64, i64, i64) {
+    let fields: Vec[i64] = date.split("-").map(|f| i64.parse(f).unwrap()).collect();
+    (fields[0], fields[1], fields[2])
+}
+
+fn a2_days_between_dates(date1: Str, date2: Str) -> i32 {
+    let (a, b) = (a2_parts(date1), a2_parts(date2));
+    let mut (at, end) = if a <= b { (a, b) } else { (b, a) };
+    let mut steps = 0;
+    while at != end {
+        let (y, m, d) = at;
+        at = if d < a2_month_length(y, m) {
+            (y, m, d + 1)
+        } else if m < 12 {
+            (y, m + 1, 1)
+        } else {
+            (y + 1, 1, 1)
+        };
+        steps += 1;
+    }
+    steps
+}
+
+// ---- days_between_dates_table.kara ----
+struct Calendar {
+    before_year: Vec[i64],
+    before_month: Vec[Vec[i64]],
+}
+
+fn a3_calendar() -> Calendar {
+    let lengths = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut before_year: Vec[i64] = [0];
+    for year in 1971..2101 {
+        let leap = (year % 4 == 0 and year % 100 != 0) or year % 400 == 0;
+        let last = before_year[before_year.len() - 1];
+        before_year.push(last + if leap { 366 } else { 365 });
+    }
+    let mut before_month: Vec[Vec[i64]] = Vec.new();
+    for leap in [false, true] {
+        let mut sums: Vec[i64] = [0];
+        for m in 0..12 {
+            let extra = if leap and m == 1 { 1 } else { 0 };
+            sums.push(sums[m] + lengths[m] + extra);
+        }
+        before_month.push(sums);
+    }
+    Calendar { before_year, before_month }
+}
+
+fn a3_day_number(c: Calendar, date: Str) -> i64 {
+    let year = i64.parse(date[0..4]).unwrap();
+    let month = i64.parse(date[5..7]).unwrap();
+    let day = i64.parse(date[8..10]).unwrap();
+    let leap = (year % 4 == 0 and year % 100 != 0) or year % 400 == 0;
+    let row = if leap { 1 } else { 0 };
+    c.before_year[year - 1971] + c.before_month[row][month - 1] + day - 1
+}
+
+fn a3_days_between_dates(date1: Str, date2: Str) -> i32 {
+    let c = a3_calendar();
+    (a3_day_number(c, date1) - a3_day_number(c, date2)).abs() as i32
+}
+
+// ---- days_between_dates_solution.kara ----
+struct A4Solution {}
+
+fn a4_days(date: Str) -> i32 {
+    let parts: Vec[i32] = date.split("-").map(|x| i32.parse(x).unwrap()).collect();
+    let (y, m, d) = (parts[0], parts[1], parts[2]);
+    let month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let is_leap = |year: i32| (year % 4 == 0 and year % 100 != 0) or year % 400 == 0;
+    let mut total = d;
+    for year in 1971..y {
+        total += if is_leap(year) { 366 } else { 365 };
+    }
+    for month in 1..m {
+        total += month_days[(month - 1) as usize];
+        if month == 2 and is_leap(y) {
+            total += 1;
+        }
+    }
+    total
+}
+
+impl A4Solution {
+    pub fn a4_days_between_dates(date1: String, date2: String) -> i32 {
+        (a4_days(date1) - a4_days(date2)).abs()
+    }
+}
+
+fn a4_days_between_dates(date1: Str, date2: Str) -> i32 {
+    A4Solution.a4_days_between_dates(date1.to_string(), date2.to_string())
+}
+
+// ---- the differential -------------------------------------------------------
+
+// every date from 1971-01-01 to 2100-12-31 in order, and each one's place
+struct Days {
+    dates: Vec[String],
+    place: Map[String, i64],
+}
+
+fn leap(year: i64) -> bool {
+    (year % 4 == 0 and year % 100 != 0) or year % 400 == 0
+}
+
+// the statement read literally: the calendar's days listed one by one,
+// each the day after the last, from 1971-01-01 to 2100-12-31; two dates'
+// days between them are the distance of their places in the list
+fn every_day() -> Days {
+    let mut days = Days { dates: Vec.new(), place: Map.new() };
+    let mut year = 1971;
+    let mut month = 1;
+    let mut day = 1;
+    while year <= 2100 {
+        let date = f"{year}-{month:02}-{day:02}";
+        days.place.insert(date.clone(), days.dates.len());
+        days.dates.push(date);
+        let last = match month {
+            2 => if leap(year) { 29 } else { 28 },
+            4 | 6 | 9 | 11 => 30,
+            _ => 31,
+        };
+        day += 1;
+        if day > last {
+            day = 1;
+            month += 1;
+            if month > 12 {
+                month = 1;
+                year += 1;
+            }
+        }
+    }
+    days
+}
+
+fn literal(days: Days, a: Str, b: Str) -> i64 {
+    (days.place[a] - days.place[b]).abs()
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, a: Str, b: Str) -> i64 {
+    let got = match i {
+        0 => a0_days_between_dates(a, b),
+        1 => a1_days_between_dates(a, b),
+        2 => a2_days_between_dates(a, b),
+        3 => a3_days_between_dates(a, b),
+        _ => a4_days_between_dates(a, b),
+    };
+    got
+}
+
+fn check_case(t: mut ref Tally, days: Days, a: Str, b: Str, c: Str) {
+    t.cases += 1;
+    let want = literal(days, a, b);
+    t.check = (t.check * 131 + want) % 1000000007;
+    let next = days.place[a] + 1;
+    let year = i64.parse(a[0..4]).unwrap();
+    let month = i64.parse(a[5..7]).unwrap();
+    let star = arm(0, a, b);
+    for i in 0..5 {
+        let got = arm(i, a, b);
+        let what = f"arm {i} at {a}, {b}";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the dates swapped, the same days; a date and itself, none
+        expect(mut t, 2, arm(i, b, a) == got, f"P2 {what}, swapped: {arm(i, b, a)}");
+        expect(mut t, 2, arm(i, a, a) == 0, f"P2 {what}, {a} and itself: {arm(i, a, a)}");
+        // P3: through a third date, the days add up or one takes the other
+        // away
+        let (x, y) = (arm(i, a, c), arm(i, c, b));
+        expect(mut t, 3, got == x + y or got == (x - y).abs(), f"P3 {what}, through {c}: {x} and {y}");
+        // P4: a date and the day after it, 1
+        if next < days.dates.len() {
+            let after = days.dates[next].clone();
+            expect(mut t, 4, arm(i, a, after) == 1, f"P4 {what}, day after {after}: {arm(i, a, after)}");
+        }
+        // P5: the same day a year later, 366 when a 29 February falls
+        // between them and 365 when none does
+        if year < 2100 and a[5..10] != "02-29" {
+            let later = f"{year + 1}{a[4..10]}";
+            let feb = if month <= 2 { leap(year) } else { leap(year + 1) };
+            let want_year = if feb { 366 } else { 365 };
+            expect(mut t, 5, arm(i, a, later) == want_year, f"P5 {what}, {later}: {arm(i, a, later)}");
+        }
+        // P6: the ★ arm's days
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_date(days: Days, seed: mut ref i64) -> String {
+    let at = (next_random(mut seed) * 32768 + next_random(mut seed)) % days.dates.len();
+    days.dates[at].clone()
+}
+
+fn main() {
+    let days = every_day();
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // the range's ends; the leap days of 1972, 2000 and 2096; the end of
+    // February 2100, not a leap year; and every year's last day against
+    // the next year's first
+    let fixed = [
+        ("1971-01-01", "2100-12-31", "2000-02-29"),
+        ("2019-06-29", "2019-06-30", "1971-01-01"),
+        ("2020-01-15", "2019-12-31", "2100-12-31"),
+        ("1972-02-29", "1972-03-01", "1972-02-28"),
+        ("2000-02-28", "2000-03-01", "2000-02-29"),
+        ("2096-02-29", "2100-03-01", "2100-02-28"),
+        ("2100-02-28", "2100-03-01", "1999-12-31"),
+    ];
+    for (a, b, c) in fixed {
+        check_case(mut t, days, a, b, c);
+    }
+    for year in 1971..2100 {
+        let a = f"{year}-12-31";
+        let b = f"{year + 1}-01-01";
+        check_case(mut t, days, a, b, "2000-01-01");
+    }
+    // 2000 random triples of dates
+    let mut seed = 1360;
+    for _ in 0..2000 {
+        let a = random_date(days, mut seed);
+        let b = random_date(days, mut seed);
+        let c = random_date(days, mut seed);
+        check_case(mut t, days, a, b, c);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

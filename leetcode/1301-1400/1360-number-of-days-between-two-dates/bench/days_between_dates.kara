@@ -1,0 +1,62 @@
+// LeetCode #1360 bench -- the ★ arm: each date as its count of days from
+// 1971-01-01, the answer the two counts' distance.
+fn is_leap(year: i64) -> bool {
+    (year % 4 == 0 and year % 100 != 0) or year % 400 == 0
+}
+
+fn days_from_1971(date: Str) -> i64 {
+    let year = i64.parse(date[0..4]).unwrap();
+    let month = i64.parse(date[5..7]).unwrap();
+    let day = i64.parse(date[8..10]).unwrap();
+    let lengths = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut days = day - 1;
+    for y in 1971..year {
+        days += if is_leap(y) { 366 } else { 365 };
+    }
+    for m in 1..month {
+        days += lengths[m - 1];
+        if m == 2 and is_leap(year) {
+            days += 1;
+        }
+    }
+    days
+}
+
+fn days_between_dates(date1: Str, date2: Str) -> i32 {
+    (days_from_1971(date1) - days_from_1971(date2)).abs() as i32
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a valid date from 1971 to 2100, written YYYY-MM-DD
+fn random_date(seed: mut ref i64) -> String {
+    let year = 1971 + next_random(mut seed) % 130;
+    let month = 1 + next_random(mut seed) % 12;
+    let lengths = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut last = lengths[month - 1];
+    if month == 2 and is_leap(year) {
+        last += 1;
+    }
+    let day = 1 + next_random(mut seed) % last;
+    f"{year}-{month:02}-{day:02}"
+}
+
+fn main() {
+    // 1000 dates written once; then 3 * 10^5 questions, each pair of dates
+    // drawn from the checksum so far, every answer folded into it
+    let mut seed = 1360;
+    let mut dates: Vec[String] = Vec.new();
+    for _ in 0..1000 {
+        dates.push(random_date(mut seed));
+    }
+    let mut check: i64 = 0;
+    for r in 0..300000 {
+        let a = check % 1000;
+        let b = (check / 1000 + r) % 1000;
+        check = (check * 31 + days_between_dates(dates[a], dates[b]) + r) % 1000000007;
+    }
+    println(f"300000 questions: checksum {check}");
+}
