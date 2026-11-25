@@ -1,0 +1,245 @@
+// LeetCode #1375: Number of Times Binary String Is Prefix-Aligned --
+// differential test of the five arms against the statement read
+// literally, with five more properties.
+//
+// The statement: n bits, all 0, are turned on one at a time, the bit
+// `flips[i]` at step i + 1; the string is prefix-aligned after step i
+// when bits 1 to i are on and every other bit is off. Count the steps
+// after which it is.
+
+// ---- num_times_all_blue.kara ----
+fn a0_num_times_all_blue(flips: Vec[i32]) -> i32 {
+    let mut largest = 0;
+    let mut aligned = 0;
+    for (i, f) in flips.iter().enumerate() {
+        largest = largest.max(f);
+        if largest == i + 1 {
+            aligned += 1;
+        }
+    }
+    aligned
+}
+
+// ---- num_times_all_blue_sum.kara ----
+fn a1_num_times_all_blue(flips: Vec[i32]) -> i32 {
+    let mut sum: i64 = 0;
+    let mut aligned = 0;
+    for i in 0..flips.len() {
+        sum += flips[i];
+        let steps = i + 1;
+        if sum == steps * (steps + 1) / 2 {
+            aligned += 1;
+        }
+    }
+    aligned
+}
+
+// ---- num_times_all_blue_fenwick.kara ----
+fn a2_num_times_all_blue(flips: Vec[i32]) -> i32 {
+    let n = flips.len();
+    let mut tree: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut aligned = 0;
+    for i in 0..n {
+        let mut at = flips[i] as i64;
+        while at <= n {
+            tree[at] += 1;
+            at += at & -at;
+        }
+        // the ones among bits 1 to i + 1
+        let mut ones = 0;
+        let mut at = i + 1;
+        while at > 0 {
+            ones += tree[at];
+            at -= at & -at;
+        }
+        if ones == i + 1 {
+            aligned += 1;
+        }
+    }
+    aligned
+}
+
+// ---- num_times_all_blue_lowest.kara ----
+fn a3_num_times_all_blue(flips: Vec[i32]) -> i32 {
+    let n = flips.len();
+    let mut on: Vec[bool] = Vec.filled(n + 2, false);
+    let mut lowest = 1;
+    let mut aligned = 0;
+    for (i, f) in flips.iter().enumerate() {
+        on[f] = true;
+        while lowest <= n and on[lowest] {
+            lowest += 1;
+        }
+        if lowest == i + 2 {
+            aligned += 1;
+        }
+    }
+    aligned
+}
+
+// ---- num_times_all_blue_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_num_times_all_blue(flips: Vec[i32]) -> i32 {
+        let mut mx = 0;
+        let mut ans = 0;
+        for (i, f) in flips.iter().enumerate() {
+            mx = mx.max(f);
+            if mx == i as i32 + 1 {
+                ans += 1;
+            }
+        }
+        ans
+    }
+}
+
+fn a4_num_times_all_blue(flips: Vec[i32]) -> i32 {
+    A4Solution.a4_num_times_all_blue(flips)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// 1 to n in order, then each run of `block` places (the last may be
+// shorter) shuffled within itself; a block as long as n shuffles all
+fn shuffled(seed: mut ref i64, n: i64, block: i64) -> Vec[i32] {
+    let mut flips: Vec[i32] = (1..n + 1).map(|v| v as i32).collect();
+    let mut start = 0;
+    while start < n {
+        let end = (start + block).min(n);
+        for i in (start + 1..end).rev() {
+            let j = start + next_random(mut seed) % (i - start + 1);
+            flips.swap(i, j);
+        }
+        start = end;
+    }
+    flips
+}// the statement read literally: the string kept as n bits, and after
+// every step each bit read, bits 1 to i on and every other bit off
+fn literal(flips: Vec[i32]) -> i64 {
+    let n = flips.len();
+    let mut bits: Vec[bool] = Vec.filled(n, false);
+    let mut aligned = 0;
+    for step in 1..n + 1 {
+        bits[flips[step - 1] - 1] = true;
+        let mut ok = true;
+        for b in 0..n {
+            if bits[b] != (b < step) {
+                ok = false;
+            }
+        }
+        if ok {
+            aligned += 1;
+        }
+    }
+    aligned
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn arm(i: i64, flips: Vec[i32]) -> i64 {
+    let got = match i {
+        0 => a0_num_times_all_blue(flips),
+        1 => a1_num_times_all_blue(flips),
+        2 => a2_num_times_all_blue(flips),
+        3 => a3_num_times_all_blue(flips),
+        _ => a4_num_times_all_blue(flips),
+    };
+    got
+}
+
+// `other`, each bit moved up by the length of `flips`, after `flips`
+fn joined(flips: Vec[i32], other: Vec[i32]) -> Vec[i32] {
+    let mut all = flips.clone();
+    for f in other.iter() {
+        all.push(f + flips.len() as i32);
+    }
+    all
+}
+
+fn check_case(t: mut ref Tally, flips: Vec[i32], other: Vec[i32], swap: i64) {
+    t.cases += 1;
+    let n = flips.len();
+    let want = literal(flips);
+    t.check = (t.check * 131 + want) % 1000000007;
+    let star = arm(0, flips);
+    // the two flips at steps swap + 1 and swap + 2 traded, when there
+    // are two
+    let mut traded = flips.clone();
+    if swap + 1 < n {
+        traded.swap(swap, swap + 1);
+    }
+    let both = joined(flips, other);
+    let longer = joined(flips, [1]);
+    for i in 0..5 {
+        let got = arm(i, flips);
+        let what = f"arm {i} at {n} bits";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: at least 1, since every bit is on after the last step, and
+        // at most n
+        expect(mut t, 2, got >= 1 and got <= n, f"P2 {what}: {got}");
+        // P3: one more bit, flipped last, once more aligned
+        let more = arm(i, longer);
+        expect(mut t, 3, more == got + 1, f"P3 {what}: {got}, then {more}");
+        // P4: a second order of higher bits after this one, the two counts
+        // added
+        let sum = arm(i, both);
+        let second = arm(i, other);
+        expect(mut t, 4, sum == got + second, f"P4 {what}: {got} and {second}, joined {sum}");
+        // P5: two neighbouring steps traded, a count at most 1 away
+        let near = arm(i, traded);
+        expect(mut t, 5, (near - got).abs() <= 1, f"P5 {what}: {got}, traded at {swap} {near}");
+        // P6: the ★ arm's count
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's two examples; then 1500 random orders of 1 to 12 bits and
+    // 500 of 1 to 120, a quarter shuffled whole and the rest within runs
+    // of 2 to 8, each with a second order of 1 to 12 bits for P4 and a
+    // step at which to trade two flips for P5
+    let examples: Vec[Vec[i32]] = [[3, 2, 4, 1, 5], [4, 1, 2, 3]];
+    for flips in examples.iter() {
+        check_case(mut t, flips, [2, 1], 0);
+    }
+    let mut seed = 1375;
+    for k in 0..2000 {
+        let n = 1 + next_random(mut seed) % if k < 1500 { 12 } else { 120 };
+        let block = if k % 4 == 0 { n } else { 2 + next_random(mut seed) % 7 };
+        let flips = shuffled(mut seed, n, block);
+        let m = 1 + next_random(mut seed) % 12;
+        let other = shuffled(mut seed, m, if k % 2 == 0 { m } else { 3 });
+        let swap = next_random(mut seed) % n;
+        check_case(mut t, flips, other, swap);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

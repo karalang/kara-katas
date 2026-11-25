@@ -1,0 +1,61 @@
+// LeetCode #1375: Number of Times Binary String Is Prefix-Aligned -- the
+// ★ arm: after step i, i bits are on, and they are bits 1 to i exactly
+// when the largest bit flipped so far is i; one pass keeping that
+// largest. O(n)
+
+fn num_times_all_blue(flips: Vec[i32]) -> i32 {
+    let mut largest = 0;
+    let mut aligned = 0;
+    for (i, f) in flips.iter().enumerate() {
+        largest = largest.max(f);
+        if largest == i + 1 {
+            aligned += 1;
+        }
+    }
+    aligned
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// 1 to n in order, then each run of `block` places (the last may be
+// shorter) shuffled within itself; a block as long as n shuffles all
+fn shuffled(seed: mut ref i64, n: i64, block: i64) -> Vec[i32] {
+    let mut flips: Vec[i32] = (1..n + 1).map(|v| v as i32).collect();
+    let mut start = 0;
+    while start < n {
+        let end = (start + block).min(n);
+        for i in (start + 1..end).rev() {
+            let j = start + next_random(mut seed) % (i - start + 1);
+            flips.swap(i, j);
+        }
+        start = end;
+    }
+    flips
+}
+
+fn main() {
+    // LeetCode's two examples; 5 * 10^4 bits flipped in order, and in
+    // reverse
+    let n = 50000;
+    let orders: Vec[Vec[i32]] = [[3, 2, 4, 1, 5], [4, 1, 2, 3], (1..n + 1).map(|v| v as i32).collect(), (1..n + 1).rev().map(|v| v as i32).collect()];
+    let shown: Vec[String] = orders.iter().map(|flips| f"{num_times_all_blue(flips)}").collect();
+    println(shown.join(" "));
+    // 2000 random orders of 1 to 300 bits: a quarter shuffled whole, the
+    // rest shuffled within runs of 2 to 8
+    let mut seed = 1375;
+    let mut total = 0;
+    let mut check: i64 = 0;
+    for k in 0..2000 {
+        let n = 1 + next_random(mut seed) % 300;
+        let block = if k % 4 == 0 { n } else { 2 + next_random(mut seed) % 7 };
+        let got = num_times_all_blue(shuffled(mut seed, n, block)) as i64;
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random orders: aligned {total} times, checksum {check}");
+}
