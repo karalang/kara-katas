@@ -1,0 +1,101 @@
+// LeetCode #1354: Construct Target Array With Multiple Sums -- the scan
+// arm: the moves undone from the target as in the ★ arm, the largest value
+// found each time by a scan of every place rather than a heap. O(n) for
+// each undo, O(n^2 log M) in all
+fn is_possible(target: Vec[i32]) -> bool {
+    let n = target.len();
+    if n == 1 {
+        return target[0] == 1;
+    }
+    let mut values: Vec[i64] = target.iter().map(|x| x as i64).collect();
+    let mut total: i64 = values.iter().sum();
+    loop {
+        let mut at = 0;
+        for i in 1..n {
+            if values[i] > values[at] {
+                at = i;
+            }
+        }
+        let x = values[at];
+        let rest = total - x;
+        if x == 1 or rest == 1 {
+            return true;
+        }
+        if x <= rest or x % rest == 0 {
+            return false;
+        }
+        values[at] = x % rest;
+        total = rest + values[at];
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n ones, then up to `moves` moves, each setting a random place to the
+// sum of all, stopping before a value would pass `top`
+fn reached(seed: mut ref i64, n: i64, moves: i64, top: i64) -> Vec[i32] {
+    let mut arr: Vec[i64] = Vec.filled(n, 1);
+    let mut total = n;
+    for _ in 0..moves {
+        if total > top {
+            break;
+        }
+        let i = next_random(mut seed) % n;
+        let was = arr[i];
+        arr[i] = total;
+        total = 2 * total - was;
+    }
+    arr.iter().map(|x| x as i32).collect()
+}
+
+fn main() {
+    // LeetCode's three examples; one value, 1 and 2; two values sharing no
+    // factor and sharing one, at the constraints' largest; and 5 * 10^4
+    // values, the constraints' most: all 1, reached by moves, and one of
+    // those raised by 1
+    let e1 = is_possible([9, 3, 5]);
+    let e2 = is_possible([1, 1, 1, 2]);
+    let e3 = is_possible([8, 5]);
+    let one = is_possible([1]);
+    let two = is_possible([2]);
+    let far = is_possible([1, 1000000000]);
+    let coprime = is_possible([999999999, 1000000000]);
+    let shared = is_possible([1000000000, 999999998]);
+    let ones: Vec[i32] = Vec.filled(50000, 1);
+    let mut seed = 1354;
+    let mut big = reached(mut seed, 50000, 100, 1000000000);
+    let made = is_possible(big);
+    let at = big.iter().position(|x| x > 1).unwrap();
+    big[at] += 1;
+    let off = is_possible(big);
+    println(f"{e1} {e2} {e3} {one} {two} {far} {coprime} {shared} {is_possible(ones)} {made} {off}");
+    // 2000 random targets of 1 to 8 values: half reached by up to 30
+    // moves, a quarter of those with one value then raised by 1 or 2;
+    // half drawn at random from 1 to 10, 1 to 1000 or 1 to 10^9
+    let mut yes = 0;
+    let mut check = 0;
+    for c in 0..2000 {
+        let n = 1 + next_random(mut seed) % 8;
+        let mut target: Vec[i32] = if c % 2 == 0 {
+            reached(mut seed, n, next_random(mut seed) % 31, 1000000000)
+        } else {
+            let top = if c % 6 == 1 { 10 } else if c % 6 == 3 { 1000 } else { 1000000000 };
+            (0..n).map(|_| (1 + next_random(mut seed) % top) as i32).collect()
+        };
+        if c % 8 == 0 {
+            let i = next_random(mut seed) % n;
+            target[i] += (1 + next_random(mut seed) % 2) as i32;
+        }
+        let got = is_possible(target);
+        if got {
+            yes += 1;
+        }
+        check = (check * 131 + if got { 1 } else { 2 }) % 1000000007;
+    }
+    println(f"2000 random targets: {yes} possible, checksum {check}");
+}
