@@ -1,0 +1,84 @@
+// LeetCode #1367 bench -- the ★ arm: every tree node tried as the start
+// of the list, and from each the list matched down the tree, either
+// child carrying the next value.
+
+// the list from `head` on read down from `node`
+fn matches_from(head: Option[ListNode], node: Option[TreeNode]) -> bool {
+    let Some(h) = head else {
+        return true;
+    };
+    let Some(n) = node else {
+        return false;
+    };
+    h.val == n.val and (matches_from(h.next, n.left) or matches_from(h.next, n.right))
+}
+
+fn is_sub_path(head: Option[ListNode], root: Option[TreeNode]) -> bool {
+    let Some(r) = root else {
+        return false;
+    };
+    matches_from(head, root) or is_sub_path(head, r.left) or is_sub_path(head, r.right)
+}
+
+shared struct ListNode {
+    mut val: i32,
+    mut next: Option[ListNode],
+}
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 20 trees of 2500 nodes valued 1 or 2, the constraints' most nodes,
+    // each node hung on a random empty child place, built once; then 20000
+    // rounds, each flipping one node's value and searching that tree for a
+    // list of 8 to 15 values, all drawn from the checksum so far
+    let mut seed = 1367;
+    let mut trees: Vec[Vec[TreeNode]] = Vec.new();
+    for _ in 0..20 {
+        let root = TreeNode { val: (1 + next_random(mut seed) % 2) as i32, left: None, right: None };
+        let mut nodes: Vec[TreeNode] = [root];
+        let mut places: Vec[(TreeNode, bool)] = [(root, true), (root, false)];
+        for _ in 1..2500 {
+            let k = next_random(mut seed) % places.len();
+            let (parent, left) = places.swap_remove(k);
+            let node = TreeNode { val: (1 + next_random(mut seed) % 2) as i32, left: None, right: None };
+            if left {
+                parent.left = Some(node);
+            } else {
+                parent.right = Some(node);
+            }
+            places.push((node, true));
+            places.push((node, false));
+            nodes.push(node);
+        }
+        trees.push(nodes);
+    }
+    let mut check: i64 = 0;
+    let mut hits = 0;
+    for r in 0..20000 {
+        let nodes = ref trees[check % 20];
+        let flipped = nodes[(check / 20) % 2500];
+        flipped.val = 3 - flipped.val;
+        let m = 8 + check % 8;
+        let bits = check / 7;
+        let mut head: Option[ListNode] = None;
+        for k in 0..m {
+            head = Some(ListNode { val: (1 + (bits >> k) % 2) as i32, next: head });
+        }
+        let found = is_sub_path(head, Some(nodes[0]));
+        if found {
+            hits += 1;
+        }
+        check = (check * 31 + m * 2 + if found { 1 } else { 0 } + r) % 1000000007;
+    }
+    println(f"20000 rounds over 20 trees of 2500 nodes: {hits} found, checksum {check}");
+}
