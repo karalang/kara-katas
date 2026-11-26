@@ -1,0 +1,131 @@
+// LeetCode #1457: Pseudo-Palindromic Paths in a Binary Tree -- a Rust
+// solution as LeetCode's Rust users write it: a `fn dfs` nested in the
+// method over `&Option<Rc<RefCell<TreeNode>>>`, the node read through
+// `n.borrow()` inside `if let`, and the parity mask's lowest bit cleared to
+// test for at most one odd value, carried to Kāra by `karac fix`
+
+struct Solution {}
+
+fn dfs(node: Option[TreeNode], mask: i32) -> i32 {
+    if let Some(n) = node {
+        let mask = mask ^ (1 << n.val);
+        if n.left.is_none() and n.right.is_none() {
+            return if mask & (mask - 1) == 0 { 1 } else { 0 };
+        }
+        dfs(n.left, mask) + dfs(n.right, mask)
+    } else {
+        0
+    }
+}
+
+impl Solution {
+    pub fn pseudo_palindromic_paths(root: Option[TreeNode]) -> i32 {
+        dfs(root, 0)
+    }
+}
+
+fn pseudo_palindromic_paths(root: Option[TreeNode]) -> i32 {
+    Solution.pseudo_palindromic_paths(root)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// LeetCode's level-order list, `None` for a missing child
+fn from_level(values: Vec[Option[i32]]) -> Option[TreeNode] {
+    if values.len() == 0 or values[0].is_none() {
+        return None;
+    }
+    let root = TreeNode { val: values[0].unwrap(), left: None, right: None };
+    let mut queue: VecDeque[TreeNode] = VecDeque.new();
+    queue.push_back(root);
+    let mut i = 1;
+    while i < values.len() {
+        let Some(node) = queue.pop_front() else {
+            break;
+        };
+        if let Some(v) = values[i] {
+            let child = TreeNode { val: v, left: None, right: None };
+            node.left = Some(child);
+            queue.push_back(child);
+        }
+        i += 1;
+        if i < values.len() {
+            if let Some(v) = values[i] {
+                let child = TreeNode { val: v, left: None, right: None };
+                node.right = Some(child);
+                queue.push_back(child);
+            }
+            i += 1;
+        }
+    }
+    Some(root)
+}
+
+
+// n nodes with values from 1 to top, each hung on an empty child place of
+// the tree so far chosen at random
+fn random_tree(seed: mut ref i64, n: i64, top: i64) -> Option[TreeNode] {
+    let root = TreeNode { val: (1 + next_random(mut seed) % top) as i32, left: None, right: None };
+    let mut places: Vec[(TreeNode, bool)] = [(root, true), (root, false)];
+    for _ in 1..n {
+        let k = next_random(mut seed) % places.len();
+        let (parent, left) = places.swap_remove(k);
+        let node = TreeNode { val: (1 + next_random(mut seed) % top) as i32, left: None, right: None };
+        if left {
+            parent.left = Some(node);
+        } else {
+            parent.right = Some(node);
+        }
+        places.push((node, true));
+        places.push((node, false));
+    }
+    Some(root)
+}
+
+// a chain of n nodes, each the left child of the one before, the i-th
+// valued i * step % 9 + 1
+fn chain(n: i64, step: i64) -> Option[TreeNode] {
+    let mut tree: Option[TreeNode] = None;
+    for i in (0..n).rev() {
+        tree = Some(TreeNode { val: (i * step % 9 + 1) as i32, left: tree, right: None });
+    }
+    tree
+}
+
+fn main() {
+    // LeetCode's three examples, and four more: a chain of 10^4 nodes all
+    // valued 1 and one cycling through 1 to 9, and a full tree of 2^16 - 1
+    // nodes by level cycling through 1 to 9 and with all one value
+    let e1 = pseudo_palindromic_paths(from_level([Some(2), Some(3), Some(1), Some(3), Some(1), None, Some(1)]));
+    let e2 = pseudo_palindromic_paths(from_level([Some(2), Some(1), Some(1), Some(1), Some(3), None, None, None, None, None, Some(1)]));
+    let e3 = pseudo_palindromic_paths(from_level([Some(9)]));
+    let cycling: Vec[Option[i32]] = (0..65535).map(|i| Some((i % 9 + 1) as i32)).collect();
+    let same: Vec[Option[i32]] = (0..65535).map(|_| Some(4)).collect();
+    println(f"{e1} {e2} {e3} {pseudo_palindromic_paths(chain(10000, 0))} {pseudo_palindromic_paths(chain(10000, 1))} {pseudo_palindromic_paths(from_level(cycling))} {pseudo_palindromic_paths(from_level(same))}");
+    // the constraints' most, 10^5 nodes with values from 1 to 9
+    let mut seed = 1457;
+    println(f"10^5 nodes: {pseudo_palindromic_paths(random_tree(mut seed, 100000, 9))}");
+    // 2000 random trees of 1 to 300 nodes with values from 1 to top, top
+    // from 1 to 9
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 300;
+        let top = 1 + next_random(mut seed) % 9;
+        let got = pseudo_palindromic_paths(random_tree(mut seed, n, top));
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random trees: {total} paths, checksum {check}");
+}
