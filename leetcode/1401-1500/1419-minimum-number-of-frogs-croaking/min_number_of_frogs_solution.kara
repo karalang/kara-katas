@@ -1,0 +1,119 @@
+// LeetCode #1419: Minimum Number of Frogs Croaking -- a Rust solution as
+// LeetCode's Rust users write it: a `[0; 5]` count of each letter, the
+// letter's place by a `match` on `chars()`, the frogs croaking at once
+// counted up on `c` and down on `k`, carried to Kāra by `karac fix`
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_number_of_frogs(croak_of_frogs: String) -> i32 {
+        let mut cnt = [0; 5];
+        let mut frogs: i32 = 0;
+        let mut max_frogs: i32 = 0;
+        for c in croak_of_frogs.chars() {
+            let idx = match c {
+                'c' => 0,
+                'r' => 1,
+                'o' => 2,
+                'a' => 3,
+                'k' => 4,
+                _ => return -1,
+            };
+            cnt[idx] += 1;
+            if idx == 0 {
+                frogs += 1;
+                max_frogs = max_frogs.max(frogs);
+            } else {
+                if cnt[idx - 1] < cnt[idx] {
+                    return -1;
+                }
+                if idx == 4 {
+                    frogs -= 1;
+                }
+            }
+        }
+        if frogs == 0 { max_frogs } else { -1 }
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// m croaks heard together: at each step a new frog starts one time in
+// `spread` (always when none is croaking), or a croaking frog drawn says
+// its next letter
+fn heard(m: i64, spread: i64, seed: mut ref i64) -> String {
+    let word: Vec[char] = "croak".chars().collect();
+    let mut s = String.new();
+    let mut croaking: Vec[i64] = Vec.new();
+    let mut started = 0;
+    while started < m or not croaking.is_empty() {
+        let r = next_random(mut seed);
+        if started < m and (croaking.is_empty() or r % spread == 0) {
+            s.push('c');
+            croaking.push(1);
+            started += 1;
+        } else {
+            let i = r / spread % croaking.len();
+            s.push(word[croaking[i]]);
+            croaking[i] += 1;
+            if croaking[i] == 5 {
+                croaking.swap_remove(i);
+            }
+        }
+    }
+    s
+}
+
+// one letter of s changed to another of `croak`, or dropped, or two side
+// by side swapped
+fn spoiled(s: String, seed: mut ref i64) -> String {
+    let mut chars: Vec[char] = s.chars().collect();
+    let r = next_random(mut seed);
+    let at = r / 3 % chars.len();
+    if r % 3 == 0 {
+        chars[at] = ['c', 'r', 'o', 'a', 'k'][next_random(mut seed) % 5];
+    } else if r % 3 == 1 {
+        chars.remove(at);
+    } else if at + 1 < chars.len() {
+        chars.swap(at, at + 1);
+    }
+    chars.iter().collect()
+}
+
+fn main() {
+    // LeetCode's three examples, and five more
+    let firsts: Vec[String] = ["croakcroak", "crcoakroak", "croakcrook", "c", "croak", "kcroa", "ccrrooaakk", "crocakcroraoakk"]
+        .iter()
+        .map(|s| f"{Solution.min_number_of_frogs(s.to_string())}")
+        .collect();
+    println(firsts.join(" "));
+    // the constraints' most: 2 * 10^4 croaks all at once, one after
+    // another, and heard together
+    let mut seed = 1419;
+    let together = Vec[String].from_iter(["c", "r", "o", "a", "k"].iter().map(|l| l.repeat(20000))).join("");
+    let after = "croak".repeat(20000);
+    let drawn = heard(20000, 2, mut seed);
+    println(f"10^5 letters: {Solution.min_number_of_frogs(together)} {Solution.min_number_of_frogs(after)} {Solution.min_number_of_frogs(drawn)}");
+    // 2000 random cases of 1 to 40 croaks, a third of them spoiled
+    let mut check: i64 = 0;
+    let mut invalid = 0;
+    for i in 0..2000 {
+        let m = 1 + next_random(mut seed) % 40;
+        let spread = 1 + next_random(mut seed) % 6;
+        let mut s = heard(m, spread, mut seed);
+        if i % 3 == 0 {
+            s = spoiled(s, mut seed);
+        }
+        let got = Solution.min_number_of_frogs(s);
+        if got < 0 {
+            invalid += 1;
+        }
+        check = (check * 131 + got + 1) % 1000000007;
+    }
+    println(f"2000 random cases: {invalid} invalid, checksum {check}");
+}

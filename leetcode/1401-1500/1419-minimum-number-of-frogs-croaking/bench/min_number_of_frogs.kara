@@ -1,0 +1,59 @@
+fn min_number_of_frogs(croak_of_frogs: Str) -> i32 {
+    // how many times each letter has been heard: no letter more often than
+    // the one before it in `croak`, the frogs croaking at once those that
+    // said `c` and not yet `k`, and every croak finished at the end
+    let mut heard = [0i32, 0, 0, 0, 0];
+    let mut most: i32 = 0;
+    for c in croak_of_frogs.chars() {
+        let i = match c {
+            'c' => 0,
+            'r' => 1,
+            'o' => 2,
+            'a' => 3,
+            'k' => 4,
+            _ => return -1,
+        };
+        heard[i] += 1;
+        if i > 0 and heard[i] > heard[i - 1] {
+            return -1;
+        }
+        most = most.max(heard[0] - heard[4]);
+    }
+    if heard[0] == heard[4] { most } else { -1 }
+}
+
+fn main() {
+    // a pool of 1000 blocks, each 100 croaks heard together, a new frog
+    // starting one time in 3, and 500 windows of 200 blocks, 10^5 letters,
+    // each window's first block drawn
+    let mut seed: i64 = 1419;
+    let word: Vec[char] = "croak".chars().collect();
+    let mut pool = String.new();
+    for _ in 0..1000 {
+        let mut croaking: Vec[i64] = Vec.new();
+        let mut started = 0;
+        while started < 100 or not croaking.is_empty() {
+            seed = (seed * 1103515245 + 12345) % 2147483648;
+            let r = seed / 65536;
+            if started < 100 and (croaking.is_empty() or r % 3 == 0) {
+                pool.push('c');
+                croaking.push(1);
+                started += 1;
+            } else {
+                let i = r / 3 % croaking.len();
+                pool.push(word[croaking[i]]);
+                croaking[i] += 1;
+                if croaking[i] == 5 {
+                    croaking.swap_remove(i);
+                }
+            }
+        }
+    }
+    let mut check: i64 = 0;
+    for _ in 0..500 {
+        seed = (seed * 1103515245 + 12345) % 2147483648;
+        let start = 500 * (seed / 65536 % 801);
+        check = (check * 131 + min_number_of_frogs(pool[start..start + 100000]) + 1) % 1000000007;
+    }
+    println(f"500 windows of 10^5 letters: checksum {check}");
+}

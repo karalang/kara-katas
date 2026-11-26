@@ -1,0 +1,357 @@
+// LeetCode #1419: Minimum Number of Frogs Croaking -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- min_number_of_frogs.kara ----
+fn a0_min_number_of_frogs(croak_of_frogs: String) -> i32 {
+    // how many times each letter has been heard: no letter more often than
+    // the one before it in `croak`, the frogs croaking at once those that
+    // said `c` and not yet `k`, and every croak finished at the end
+    let mut heard = [0i32, 0, 0, 0, 0];
+    let mut most: i32 = 0;
+    for c in croak_of_frogs.chars() {
+        let i = match c {
+            'c' => 0,
+            'r' => 1,
+            'o' => 2,
+            'a' => 3,
+            'k' => 4,
+            _ => return -1,
+        };
+        heard[i] += 1;
+        if i > 0 and heard[i] > heard[i - 1] {
+            return -1;
+        }
+        most = most.max(heard[0] - heard[4]);
+    }
+    if heard[0] == heard[4] { most } else { -1 }
+}
+
+// ---- min_number_of_frogs_stages.kara ----
+fn a1_min_number_of_frogs(croak_of_frogs: String) -> i32 {
+    // how many frogs wait at each letter of `croak`: a letter moves one
+    // frog on from the letter before, a `c` takes a frog that has finished
+    // when there is one and a new frog otherwise
+    let word: Vec[char] = "croak".chars().collect();
+    let mut waiting: Vec[i32] = Vec.filled(5, 0);
+    let mut frogs = 0;
+    for c in croak_of_frogs.chars() {
+        let Some(i) = word.iter().position(|w| w == c) else {
+            return -1;
+        };
+        if i == 0 {
+            if waiting[4] > 0 {
+                waiting[4] -= 1;
+            } else {
+                frogs += 1;
+            }
+        } else if waiting[i - 1] > 0 {
+            waiting[i - 1] -= 1;
+        } else {
+            return -1;
+        }
+        waiting[i] += 1;
+    }
+    if waiting[..4].iter().all(|w| w == 0) { frogs } else { -1 }
+}
+
+// ---- min_number_of_frogs_frogs.kara ----
+struct A2Frog {
+    name: i64,
+    croaks: i64,
+}
+
+fn a2_min_number_of_frogs(croak_of_frogs: String) -> i32 {
+    // every frog its own value, kept on a stack for the letter it last
+    // said: each letter takes a frog from the stack of the one before and
+    // puts it on its own, a `c` reusing a frog that has finished
+    let word = "croak";
+    let mut stacks: Vec[Vec[A2Frog]] = Vec.new();
+    for _ in 0..5 {
+        stacks.push(Vec.new());
+    }
+    let mut born = 0;
+    for c in croak_of_frogs.chars() {
+        let i = match word.find(c.to_string()) {
+            Some(i) => i,
+            None => return -1,
+        };
+        let from = if i == 0 { 4 } else { i - 1 };
+        let mut frog = match stacks[from].pop() {
+            Some(frog) => frog,
+            None if i == 0 => {
+                born += 1;
+                A2Frog { name: born, croaks: 0 }
+            }
+            None => return -1,
+        };
+        if i == 4 {
+            frog.croaks += 1;
+        }
+        stacks[i].push(frog);
+    }
+    if (0..4).all(|i| stacks[i].is_empty()) { born as i32 } else { -1 }
+}
+
+// ---- min_number_of_frogs_prefix.kara ----
+fn a3_min_number_of_frogs(croak_of_frogs: String) -> i32 {
+    // the counts of each letter in every prefix: a valid string has, in
+    // every prefix, no letter of `croak` more often than the one before
+    // it, and the same count of each in the whole; the frogs needed are
+    // the most `c`s not yet matched by a `k` in any prefix
+    let letters: Vec[u8] = croak_of_frogs.bytes().to_vec();
+    let n = letters.len();
+    let mut counts: Vec[Vec[i64]] = Vec.new();
+    counts.push(Vec.filled(5, 0));
+    for b in letters.iter() {
+        let mut next = counts[counts.len() - 1].clone();
+        match "croak".bytes().iter().position(|w| w == b) {
+            Some(i) => next[i] += 1,
+            None => return -1,
+        }
+        counts.push(next);
+    }
+    for row in counts.iter() {
+        if (1..5).any(|i| row[i] > row[i - 1]) {
+            return -1;
+        }
+    }
+    if counts[n][0] != counts[n][4] {
+        return -1;
+    }
+    counts.iter().map(|row| row[0] - row[4]).max().unwrap() as i32
+}
+
+// ---- min_number_of_frogs_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_min_number_of_frogs(croak_of_frogs: String) -> i32 {
+        let mut cnt = [0; 5];
+        let mut frogs: i32 = 0;
+        let mut max_frogs: i32 = 0;
+        for c in croak_of_frogs.chars() {
+            let idx = match c {
+                'c' => 0,
+                'r' => 1,
+                'o' => 2,
+                'a' => 3,
+                'k' => 4,
+                _ => return -1,
+            };
+            cnt[idx] += 1;
+            if idx == 0 {
+                frogs += 1;
+                max_frogs = max_frogs.max(frogs);
+            } else {
+                if cnt[idx - 1] < cnt[idx] {
+                    return -1;
+                }
+                if idx == 4 {
+                    frogs -= 1;
+                }
+            }
+        }
+        if frogs == 0 { max_frogs } else { -1 }
+    }
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// m croaks heard together: at each step a new frog starts one time in
+// `spread` (always when none is croaking), or a croaking frog drawn says
+// its next letter
+fn heard(m: i64, spread: i64, seed: mut ref i64) -> String {
+    let word: Vec[char] = "croak".chars().collect();
+    let mut s = String.new();
+    let mut croaking: Vec[i64] = Vec.new();
+    let mut started = 0;
+    while started < m or not croaking.is_empty() {
+        let r = next_random(mut seed);
+        if started < m and (croaking.is_empty() or r % spread == 0) {
+            s.push('c');
+            croaking.push(1);
+            started += 1;
+        } else {
+            let i = r / spread % croaking.len();
+            s.push(word[croaking[i]]);
+            croaking[i] += 1;
+            if croaking[i] == 5 {
+                croaking.swap_remove(i);
+            }
+        }
+    }
+    s
+}
+
+// one letter of s changed to another of `croak`, or dropped, or two side
+// by side swapped
+fn spoiled(s: String, seed: mut ref i64) -> String {
+    let mut chars: Vec[char] = s.chars().collect();
+    let r = next_random(mut seed);
+    let at = r / 3 % chars.len();
+    if r % 3 == 0 {
+        chars[at] = ['c', 'r', 'o', 'a', 'k'][next_random(mut seed) % 5];
+    } else if r % 3 == 1 {
+        chars.remove(at);
+    } else if at + 1 < chars.len() {
+        chars.swap(at, at + 1);
+    }
+    chars.iter().collect()
+}
+
+// whether the letters from `at` on can each be given to one of f frogs,
+// each frog saying `croak` over and over and ending on a `k`: `next[j]`
+// is the letter frog j says next, and a frog not yet heard is tried only
+// as the first of them, since unheard frogs are alike
+fn assign(letters: Vec[i64], at: i64, next: mut ref Vec[i64], heard: i64, f: i64) -> bool {
+    if at == letters.len() {
+        return next.iter().all(|p| p == 0);
+    }
+    for j in 0..f.min(heard + 1) {
+        let p = next[j];
+        if p == letters[at] {
+            next[j] = (p + 1) % 5;
+            let now_heard = if j == heard { heard + 1 } else { heard };
+            if assign(letters, at + 1, mut next, now_heard, f) {
+                return true;
+            }
+            next[j] = p;
+        }
+    }
+    false
+}
+
+// the statement read literally: the fewest frogs among whom every letter
+// can be shared out so that each frog says whole croaks, tried 1 frog,
+// then 2, and on, while s is at most 20 letters
+fn literal(s: String) -> i32 {
+    let letters: Vec[i64] = s.chars().map(|c| "croak".find(c.to_string()).unwrap_or(9)).collect();
+    if letters.iter().any(|l| l == 9) {
+        return -1;
+    }
+    for f in 1..=letters.len() / 5 {
+        let mut next: Vec[i64] = Vec.filled(f, 0);
+        if assign(letters, 0, mut next, 0, f) {
+            return f as i32;
+        }
+    }
+    -1
+}
+
+fn arm(i: i64, s: String) -> i32 {
+    let s = s.clone();
+    match i {
+        0 => a0_min_number_of_frogs(s),
+        1 => a1_min_number_of_frogs(s),
+        2 => a2_min_number_of_frogs(s),
+        3 => a3_min_number_of_frogs(s),
+        _ => A4Solution.a4_min_number_of_frogs(s),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, s: String, other: String, at: i64) {
+    t.cases += 1;
+    let star = arm(0, s);
+    t.check = (t.check * 131 + star + 1) % 1000000007;
+    t.check = (t.check * 131 + s.len()) % 1000000007;
+    let want = if s.len() <= 20 { Some(literal(s)) } else { None };
+    let other_star = arm(0, other);
+    let joined = f"{s}{other}";
+    let inserted = f"{s[..at]}croak{s[at..]}";
+    let doubled_pieces: Vec[String] = s.chars().map(|c| f"{c}{c}").collect();
+    let doubled = doubled_pieces.join("");
+    for i in 0..5 {
+        let short = if s.len() > 24 { f"{s[..24]}..." } else { s.clone() };
+        let what = f"arm {i} on {short}";
+        let got = arm(i, s);
+        // P1: the statement read literally, while s is short
+        if let Some(w) = want {
+            expect(mut t, 1, got == w, f"P1 {what}: literal {w}, got {got}");
+        }
+        // P2: no answer, or 1 frog to a fifth of the letters, and no
+        // answer when the letters are not a whole number of croaks
+        expect(mut t, 2, (got == -1 or (got >= 1 and 5 * got as i64 <= s.len())) and (s.len() % 5 == 0 or got == -1), f"P2 {what}: {got}");
+        // P3: two valid strings one after the other need the frogs the
+        // busier needs
+        if got > 0 and other_star > 0 {
+            expect(mut t, 3, arm(i, joined) == got.max(other_star), f"P3 {what} then {other}");
+        }
+        // P4: a whole croak put between two letters of a valid string
+        // needs the same frogs or one more
+        if got > 0 {
+            let more = arm(i, inserted);
+            expect(mut t, 4, more == got or more == got + 1, f"P4 {what} with croak at {at}: {more}");
+        }
+        // P5: every letter said twice over needs twice the frogs, and
+        // stays without an answer when s has none
+        expect(mut t, 5, arm(i, doubled) == if got > 0 { 2 * got } else { -1 }, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: one letter, one croak, a croak
+    // turned round, a croak missing a letter, two croaks at once, and the
+    // constraints' most. Every case is drawn before any arm answers.
+    let mut cases: Vec[String] = ["croakcroak", "crcoakroak", "croakcrook", "c", "k", "croak", "kaorc", "crak", "ccrrooaakk", "crocakcroraoakk", "croakk", "ccroak"].iter().map(|s| s.to_string()).collect();
+    let mut seed = 14191;
+    let together = Vec[String].from_iter(["c", "r", "o", "a", "k"].iter().map(|l| l.repeat(20000))).join("");
+    cases.push(together);
+    cases.push("croak".repeat(20000));
+    cases.push(heard(20000, 2, mut seed));
+    let drawn = heard(20000, 5, mut seed);
+    cases.push(spoiled(drawn, mut seed));
+    // 1987 random cases: 1 to 4 croaks half the time and up to 40
+    // otherwise, a frog starting one time in 1 to 6, a third of them
+    // spoiled
+    for i in 0..1987 {
+        let m = if i % 2 == 0 { 1 + next_random(mut seed) % 4 } else { 1 + next_random(mut seed) % 40 };
+        let spread = 1 + next_random(mut seed) % 6;
+        let s = heard(m, spread, mut seed);
+        cases.push(if i % 3 == 0 { spoiled(s, mut seed) } else { s });
+    }
+    // each case's partner for P3 and place for P4, drawn as well
+    let mut others: Vec[String] = Vec.new();
+    let mut places: Vec[i64] = Vec.new();
+    for s in cases.iter() {
+        let m = 1 + next_random(mut seed) % 3;
+        let spread = 1 + next_random(mut seed) % 3;
+        others.push(heard(m, spread, mut seed));
+        places.push(next_random(mut seed) % (s.len() + 1));
+    }
+    for k in 0..cases.len() {
+        check_case(mut t, cases[k], others[k], places[k]);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
