@@ -1,0 +1,44 @@
+// LeetCode #1460 bench: the ★ arm (both arrays sorted and compared) on 200
+// pairs of 1000 values from 1 to 1000, the constraints' most, drawn once,
+// each `arr` a shuffle of its `target`; then 50 passes, each setting one
+// value of every `arr` from the checksum so far, so no answer carries
+// over, answering it and folding the answer into the checksum.
+
+fn can_be_equal(target: Vec[i32], arr: Vec[i32]) -> bool {
+    let mut a = target.clone();
+    let mut b = arr.clone();
+    a.sort();
+    b.sort();
+    a == b
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1460;
+    let mut targets: Vec[Vec[i32]] = Vec.new();
+    let mut arrs: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..200 {
+        let target: Vec[i32] = (0..1000).map(|_| (1 + next_random(mut seed) % 1000) as i32).collect();
+        let mut arr = target.clone();
+        for i in (1..1000).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            arr.swap(i, j);
+        }
+        targets.push(target);
+        arrs.push(arr);
+    }
+    let mut check: i64 = 0;
+    for pass in 0..50 {
+        for p in 0..200 {
+            let k = check % 1000;
+            arrs[p][k] = targets[p][(check / 7) % 1000];
+            let same = can_be_equal(targets[p], arrs[p]);
+            check = (check * 31 + if same { 1 } else { 0 } + pass) % 1000000007;
+        }
+    }
+    println(f"50 passes over 200 pairs of 1000 values: checksum {check}");
+}
