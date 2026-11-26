@@ -121,8 +121,8 @@ fi
 echo
 
 bench_begin id=1482 slug=minimum-number-of-days-to-make-m-bouquets group=1401-1500 \
-    title="Least Number of Unique Integers after K Removals" \
-    workload="100 passes over 100000 values" sink="$expected"
+    title="Minimum Number of Days to Make m Bouquets" \
+    workload="150 passes over 100000 flowers" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30

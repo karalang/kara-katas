@@ -121,8 +121,8 @@ fi
 echo
 
 bench_begin id=1487 slug=making-file-names-unique group=1401-1500 \
-    title="Least Number of Unique Integers after K Removals" \
-    workload="100 passes over 100000 values" sink="$expected"
+    title="Making File Names Unique" \
+    workload="20 passes over 50000 names" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30

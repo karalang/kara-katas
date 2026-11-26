@@ -121,8 +121,8 @@ fi
 echo
 
 bench_begin id=1486 slug=xor-operation-in-an-array group=1401-1500 \
-    title="Least Number of Unique Integers after K Removals" \
-    workload="100 passes over 100000 values" sink="$expected"
+    title="XOR Operation in an Array" \
+    workload="2000000 calls" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30
