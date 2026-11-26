@@ -1,0 +1,284 @@
+// LeetCode #1776: Car Fleet II -- differential test of the five arms
+// against the statement read literally, with five more properties.
+
+// ---- get_collision_times.kara ----
+fn a0_catch_time(cars: Vec[Vec[i32]], i: i64, j: i64) -> f64 {
+    (cars[j][0] - cars[i][0]) as f64 / (cars[i][1] - cars[j][1]) as f64
+}
+
+fn a0_get_collision_times(cars: Vec[Vec[i32]]) -> Vec[f64] {
+    let n = cars.len();
+    let mut answer: Vec[f64] = Vec.filled(n, -1.0);
+    let mut stack: Vec[i64] = Vec.new();
+    for i in (0..n).rev() {
+        while let Some(j) = stack.last().cloned() {
+            if cars[i][1] <= cars[j][1] or (answer[j] > 0.0 and a0_catch_time(cars, i, j) >= answer[j]) {
+                stack.pop();
+            } else {
+                break;
+            }
+        }
+        if let Some(j) = stack.last().cloned() {
+            answer[i] = a0_catch_time(cars, i, j);
+        }
+        stack.push(i);
+    }
+    answer
+}
+
+// ---- get_collision_times_jump.kara ----
+fn a1_get_collision_times(cars: Vec[Vec[i32]]) -> Vec[f64] {
+    let n = cars.len();
+    let mut answer: Vec[f64] = Vec.filled(n, -1.0);
+    // hit[j]: the car j runs into, or n when it runs into none
+    let mut hit: Vec[i64] = Vec.filled(n, n);
+    for i in (0..n - 1).rev() {
+        let (p, v) = (cars[i][0], cars[i][1]);
+        let mut j = i + 1;
+        while j < n {
+            if v > cars[j][1] {
+                let t = (cars[j][0] - p) as f64 / (v - cars[j][1]) as f64;
+                if answer[j] < 0.0 or t <= answer[j] {
+                    answer[i] = t;
+                    hit[i] = j;
+                    break;
+                }
+            }
+            j = hit[j];
+        }
+    }
+    answer
+}
+
+// ---- get_collision_times_skip.kara ----
+fn a2_get_collision_times(cars: Vec[Vec[i32]]) -> Vec[f64] {
+    let n = cars.len();
+    let mut answer: Vec[f64] = Vec.filled(n, -1.0);
+    for i in (0..n).rev() {
+        for j in i + 1..n {
+            if cars[j][1] >= cars[i][1] {
+                continue;
+            }
+            let t = (cars[j][0] - cars[i][0]) as f64 / (cars[i][1] - cars[j][1]) as f64;
+            if answer[j] < 0.0 or t <= answer[j] {
+                answer[i] = t;
+                break;
+            }
+        }
+    }
+    answer
+}
+
+// ---- get_collision_times_tuples.kara ----
+fn a3_get_collision_times(cars: Vec[Vec[i32]]) -> Vec[f64] {
+    let n = cars.len();
+    let mut answer: Vec[f64] = Vec.filled(n, -1.0);
+    // (position, speed, when it joins a fleet or infinity)
+    let mut ahead: Vec[(f64, f64, f64)] = Vec.new();
+    for i in (0..n).rev() {
+        let (p, v) = (cars[i][0] as f64, cars[i][1] as f64);
+        let mut joined = f64.INFINITY;
+        while let Some((q, w, joins)) = ahead.last() {
+            if v > w {
+                let t = (q - p) / (v - w);
+                if t <= joins {
+                    joined = t;
+                    break;
+                }
+            }
+            ahead.pop();
+        }
+        if joined < f64.INFINITY {
+            answer[i] = joined;
+        }
+        ahead.push((p, v, joined));
+    }
+    answer
+}
+
+// ---- get_collision_times_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn get_collision_times(cars: Vec[Vec[i32]]) -> Vec[f64] {
+        let n = cars.len();
+        let mut ans = Vec.filled(n, -1.0);
+        let mut st: Vec[i64] = Vec.new();
+        for i in (0..n).rev() {
+            let (p, s) = (cars[i][0] as f64, cars[i][1] as f64);
+            while let Some(j) = st.last().cloned() {
+                let (pj, sj) = (cars[j][0] as f64, cars[j][1] as f64);
+                if s <= sj or (ans[j] > 0.0 and (pj - p) / (s - sj) >= ans[j]) {
+                    st.pop();
+                } else {
+                    break;
+                }
+            }
+            if let Some(j) = st.last().cloned() {
+                ans[i] = (cars[j][0] as f64 - p) / (s - cars[j][1] as f64);
+            }
+            st.push(i);
+        }
+        ans
+    }
+}
+
+fn a4_get_collision_times(cars: Vec[Vec[i32]]) -> Vec[f64] {
+
+    A4Solution.get_collision_times(cars)
+
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_cars(seed: mut ref i64, n: i64, gap: i64, fastest: i64) -> Vec[Vec[i32]] {
+    let mut cars: Vec[Vec[i32]] = Vec.new();
+    let mut position = 0;
+    for _ in 0..n {
+        position += 1 + next_random(mut seed) % gap;
+        let speed = 1 + next_random(mut seed) % fastest;
+        cars.push([position as i32, speed as i32]);
+    }
+    cars
+}
+
+// the statement read literally: the fleets from the back, each led by the
+// car at its front, which keeps its own speed; again and again the
+// earliest catch between neighbouring fleets, found as an exact fraction,
+// merges the fleet behind into the one ahead, and the time is the answer
+// of the car at the front of the fleet behind
+fn literal(cars: Vec[Vec[i32]]) -> Vec[f64] {
+    let n = cars.len();
+    let mut answer: Vec[f64] = Vec.filled(n, -1.0);
+    let mut heads: Vec[i64] = (0..n).collect();
+    loop {
+        // (which neighbours, distance, closing speed) of the earliest catch
+        let mut first: Option[(i64, i64, i64)] = None;
+        for k in 0..heads.len() - 1 {
+            let (r, f) = (heads[k], heads[k + 1]);
+            let closing = (cars[r][1] - cars[f][1]) as i64;
+            if closing > 0 {
+                let distance = (cars[f][0] - cars[r][0]) as i64;
+                let earlier = match first {
+                    None => true,
+                    Some((_, d, c)) => distance * c < d * closing,
+                };
+                if earlier {
+                    first = Some((k, distance, closing));
+                }
+            }
+        }
+        match first {
+            None => break,
+            Some((k, distance, closing)) => {
+                answer[heads[k]] = distance as f64 / closing as f64;
+                heads.remove(k);
+            }
+        }
+    }
+    answer
+}
+
+fn arm(i: i64, cars: Vec[Vec[i32]]) -> Vec[f64] {
+    match i {
+        0 => a0_get_collision_times(cars),
+        1 => a1_get_collision_times(cars),
+        2 => a2_get_collision_times(cars),
+        3 => a3_get_collision_times(cars),
+        _ => a4_get_collision_times(cars),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn digest(answer: Vec[f64]) -> i64 {
+    answer.iter().fold(answer.len(), |check, t| (check * 31 + (t * 100000.0 + 0.5).floor() as i64 + 100001) % 1000000007)
+}
+
+fn check_case(t: mut ref Tally, cars: Vec[Vec[i32]]) {
+    t.cases += 1;
+    let n = cars.len();
+    let want = literal(cars);
+    t.check = (t.check * 31 + digest(want)) % 1000000007;
+    let star = arm(0, cars);
+    // the earliest catch of any slower car ahead running free
+    let envelope: Vec[f64] = (0..n).map(|i| {
+        let mut best = -1.0;
+        for j in i + 1..n {
+            if cars[j][1] < cars[i][1] {
+                let c = (cars[j][0] - cars[i][0]) as f64 / (cars[i][1] - cars[j][1]) as f64;
+                if best < 0.0 or c < best {
+                    best = c;
+                }
+            }
+        }
+        best
+    }).collect();
+    let shifted: Vec[Vec[i32]] = cars.iter().map(|c| [c[0] + 1000, c[1]]).collect();
+    let spread: Vec[Vec[i32]] = cars.iter().map(|c| [2 * c[0], c[1]]).collect();
+    for i in 0..5 {
+        let what = f"arm {i} on {cars}";
+        let got = arm(i, cars);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: -1 exactly for a car with no slower car ahead, and every other
+        // time above 0
+        let signs = got.len() == n and (0..n).all(|k| if (k + 1..n).all(|j| cars[j][1] >= cars[k][1]) { got[k] == -1.0 } else { got[k] > 0.0 });
+        expect(mut t, 2, signs, f"P2 {what}");
+        // P3: each time the earliest catch of a slower car ahead running
+        // free, since the car in front never runs ahead of that line
+        expect(mut t, 3, got == envelope, f"P3 {what}");
+        // P4: every car moved on by the same distance gives the same times
+        expect(mut t, 4, arm(i, shifted) == got, f"P4 {what}");
+        // P5: every gap doubled gives every time doubled
+        let doubled: Vec[f64] = got.iter().map(|x| if *x < 0.0 { *x } else { 2.0 * x }).collect();
+        expect(mut t, 5, arm(i, spread) == doubled, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges. Every case is drawn before any arm
+    // answers.
+    let mut cases: Vec[Vec[Vec[i32]]] = [[[1, 2], [2, 1], [4, 3], [7, 2]], [[3, 4], [5, 4], [6, 3], [9, 1]], [[5, 9]], [[1, 3], [4, 3]], [[0, 2], [1, 1]], [[0, 3], [2, 2], [3, 1]], [[0, 4], [1, 3], [2, 2], [3, 1]], [[0, 3], [1, 2], [3, 1], [4, 1]]];
+    let mut seed = 17761;
+    // 1992 random cases of 1 to 12 cars, gaps up to 1 to 10 and speeds up
+    // to 1 to 10
+    for _ in 0..1992 {
+        let n = 1 + next_random(mut seed) % 12;
+        let gap = 1 + next_random(mut seed) % 10;
+        let fastest = 1 + next_random(mut seed) % 10;
+        cases.push(random_cars(mut seed, n, gap, fastest));
+    }
+    for j in 0..cases.len() {
+        check_case(mut t, cases[j]);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

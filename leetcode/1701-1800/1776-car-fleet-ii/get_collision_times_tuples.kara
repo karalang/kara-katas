@@ -1,0 +1,85 @@
+// LeetCode #1776: Car Fleet II -- the stack holds each car ahead as a
+// tuple of its position, its speed and the time it joins a fleet, so a
+// car's turn reads only the stack, never the answers.
+
+fn get_collision_times(cars: Vec[Vec[i32]]) -> Vec[f64] {
+    let n = cars.len();
+    let mut answer: Vec[f64] = Vec.filled(n, -1.0);
+    // (position, speed, when it joins a fleet or infinity)
+    let mut ahead: Vec[(f64, f64, f64)] = Vec.new();
+    for i in (0..n).rev() {
+        let (p, v) = (cars[i][0] as f64, cars[i][1] as f64);
+        let mut joined = f64.INFINITY;
+        while let Some((q, w, joins)) = ahead.last() {
+            if v > w {
+                let t = (q - p) / (v - w);
+                if t <= joins {
+                    joined = t;
+                    break;
+                }
+            }
+            ahead.pop();
+        }
+        if joined < f64.INFINITY {
+            answer[i] = joined;
+        }
+        ahead.push((p, v, joined));
+    }
+    answer
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n cars, each a gap of 1 to `gap` ahead of the one behind, at speeds from
+// 1 to `fastest`
+fn random_cars(seed: mut ref i64, n: i64, gap: i64, fastest: i64) -> Vec[Vec[i32]] {
+    let mut cars: Vec[Vec[i32]] = Vec.new();
+    let mut position = 0;
+    for _ in 0..n {
+        position += 1 + next_random(mut seed) % gap;
+        let speed = 1 + next_random(mut seed) % fastest;
+        cars.push([position as i32, speed as i32]);
+    }
+    cars
+}
+
+fn show(answer: Vec[f64]) -> String {
+    let parts: Vec[String] = answer.iter().map(|t| f"{t:.5}").collect();
+    f"[{parts.join(", ")}]"
+}
+
+// each time to five places, rounded half up, -1 as -100000
+fn digest(answer: Vec[f64]) -> i64 {
+    answer.iter().fold(0, |check, t| (check * 31 + (t * 100000.0 + 0.5).floor() as i64 + 100001) % 1000000007)
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{show(get_collision_times([[1, 2], [2, 1], [4, 3], [7, 2]]))} {show(get_collision_times([[3, 4], [5, 4], [6, 3], [9, 1]]))}");
+    // the edges: one car; two at one speed; the faster behind; a car ahead
+    // joins its fleet first, so the car behind runs into the fleet; every
+    // car slower than the one behind it
+    println(f"{show(get_collision_times([[5, 9]]))} {show(get_collision_times([[1, 3], [4, 3]]))} {show(get_collision_times([[0, 2], [1, 1]]))} {show(get_collision_times([[0, 3], [2, 2], [3, 1]]))} {show(get_collision_times([[0, 4], [1, 3], [2, 2], [3, 1]]))}");
+    // the constraints' most: 100000 cars at random, and 100000 each a step
+    // ahead at one less speed
+    let mut seed = 1776;
+    let wide = random_cars(mut seed, 100000, 10, 1000000);
+    let steps: Vec[Vec[i32]] = (0..100000).map(|i| [(i + 1) as i32, (100000 - i) as i32]).collect();
+    println(f"the most: {digest(get_collision_times(wide))} {digest(get_collision_times(steps))}");
+    // 3000 random cases of 1 to 20 cars, gaps up to 1 to 10 and speeds up
+    // to 1 to 10
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 20;
+        let gap = 1 + next_random(mut seed) % 10;
+        let fastest = 1 + next_random(mut seed) % 10;
+        let cars = random_cars(mut seed, n, gap, fastest);
+        check = (check * 31 + digest(get_collision_times(cars))) % 1000000007;
+    }
+    println(f"3000 random cases: checksum {check}");
+}
