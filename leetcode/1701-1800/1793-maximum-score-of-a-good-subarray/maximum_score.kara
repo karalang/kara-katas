@@ -1,0 +1,68 @@
+// LeetCode #1793: Maximum Score of a Good Subarray -- the ★ arm: two
+// pointers out from k. A good subarray holds k, and of the subarrays one
+// longer than the current one, the one grown toward the larger neighbour
+// keeps the larger minimum, so the window grows that way, one number at a
+// time, and every width is scored at its best. O(n)
+
+fn maximum_score(nums: Vec[i32], k: i32) -> i32 {
+    let n = nums.len();
+    let mut i = k as i64;
+    let mut j = k as i64;
+    let mut low = nums[i];
+    let mut best = low;
+    while i > 0 or j < n - 1 {
+        // a neighbour past either end counts as 0, below every number
+        let left = if i > 0 { nums[i - 1] } else { 0 };
+        let right = if j < n - 1 { nums[j + 1] } else { 0 };
+        if left > right {
+            i -= 1;
+            low = low.min(left);
+        } else {
+            j += 1;
+            low = low.min(right);
+        }
+        best = best.max(low * (j - i + 1) as i32);
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples
+    let first: Vec[i32] = [1, 4, 3, 7, 4, 5].to_vec();
+    let second: Vec[i32] = [5, 5, 4, 5, 4, 1, 1, 1].to_vec();
+    println(f"{maximum_score(first, 3)} {maximum_score(second, 0)}");
+    // the edges: one number; k at the start, and at the end; every number
+    // alike; a valley at k; a peak at k
+    let one: Vec[i32] = [7].to_vec();
+    let rising: Vec[i32] = [1, 2, 3, 4, 5].to_vec();
+    let alike: Vec[i32] = [3, 3, 3, 3].to_vec();
+    let valley: Vec[i32] = [5, 5, 1, 5, 5].to_vec();
+    let peak: Vec[i32] = [1, 2, 3, 2, 1].to_vec();
+    println(f"{maximum_score(one, 0)} {maximum_score(rising, 0)} {maximum_score(rising, 4)} {maximum_score(alike, 2)} {maximum_score(valley, 2)} {maximum_score(peak, 2)}");
+    // the constraints' most: 100000 numbers of 20000; 100000 numbers
+    // climbing 1 to 20000 over and over, k at the end; and 100000 at
+    // random, k at random
+    let full: Vec[i32] = Vec.filled(100000, 20000);
+    let saw: Vec[i32] = (0..100000).map(|i| (1 + i % 20000) as i32).collect();
+    let mut seed = 1793;
+    let wide: Vec[i32] = (0..100000).map(|_| (1 + next_random(mut seed) % 20000) as i32).collect();
+    let k = next_random(mut seed) % 100000;
+    println(f"the most: {maximum_score(full, 0)} {maximum_score(saw, 99999)} {maximum_score(wide, k as i32)}");
+    // 3000 random cases of 1 to 30 numbers of 1 to 1 + 0 to 49, k at random
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let top = 1 + next_random(mut seed) % 50;
+        let nums: Vec[i32] = (0..n).map(|_| (1 + next_random(mut seed) % top) as i32).collect();
+        let k = next_random(mut seed) % n;
+        check = (check * 31 + maximum_score(nums, k as i32)) % 1000000007;
+    }
+    println(f"3000 random cases: checksum {check}");
+}

@@ -1,0 +1,262 @@
+// LeetCode #1793: Maximum Score of a Good Subarray --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- maximum_score.kara ----
+fn a0_maximum_score(nums: Vec[i32], k: i32) -> i32 {
+    let n = nums.len();
+    let mut i = k as i64;
+    let mut j = k as i64;
+    let mut low = nums[i];
+    let mut best = low;
+    while i > 0 or j < n - 1 {
+        // a neighbour past either end counts as 0, below every number
+        let left = if i > 0 { nums[i - 1] } else { 0 };
+        let right = if j < n - 1 { nums[j + 1] } else { 0 };
+        if left > right {
+            i -= 1;
+            low = low.min(left);
+        } else {
+            j += 1;
+            low = low.min(right);
+        }
+        best = best.max(low * (j - i + 1) as i32);
+    }
+    best
+}
+
+// ---- maximum_score_stack.kara ----
+fn a1_maximum_score(nums: Vec[i32], k: i32) -> i32 {
+    let n = nums.len();
+    let k = k as i64;
+    let mut left: Vec[i64] = Vec.filled(n, -1);
+    let mut right: Vec[i64] = Vec.filled(n, n);
+    let mut stack: Vec[i64] = Vec.new();
+    for i in 0..n {
+        while stack.len() > 0 and nums[stack[stack.len() - 1]] >= nums[i] {
+            right[stack.pop().unwrap()] = i;
+        }
+        if stack.len() > 0 {
+            left[i] = stack[stack.len() - 1];
+        }
+        stack.push(i);
+    }
+    let mut best: i32 = 0;
+    for i in 0..n {
+        if left[i] < k and k < right[i] {
+            best = best.max(nums[i] * (right[i] - left[i] - 1) as i32);
+        }
+    }
+    best
+}
+
+// ---- maximum_score_search.kara ----
+fn a2_maximum_score(nums: Vec[i32], k: i32) -> i32 {
+    let n = nums.len();
+    let k = k as i64;
+    let mut left: Vec[i32] = [nums[k]].to_vec();
+    for i in (0..k).rev() {
+        left.push(left[left.len() - 1].min(nums[i]));
+    }
+    let mut right: Vec[i32] = [nums[k]].to_vec();
+    for j in k + 1..n {
+        right.push(right[right.len() - 1].min(nums[j]));
+    }
+    let mut best: i32 = 0;
+    for d in 0..left.len() {
+        let m = left[d];
+        let reach = right.partition_point(|x| x >= m);
+        best = best.max(m * (d + reach) as i32);
+    }
+    for d in 0..right.len() {
+        let m = right[d];
+        let reach = left.partition_point(|x| x >= m);
+        best = best.max(m * (d + reach) as i32);
+    }
+    best
+}
+
+// ---- maximum_score_merge.kara ----
+fn a3_reach_best(near: Vec[i32], far: Vec[i32]) -> i32 {
+    let mut best: i32 = 0;
+    let mut e = 0;
+    for d in 0..near.len() {
+        while e + 1 < far.len() and far[e + 1] >= near[d] {
+            e += 1;
+        }
+        best = best.max(near[d] * (d + e + 1) as i32);
+    }
+    best
+}
+
+fn a3_maximum_score(nums: Vec[i32], k: i32) -> i32 {
+    let n = nums.len();
+    let k = k as i64;
+    let mut left: Vec[i32] = Vec.new();
+    let mut low = nums[k];
+    for i in (0..k + 1).rev() {
+        low = low.min(nums[i]);
+        left.push(low);
+    }
+    let mut right: Vec[i32] = Vec.new();
+    low = nums[k];
+    for j in k..n {
+        low = low.min(nums[j]);
+        right.push(low);
+    }
+    a3_reach_best(left, right).max(a3_reach_best(right, left))
+}
+
+// ---- maximum_score_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn maximum_score(nums: Vec[i32], k: i32) -> i32 {
+        let n = nums.len();
+        let k = k as i64;
+        let mut (i, j) = (k, k);
+        let mut mn = nums[k];
+        let mut ans = nums[k];
+        while i > 0 or j < n - 1 {
+            if i == 0 {
+                j += 1;
+            } else if j == n - 1 {
+                i -= 1;
+            } else if nums[i - 1] < nums[j + 1] {
+                j += 1;
+            } else {
+                i -= 1;
+            }
+            mn = mn.min(nums[i].min(nums[j]));
+            ans = ans.max(mn * (j - i + 1) as i32);
+        }
+        ans
+    }
+}
+
+fn a4_maximum_score(nums: Vec[i32], k: i32) -> i32 {
+    A4Solution.maximum_score(nums, k)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every subarray from i to j with
+// i <= k <= j, its minimum found afresh, times its length
+fn literal(nums: Vec[i32], k: i32) -> i32 {
+    let n = nums.len();
+    let k = k as i64;
+    let mut best = 0;
+    for i in 0..k + 1 {
+        for j in k..n {
+            let mut low = nums[i];
+            for x in i..j + 1 {
+                low = low.min(nums[x]);
+            }
+            best = best.max(low * (j - i + 1));
+        }
+    }
+    best as i32
+}
+
+fn arm(i: i64, nums: Vec[i32], k: i32) -> i32 {
+    match i {
+        0 => a0_maximum_score(nums, k),
+        1 => a1_maximum_score(nums, k),
+        2 => a2_maximum_score(nums, k),
+        3 => a3_maximum_score(nums, k),
+        _ => a4_maximum_score(nums, k),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, nums: Vec[i32], k: i32) {
+    t.cases += 1;
+    let n = nums.len();
+    let star = arm(0, nums, k);
+    t.check = (t.check * 31 + star) % 1000000007;
+    let want = if n <= 40 { Some(literal(nums, k)) } else { None };
+    let mut back = nums.clone();
+    back.reverse();
+    let twice: Vec[i32] = nums.iter().map(|x| 2 * x).collect();
+    let mut longer = nums.clone();
+    longer.push(nums[(k as i64 * 7 + 3) % n]);
+    let mut raised = nums.clone();
+    raised[k] = nums.iter().max().unwrap();
+    for i in 0..5 {
+        let what = f"arm {i} on {nums} at {k}";
+        let got = arm(i, nums, k);
+        // P1: the statement read literally, while there are at most 40
+        // numbers
+        if let Some(w) = want {
+            expect(mut t, 1, got == w, f"P1 {what}");
+        }
+        // P2: the numbers in reverse order, k with them, give the same
+        // answer
+        expect(mut t, 2, arm(i, back, (n - 1) as i32 - k) == got, f"P2 {what}");
+        // P3: every number doubled doubles the answer
+        expect(mut t, 3, arm(i, twice, k) == 2 * got, f"P3 {what}");
+        // P4: one more number at the end never lowers the answer
+        expect(mut t, 4, arm(i, longer, k) >= got, f"P4 {what}");
+        // P5: the number at k raised to the largest never lowers the answer
+        expect(mut t, 5, arm(i, raised, k) >= got, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples, the edges, 3000 numbers at random and climbing,
+    // and 1990 random cases of 1 to 40 numbers. Every case is drawn before
+    // any arm answers.
+    let mut cases: Vec[(Vec[i32], i32)] = Vec.new();
+    let examples: Vec[Vec[i32]] = [[1, 4, 3, 7, 4, 5].to_vec(), [5, 5, 4, 5, 4, 1, 1, 1].to_vec(), [7].to_vec(), [1, 2, 3, 4, 5].to_vec(), [1, 2, 3, 4, 5].to_vec(), [3, 3, 3, 3].to_vec(), [5, 5, 1, 5, 5].to_vec(), [1, 2, 3, 2, 1].to_vec()].to_vec();
+    let at: Vec[i32] = [3, 0, 0, 0, 4, 2, 2, 2].to_vec();
+    for e in 0..examples.len() {
+        cases.push((examples[e].clone(), at[e]));
+    }
+    let mut seed = 17931;
+    let wide: Vec[i32] = (0..3000).map(|_| (1 + next_random(mut seed) % 20000) as i32).collect();
+    let k = next_random(mut seed) % 3000;
+    cases.push((wide, k as i32));
+    let saw: Vec[i32] = (0..3000).map(|i| (1 + i % 700) as i32).collect();
+    cases.push((saw, 2999));
+    for _ in 0..1990 {
+        let n = 1 + next_random(mut seed) % 40;
+        let top = 1 + next_random(mut seed) % 50;
+        let nums: Vec[i32] = (0..n).map(|_| (1 + next_random(mut seed) % top) as i32).collect();
+        let k = next_random(mut seed) % n;
+        cases.push((nums, k as i32));
+    }
+    for j in 0..cases.len() {
+        let (nums, k) = cases[j].clone();
+        check_case(mut t, nums, k);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
