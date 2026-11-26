@@ -1,0 +1,90 @@
+// LeetCode #1764: Form Array by Concatenating Subarrays of Another Array --
+// a Rust solution as LeetCode's Rust users write it, carried to Kāra by
+// `karac fix`
+
+struct Solution {}
+
+impl Solution {
+    pub fn can_choose(groups: Vec[Vec[i32]], nums: Vec[i32]) -> bool {
+        let mut i = 0;
+        for g in groups.iter() {
+            let mut found = false;
+            while i + g.len() <= nums.len() {
+                if nums[i..i + g.len()] == g.as_slice() {
+                    i += g.len();
+                    found = true;
+                    break;
+                }
+                i += 1;
+            }
+            if not found {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+fn can_choose(groups: Vec[Vec[i32]], nums: Vec[i32]) -> bool {
+    Solution.can_choose(groups, nums)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n values from 0 to values - 1
+fn random_values(seed: mut ref i64, n: i64, values: i64) -> Vec[i32] {
+    (0..n).map(|_| (next_random(mut seed) % values) as i32).collect()
+}
+
+// k groups of 1 to `most` values, and nums that holds them in order, with
+// up to `gap` other values before and between them; when `break_one`, one
+// value of one group is changed after nums is built
+fn random_case(seed: mut ref i64, k: i64, most: i64, values: i64, gap: i64, break_one: bool) -> (Vec[Vec[i32]], Vec[i32]) {
+    let mut groups: Vec[Vec[i32]] = Vec.new();
+    let mut nums: Vec[i32] = Vec.new();
+    for _ in 0..k {
+        let filler = next_random(mut seed) % (gap + 1);
+        nums.extend(random_values(mut seed, filler, values));
+        let len = 1 + next_random(mut seed) % most;
+        let group = random_values(mut seed, len, values);
+        nums.extend(group.clone());
+        groups.push(group);
+    }
+    if break_one {
+        let g = next_random(mut seed) % k;
+        let at = next_random(mut seed) % groups[g].len();
+        groups[g][at] = (next_random(mut seed) % values) as i32;
+    }
+    (groups, nums)
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{can_choose([[1, -1, -1], [3, -2, 0]], [1, -1, 0, 1, -1, -1, 3, -2, 0])} {can_choose([[10, -2], [1, 2, 3, 4]], [1, 2, 3, 4, 10, -2])} {can_choose([[1, 2, 3], [3, 4]], [7, 7, 1, 2, 3, 4, 7, 7])}");
+    // the edges: one group, the whole array; groups that may not overlap;
+    // a group longer than the array; a near match before the real one; the
+    // same group twice
+    println(f"{can_choose([[5, 6]], [5, 6])} {can_choose([[1, 2], [2, 3]], [1, 2, 3])} {can_choose([[1, 2, 3, 4]], [1, 2, 3])} {can_choose([[1, 1, 2]], [1, 1, 1, 2])} {can_choose([[4, 4], [4, 4]], [4, 4, 4, 4])}");
+    // the constraints' most: one group of up to 1000 values, 1000 groups of
+    // one value, and 20 groups with one value changed
+    let mut seed = 1764;
+    let (long_groups, long_nums) = random_case(mut seed, 1, 1000, 3, 0, false);
+    let (short_groups, short_nums) = random_case(mut seed, 1000, 1, 2, 0, false);
+    let (broken_groups, broken_nums) = random_case(mut seed, 20, 40, 2, 10, true);
+    println(f"the most: {can_choose(long_groups, long_nums)} {can_choose(short_groups, short_nums)} {can_choose(broken_groups, broken_nums)}");
+    // 3000 random cases of 1 to 5 groups of 1 to 4 values from 0 to 2, one
+    // in three with a value changed
+    let mut check = 0;
+    for _ in 0..3000 {
+        let k = 1 + next_random(mut seed) % 5;
+        let break_one = next_random(mut seed) % 3 == 0;
+        let (groups, nums) = random_case(mut seed, k, 4, 3, 3, break_one);
+        check = (check * 31 + if can_choose(groups, nums) { 1 } else { 0 }) % 1000000007;
+    }
+    println(f"3000 random cases: checksum {check}");
+}

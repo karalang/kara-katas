@@ -1,0 +1,310 @@
+// LeetCode #1764: Form Array by Concatenating Subarrays of Another Array -- differential test of the
+// five arms against the statement read literally, with five more
+// properties.
+
+// ---- can_choose.kara ----
+fn a0_can_choose(groups: Vec[Vec[i32]], nums: Vec[i32]) -> bool {
+    let mut at = 0;
+    for group in groups.iter() {
+        let len = group.len();
+        loop {
+            if at + len > nums.len() {
+                return false;
+            }
+            if (0..len).all(|i| nums[at + i] == group[i]) {
+                break;
+            }
+            at += 1;
+        }
+        at += len;
+    }
+    true
+}
+
+// ---- can_choose_kmp.kara ----
+fn a1_failure(group: Vec[i32]) -> Vec[i64] {
+    let mut fail: Vec[i64] = Vec.filled(group.len(), 0);
+    let mut k = 0;
+    for i in 1..group.len() {
+        while k > 0 and group[i] != group[k] {
+            k = fail[k - 1];
+        }
+        if group[i] == group[k] {
+            k += 1;
+        }
+        fail[i] = k;
+    }
+    fail
+}
+
+fn a1_can_choose(groups: Vec[Vec[i32]], nums: Vec[i32]) -> bool {
+    let mut at = 0;
+    for group in groups.iter() {
+        let fail = a1_failure(group);
+        let mut k = 0;
+        let mut found = false;
+        while at < nums.len() {
+            while k > 0 and nums[at] != group[k] {
+                k = fail[k - 1];
+            }
+            if nums[at] == group[k] {
+                k += 1;
+            }
+            at += 1;
+            if k == group.len() {
+                found = true;
+                break;
+            }
+        }
+        if not found {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- can_choose_windows.kara ----
+fn a2_can_choose(groups: Vec[Vec[i32]], nums: Vec[i32]) -> bool {
+    let mut at = 0;
+    for group in groups.iter() {
+        let rest = nums[at..];
+        match rest.windows(group.len()).into_iter().position(|w| w == group.as_slice()) {
+            Some(i) => at += i + group.len(),
+            None => return false,
+        }
+    }
+    true
+}
+
+// ---- can_choose_hash.kara ----
+const A3_BASE: i64 = 1000003;
+const A3_MOD: i64 = 1000000007;
+
+fn a3_can_choose(groups: Vec[Vec[i32]], nums: Vec[i32]) -> bool {
+    let digit = |v: i32| (v % A3_MOD + A3_MOD) % A3_MOD;
+    let mut at = 0;
+    for group in groups.iter() {
+        let len = group.len();
+        if at + len > nums.len() {
+            return false;
+        }
+        let mut target = 0;
+        let mut high = 1;
+        for i in 0..len {
+            target = (target * A3_BASE + digit(group[i])) % A3_MOD;
+            if i > 0 {
+                high = high * A3_BASE % A3_MOD;
+            }
+        }
+        let mut rolling = 0;
+        for i in 0..len {
+            rolling = (rolling * A3_BASE + digit(nums[at + i])) % A3_MOD;
+        }
+        let mut start = at;
+        loop {
+            if rolling == target and (0..len).all(|i| nums[start + i] == group[i]) {
+                break;
+            }
+            if start + len >= nums.len() {
+                return false;
+            }
+            rolling = ((rolling - digit(nums[start]) * high % A3_MOD + A3_MOD) * A3_BASE + digit(nums[start + len])) % A3_MOD;
+            start += 1;
+        }
+        at = start + len;
+    }
+    true
+}
+
+// ---- can_choose_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn can_choose(groups: Vec[Vec[i32]], nums: Vec[i32]) -> bool {
+        let mut i = 0;
+        for g in groups.iter() {
+            let mut found = false;
+            while i + g.len() <= nums.len() {
+                if nums[i..i + g.len()] == g.as_slice() {
+                    i += g.len();
+                    found = true;
+                    break;
+                }
+                i += 1;
+            }
+            if not found {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+fn a4_can_choose(groups: Vec[Vec[i32]], nums: Vec[i32]) -> bool {
+    A4Solution.can_choose(groups, nums)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_values(seed: mut ref i64, n: i64, values: i64) -> Vec[i32] {
+    (0..n).map(|_| (next_random(mut seed) % values) as i32).collect()
+}
+
+// k groups of 1 to `most` values and nums that holds them in order, with
+// up to `gap` other values before and between them; when `break_one`, one
+// value of one group is changed after nums is built
+fn random_case(seed: mut ref i64, k: i64, most: i64, values: i64, gap: i64, break_one: bool) -> (Vec[Vec[i32]], Vec[i32]) {
+    let mut groups: Vec[Vec[i32]] = Vec.new();
+    let mut nums: Vec[i32] = Vec.new();
+    for _ in 0..k {
+        let filler = next_random(mut seed) % (gap + 1);
+        nums.extend(random_values(mut seed, filler, values));
+        let len = 1 + next_random(mut seed) % most;
+        let group = random_values(mut seed, len, values);
+        nums.extend(group.clone());
+        groups.push(group);
+    }
+    if break_one {
+        let g = next_random(mut seed) % k;
+        let at = next_random(mut seed) % groups[g].len();
+        groups[g][at] = (next_random(mut seed) % values) as i32;
+    }
+    (groups, nums)
+}
+
+// the statement read literally: the groups from `from` on can be chosen,
+// in order and not overlapping, from nums at `start` or later, trying
+// every place each group could start
+fn fits(groups: Vec[Vec[i32]], nums: Vec[i32], from: i64, start: i64) -> bool {
+    if from == groups.len() {
+        return true;
+    }
+    let group = ref groups[from];
+    let mut s = start;
+    while s + group.len() <= nums.len() {
+        let mut same = true;
+        for i in 0..group.len() {
+            if nums[s + i] != group[i] {
+                same = false;
+            }
+        }
+        if same and fits(groups, nums, from + 1, s + group.len()) {
+            return true;
+        }
+        s += 1;
+    }
+    false
+}
+
+fn arm(i: i64, groups: Vec[Vec[i32]], nums: Vec[i32]) -> bool {
+    match i {
+        0 => a0_can_choose(groups, nums),
+        1 => a1_can_choose(groups, nums),
+        2 => a2_can_choose(groups, nums),
+        3 => a3_can_choose(groups, nums),
+        _ => a4_can_choose(groups, nums),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn reversed(v: Vec[i32]) -> Vec[i32] {
+    v.iter().rev().map(|x| *x).collect()
+}
+
+fn check_case(t: mut ref Tally, groups: Vec[Vec[i32]], nums: Vec[i32]) {
+    t.cases += 1;
+    let want = fits(groups, nums, 0, 0);
+    t.check = (t.check * 31 + groups.len() * 2 + if want { 1 } else { 0 }) % 1000000007;
+    let star = arm(0, groups, nums);
+    // the groups joined end to end, as nums
+    let mut joined: Vec[i32] = Vec.new();
+    for g in groups.iter() {
+        joined.extend(g.clone());
+    }
+    // every group and nums read backwards, the groups in reverse order
+    let back_groups: Vec[Vec[i32]] = groups.iter().rev().map(|g| reversed(g)).collect();
+    let back_nums = reversed(nums);
+    // a value no group holds before and after nums
+    let mut padded: Vec[i32] = [-1];
+    padded.extend(nums.clone());
+    padded.push(-1);
+    // every value negated
+    let neg_groups: Vec[Vec[i32]] = groups.iter().map(|g| g.iter().map(|x| -*x).collect()).collect();
+    let neg_nums: Vec[i32] = nums.iter().map(|x| -*x).collect();
+    for i in 0..5 {
+        let what = f"arm {i} on {groups} in {nums}";
+        let got = arm(i, groups, nums);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: the groups fit their own concatenation
+        expect(mut t, 2, arm(i, groups, joined), f"P2 {what}");
+        // P3: everything read backwards fits as well
+        expect(mut t, 3, arm(i, back_groups, back_nums) == got, f"P3 {what}");
+        // P4: a value no group holds, at either end, changes nothing
+        expect(mut t, 4, arm(i, groups, padded) == got, f"P4 {what}");
+        // P5: every value negated changes nothing
+        expect(mut t, 5, arm(i, neg_groups, neg_nums) == got, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges. Every case is drawn before any arm
+    // answers.
+    let mut cases: Vec[(Vec[Vec[i32]], Vec[i32])] = [
+        ([[1, -1, -1], [3, -2, 0]], [1, -1, 0, 1, -1, -1, 3, -2, 0]),
+        ([[10, -2], [1, 2, 3, 4]], [1, 2, 3, 4, 10, -2]),
+        ([[1, 2, 3], [3, 4]], [7, 7, 1, 2, 3, 4, 7, 7]),
+        ([[5, 6]], [5, 6]),
+        ([[1, 2], [2, 3]], [1, 2, 3]),
+        ([[1, 2, 3, 4]], [1, 2, 3]),
+        ([[1, 1, 2]], [1, 1, 1, 2]),
+        ([[4, 4], [4, 4]], [4, 4, 4, 4]),
+        ([[1, 2, 1, 2, 3]], [1, 2, 1, 2, 1, 2, 3]),
+        ([[2], [1]], [1, 2]),
+    ];
+    let mut seed = 17641;
+    // 1990 random cases: 1 to 4 groups of 1 to 4 values from 1 to 3
+    // values, up to 3 others around them, one in three with a value
+    // changed
+    for _ in 0..1990 {
+        let k = 1 + next_random(mut seed) % 4;
+        let most = 1 + next_random(mut seed) % 4;
+        let values = 1 + next_random(mut seed) % 3;
+        let gap = next_random(mut seed) % 4;
+        let break_one = next_random(mut seed) % 3 == 0;
+        cases.push(random_case(mut seed, k, most, values, gap, break_one));
+    }
+    for j in 0..cases.len() {
+        check_case(mut t, cases[j].0, cases[j].1);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
