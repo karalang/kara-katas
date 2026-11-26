@@ -49,6 +49,14 @@ mut intervals = intervals;` first in the body, `sort_unstable_by` to
 `sort_by`, the `&` dropped from `cmp(&b[0])` and `cmp(&a[1])`, and
 `Solution::` to `Solution.`. Its output matches on the first run.
 
+An earlier write of this kata (lost before it was pushed) had a Rust arm
+that counts in one `fold((0, 0), |(count, end), interval| ..)` and
+returns the count as `i32`. Its seed's numbers were settled at `i64` at
+the call, so the count was refused as a narrowing, though a lone literal
+seed and the same tuple bound by a `let` keep their numbers open
+(design.md §8 Literals). That was B-2026-11-21-57, fixed at 449dd49566;
+the fold form now checks and runs.
+
 ## Differential
 
 `differential.kara` holds copies of the five arms and the statement read
