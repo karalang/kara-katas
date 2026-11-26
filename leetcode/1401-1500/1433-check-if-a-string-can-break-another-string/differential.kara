@@ -1,0 +1,281 @@
+// LeetCode #1433: Check If a String Can Break Another String -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- check_if_can_break.kara ----
+fn a0_check_if_can_break(s1: String, s2: String) -> bool {
+    // both strings sorted, and one at least the other at every place, the
+    // smallest letter of one against the smallest of the other and so on
+    let mut a = s1.bytes().to_vec();
+    let mut b = s2.bytes().to_vec();
+    a.sort();
+    b.sort();
+    a.iter().zip(b.iter()).all(|(x, y)| x >= y) or a.iter().zip(b.iter()).all(|(x, y)| x <= y)
+}
+
+// ---- check_if_can_break_counts.kara ----
+fn a1_check_if_can_break(s1: String, s2: String) -> bool {
+    // the letters counted, and one string breaks the other when, for every
+    // letter, it has at most as many letters up to that one: its k-th
+    // smallest letter is then never below the other's
+    let mut one = [0; 26];
+    let mut two = [0; 26];
+    for c in s1.bytes().iter() {
+        one[c - b'a'] += 1;
+    }
+    for c in s2.bytes().iter() {
+        two[c - b'a'] += 1;
+    }
+    let mut up = true;
+    let mut down = true;
+    let mut below_one = 0;
+    let mut below_two = 0;
+    for i in 0..26 {
+        below_one += one[i];
+        below_two += two[i];
+        up = up and below_one <= below_two;
+        down = down and below_one >= below_two;
+    }
+    up or down
+}
+
+// ---- check_if_can_break_heap.kara ----
+fn a2_check_if_can_break(s1: String, s2: String) -> bool {
+    // each string's letters in a heap, smallest first, and the two heaps
+    // taken from in step, the smallest left of one against the smallest
+    // left of the other
+    let mut one: PriorityQueue[u8] = PriorityQueue.new();
+    let mut two: PriorityQueue[u8] = PriorityQueue.new();
+    for c in s1.bytes().iter() {
+        one.push(c);
+    }
+    for c in s2.bytes().iter() {
+        two.push(c);
+    }
+    let mut up = true;
+    let mut down = true;
+    while let (Some(x), Some(y)) = (one.pop(), two.pop()) {
+        up = up and x >= y;
+        down = down and x <= y;
+    }
+    up or down
+}
+
+// ---- check_if_can_break_chars.kara ----
+fn a3_breaks(a: Slice[char], b: Slice[char]) -> bool {
+    // at every place a letter of `a` at least the letter of `b`
+    for i in 0..a.len() {
+        if a[i] < b[i] {
+            return false;
+        }
+    }
+    true
+}
+
+fn a3_check_if_can_break(s1: String, s2: String) -> bool {
+    // the letters as chars, sorted, and each way round tried
+    let mut a: Vec[char] = s1.chars().collect();
+    let mut b: Vec[char] = s2.chars().collect();
+    a.sort();
+    b.sort();
+    a3_breaks(a, b) or a3_breaks(b, a)
+}
+
+// ---- check_if_can_break_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_check_if_can_break(s1: String, s2: String) -> bool {
+        let mut a: Vec[u8] = s1.bytes().to_vec();
+        let mut b: Vec[u8] = s2.bytes().to_vec();
+        a.sort();
+        b.sort();
+        let up = a.iter().zip(b.iter()).all(|(x, y)| x >= y);
+        let down = a.iter().zip(b.iter()).all(|(x, y)| x <= y);
+        up or down
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n letters, each one of the first `k` of the alphabet
+fn drawn(n: i64, k: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push((b'a' + (next_random(mut seed) % k) as u8) as char);
+    }
+    s
+}
+
+// each letter of `s` moved up by 0 or 1, never past z
+fn nudged(s: Str, seed: mut ref i64) -> String {
+    let mut t = String.new();
+    for c in s.bytes().iter() {
+        let up = if c < b'z' { (next_random(mut seed) % 2) as u8 } else { 0 };
+        t.push((c + up) as char);
+    }
+    t
+}
+
+// every order of the letters, one for each choice of first letter and an
+// order of the rest
+fn orders(letters: Vec[u8]) -> Vec[Vec[u8]] {
+    if letters.len() <= 1 {
+        return [letters.clone()].to_vec();
+    }
+    let mut all: Vec[Vec[u8]] = Vec.new();
+    for i in 0..letters.len() {
+        let mut rest = letters.clone();
+        let first = rest.remove(i);
+        for tail in orders(rest).iter() {
+            let mut order = [first].to_vec();
+            order.extend(tail.iter().cloned());
+            all.push(order);
+        }
+    }
+    all
+}
+
+// `x` breaks `y`: at every place a letter at least the other's
+fn breaks(x: Vec[u8], y: Vec[u8]) -> bool {
+    x.iter().zip(y.iter()).all(|(a, b)| a >= b)
+}
+
+// the statement read literally: every order of s1 against every order of
+// s2, either way round
+fn literal(s1: Str, s2: Str) -> bool {
+    let ones = orders(s1.bytes().to_vec());
+    let twos = orders(s2.bytes().to_vec());
+    for x in ones.iter() {
+        for y in twos.iter() {
+            if breaks(x, y) or breaks(y, x) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn arm(i: i64, s1: Str, s2: Str) -> bool {
+    let (s1, s2) = (s1.to_string(), s2.to_string());
+    match i {
+        0 => a0_check_if_can_break(s1, s2),
+        1 => a1_check_if_can_break(s1, s2),
+        2 => a2_check_if_can_break(s1, s2),
+        3 => a3_check_if_can_break(s1, s2),
+        _ => A4Solution.a4_check_if_can_break(s1, s2),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+// each letter mirrored through the alphabet, a to z and z to a
+fn mirrored(s: Str) -> String {
+    s.bytes().iter().map(|c| (b'a' + b'z' - c) as char).collect()
+}
+
+fn check_case(t: mut ref Tally, s1: Str, s2: Str, extra: Str, turn: i64) {
+    t.cases += 1;
+    let star = arm(0, s1, s2);
+    t.check = (t.check * 3 + if star { 2 } else { 1 }) % 1000000007;
+    let n = s1.len();
+    let want = if n <= 5 { Some(literal(s1, s2)) } else { None };
+    let k = turn % n;
+    let turned = f"{s1[k..]}{s1[..k]}";
+    let (m1, m2) = (mirrored(s1), mirrored(s2));
+    let (e1, e2) = (f"{s1}{extra}", f"{extra}{s2}");
+    for i in 0..5 {
+        let what = f"arm {i} on {n} letters";
+        let got = arm(i, s1, s2);
+        // P1: the statement read literally, while there are at most 5 letters
+        if let Some(w) = want {
+            expect(mut t, 1, got == w, f"P1 {what}");
+        }
+        // P2: either way round the same answer
+        expect(mut t, 2, arm(i, s2, s1) == got, f"P2 {what}");
+        // P3: a string breaks itself turned round
+        expect(mut t, 3, arm(i, s1, turned), f"P3 {what}");
+        // P4: the letters mirrored through the alphabet give the same answer
+        expect(mut t, 4, arm(i, m1, m2) == got, f"P4 {what}");
+        // P5: the same letters added to both give the same answer
+        expect(mut t, 5, arm(i, e1, e2) == got, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: one letter alike, one apart, two
+    // letters swapped, each string ahead at one place, one string all
+    // below, and the constraints' most three ways. Every case is drawn
+    // before any arm answers.
+    let mut cases: Vec[(String, String)] = Vec.new();
+    for (a, b) in [
+        ("abc", "xya"),
+        ("abe", "acd"),
+        ("leetcodee", "interview"),
+        ("a", "a"),
+        ("a", "b"),
+        ("ab", "ba"),
+        ("az", "by"),
+        ("ac", "bb"),
+        ("aaa", "zzz"),
+    ] {
+        cases.push((a.to_string(), b.to_string()));
+    }
+    let mut seed = 14331;
+    cases.push(("a".repeat(100000), "z".repeat(100000)));
+    let one = drawn(100000, 26, mut seed);
+    let two = drawn(100000, 26, mut seed);
+    let up = nudged(one, mut seed);
+    cases.push((one.clone(), two));
+    cases.push((up, one));
+    // 1991 random pairs: 1 to 5 letters a third of the time and up to 60
+    // otherwise, of the first 1 to 26 of the alphabet, the second drawn
+    // alone half the time and the first nudged up otherwise
+    for _ in 0..1991 {
+        let n = if next_random(mut seed) % 3 == 0 { 1 + next_random(mut seed) % 5 } else { 1 + next_random(mut seed) % 60 };
+        let k = 1 + next_random(mut seed) % 26;
+        let a = drawn(n, k, mut seed);
+        let b = if next_random(mut seed) % 2 == 0 { drawn(n, k, mut seed) } else { nudged(a, mut seed) };
+        cases.push((a, b));
+    }
+    // and for each case the letters P5 adds and the turn P3 makes
+    let mut extras: Vec[(String, i64)] = Vec.new();
+    for _ in 0..cases.len() {
+        let e = drawn(next_random(mut seed) % 11, 1 + next_random(mut seed) % 26, mut seed);
+        extras.push((e, next_random(mut seed)));
+    }
+    for j in 0..cases.len() {
+        let (s1, s2) = cases[j].clone();
+        let (extra, turn) = extras[j].clone();
+        check_case(mut t, s1, s2, extra, turn);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

@@ -1,0 +1,87 @@
+// LeetCode #1433: Check If a String Can Break Another String -- a Rust
+// solution as LeetCode's Rust users write it: `s1.into_bytes()` into a
+// `Vec<u8>`, `sort_unstable()`, and the two ways round by `zip` and `all`,
+// carried to Kāra by `karac fix`
+
+struct Solution {}
+
+impl Solution {
+    pub fn check_if_can_break(s1: String, s2: String) -> bool {
+        let mut a: Vec[u8] = s1.bytes().to_vec();
+        let mut b: Vec[u8] = s2.bytes().to_vec();
+        a.sort();
+        b.sort();
+        let up = a.iter().zip(b.iter()).all(|(x, y)| x >= y);
+        let down = a.iter().zip(b.iter()).all(|(x, y)| x <= y);
+        up or down
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n letters, each one of the first `k` of the alphabet
+fn drawn(n: i64, k: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push((b'a' + (next_random(mut seed) % k) as u8) as char);
+    }
+    s
+}
+
+// each letter of `s` moved up by 0 or 1, never past z
+fn nudged(s: Str, seed: mut ref i64) -> String {
+    let mut t = String.new();
+    for c in s.bytes().iter() {
+        let up = if c < b'z' { (next_random(mut seed) % 2) as u8 } else { 0 };
+        t.push((c + up) as char);
+    }
+    t
+}
+
+fn main() {
+    // LeetCode's three examples, and five more
+    let pairs = [
+        ("abc", "xya"),
+        ("abe", "acd"),
+        ("leetcodee", "interview"),
+        ("a", "a"),
+        ("ab", "ba"),
+        ("az", "by"),
+        ("aaa", "zzz"),
+        ("bxd", "cwc"),
+    ];
+    let firsts: Vec[String] = pairs
+        .iter()
+        .map(|(a, b)| f"{Solution.check_if_can_break(a.to_string(), b.to_string())}")
+        .collect();
+    println(firsts.join(" "));
+    // the constraints' most: 10^5 a's against 10^5 z's, two drawn strings,
+    // and a drawn string against itself nudged up
+    let mut seed = 1433;
+    let one = drawn(100000, 26, mut seed);
+    let two = drawn(100000, 26, mut seed);
+    let up = nudged(one, mut seed);
+    println(f"10^5 letters: {Solution.check_if_can_break("a".repeat(100000), "z".repeat(100000))} {Solution.check_if_can_break(one, two)} {Solution.check_if_can_break(up, one)}");
+    // 2000 random pairs of 1 to 60 letters, of the first 1 to 26 of the
+    // alphabet, the second drawn alone half the time and the first nudged
+    // up otherwise
+    let mut check: i64 = 0;
+    let mut breaks: i64 = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 60;
+        let k = 1 + next_random(mut seed) % 26;
+        let a = drawn(n, k, mut seed);
+        let b = if next_random(mut seed) % 2 == 0 { drawn(n, k, mut seed) } else { nudged(a, mut seed) };
+        let got = Solution.check_if_can_break(a, b);
+        if got {
+            breaks += 1;
+        }
+        check = (check * 3 + if got { 2 } else { 1 }) % 1000000007;
+    }
+    println(f"2000 random pairs: {breaks} can break, checksum {check}");
+}
