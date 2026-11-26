@@ -1,0 +1,66 @@
+fn min_subsequence(nums: Vec[i32]) -> Vec[i32] {
+    let mut order = nums.clone();
+    order.sort();
+    // prefix[k] is the sum of the k smallest
+    let mut prefix: Vec[i32] = Vec.new();
+    prefix.push(0);
+    for x in order.iter() {
+        prefix.push(prefix[prefix.len() - 1] + x);
+    }
+    let total = prefix[order.len()];
+    // the most numbers that can be left out: the last k whose sum is less
+    // than half
+    let cut = prefix.partition_point(|p| p * 2 < total) - 1;
+    order[cut..].iter().rev().collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n numbers from 1 to hi
+fn drawn(n: i64, hi: i64, seed: mut ref i64) -> Vec[i32] {
+    (0..n).map(|_| (1 + next_random(mut seed) % hi) as i32).collect()
+}
+
+fn shown(v: Vec[i32]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(" ")}]"
+}
+
+fn main() {
+    // LeetCode's two examples, and four more
+    println([
+        shown(min_subsequence([4, 3, 10, 9, 8])),
+        shown(min_subsequence([4, 4, 7, 6, 7])),
+        shown(min_subsequence([6])),
+        shown(min_subsequence([1, 1])),
+        shown(min_subsequence([3, 1, 1, 1])),
+        shown(min_subsequence([5, 5, 5, 5, 5])),
+    ].join(" "));
+    // the constraints' most: 500 numbers, all 100, all 1, and drawn
+    let mut seed = 1403;
+    let top: Vec[i32] = (0..500).map(|_| 100).collect();
+    let ones: Vec[i32] = (0..500).map(|_| 1).collect();
+    let big = drawn(500, 100, mut seed);
+    let picked = min_subsequence(big);
+    let sum: i32 = picked.iter().sum();
+    println(f"500 numbers: {min_subsequence(top).len()} {min_subsequence(ones).len()} {picked.len()}, sum {sum}");
+    // 2000 random cases of 1 to 40 numbers up to 100, or up to 5
+    let mut check: i64 = 0;
+    let mut taken: i64 = 0;
+    for i in 0..2000 {
+        let n = 1 + next_random(mut seed) % 40;
+        let hi = if i % 2 == 0 { 100 } else { 5 };
+        let picked = min_subsequence(drawn(n, hi, mut seed));
+        taken += picked.len();
+        for x in picked.iter() {
+            check = (check * 131 + x) % 1000000007;
+        }
+        check = (check * 131 + picked.len()) % 1000000007;
+    }
+    println(f"2000 random cases: {taken} taken, checksum {check}");
+}

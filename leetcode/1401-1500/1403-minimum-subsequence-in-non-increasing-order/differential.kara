@@ -1,0 +1,265 @@
+// LeetCode #1403: Minimum Subsequence in Non-Increasing Order -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- min_subsequence.kara ----
+fn a0_min_subsequence(nums: Vec[i32]) -> Vec[i32] {
+    let mut order = nums.clone();
+    order.sort();
+    order.reverse();
+    let mut rest: i32 = order.iter().sum();
+    let mut taken = 0;
+    let mut picked = Vec.new();
+    for x in order.iter() {
+        picked.push(x);
+        taken += x;
+        rest -= x;
+        if taken > rest {
+            break;
+        }
+    }
+    picked
+}
+
+// ---- min_subsequence_counting.kara ----
+fn a1_min_subsequence(nums: Vec[i32]) -> Vec[i32] {
+    // how many of each value from 1 to 100
+    let mut count = [0; 101];
+    for x in nums.iter() {
+        count[x] += 1;
+    }
+    let total: i32 = nums.iter().sum();
+    let mut picked: Vec[i32] = Vec.new();
+    let mut taken = 0;
+    let mut value = 100;
+    while taken * 2 <= total {
+        if count[value] > 0 {
+            count[value] -= 1;
+            picked.push(value as i32);
+            taken += value as i32;
+        } else {
+            value -= 1;
+        }
+    }
+    picked
+}
+
+// ---- min_subsequence_heap.kara ----
+fn a2_min_subsequence(nums: Vec[i32]) -> Vec[i32] {
+    let mut heap = PriorityQueue.max_first();
+    for x in nums.iter() {
+        heap.push(x);
+    }
+    let mut rest: i32 = nums.iter().sum();
+    let mut taken = 0;
+    let mut picked = Vec.new();
+    while taken <= rest {
+        let x = heap.pop().unwrap();
+        taken += x;
+        rest -= x;
+        picked.push(x);
+    }
+    picked
+}
+
+// ---- min_subsequence_prefix.kara ----
+fn a3_min_subsequence(nums: Vec[i32]) -> Vec[i32] {
+    let mut order = nums.clone();
+    order.sort();
+    // prefix[k] is the sum of the k smallest
+    let mut prefix: Vec[i32] = Vec.new();
+    prefix.push(0);
+    for x in order.iter() {
+        prefix.push(prefix[prefix.len() - 1] + x);
+    }
+    let total = prefix[order.len()];
+    // the most numbers that can be left out: the last k whose sum is less
+    // than half
+    let cut = prefix.partition_point(|p| p * 2 < total) - 1;
+    order[cut..].iter().rev().collect()
+}
+
+// ---- min_subsequence_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_min_subsequence(nums: own Vec[i32]) -> Vec[i32] {
+        let mut nums = nums;
+        nums.sort_by(|a, b| b.cmp(a));
+        let total: i32 = nums.iter().sum();
+        let mut sum = 0;
+        let mut res = Vec.new();
+        for n in nums.iter() {
+            sum += n;
+            res.push(n);
+            if sum > total - sum {
+                break;
+            }
+        }
+        res
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n numbers from 1 to hi
+fn drawn(n: i64, hi: i64, seed: mut ref i64) -> Vec[i32] {
+    (0..n).map(|_| (1 + next_random(mut seed) % hi) as i32).collect()
+}
+
+// the statement read literally: every subsequence whose sum is more than
+// the rest's, the fewest numbers first and then the largest sum, returned
+// in non-increasing order
+fn literal(nums: Vec[i32]) -> Vec[i32] {
+    let n = nums.len();
+    let total: i64 = nums.iter().map(|x| x as i64).sum();
+    let mut best: Vec[i32] = Vec.new();
+    let mut best_sum: i64 = 0;
+    let mut found = false;
+    for mask in 0..(1 << n) {
+        let chosen: Vec[i32] = (0..n).filter(|i| (mask >> i) & 1 == 1).map(|i| nums[i]).collect();
+        let sum: i64 = chosen.iter().map(|x| x as i64).sum();
+        if sum <= total - sum {
+            continue;
+        }
+        let fewer = chosen.len() < best.len();
+        let larger = chosen.len() == best.len() and sum > best_sum;
+        if not found or fewer or larger {
+            best = chosen;
+            best_sum = sum;
+            found = true;
+        }
+    }
+    best.sort();
+    best.reverse();
+    best
+}
+
+// is `part` drawn from `whole`, each number used no more often than it is
+// there?
+fn within(part: Vec[i32], whole: Vec[i32]) -> bool {
+    let mut count: Vec[i64] = Vec.filled(201, 0);
+    for x in whole.iter() {
+        count[x] += 1;
+    }
+    for x in part.iter() {
+        count[x] -= 1;
+        if count[x] < 0 {
+            return false;
+        }
+    }
+    true
+}
+
+fn arm(i: i64, nums: Vec[i32]) -> Vec[i32] {
+    let nums = nums.clone();
+    match i {
+        0 => a0_min_subsequence(nums),
+        1 => a1_min_subsequence(nums),
+        2 => a2_min_subsequence(nums),
+        3 => a3_min_subsequence(nums),
+        _ => A4Solution.a4_min_subsequence(nums),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, nums: Vec[i32]) {
+    t.cases += 1;
+    let star = arm(0, nums);
+    for x in star.iter() {
+        t.check = (t.check * 131 + x) % 1000000007;
+    }
+    t.check = (t.check * 131 + star.len()) % 1000000007;
+    let small = nums.len() <= 10;
+    let want = if small { literal(nums) } else { Vec.new() };
+    let total: i64 = nums.iter().map(|x| x as i64).sum();
+    let reversed: Vec[i32] = nums.iter().rev().collect();
+    let doublable = nums.iter().all(|x| x <= 50);
+    let doubled: Vec[i32] = nums.iter().map(|x| x * 2).collect();
+    for i in 0..5 {
+        let got = arm(i, nums);
+        let what = f"arm {i} on {nums}";
+        // P1: the statement read literally, on up to 10 numbers
+        if small {
+            expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        }
+        // P2: drawn from the numbers, in non-increasing order, and more
+        // than the rest
+        let sum: i64 = got.iter().map(|x| x as i64).sum();
+        let falling = (1..got.len()).all(|k| got[k - 1] >= got[k]);
+        expect(mut t, 2, within(got, nums) and falling and sum > total - sum, f"P2 {what}: {got}");
+        // P3: one number fewer cannot do it: the largest of them but the
+        // last are not more than the rest
+        if got.len() > 0 {
+            let short = sum - got[got.len() - 1];
+            expect(mut t, 3, short <= total - short, f"P3 {what}: {got} not the fewest");
+        }
+        // P4: the order the numbers come in does not matter
+        let back = arm(i, reversed);
+        expect(mut t, 4, back == got, f"P4 {what}: {back} reversed");
+        // P5: every number doubled doubles the answer's numbers
+        if doublable {
+            let twice = arm(i, doubled);
+            let want_twice: Vec[i32] = got.iter().map(|x| x * 2).collect();
+            expect(mut t, 5, twice == want_twice, f"P5 {what}: {twice} doubled");
+        }
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: one number, two equal, one large
+    // number among small ones, all equal, the extremes. Every case is
+    // drawn before any arm answers.
+    let mut cases: Vec[Vec[i32]] = Vec.new();
+    cases.push([4, 3, 10, 9, 8]);
+    cases.push([4, 4, 7, 6, 7]);
+    cases.push([6]);
+    cases.push([1, 1]);
+    cases.push([3, 1, 1, 1]);
+    cases.push([5, 5, 5, 5, 5]);
+    cases.push([100]);
+    cases.push([100, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
+    cases.push([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    cases.push((0..500).map(|_| 100).collect());
+    // 1993 random cases: 1 to 10 numbers two times in three, else 11 to
+    // 500, up to 100, 5, 2 or 30
+    let mut seed = 14031;
+    for i in 0..1993 {
+        let n = if i % 3 == 2 { 11 + next_random(mut seed) % 490 } else { 1 + next_random(mut seed) % 10 };
+        let hi = if i % 4 == 0 { 100 } else if i % 4 == 1 { 5 } else if i % 4 == 2 { 2 } else { 30 };
+        cases.push(drawn(n, hi, mut seed));
+    }
+    for nums in cases.iter() {
+        check_case(mut t, nums);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
