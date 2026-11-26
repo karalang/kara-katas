@@ -1,0 +1,92 @@
+// LeetCode #1765: Map of Highest Peak -- Dijkstra's algorithm with a
+// `PriorityQueue`, smallest height first, every step of weight 1: a cell
+// is final when it first leaves the queue.
+
+fn highest_peak(is_water: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    let rows = is_water.len();
+    let cols = is_water[0].len();
+    let mut height: Vec[Vec[i32]] = Vec.filled(rows, Vec.filled(cols, i32.MAX));
+    let mut queue: PriorityQueue[(i32, i64, i64)] = PriorityQueue.new();
+    for r in 0..rows {
+        for c in 0..cols {
+            if is_water[r][c] == 1 {
+                height[r][c] = 0;
+                queue.push((0, r, c));
+            }
+        }
+    }
+    while let Some((h, r, c)) = queue.pop() {
+        if h > height[r][c] {
+            continue;
+        }
+        let steps = [(r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)];
+        for (nr, nc) in steps {
+            if nr >= 0 and nr < rows and nc >= 0 and nc < cols and h + 1 < height[nr][nc] {
+                height[nr][nc] = h + 1;
+                queue.push((h + 1, nr, nc));
+            }
+        }
+    }
+    height
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// rows by cols, each cell water with a chance of `water` in 1000, and
+// one cell made water if none is
+fn random_grid(seed: mut ref i64, rows: i64, cols: i64, water: i64) -> Vec[Vec[i32]] {
+    let mut grid: Vec[Vec[i32]] = (0..rows).map(|_| (0..cols).map(|_| if next_random(mut seed) % 1000 < water { 1 } else { 0 }).collect()).collect();
+    if grid.iter().all(|row| row.iter().all(|v| *v == 0)) {
+        let r = next_random(mut seed) % rows;
+        let c = next_random(mut seed) % cols;
+        grid[r][c] = 1;
+    }
+    grid
+}
+
+fn digest(height: Vec[Vec[i32]]) -> i64 {
+    let mut check = 0;
+    for row in height.iter() {
+        for v in row.iter() {
+            check = (check * 31 + *v) % 1000000007;
+        }
+    }
+    check
+}
+
+fn highest(height: Vec[Vec[i32]]) -> i32 {
+    height.iter().map(|row| row.iter().max().unwrap()).max().unwrap()
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{highest_peak([[0, 1], [0, 0]])} {highest_peak([[0, 0, 1], [1, 0, 0], [0, 0, 0]])}");
+    // the edges: one cell of water; one row with water at one end; one
+    // column; every cell water; water at two opposite corners
+    println(f"{highest_peak([[1]])} {highest_peak([[1, 0, 0, 0]])} {highest_peak([[0], [0], [1]])} {highest_peak([[1, 1], [1, 1]])} {highest_peak([[1, 0, 0], [0, 0, 0], [0, 0, 1]])}");
+    // the constraints' most: 1000 by 1000 with water in one corner alone,
+    // and with one cell in a hundred water
+    let mut seed = 1765;
+    let mut corner: Vec[Vec[i32]] = Vec.filled(1000, Vec.filled(1000, 0));
+    corner[0][0] = 1;
+    let lakes = random_grid(mut seed, 1000, 1000, 10);
+    let a = highest_peak(corner);
+    let b = highest_peak(lakes);
+    println(f"the most: {highest(a)} {digest(a)}, {highest(b)} {digest(b)}");
+    // 3000 random grids of 1 to 8 by 1 to 8, each with its own chance of
+    // water
+    let mut check = 0;
+    for _ in 0..3000 {
+        let rows = 1 + next_random(mut seed) % 8;
+        let cols = 1 + next_random(mut seed) % 8;
+        let water = 1 + next_random(mut seed) % 500;
+        let grid = random_grid(mut seed, rows, cols, water);
+        check = (check * 31 + digest(highest_peak(grid))) % 1000000007;
+    }
+    println(f"3000 random grids: checksum {check}");
+}
