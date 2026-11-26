@@ -1,0 +1,106 @@
+fn largest_number(cost: Vec[i32], target: i32) -> String {
+    // for each cost from 0 to target, the best answer it buys exactly, kept
+    // as how many of each digit: more digits win, then more of the larger
+    // digits
+    let target = target as i64;
+    let mut best: Vec[Option[Vec[i64]]] = Vec.filled(target + 1, None);
+    best[0] = Some(Vec.filled(9, 0));
+    for t in 1..=target {
+        for d in 0..9 {
+            let c = cost[d] as i64;
+            if c > t {
+                continue;
+            }
+            let Some(before) = best[t - c].clone() else {
+                continue;
+            };
+            let mut next = before;
+            next[d] += 1;
+            if better(next, best[t]) {
+                best[t] = Some(next);
+            }
+        }
+    }
+    let Some(counts) = best[target].clone() else {
+        return "0".to_string();
+    };
+    let mut digits = String.new();
+    for d in (0..9).rev() {
+        digits.push_str(((b'1' + d as u8) as char).to_string().repeat(counts[d]));
+    }
+    digits
+}
+
+// whether counts `a` make a larger number than `b`, or there is no `b`
+fn better(a: Vec[i64], b: Option[Vec[i64]]) -> bool {
+    let Some(b) = b else {
+        return true;
+    };
+    let (na, nb): (i64, i64) = (a.iter().sum(), b.iter().sum());
+    if na != nb {
+        return na > nb;
+    }
+    for d in (0..9).rev() {
+        if a[d] != b[d] {
+            return a[d] > b[d];
+        }
+    }
+    false
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// nine costs from 1 to `top`
+fn costs(top: i64, seed: mut ref i64) -> Vec[i32] {
+    (0..9).map(|_| (1 + next_random(mut seed) % top) as i32).collect()
+}
+
+fn fold(s: String, check: mut ref i64) {
+    for b in s.bytes() {
+        *check = (*check * 131 + b) % 1000000007;
+    }
+    *check = (*check * 131 + 32) % 1000000007;
+}
+
+fn main() {
+    // LeetCode's four examples, and three more: every cost 1, every cost
+    // 5000, and only the digit 1 cheap
+    let firsts = [
+        largest_number([4, 3, 2, 5, 6, 7, 2, 5, 5].to_vec(), 9),
+        largest_number([7, 6, 5, 5, 5, 6, 8, 7, 8].to_vec(), 12),
+        largest_number([2, 4, 6, 2, 4, 6, 4, 4, 4].to_vec(), 5),
+        largest_number([6, 10, 15, 40, 40, 40, 40, 40, 40].to_vec(), 47),
+        largest_number([1, 1, 1, 1, 1, 1, 1, 1, 1].to_vec(), 5),
+        largest_number([5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000].to_vec(), 5000),
+        largest_number([1, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000].to_vec(), 7),
+    ];
+    println(firsts.join(" "));
+    // the constraints' most: a target of 5000 with every cost 1, and with
+    // costs drawn from 1 to 50
+    let mut seed = 1449;
+    let all_one = largest_number([1, 1, 1, 1, 1, 1, 1, 1, 1].to_vec(), 5000);
+    let drawn = largest_number(costs(50, mut seed), 5000);
+    let mut check: i64 = 0;
+    fold(all_one, mut check);
+    fold(drawn, mut check);
+    println(f"target 5000: {all_one.len()} and {drawn.len()} digits, checksum {check}");
+    // 2000 random cases, costs from 1 to 1 to 30, or a third of them 1 to
+    // 1 to 5000, and a target from 1 to 200
+    let mut total = 0;
+    let mut check: i64 = 0;
+    for _ in 0..2000 {
+        let wide = next_random(mut seed) % 3 == 0;
+        let top = if wide { 1 + next_random(mut seed) % 5000 } else { 1 + next_random(mut seed) % 30 };
+        let cost = costs(top, mut seed);
+        let target = (1 + next_random(mut seed) % 200) as i32;
+        let got = largest_number(cost, target);
+        total += got.len();
+        fold(got, mut check);
+    }
+    println(f"2000 random cases: {total} digits, checksum {check}");
+}
