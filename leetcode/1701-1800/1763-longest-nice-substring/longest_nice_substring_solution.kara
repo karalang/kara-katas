@@ -1,0 +1,74 @@
+// LeetCode #1763: Longest Nice Substring -- a Rust solution as LeetCode's
+// Rust users write it, carried to Kāra by `karac fix`
+
+struct Solution {}
+
+impl Solution {
+    pub fn longest_nice_substring(s: String) -> String {
+        let chars: Vec[char] = s.chars().collect();
+        let n = chars.len();
+        let mut ans = String.new();
+        for i in 0..n {
+            for j in i + 1..=n {
+                let sub = chars[i..j];
+                let ok = sub.iter().all(|c| {
+                    sub.contains(c.to_ascii_lowercase()) and sub.contains(c.to_ascii_uppercase())
+                });
+                if ok and j - i > ans.len() {
+                    ans = sub.iter().collect();
+                }
+            }
+        }
+        ans
+    }
+}
+
+fn longest_nice_substring(s: String) -> String {
+    Solution.longest_nice_substring(s)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n letters from the first `letters` of the alphabet, each a capital with
+// chance `upper` in 100
+fn random_text(seed: mut ref i64, n: i64, letters: i64, upper: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        let base = if next_random(mut seed) % 100 < upper { 65 } else { 97 };
+        s.push(char.try_from((base + next_random(mut seed) % letters) as u32).ok().unwrap());
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's four examples
+    println(f"\"{longest_nice_substring("YazaAay")}\" \"{longest_nice_substring("Bb")}\" \"{longest_nice_substring("c")}\" \"{longest_nice_substring("dDzeE")}\"");
+    // the edges: no letter with its pair; the whole string nice; two nice
+    // halves split by a letter alone, the first kept on a tie; a nice
+    // stretch at the end; a pair far apart
+    println(f"\"{longest_nice_substring("abcABx")}\" \"{longest_nice_substring("aAbBcC")}\" \"{longest_nice_substring("aAxbB")}\" \"{longest_nice_substring("qwertyEe")}\" \"{longest_nice_substring("aXXXXA")}\"");
+    // the constraints' most: 100 letters, few letters, many, and every one
+    // its pair
+    let mut seed = 1763;
+    let few = random_text(mut seed, 100, 3, 50);
+    let many = random_text(mut seed, 100, 26, 50);
+    let doubled = "aA".repeat(50);
+    println(f"100 letters: {longest_nice_substring(few).len()} {longest_nice_substring(many).len()} {longest_nice_substring(doubled).len()}");
+    // 3000 random strings of 1 to 30 letters
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let letters = 1 + next_random(mut seed) % 5;
+        let upper = next_random(mut seed) % 101;
+        let s = random_text(mut seed, n, letters, upper);
+        let nice = longest_nice_substring(s);
+        let first = s.find(nice.as_str()).unwrap_or(0);
+        check = (check * 31 + nice.len() * 100 + first) % 1000000007;
+    }
+    println(f"3000 random strings: checksum {check}");
+}
