@@ -1,0 +1,62 @@
+// LeetCode #1491: Average Salary Excluding the Minimum and Maximum Salary --
+// a sorted copy, whose first and last are the least and the most; the
+// average of the slice between. O(n log n)
+
+fn average(salary: Vec[i32]) -> f64 {
+    let mut sorted = salary.clone();
+    sorted.sort();
+    let middle = sorted[1..sorted.len() - 1];
+    let mut sum = 0;
+    for s in middle.iter() {
+        sum += s;
+    }
+    sum as f64 / middle.len() as f64
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` different salaries from 1000 to 10^6, a random walk upward shuffled
+fn salaries(seed: mut ref i64, n: i64) -> Vec[i32] {
+    let mut s: Vec[i32] = Vec.new();
+    let mut next = 1000 + next_random(mut seed) % 1000;
+    for _ in 0..n {
+        s.push(next as i32);
+        next += 1 + next_random(mut seed) % (990000 / n);
+    }
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        s.swap(i, j);
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{average([4000, 3000, 1000, 2000]):.5}");
+    println(f"{average([1000, 2000, 3000]):.5}");
+    // the edges: the least and the most salaries with one between; three
+    // close together; the most first and the least last; a mean that does
+    // not end
+    println(f"{average([1000, 1000000, 500000]):.5}");
+    println(f"{average([1001, 1002, 1000]):.5}");
+    println(f"{average([1000000, 5000, 7000, 6000, 1000]):.5}");
+    println(f"{average([1000, 2000, 2001, 2003, 9000]):.5}");
+    // the constraints' most, 100 salaries; and 3000 random lists of 3 to
+    // 100, each average folded to its cents
+    let mut seed = 1491;
+    let big = salaries(mut seed, 100);
+    println(f"100 salaries: {average(big):.5}");
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 3 + next_random(mut seed) % 98;
+        let s = salaries(mut seed, n);
+        let cents = (average(s) * 100.0).round() as i64;
+        check = (check * 31 + cents) % 1000000007;
+    }
+    println(f"3000 random lists: checksum {check}");
+}

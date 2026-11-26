@@ -1,0 +1,187 @@
+// LeetCode #1491: Average Salary Excluding the Minimum and Maximum Salary --
+// differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- average.kara ----
+fn a0_average(salary: Vec[i32]) -> f64 {
+    let mut least = salary[0];
+    let mut most = salary[0];
+    let mut sum = 0;
+    for s in salary.iter() {
+        least = least.min(s);
+        most = most.max(s);
+        sum += s;
+    }
+    (sum - least - most) as f64 / (salary.len() - 2) as f64
+}
+
+// ---- average_sort.kara ----
+fn a1_average(salary: Vec[i32]) -> f64 {
+    let mut sorted = salary.clone();
+    sorted.sort();
+    let middle = sorted[1..sorted.len() - 1];
+    let mut sum = 0;
+    for s in middle.iter() {
+        sum += s;
+    }
+    sum as f64 / middle.len() as f64
+}
+
+// ---- average_fold.kara ----
+fn a2_average(salary: Vec[i32]) -> f64 {
+    let (least, most, sum) = salary
+        .iter()
+        .fold((i32.MAX, i32.MIN, 0), |(lo, hi, s), x| (lo.min(x), hi.max(x), s + x));
+    (sum - least - most) as f64 / (salary.len() - 2) as f64
+}
+
+// ---- average_minmax.kara ----
+fn a3_average(salary: Vec[i32]) -> f64 {
+    let least = salary.iter().min().unwrap();
+    let most = salary.iter().max().unwrap();
+    let sum: i64 = salary.iter().map(|s| s as i64).sum();
+    (sum - least - most) as f64 / (salary.len() - 2) as f64
+}
+
+// ---- average_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn average(salary: Vec[i32]) -> f64 {
+        let max = *salary.iter().max().unwrap();
+        let min = *salary.iter().min().unwrap();
+        let sum: i32 = salary.iter().sum();
+        (sum - max - min) as f64 / (salary.len() - 2) as f64
+    }
+}
+
+fn a4_average(salary: Vec[i32]) -> f64 {
+    A4Solution.average(salary)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: the salaries other than the least and
+// the most, each found by comparing it with every other, summed and
+// counted
+fn literal(salary: Vec[i32]) -> f64 {
+    let mut sum = 0;
+    let mut count = 0;
+    for s in salary.iter() {
+        let lower = salary.iter().any(|t| t < s);
+        let higher = salary.iter().any(|t| t > s);
+        if lower and higher {
+            sum += s;
+            count += 1;
+        }
+    }
+    sum as f64 / count as f64
+}
+
+fn arm(i: i64, salary: Vec[i32]) -> f64 {
+    match i {
+        0 => a0_average(salary),
+        1 => a1_average(salary),
+        2 => a2_average(salary),
+        3 => a3_average(salary),
+        _ => a4_average(salary),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, salary: Vec[i32]) {
+    t.cases += 1;
+    let want = literal(salary);
+    t.check = (t.check * 31 + (want * 100.0).round() as i64) % 1000000007;
+    let star = arm(0, salary);
+    let mut sorted = salary.clone();
+    sorted.sort();
+    let mut reversed = salary.clone();
+    reversed.reverse();
+    let doubled: Vec[i32] = salary.iter().map(|s| s * 2).collect();
+    let mut wider = salary.clone();
+    wider.push(sorted[0] - 1);
+    wider.insert(0, sorted[sorted.len() - 1] + 1);
+    let mut total = 0;
+    for s in salary.iter() {
+        total += s;
+    }
+    let mean = total as f64 / salary.len() as f64;
+    for i in 0..5 {
+        let what = f"arm {i} on {salary}";
+        let got = arm(i, salary);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: between the second least and the second most
+        let n = sorted.len();
+        expect(mut t, 2, got >= sorted[1] as f64 and got <= sorted[n - 2] as f64, f"P2 {what}");
+        // P3: the salaries in reverse order
+        expect(mut t, 3, arm(i, reversed) == got, f"P3 {what}");
+        // P4: every salary doubled doubles the average, exactly
+        expect(mut t, 4, arm(i, doubled) == got * 2.0, f"P4 {what}");
+        // P5: a new least and a new most leave the mean of them all
+        expect(mut t, 5, arm(i, wider) == mean, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges. Every case is drawn before any arm
+    // answers.
+    let mut cases: Vec[Vec[i32]] = Vec.new();
+    cases.push([4000, 3000, 1000, 2000]);
+    cases.push([1000, 2000, 3000]);
+    cases.push([1001, 500000, 499999]);
+    cases.push([1001, 1002, 1003]);
+    cases.push([500000, 5000, 7000, 6000, 1001]);
+    cases.push([1001, 2000, 2001, 2003, 9000]);
+    let mut seed = 14911;
+    // 1994 random lists of 3 to 12 different salaries from 2000 to 500000
+    for _ in 0..1994 {
+        let n = 3 + next_random(mut seed) % 10;
+        let mut s: Vec[i32] = Vec.new();
+        let mut next = 2000 + next_random(mut seed) % 1000;
+        for _ in 0..n {
+            s.push(next as i32);
+            next += 1 + next_random(mut seed) % (490000 / n);
+        }
+        for i in (1..n).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            s.swap(i, j);
+        }
+        cases.push(s);
+    }
+    for j in 0..cases.len() {
+        check_case(mut t, cases[j]);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
