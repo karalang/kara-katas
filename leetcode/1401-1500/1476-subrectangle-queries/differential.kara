@@ -1,0 +1,428 @@
+// LeetCode #1476: Subrectangle Queries -- differential test of
+// the five arms against the statement read literally, with five
+// more properties.
+
+// ---- subrectangle_queries.kara ----
+struct A0SubrectangleQueries {
+    rect: Vec[Vec[i32]],
+}
+
+impl A0SubrectangleQueries {
+    fn new(rectangle: own Vec[Vec[i32]]) -> A0SubrectangleQueries {
+        A0SubrectangleQueries { rect: rectangle }
+    }
+
+    fn update_subrectangle(mut ref self, row1: i32, col1: i32, row2: i32, col2: i32, new_value: i32) {
+        for r in row1..=row2 {
+            for c in col1..=col2 {
+                self.rect[r][c] = new_value;
+            }
+        }
+    }
+
+    fn get_value(self, row: i32, col: i32) -> i32 {
+        self.rect[row][col]
+    }
+}
+
+// ---- subrectangle_queries_log.kara ----
+struct A1Update {
+    row1: i32,
+    col1: i32,
+    row2: i32,
+    col2: i32,
+    value: i32,
+}
+
+struct A1SubrectangleQueries {
+    rect: Vec[Vec[i32]],
+    log: Vec[A1Update],
+}
+
+impl A1SubrectangleQueries {
+    fn new(rectangle: own Vec[Vec[i32]]) -> A1SubrectangleQueries {
+        A1SubrectangleQueries { rect: rectangle, log: Vec.new() }
+    }
+
+    fn update_subrectangle(mut ref self, row1: i32, col1: i32, row2: i32, col2: i32, new_value: i32) {
+        self.log.push(A1Update { row1, col1, row2, col2, value: new_value });
+    }
+
+    fn get_value(self, row: i32, col: i32) -> i32 {
+        for u in self.log.iter().rev() {
+            if u.row1 <= row and row <= u.row2 and u.col1 <= col and col <= u.col2 {
+                return u.value;
+            }
+        }
+        self.rect[row][col]
+    }
+}
+
+// ---- subrectangle_queries_fill.kara ----
+struct A2SubrectangleQueries {
+    rect: Vec[Vec[i32]],
+}
+
+impl A2SubrectangleQueries {
+    fn new(rectangle: own Vec[Vec[i32]]) -> A2SubrectangleQueries {
+        A2SubrectangleQueries { rect: rectangle }
+    }
+
+    fn update_subrectangle(mut ref self, row1: i32, col1: i32, row2: i32, col2: i32, new_value: i32) {
+        for r in row1..=row2 {
+            self.rect[r][col1..=col2].fill(new_value);
+        }
+    }
+
+    fn get_value(self, row: i32, col: i32) -> i32 {
+        self.rect[row][col]
+    }
+}
+
+// ---- subrectangle_queries_flat.kara ----
+struct A3SubrectangleQueries {
+    cells: Vec[i32],
+    cols: i64,
+}
+
+impl A3SubrectangleQueries {
+    fn new(rectangle: Vec[Vec[i32]]) -> A3SubrectangleQueries {
+        let cols = rectangle[0].len();
+        let cells: Vec[i32] = rectangle.iter().flat_map(|row| row.iter()).collect();
+        A3SubrectangleQueries { cells, cols }
+    }
+
+    fn update_subrectangle(mut ref self, row1: i32, col1: i32, row2: i32, col2: i32, new_value: i32) {
+        for r in row1..=row2 {
+            let start = r * self.cols;
+            for c in col1..=col2 {
+                self.cells[start + c] = new_value;
+            }
+        }
+    }
+
+    fn get_value(self, row: i32, col: i32) -> i32 {
+        self.cells[row * self.cols + col]
+    }
+}
+
+// ---- subrectangle_queries_solution.kara ----
+struct A4SubrectangleQueries {
+    rectangle: Vec[Vec[i32]],
+}
+
+impl A4SubrectangleQueries {
+    fn new(rectangle: own Vec[Vec[i32]]) -> Self {
+        A4SubrectangleQueries { rectangle }
+    }
+
+    fn update_subrectangle(mut ref self, row1: i32, col1: i32, row2: i32, col2: i32, new_value: i32) {
+        for r in row1 as usize..=row2 as usize {
+            for c in col1 as usize..=col2 as usize {
+                self.rectangle[r][c] = new_value;
+            }
+        }
+    }
+
+    fn get_value(self, row: i32, col: i32) -> i32 {
+        self.rectangle[row as usize][col as usize]
+    }
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// 30 bits from two draws, for values up to 10^9
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// a call is an update (true) of the subrectangle from (.1, .2) to (.3, .4)
+// to the value .5, or a read (false) of the cell (.1, .2)
+type Call = (bool, i32, i32, i32, i32, i32);
+
+// each arm driven through the same calls, the values read in order
+fn run_a0(grid: Vec[Vec[i32]], ops: Vec[Call]) -> Vec[i32] {
+    let mut q = A0SubrectangleQueries.new(grid.clone());
+    let mut out = Vec.new();
+    for op in ops.iter() {
+        if op.0 {
+            q.update_subrectangle(op.1, op.2, op.3, op.4, op.5);
+        } else {
+            out.push(q.get_value(op.1, op.2));
+        }
+    }
+    out
+}
+
+fn run_a1(grid: Vec[Vec[i32]], ops: Vec[Call]) -> Vec[i32] {
+    let mut q = A1SubrectangleQueries.new(grid.clone());
+    let mut out = Vec.new();
+    for op in ops.iter() {
+        if op.0 {
+            q.update_subrectangle(op.1, op.2, op.3, op.4, op.5);
+        } else {
+            out.push(q.get_value(op.1, op.2));
+        }
+    }
+    out
+}
+
+fn run_a2(grid: Vec[Vec[i32]], ops: Vec[Call]) -> Vec[i32] {
+    let mut q = A2SubrectangleQueries.new(grid.clone());
+    let mut out = Vec.new();
+    for op in ops.iter() {
+        if op.0 {
+            q.update_subrectangle(op.1, op.2, op.3, op.4, op.5);
+        } else {
+            out.push(q.get_value(op.1, op.2));
+        }
+    }
+    out
+}
+
+fn run_a3(grid: Vec[Vec[i32]], ops: Vec[Call]) -> Vec[i32] {
+    let mut q = A3SubrectangleQueries.new(grid);
+    let mut out = Vec.new();
+    for op in ops.iter() {
+        if op.0 {
+            q.update_subrectangle(op.1, op.2, op.3, op.4, op.5);
+        } else {
+            out.push(q.get_value(op.1, op.2));
+        }
+    }
+    out
+}
+
+fn run_a4(grid: Vec[Vec[i32]], ops: Vec[Call]) -> Vec[i32] {
+    let mut q = A4SubrectangleQueries.new(grid.clone());
+    let mut out = Vec.new();
+    for op in ops.iter() {
+        if op.0 {
+            q.update_subrectangle(op.1, op.2, op.3, op.4, op.5);
+        } else {
+            out.push(q.get_value(op.1, op.2));
+        }
+    }
+    out
+}
+
+fn arm(i: i64, grid: Vec[Vec[i32]], ops: Vec[Call]) -> Vec[i32] {
+    match i {
+        0 => run_a0(grid, ops),
+        1 => run_a1(grid, ops),
+        2 => run_a2(grid, ops),
+        3 => run_a3(grid, ops),
+        _ => run_a4(grid, ops),
+    }
+}
+
+// the statement read literally: the grid as a table from each cell to its
+// value, an update setting each cell it names, a read looking its cell up
+fn literal(grid: Vec[Vec[i32]], ops: Vec[Call]) -> Vec[i32] {
+    let mut cell: Map[(i32, i32), i32] = Map.new();
+    for r in 0..grid.len() {
+        for c in 0..grid[r].len() {
+            cell[(r as i32, c as i32)] = grid[r][c];
+        }
+    }
+    let mut out = Vec.new();
+    for op in ops.iter() {
+        if op.0 {
+            for r in op.1..=op.3 {
+                for c in op.2..=op.4 {
+                    cell[(r, c)] = op.5;
+                }
+            }
+        } else {
+            out.push(cell[(op.1, op.2)]);
+        }
+    }
+    out
+}
+
+// a read of every cell, row by row
+fn read_all(rows: i64, cols: i64) -> Vec[Call] {
+    let mut ops: Vec[Call] = Vec.new();
+    for r in 0..rows {
+        for c in 0..cols {
+            ops.push((false, r as i32, c as i32, 0, 0, 0));
+        }
+    }
+    ops
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, grid: Vec[Vec[i32]], ops: Vec[Call]) {
+    t.cases += 1;
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let star = arm(0, grid, ops);
+    for x in star.iter() {
+        t.check = (t.check * 31 + x) % 1000000007;
+    }
+    let want = literal(grid, ops);
+    // the grid turned on its side, rows for columns, and every call with it
+    let turned: Vec[Vec[i32]] = (0..cols).map(|c| (0..rows).map(|r| grid[r][c]).collect()).collect();
+    let turned_ops: Vec[Call] = ops.iter().map(|op| (op.0, op.2, op.1, op.4, op.3, op.5)).collect();
+    // 7 more on every value, the grid's and each update's
+    let raised: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|x| x + 7).collect()).collect();
+    let raised_ops: Vec[Call] = ops.iter().map(|op| (op.0, op.1, op.2, op.3, op.4, op.5 + 7)).collect();
+    // the calls cut in two: the first part, then a read of every cell
+    let half = ops.len() / 2;
+    let mut first: Vec[Call] = ops[0..half].to_vec();
+    first.extend(read_all(rows, cols));
+    let rest: Vec[Call] = ops[half..].to_vec();
+    let n = ops.len();
+    for i in 0..5 {
+        let what = f"arm {i} on {rows} by {cols}, {n} calls";
+        let got = arm(i, grid, ops);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: each read is the cell's first value or one an earlier update
+        // over the cell wrote
+        let mut k = 0;
+        let mut p2 = true;
+        for j in 0..n {
+            if ops[j].0 {
+                continue;
+            }
+            let (r, c) = (ops[j].1, ops[j].2);
+            let mut ok = got[k] == grid[r][c];
+            for u in ops[0..j].iter() {
+                ok = ok or (u.0 and u.1 <= r and r <= u.3 and u.2 <= c and c <= u.4 and u.5 == got[k]);
+            }
+            p2 = p2 and ok;
+            k += 1;
+        }
+        expect(mut t, 2, p2 and k == got.len(), f"P2 {what}");
+        // P3: the grid on its side reads the same
+        expect(mut t, 3, arm(i, turned, turned_ops) == got, f"P3 {what}");
+        // P4: 7 more on every value reads 7 more
+        let up: Vec[i32] = arm(i, raised, raised_ops).iter().map(|x| x - 7).collect();
+        expect(mut t, 4, up == got, f"P4 {what}");
+        // P5: the grid read whole after the first part, made anew, and given
+        // the rest of the calls reads as the whole run does
+        let part = arm(i, grid, first);
+        let reads = part.len() - rows * cols;
+        let mid: Vec[Vec[i32]] = (0..rows).map(|r| part[reads + r * cols..reads + (r + 1) * cols].to_vec()).collect();
+        let mut joined: Vec[i32] = part[0..reads].to_vec();
+        joined.extend(arm(i, mid, rest));
+        expect(mut t, 5, joined == got, f"P5 {what}");
+        // P6: the ★ arm's answers
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+// a grid of values from 1 to top, and n calls on it, an update one time in
+// three
+fn draw(seed: mut ref i64, rows: i64, cols: i64, n: i64, top: i64) -> (Vec[Vec[i32]], Vec[Call]) {
+    let grid: Vec[Vec[i32]] = (0..rows).map(|_| (0..cols).map(|_| (1 + wide_random(mut seed) % top) as i32).collect()).collect();
+    let mut ops: Vec[Call] = Vec.new();
+    for _ in 0..n {
+        if next_random(mut seed) % 3 == 0 {
+            let r1 = next_random(mut seed) % rows;
+            let r2 = r1 + next_random(mut seed) % (rows - r1);
+            let c1 = next_random(mut seed) % cols;
+            let c2 = c1 + next_random(mut seed) % (cols - c1);
+            let v = 1 + wide_random(mut seed) % top;
+            ops.push((true, r1 as i32, c1 as i32, r2 as i32, c2 as i32, v as i32));
+        } else {
+            let r = next_random(mut seed) % rows;
+            let c = next_random(mut seed) % cols;
+            ops.push((false, r as i32, c as i32, 0, 0, 0));
+        }
+    }
+    (grid, ops)
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's two examples and the edges: one cell updated twice, one
+    // row and one column. Every case is drawn before any arm answers.
+    let mut cases: Vec[(Vec[Vec[i32]], Vec[Call])] = Vec.new();
+    let first: Vec[Vec[i32]] = [[1, 2, 1].to_vec(), [4, 3, 4].to_vec(), [3, 2, 1].to_vec(), [1, 1, 1].to_vec()].to_vec();
+    let first_ops: Vec[Call] = [
+        (false, 0, 2, 0, 0, 0),
+        (true, 0, 0, 3, 2, 5),
+        (false, 0, 2, 0, 0, 0),
+        (false, 3, 1, 0, 0, 0),
+        (true, 3, 0, 3, 2, 10),
+        (false, 3, 1, 0, 0, 0),
+        (false, 0, 2, 0, 0, 0),
+    ].to_vec();
+    cases.push((first, first_ops));
+    let second: Vec[Vec[i32]] = [[1, 1, 1].to_vec(), [2, 2, 2].to_vec(), [3, 3, 3].to_vec()].to_vec();
+    let second_ops: Vec[Call] = [
+        (false, 0, 0, 0, 0, 0),
+        (true, 0, 0, 2, 2, 100),
+        (false, 0, 0, 0, 0, 0),
+        (false, 2, 2, 0, 0, 0),
+        (true, 1, 1, 2, 2, 20),
+        (false, 2, 2, 0, 0, 0),
+    ].to_vec();
+    cases.push((second, second_ops));
+    let one: Vec[Vec[i32]] = [[7].to_vec()].to_vec();
+    let one_ops: Vec[Call] = [(false, 0, 0, 0, 0, 0), (true, 0, 0, 0, 0, 1000000000), (false, 0, 0, 0, 0, 0), (true, 0, 0, 0, 0, 1), (false, 0, 0, 0, 0, 0)].to_vec();
+    cases.push((one, one_ops));
+    let row: Vec[Vec[i32]] = [[1, 2, 3, 4, 5].to_vec()].to_vec();
+    let mut row_ops: Vec[Call] = [(true, 0, 1, 0, 3, 9), (true, 0, 2, 0, 2, 8)].to_vec();
+    row_ops.extend(read_all(1, 5));
+    cases.push((row, row_ops));
+    let col: Vec[Vec[i32]] = [[1].to_vec(), [2].to_vec(), [3].to_vec()].to_vec();
+    let mut col_ops: Vec[Call] = [(true, 1, 0, 2, 0, 6)].to_vec();
+    col_ops.extend(read_all(3, 1));
+    cases.push((col, col_ops));
+    let mut seed = 14761;
+    // the constraints' most: 100 by 100 and 500 calls
+    cases.push(draw(mut seed, 100, 100, 500, 1000000000));
+    // 1994 random grids: half of 1 to 4 rows and columns, 1 to 10 calls
+    // and values from 1 to 5, so a value written is often one already
+    // there, and half of 1 to 10 rows and columns, 1 to 60 calls and
+    // values from 1 to top, top from 1 to 10^9
+    for c in 0..1994 {
+        if c % 2 == 0 {
+            let rows = 1 + next_random(mut seed) % 4;
+            let cols = 1 + next_random(mut seed) % 4;
+            let n = 1 + next_random(mut seed) % 10;
+            cases.push(draw(mut seed, rows, cols, n, 5));
+        } else {
+            let rows = 1 + next_random(mut seed) % 10;
+            let cols = 1 + next_random(mut seed) % 10;
+            let n = 1 + next_random(mut seed) % 60;
+            let top = 1 + wide_random(mut seed) % 1000000000;
+            cases.push(draw(mut seed, rows, cols, n, top));
+        }
+    }
+    for j in 0..cases.len() {
+        let (grid, ops) = cases[j].clone();
+        check_case(mut t, grid, ops);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

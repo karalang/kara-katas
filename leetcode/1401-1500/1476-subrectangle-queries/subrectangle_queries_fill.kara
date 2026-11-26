@@ -1,0 +1,116 @@
+// LeetCode #1476: Subrectangle Queries -- each update's rows written a
+// span at a time, `self.rect[r][col1..=col2].fill(new_value)`
+
+struct SubrectangleQueries {
+    rect: Vec[Vec[i32]],
+}
+
+impl SubrectangleQueries {
+    fn new(rectangle: own Vec[Vec[i32]]) -> SubrectangleQueries {
+        SubrectangleQueries { rect: rectangle }
+    }
+
+    fn update_subrectangle(mut ref self, row1: i32, col1: i32, row2: i32, col2: i32, new_value: i32) {
+        for r in row1..=row2 {
+            self.rect[r][col1..=col2].fill(new_value);
+        }
+    }
+
+    fn get_value(self, row: i32, col: i32) -> i32 {
+        self.rect[row][col]
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// 30 bits from two draws, for values up to 10^9
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn grid(seed: mut ref i64, rows: i64, cols: i64, top: i64) -> Vec[Vec[i32]] {
+    (0..rows).map(|_| (0..cols).map(|_| (1 + wide_random(mut seed) % top) as i32).collect()).collect()
+}
+
+fn main() {
+    // LeetCode's two examples
+    let mut q = SubrectangleQueries.new([[1, 2, 1].to_vec(), [4, 3, 4].to_vec(), [3, 2, 1].to_vec(), [1, 1, 1].to_vec()].to_vec());
+    let a1 = q.get_value(0, 2);
+    q.update_subrectangle(0, 0, 3, 2, 5);
+    let a2 = q.get_value(0, 2);
+    let a3 = q.get_value(3, 1);
+    q.update_subrectangle(3, 0, 3, 2, 10);
+    let a4 = q.get_value(3, 1);
+    let a5 = q.get_value(0, 2);
+    println(f"{a1} {a2} {a3} {a4} {a5}");
+    let mut w = SubrectangleQueries.new([[1, 1, 1].to_vec(), [2, 2, 2].to_vec(), [3, 3, 3].to_vec()].to_vec());
+    let b1 = w.get_value(0, 0);
+    w.update_subrectangle(0, 0, 2, 2, 100);
+    let b2 = w.get_value(0, 0);
+    let b3 = w.get_value(2, 2);
+    w.update_subrectangle(1, 1, 2, 2, 20);
+    let b4 = w.get_value(2, 2);
+    println(f"{b1} {b2} {b3} {b4}");
+    // the edges: one cell, updated twice; one row and one column, a single
+    // cell inside them updated; the values at the constraints' most
+    let mut one = SubrectangleQueries.new([[7].to_vec()].to_vec());
+    let c1 = one.get_value(0, 0);
+    one.update_subrectangle(0, 0, 0, 0, 1000000000);
+    let c2 = one.get_value(0, 0);
+    one.update_subrectangle(0, 0, 0, 0, 1);
+    let c3 = one.get_value(0, 0);
+    let mut row = SubrectangleQueries.new([[1, 2, 3, 4, 5].to_vec()].to_vec());
+    row.update_subrectangle(0, 1, 0, 3, 9);
+    row.update_subrectangle(0, 2, 0, 2, 8);
+    let r: Vec[String] = (0..5).map(|c| f"{row.get_value(0, c)}").collect();
+    let mut col = SubrectangleQueries.new([[1].to_vec(), [2].to_vec(), [3].to_vec()].to_vec());
+    col.update_subrectangle(1, 0, 2, 0, 6);
+    let k: Vec[String] = (0..3).map(|i| f"{col.get_value(i, 0)}").collect();
+    println(f"{c1} {c2} {c3} | {r.join(" ")} | {k.join(" ")}");
+    // the constraints' most: a 100 by 100 grid, 500 calls, one in two an
+    // update; the answers summed
+    let mut seed = 1476;
+    let mut big = SubrectangleQueries.new(grid(mut seed, 100, 100, 1000000000));
+    let mut sum = 0;
+    for _ in 0..250 {
+        let r1 = next_random(mut seed) % 100;
+        let r2 = r1 + next_random(mut seed) % (100 - r1);
+        let c1 = next_random(mut seed) % 100;
+        let c2 = c1 + next_random(mut seed) % (100 - c1);
+        let v = (1 + wide_random(mut seed) % 1000000000) as i32;
+        big.update_subrectangle(r1 as i32, c1 as i32, r2 as i32, c2 as i32, v);
+        sum += big.get_value((next_random(mut seed) % 100) as i32, (next_random(mut seed) % 100) as i32);
+    }
+    println(f"100 by 100, 500 calls: values sum {sum}");
+    // 2000 random grids of 1 to 10 rows and columns, 1 to 60 calls, an
+    // update one time in three; each value read folded into a checksum
+    let mut check = 0;
+    let mut reads = 0;
+    for _ in 0..2000 {
+        let rows = 1 + next_random(mut seed) % 10;
+        let cols = 1 + next_random(mut seed) % 10;
+        let top = 1 + wide_random(mut seed) % 1000000000;
+        let mut g = SubrectangleQueries.new(grid(mut seed, rows, cols, top));
+        let n = 1 + next_random(mut seed) % 60;
+        for _ in 0..n {
+            if next_random(mut seed) % 3 == 0 {
+                let r1 = next_random(mut seed) % rows;
+                let r2 = r1 + next_random(mut seed) % (rows - r1);
+                let c1 = next_random(mut seed) % cols;
+                let c2 = c1 + next_random(mut seed) % (cols - c1);
+                let v = (1 + wide_random(mut seed) % top) as i32;
+                g.update_subrectangle(r1 as i32, c1 as i32, r2 as i32, c2 as i32, v);
+            } else {
+                let x = g.get_value((next_random(mut seed) % rows) as i32, (next_random(mut seed) % cols) as i32);
+                check = (check * 31 + x) % 1000000007;
+                reads += 1;
+            }
+        }
+    }
+    println(f"2000 random grids: {reads} reads, checksum {check}");
+}
