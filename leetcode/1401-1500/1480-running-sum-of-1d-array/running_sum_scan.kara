@@ -1,0 +1,61 @@
+// LeetCode #1480: Running Sum of 1d Array -- `scan`, the iterator that
+// carries a running state: each value added to the state, which is handed
+// on as the next sum
+
+fn running_sum(nums: Vec[i32]) -> Vec[i32] {
+    nums.iter()
+        .scan(0i32, |sum, x| { let sum = sum + x; Some((sum, sum)) })
+        .collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// 30 bits from two draws, for values up to 10^6 either way
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// n values from -top to top
+fn draw(seed: mut ref i64, n: i64, top: i64) -> Vec[i32] {
+    (0..n).map(|_| (wide_random(mut seed) % (2 * top + 1) - top) as i32).collect()
+}
+
+fn show(v: Vec[i32]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(show(running_sum([1, 2, 3, 4].to_vec())));
+    println(show(running_sum([1, 1, 1, 1, 1].to_vec())));
+    println(show(running_sum([3, 1, 2, 10, 1].to_vec())));
+    // the edges: one value; signs that cancel; the sums at the
+    // constraints' most, 1000 values of 10^6 and of -10^6, and both in turn
+    println(show(running_sum([-7].to_vec())));
+    println(show(running_sum([5, -5, 5, -5, 0].to_vec())));
+    let up = running_sum(Vec.filled(1000, 1000000));
+    let down = running_sum(Vec.filled(1000, -1000000));
+    let turns: Vec[i32] = (0..1000).map(|i| if i % 2 == 0 { 1000000 } else { -1000000 }).collect();
+    let swing = running_sum(turns);
+    println(f"1000 values: {up[999]} {down[999]} {swing[998]} {swing[999]}");
+    // 3000 random arrays of 1 to 1000 values from -top to top, top from 0
+    // to 10^6; each sum folded into a checksum
+    let mut seed = 1480;
+    let mut check = 0;
+    let mut count = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 1000;
+        let top = wide_random(mut seed) % 1000001;
+        for x in running_sum(draw(mut seed, n, top)).iter() {
+            check = (check * 31 + x + 1000000007) % 1000000007;
+            count += 1;
+        }
+    }
+    println(f"3000 random arrays: {count} sums, checksum {check}");
+}
