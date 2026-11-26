@@ -53,7 +53,8 @@ A type-qualified call of a number's method, `i32.max(x1, ..)`, was then
 refused as "no associated function 'max' on type 'i32'", though
 design.md §9 makes `T.m(x, ..)` the call `x.m(..)`; that was
 B-2026-11-26-3, fixed by 2099ac467c (B-2026-11-25-40), after which the
-arm checks and its output matches on the first run.
+arm checks and its output matches on the first run. The same call
+form on `Vec` and `bool` methods was split off as B-2026-11-26-4.
 
 ## Differential
 
