@@ -1,0 +1,247 @@
+// LeetCode #1423: Maximum Points You Can Obtain from Cards -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- max_score.kara ----
+fn a0_max_score(card_points: Vec[i32], k: i32) -> i32 {
+    // the first k cards taken, then one at a time the last of those given
+    // back for the next card from the far end, the best total kept
+    let n = card_points.len();
+    let k = k as i64;
+    let mut sum: i32 = card_points[..k].iter().sum();
+    let mut best = sum;
+    for i in 0..k {
+        sum += card_points[n - 1 - i] - card_points[k - 1 - i];
+        best = best.max(sum);
+    }
+    best
+}
+
+// ---- max_score_prefix.kara ----
+fn a1_max_score(card_points: Vec[i32], k: i32) -> i32 {
+    // the sums of every prefix, and for each count i taken from the front
+    // the k - i from the back read off the same table
+    let n = card_points.len();
+    let k = k as i64;
+    let mut prefix: Vec[i32] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        prefix[i + 1] = prefix[i] + card_points[i];
+    }
+    (0..=k).map(|i| prefix[i] + prefix[n] - prefix[n - (k - i)]).max().unwrap()
+}
+
+// ---- max_score_scan.kara ----
+fn a2_max_score(card_points: Vec[i32], k: i32) -> i32 {
+    // the trades of a front card for a back card, as pairs from the
+    // innermost out, run through `scan` to the total after each, and the
+    // most of those and the first k cards' total
+    let n = card_points.len();
+    let k = k as i64;
+    let first: i32 = card_points[..k].iter().sum();
+    let fronts = card_points[..k].iter().rev();
+    let backs = card_points[n - k..].iter().rev();
+    let best = fronts.zip(backs).scan(first, |total, (front, back)| {
+        let next = total - front + back;
+        Some((next, next))
+    }).max();
+    match best {
+        Some(b) => b.max(first),
+        None => first,
+    }
+}
+
+// ---- max_score_circle.kara ----
+fn a3_max_score(card_points: Vec[i32], k: i32) -> i32 {
+    // the last k cards laid before the first k in a deque, as if the row
+    // were a circle cut between them, and the best k in a row across the
+    // cut found by a sliding sum
+    let n = card_points.len();
+    let k = k as i64;
+    let mut ring: VecDeque[i32] = VecDeque.new();
+    for i in 0..k {
+        ring.push_back(card_points[i]);
+    }
+    for i in (n - k..n).rev() {
+        ring.push_front(card_points[i]);
+    }
+    let mut sum: i32 = 0;
+    for i in 0..k {
+        sum += ring[i];
+    }
+    let mut best = sum;
+    for i in k..2 * k {
+        sum += ring[i] - ring[i - k];
+        best = best.max(sum);
+    }
+    best
+}
+
+// ---- max_score_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_max_score(card_points: Vec[i32], k: i32) -> i32 {
+        let n = card_points.len();
+        let w = n - k;
+        let total: i32 = card_points.iter().sum();
+        let mut cur: i32 = card_points[..w].iter().sum();
+        let mut min = cur;
+        for i in w..n {
+            cur += card_points[i] - card_points[i - w];
+            min = min.min(cur);
+        }
+        total - min
+    }
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n cards of 1 to `top` points
+fn drawn(n: i64, top: i64, seed: mut ref i64) -> Vec[i32] {
+    (0..n).map(|_| (1 + next_random(mut seed) % top) as i32).collect()
+}
+
+// the statement read literally: every way to make k steps, each taking the
+// card at the beginning or at the end of what is left of the row, played
+// out on a deque, and the most points kept, while k is at most 12
+fn literal(cards: Vec[i32], k: i64) -> i64 {
+    let mut best = -1;
+    for ways in 0..1 << k {
+        let mut row: VecDeque[i32] = VecDeque.new();
+        for c in cards.iter() {
+            row.push_back(c);
+        }
+        let mut points: i64 = 0;
+        for step in 0..k {
+            let card = if ways >> step & 1 == 0 { row.pop_front() } else { row.pop_back() };
+            points += card.unwrap();
+        }
+        best = best.max(points);
+    }
+    best
+}
+
+fn arm(i: i64, cards: Vec[i32], k: i64) -> i64 {
+    let cards = cards.clone();
+    let k = k as i32;
+    let got = match i {
+        0 => a0_max_score(cards, k),
+        1 => a1_max_score(cards, k),
+        2 => a2_max_score(cards, k),
+        3 => a3_max_score(cards, k),
+        _ => A4Solution.a4_max_score(cards, k),
+    };
+    got
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, cards: Vec[i32], k: i64, lift: i32) {
+    t.cases += 1;
+    let star = arm(0, cards, k);
+    t.check = (t.check * 131 + star) % 1000000007;
+    t.check = (t.check * 131 + cards.len() * 1000 + k) % 1000000007;
+    let n = cards.len();
+    let want = if k <= 12 { literal(cards, k) } else { -1 };
+    let front: i64 = cards[..k].iter().map(|c| c as i64).sum();
+    let back: i64 = cards[n - k..].iter().map(|c| c as i64).sum();
+    let mut sorted = cards.clone();
+    sorted.sort();
+    let largest: i64 = sorted[n - k..].iter().map(|c| c as i64).sum();
+    let reversed: Vec[i32] = cards.iter().rev().cloned().collect();
+    let lifted: Vec[i32] = cards.iter().map(|c| c + lift).collect();
+    for i in 0..5 {
+        let what = f"arm {i} on {n} cards, k = {k}";
+        let got = arm(i, cards, k);
+        // P1: the statement read literally, while k is small
+        if want >= 0 {
+            expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        }
+        // P2: at least the first k or the last k, and at most the k
+        // largest cards
+        expect(mut t, 2, got >= front.max(back) and got <= largest, f"P2 {what}: {got}");
+        // P3: the row turned round gives the same points
+        expect(mut t, 3, arm(i, reversed, k) == got, f"P3 {what}");
+        // P4: one step more, while cards are left, takes more points
+        if k < n {
+            expect(mut t, 4, arm(i, cards, k + 1) > got, f"P4 {what}");
+        }
+        // P5: `lift` points more on every card is `lift` more on each of
+        // the k taken
+        expect(mut t, 5, arm(i, lifted, k) == got + lift * k, f"P5 {what} and {lift}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: one card, every card taken, the
+    // best all from one end, and the constraints' most. Every case is
+    // drawn before any arm answers.
+    let mut cases: Vec[(Vec[i32], i64)] = Vec.new();
+    let fixed: Vec[(Vec[i32], i64)] = [
+        ([1, 2, 3, 4, 5, 6, 1].to_vec(), 3),
+        ([2, 2, 2].to_vec(), 2),
+        ([9, 7, 7, 9, 7, 7, 9].to_vec(), 7),
+        ([1, 1000, 1].to_vec(), 1),
+        ([5].to_vec(), 1),
+        ([9, 9, 1, 1, 1].to_vec(), 2),
+        ([1, 1, 1, 9, 9].to_vec(), 2),
+        ([1, 79, 80, 1, 1, 1, 200, 1].to_vec(), 3),
+    ].to_vec();
+    for (c, k) in fixed.into_iter() {
+        cases.push((c, k));
+    }
+    let mut seed = 14231;
+    let most: Vec[i32] = Vec.filled(100000, 10000);
+    cases.push((most, 100000));
+    let cards = drawn(100000, 10000, mut seed);
+    cases.push((cards.clone(), 1));
+    cases.push((cards.clone(), 50000));
+    cases.push((cards, 99999));
+    // 1991 random cases: 1 to 60 cards two times in three and up to 2000
+    // otherwise, of up to 10, 100 or 10^4 points, k up to all of them, or
+    // up to 12 half the time
+    for i in 0..1991 {
+        let n = if i % 3 == 2 { 1 + next_random(mut seed) % 2000 } else { 1 + next_random(mut seed) % 60 };
+        let top = [10, 100, 10000][next_random(mut seed) % 3];
+        let k = if i % 2 == 0 { 1 + next_random(mut seed) % n.min(12) } else { 1 + next_random(mut seed) % n };
+        cases.push((drawn(n, top, mut seed), k));
+    }
+    let mut lifts: Vec[i32] = Vec.new();
+    for _ in cases.iter() {
+        lifts.push((1 + next_random(mut seed) % 10) as i32);
+    }
+    for j in 0..cases.len() {
+        let (cards, k) = cases[j].clone();
+        check_case(mut t, cards, k, lifts[j]);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
