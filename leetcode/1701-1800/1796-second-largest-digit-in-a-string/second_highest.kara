@@ -1,0 +1,67 @@
+// LeetCode #1796: Second Largest Digit in a String -- the ★ arm: one pass
+// keeping the largest digit and the largest below it. A digit above the
+// largest pushes the largest down to second; one between the two becomes
+// the second. O(n)
+
+fn second_highest(s: String) -> i32 {
+    let mut first = -1;
+    let mut second = -1;
+    for c in s.chars() {
+        if let Some(d) = c.to_digit(10) {
+            let d = d as i32;
+            if d > first {
+                second = first;
+                first = d;
+            } else if d < first and d > second {
+                second = d;
+            }
+        }
+    }
+    second
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n characters, each a digit with a chance of `digits` in 10 and otherwise
+// one of the letters a to f
+fn random_text(seed: mut ref i64, n: i64, digits: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        if next_random(mut seed) % 10 < digits {
+            s.push(char.from_digit((next_random(mut seed) % 10) as u32, 10).unwrap());
+        } else {
+            s.push("abcdef".chars().nth(next_random(mut seed) % 6).unwrap());
+        }
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{second_highest("dfa12321afd")} {second_highest("abc1111")}");
+    // the edges: one letter; no digit; one digit over and over; 0 and 9;
+    // every digit; the digits falling between letters
+    println(f"{second_highest("a")} {second_highest("abc")} {second_highest("7777")} {second_highest("09")} {second_highest("0123456789")} {second_highest("9a8b7c")}");
+    // the constraints' most: 500 nines; a 9 then 499 eights; and 500
+    // characters at random
+    let nines = "9".repeat(500);
+    let eights = "9" + "8".repeat(499);
+    let mut seed = 1796;
+    let wide = random_text(mut seed, 500, 5);
+    println(f"the most: {second_highest(nines)} {second_highest(eights)} {second_highest(wide)}");
+    // 3000 random strings of 1 to 20 characters, each a digit with a
+    // chance of 0 to 9 in 10
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 20;
+        let digits = next_random(mut seed) % 10;
+        let s = random_text(mut seed, n, digits);
+        check = (check * 31 + second_highest(s) + 1) % 1000000007;
+    }
+    println(f"3000 random strings: checksum {check}");
+}

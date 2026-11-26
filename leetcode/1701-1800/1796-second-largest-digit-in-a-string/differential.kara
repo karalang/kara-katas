@@ -1,0 +1,209 @@
+// LeetCode #1796: Second Largest Digit in a String --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- second_highest.kara ----
+fn a0_second_highest(s: String) -> i32 {
+    let mut first = -1;
+    let mut second = -1;
+    for c in s.chars() {
+        if let Some(d) = c.to_digit(10) {
+            let d = d as i32;
+            if d > first {
+                second = first;
+                first = d;
+            } else if d < first and d > second {
+                second = d;
+            }
+        }
+    }
+    second
+}
+
+// ---- second_highest_seen.kara ----
+fn a1_second_highest(s: String) -> i32 {
+    let mut seen = [false; 10];
+    for c in s.chars() {
+        if let Some(d) = c.to_digit(10) {
+            seen[d] = true;
+        }
+    }
+    let mut found = 0;
+    for d in (0..10).rev() {
+        if seen[d] {
+            found += 1;
+            if found == 2 {
+                return d as i32;
+            }
+        }
+    }
+    -1
+}
+
+// ---- second_highest_set.kara ----
+fn a2_second_highest(s: String) -> i32 {
+    let mut digits: SortedSet[u32] = SortedSet.new();
+    for c in s.chars() {
+        if let Some(d) = c.to_digit(10) {
+            digits.insert(d);
+        }
+    }
+    digits.pop_last();
+    match digits.pop_last() {
+        Some(d) => d as i32,
+        None => -1,
+    }
+}
+
+// ---- second_highest_sort.kara ----
+fn a3_second_highest(s: String) -> i32 {
+    let mut digits: Vec[u8] = s.bytes().iter().filter(|b| b >= b'0' and b <= b'9').collect();
+    digits.sort();
+    digits.dedup();
+    if digits.len() < 2 {
+        -1
+    } else {
+        (digits[digits.len() - 2] - b'0')
+    }
+}
+
+// ---- second_highest_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn second_highest(s: String) -> i32 {
+        let digits: SortedSet[u32] = s.chars().filter_map(|c| c.to_digit(10)).collect();
+        digits.iter().rev().nth(1).map_or(-1, |d| d as i32)
+    }
+}
+
+fn a4_second_highest(s: String) -> i32 {
+    A4Solution.second_highest(s)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_text(seed: mut ref i64, n: i64, digits: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        if next_random(mut seed) % 10 < digits {
+            s.push(char.from_digit((next_random(mut seed) % 10) as u32, 10).unwrap());
+        } else {
+            s.push("abcdef".chars().nth(next_random(mut seed) % 6).unwrap());
+        }
+    }
+    s
+}
+
+// the digits of s, in order, letters skipped
+fn digits_of(s: String) -> Vec[i32] {
+    s.chars().filter_map(|c| c.to_digit(10)).map(|d| d as i32).collect()
+}
+
+// the statement read literally: the largest digit of s that some other
+// digit of s is larger than
+fn literal(s: String) -> i32 {
+    let digits = digits_of(s);
+    let mut best = -1;
+    for d in digits.iter() {
+        if digits.iter().any(|e| e > d) and d > best {
+            best = d;
+        }
+    }
+    best
+}
+
+fn arm(i: i64, s: String) -> i32 {
+    match i {
+        0 => a0_second_highest(s),
+        1 => a1_second_highest(s),
+        2 => a2_second_highest(s),
+        3 => a3_second_highest(s),
+        _ => a4_second_highest(s),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, s: String) {
+    t.cases += 1;
+    let star = arm(0, s);
+    t.check = (t.check * 31 + star + 1) % 1000000007;
+    let want = literal(s);
+    let back: String = s.chars().rev().collect();
+    let bare: String = s.chars().filter(|c| c.is_digit(10)).collect();
+    let twice = s.clone() + s;
+    let top_src = digits_of(s);
+    let top = top_src.iter().max().unwrap_or(-1);
+    let mut above = s.clone();
+    if top < 9 {
+        above.push(char.from_digit((top + 1) as u32, 10).unwrap());
+    }
+    for i in 0..5 {
+        let what = f"arm {i} on {s}";
+        let got = arm(i, s);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: the string reversed gives the same answer
+        expect(mut t, 2, arm(i, back) == got, f"P2 {what}");
+        // P3: the letters removed give the same answer
+        if bare.len() > 0 {
+            expect(mut t, 3, arm(i, bare) == got, f"P3 {what}");
+        }
+        // P4: the string twice over gives the same answer
+        expect(mut t, 4, arm(i, twice) == got, f"P4 {what}");
+        // P5: a digit one above the largest, appended, makes the largest
+        // the answer
+        if top < 9 {
+            expect(mut t, 5, arm(i, above) == top, f"P5 {what}");
+        }
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples, the edges, the constraints' most, and 1987
+    // random strings of 1 to 30 characters. Every case is drawn before any
+    // arm answers.
+    let mut cases: Vec[String] = ["dfa12321afd", "abc1111", "a", "abc", "7777", "09", "0123456789", "9a8b7c", "1", "98"].iter().map(|s| s.to_string()).collect();
+    let mut seed = 17961;
+    cases.push("9".repeat(500));
+    cases.push("9" + "8".repeat(499));
+    cases.push(random_text(mut seed, 500, 5));
+    for _ in 0..1987 {
+        let n = 1 + next_random(mut seed) % 30;
+        let digits = next_random(mut seed) % 11;
+        cases.push(random_text(mut seed, n, digits));
+    }
+    for j in 0..cases.len() {
+        check_case(mut t, cases[j].clone());
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
