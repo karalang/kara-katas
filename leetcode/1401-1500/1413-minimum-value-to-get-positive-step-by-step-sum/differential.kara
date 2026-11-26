@@ -1,0 +1,226 @@
+// LeetCode #1413: Minimum Value to Get Positive Step by Step Sum -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- min_start_value.kara ----
+fn a0_min_start_value(nums: Vec[i32]) -> i32 {
+    // the lowest the running sum goes, and the start that lifts it to 1
+    let mut sum: i32 = 0;
+    let mut lowest: i32 = 0;
+    for x in nums.iter() {
+        sum += x;
+        lowest = lowest.min(sum);
+    }
+    1 - lowest
+}
+
+// ---- min_start_value_backward.kara ----
+fn a1_min_start_value(nums: Vec[i32]) -> i32 {
+    // from the last step back: what the sum must be before each step for
+    // it to stay at least 1 from there on
+    let mut need: i32 = 1;
+    for x in nums.iter().rev() {
+        need = (need - x).max(1);
+    }
+    need
+}
+
+// ---- min_start_value_search.kara ----
+fn a2_min_start_value(nums: Vec[i32]) -> i32 {
+    // a start is enough when every running sum from it stays at least 1,
+    // and any larger start is then enough too: the least one found by
+    // halving between 1 and the most a start ever needs
+    let fits = |start: i32| {
+        let mut sum = start;
+        for x in nums.iter() {
+            sum += x;
+            if sum < 1 {
+                return false;
+            }
+        }
+        true
+    };
+    let mut low: i32 = 1;
+    let mut high = 100 * nums.len() as i32 + 1;
+    while low < high {
+        let mid = low + (high - low) / 2;
+        if fits(mid) {
+            high = mid;
+        } else {
+            low = mid + 1;
+        }
+    }
+    low
+}
+
+// ---- min_start_value_fold.kara ----
+fn a3_min_start_value(nums: Vec[i32]) -> i32 {
+    // the running sums as an iterator, their least taken, 0 among them for
+    // the start itself
+    let mut sum: i32 = 0;
+    let lowest = nums.iter().map(|x| {
+        sum += x;
+        sum
+    }).fold(0i32, |low, s| low.min(s));
+    1 - lowest
+}
+
+// ---- min_start_value_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_min_start_value(nums: Vec[i32]) -> i32 {
+        let mut sum: i32 = 0;
+        let mut min_sum: i32 = 0;
+        for num in nums.iter() {
+            sum += num;
+            min_sum = min_sum.min(sum);
+        }
+        1 - min_sum
+    }
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n numbers from -top to top
+fn drawn(n: i64, top: i64, seed: mut ref i64) -> Vec[i32] {
+    (0..n).map(|_| (next_random(mut seed) % (2 * top + 1) - top) as i32).collect()
+}
+
+// whether every step-by-step sum from start is at least 1
+fn stays_positive(nums: Vec[i32], start: i32) -> bool {
+    let mut sum = start;
+    for x in nums.iter() {
+        sum += x;
+        if sum < 1 {
+            return false;
+        }
+    }
+    true
+}
+
+// the statement read literally: each positive start tried in turn, the
+// first that keeps every sum at least 1
+fn literal(nums: Vec[i32]) -> i32 {
+    let mut start = 1;
+    while not stays_positive(nums, start) {
+        start += 1;
+    }
+    start
+}
+
+fn arm(i: i64, nums: Vec[i32]) -> i32 {
+    let nums = nums.clone();
+    match i {
+        0 => a0_min_start_value(nums),
+        1 => a1_min_start_value(nums),
+        2 => a2_min_start_value(nums),
+        3 => a3_min_start_value(nums),
+        _ => A4Solution.a4_min_start_value(nums),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, nums: Vec[i32], extra: i32) {
+    t.cases += 1;
+    let star = arm(0, nums);
+    t.check = (t.check * 131 + star) % 1000000007;
+    t.check = (t.check * 131 + nums.len()) % 1000000007;
+    let want = literal(nums);
+    let total: i32 = nums.iter().sum();
+    let mut longer = nums.clone();
+    longer.push(extra);
+    let mut twice = nums.clone();
+    twice.extend(nums.iter());
+    for i in 0..5 {
+        let what = f"arm {i} on {nums}";
+        let got = arm(i, nums);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: a positive start, never more than one past 100 for each
+        // number
+        expect(mut t, 2, got >= 1 and got <= 100 * nums.len() as i32 + 1, f"P2 {what}: {got}");
+        // P3: the start keeps every sum at least 1, and one less than it,
+        // while positive, does not
+        expect(mut t, 3, stays_positive(nums, got) and (got == 1 or not stays_positive(nums, got - 1)), f"P3 {what}: {got}");
+        // P4: a number added at the end that is not negative changes
+        // nothing
+        if extra >= 0 {
+            expect(mut t, 4, arm(i, longer) == got, f"P4 {what} and {extra}");
+        }
+        // P5: the numbers twice over need as much again as a negative
+        // total takes away
+        expect(mut t, 5, arm(i, twice) == got - total.min(0), f"P5 {what}: total {total}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: one number at either end, zeros,
+    // a sum that comes back to 0, and the constraints' most. Every case is
+    // drawn before any arm answers.
+    let mut cases: Vec[(Vec[i32], i32)] = Vec.new();
+    let fixed: Vec[Vec[i32]] = [
+        [-3, 2, -3, 4, 2].to_vec(),
+        [1, 2].to_vec(),
+        [1, -2, -3].to_vec(),
+        [-100].to_vec(),
+        [100].to_vec(),
+        [0, 0, 0].to_vec(),
+        [5, -5, 5, -5].to_vec(),
+        [-1, 1, -1, 1].to_vec(),
+    ].to_vec();
+    for f in fixed.iter() {
+        cases.push((f.clone(), 7));
+    }
+    let mut seed = 14131;
+    let low: Vec[i32] = (0..100).map(|_| -100).collect();
+    let high: Vec[i32] = (0..100).map(|_| 100).collect();
+    cases.push((low, 100));
+    cases.push((high, -100));
+    cases.push((drawn(100, 100, mut seed), 0));
+    // 1992 random arrays: 1 to 100 numbers up to 1 to 100 in size, a
+    // third of them leaning down
+    for i in 0..1992 {
+        let n = 1 + next_random(mut seed) % 100;
+        let top = 1 + next_random(mut seed) % 100;
+        let mut nums = drawn(n, top, mut seed);
+        if i % 3 == 2 {
+            nums = nums.iter().map(|x| if x > 0 { x / 3 } else { x }).collect();
+        }
+        cases.push((nums, (next_random(mut seed) % 21 - 10) as i32));
+    }
+    for (nums, extra) in cases.iter() {
+        check_case(mut t, nums, extra);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

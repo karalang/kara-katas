@@ -1,0 +1,68 @@
+fn min_start_value(nums: Vec[i32]) -> i32 {
+    // a start is enough when every running sum from it stays at least 1,
+    // and any larger start is then enough too: the least one found by
+    // halving between 1 and the most a start ever needs
+    let fits = |start: i32| {
+        let mut sum = start;
+        for x in nums.iter() {
+            sum += x;
+            if sum < 1 {
+                return false;
+            }
+        }
+        true
+    };
+    let mut low: i32 = 1;
+    let mut high = 100 * nums.len() as i32 + 1;
+    while low < high {
+        let mid = low + (high - low) / 2;
+        if fits(mid) {
+            high = mid;
+        } else {
+            low = mid + 1;
+        }
+    }
+    low
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n numbers from -top to top
+fn drawn(n: i64, top: i64, seed: mut ref i64) -> Vec[i32] {
+    (0..n).map(|_| (next_random(mut seed) % (2 * top + 1) - top) as i32).collect()
+}
+
+fn main() {
+    // LeetCode's three examples, and four more
+    let firsts: Vec[String] = [
+        min_start_value([-3, 2, -3, 4, 2]),
+        min_start_value([1, 2]),
+        min_start_value([1, -2, -3]),
+        min_start_value([0]),
+        min_start_value([-1]),
+        min_start_value([5, -5, 5, -5]),
+        min_start_value([-2, 3, -4, 1]),
+    ].into_iter().map(|x| f"{x}").collect();
+    println(firsts.join(" "));
+    // the constraints' most: 100 numbers of -100, of 100, and drawn
+    let mut seed = 1413;
+    let low: Vec[i32] = (0..100).map(|_| -100).collect();
+    let high: Vec[i32] = (0..100).map(|_| 100).collect();
+    println(f"100 numbers: {min_start_value(low)} {min_start_value(high)} {min_start_value(drawn(100, 100, mut seed))}");
+    // 2000 random arrays of 1 to 100 numbers up to 1 to 100 in size
+    let mut check: i64 = 0;
+    let mut total: i64 = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 100;
+        let top = 1 + next_random(mut seed) % 100;
+        let x = min_start_value(drawn(n, top, mut seed));
+        total += x;
+        check = (check * 131 + x) % 1000000007;
+    }
+    println(f"2000 random arrays: {total} in all, checksum {check}");
+}
