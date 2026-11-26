@@ -1,0 +1,100 @@
+// LeetCode #1424: Diagonal Traverse II -- a Rust solution as LeetCode's
+// Rust users write it: a group for each diagonal filled row by row, a new
+// group pushed when a cell reaches past the last, and each group read
+// back to front, carried to Kāra by `karac fix`
+
+struct Solution {}
+
+impl Solution {
+    pub fn find_diagonal_order(nums: Vec[Vec[i32]]) -> Vec[i32] {
+        let mut groups: Vec[Vec[i32]] = Vec.new();
+        for (i, row) in nums.iter().enumerate() {
+            for (j, x) in row.iter().enumerate() {
+                if i + j >= groups.len() {
+                    groups.push(Vec.new());
+                }
+                groups[i + j].push(x);
+            }
+        }
+        let mut res = Vec.new();
+        for g in groups.iter() {
+            for x in g.iter().rev() {
+                res.push(x);
+            }
+        }
+        res
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `rows` rows of 1 to `wide` values each, of 1 to `top`
+fn drawn(rows: i64, wide: i64, top: i64, seed: mut ref i64) -> Vec[Vec[i32]] {
+    let mut nums: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..rows {
+        let n = 1 + next_random(mut seed) % wide;
+        nums.push((0..n).map(|_| (1 + next_random(mut seed) % top) as i32).collect());
+    }
+    nums
+}
+
+fn shown(order: Vec[i32]) -> String {
+    let parts: Vec[String] = order.iter().map(|x| f"{x}").collect();
+    parts.join(",")
+}
+
+// the order folded to a number, each value in its place
+fn folded(order: Vec[i32]) -> i64 {
+    let mut check: i64 = 0;
+    for x in order.iter() {
+        check = (check * 131 + x) % 1000000007;
+    }
+    check
+}
+
+fn main() {
+    // LeetCode's two examples, and three more: one row, one column, and
+    // rows that grow, shrink and grow again
+    println(shown(Solution.find_diagonal_order([[1, 2, 3], [4, 5, 6], [7, 8, 9]])));
+    println(shown(Solution.find_diagonal_order([
+        [1, 2, 3, 4, 5],
+        [6, 7],
+        [8],
+        [9, 10, 11],
+        [12, 13, 14, 15, 16],
+    ])));
+    println(shown(Solution.find_diagonal_order([[1, 2, 3]])));
+    println(shown(Solution.find_diagonal_order([[1], [2], [3]])));
+    println(shown(Solution.find_diagonal_order([[1], [2, 3, 4], [5], [6, 7]])));
+    // the constraints' most: 10^5 values in one row, in 10^5 rows of one,
+    // and in rows of 1 to 600 drawn
+    let mut seed = 1424;
+    let row: Vec[Vec[i32]] = [(1..=100000).collect()];
+    let column: Vec[Vec[i32]] = (1i32..=100000).map(|x| [x]).collect();
+    let mut jagged = drawn(330, 600, 100000, mut seed);
+    let mut count: i64 = 0;
+    for r in jagged.iter() {
+        count += r.len();
+    }
+    while count > 100000 {
+        let last = jagged.pop().unwrap();
+        count -= last.len();
+    }
+    println(f"10^5 values: {folded(Solution.find_diagonal_order(row))} {folded(Solution.find_diagonal_order(column))} {count} {folded(Solution.find_diagonal_order(jagged))}");
+    // 2000 random cases of 1 to 12 rows of 1 to 1, 4 or 12 values
+    let mut check: i64 = 0;
+    let mut total: i64 = 0;
+    for _ in 0..2000 {
+        let rows = 1 + next_random(mut seed) % 12;
+        let wide = [1, 4, 12][next_random(mut seed) % 3];
+        let order = Solution.find_diagonal_order(drawn(rows, wide, 100, mut seed));
+        total += order.len();
+        check = (check * 131 + folded(order)) % 1000000007;
+    }
+    println(f"2000 random cases: {total} values, checksum {check}");
+}
