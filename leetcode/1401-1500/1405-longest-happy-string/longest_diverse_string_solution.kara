@@ -1,0 +1,103 @@
+struct Solution {}
+
+impl Solution {
+    pub fn longest_diverse_string(a: i32, b: i32, c: i32) -> String {
+        let mut heap = PriorityQueue.max_first();
+        if a > 0 {
+            heap.push((a, 'a'));
+        }
+        if b > 0 {
+            heap.push((b, 'b'));
+        }
+        if c > 0 {
+            heap.push((c, 'c'));
+        }
+        let mut res: Vec[char] = Vec.new();
+        while let Some((cnt, ch)) = heap.pop() {
+            let n = res.len();
+            if n >= 2 and res[n - 1] == ch and res[n - 2] == ch {
+                if let Some((cnt2, ch2)) = heap.pop() {
+                    res.push(ch2);
+                    if cnt2 > 1 {
+                        heap.push((cnt2 - 1, ch2));
+                    }
+                    heap.push((cnt, ch));
+                } else {
+                    break;
+                }
+            } else {
+                res.push(ch);
+                if cnt > 1 {
+                    heap.push((cnt - 1, ch));
+                }
+            }
+        }
+        res.into_iter().collect()
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// is `s` happy, with no more than a 'a's, b 'b's and c 'c's?
+fn happy(s: String, a: i32, b: i32, c: i32) -> bool {
+    let chars: Vec[char] = s.chars().collect();
+    let count = |x: char| chars.iter().filter(|y| y == x).count();
+    let no_three = (2..chars.len()).all(|i| not (chars[i] == chars[i - 1] and chars[i] == chars[i - 2]));
+    let only_abc = chars.iter().all(|x| x == 'a' or x == 'b' or x == 'c');
+    no_three and only_abc and count('a') <= a and count('b') <= b and count('c') <= c
+}
+
+// the answer's length, and 1 more for each answer that is not happy
+fn tried(a: i32, b: i32, c: i32, unhappy: mut ref i64) -> i64 {
+    let s = Solution.longest_diverse_string(a, b, c);
+    if not happy(s, a, b, c) {
+        *unhappy += 1;
+    }
+    s.len()
+}
+
+fn main() {
+    let mut unhappy = 0;
+    // LeetCode's two examples, and four more
+    let shown: Vec[String] = [(1, 1, 7), (7, 1, 0), (2, 2, 1), (0, 0, 1), (4, 0, 0), (3, 3, 3)]
+        .iter()
+        .map(|(a, b, c)| f"{tried(a, b, c, mut unhappy)}")
+        .collect();
+    println(shown.join(" "));
+    // the constraints' corners: all 100, one 100 alone, beside two 1s, and
+    // beside 10
+    let corners: Vec[String] = [(100, 100, 100), (100, 0, 0), (0, 100, 0), (1, 100, 1), (100, 10, 0), (0, 49, 100)]
+        .iter()
+        .map(|(a, b, c)| f"{tried(a, b, c, mut unhappy)}")
+        .collect();
+    println(f"corners: {corners.join(" ")}");
+    // every count from 0 to 12, and 2000 drawn up to 100
+    let mut total: i64 = 0;
+    let mut check: i64 = 0;
+    for a in 0..13 {
+        for b in 0..13 {
+            for c in 0..13 {
+                if a + b + c > 0 {
+                    let n = tried(a, b, c, mut unhappy);
+                    total += n;
+                    check = (check * 131 + n) % 1000000007;
+                }
+            }
+        }
+    }
+    let mut seed = 1405;
+    for _ in 0..2000 {
+        let a = next_random(mut seed) % 101;
+        let b = next_random(mut seed) % 101;
+        let c = 1 + next_random(mut seed) % 100;
+        let n = tried(a as i32, b as i32, c as i32, mut unhappy);
+        total += n;
+        check = (check * 131 + n) % 1000000007;
+    }
+    println(f"4196 cases: {total} letters in all, checksum {check}, {unhappy} not happy");
+}

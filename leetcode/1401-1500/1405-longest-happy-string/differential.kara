@@ -1,0 +1,285 @@
+// LeetCode #1405: Longest Happy String -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- longest_diverse_string.kara ----
+fn a0_longest_diverse_string(a: i32, b: i32, c: i32) -> String {
+    // the letters with what is left of each, the most left first; the
+    // first that would not make three in a row goes next
+    let mut left = [(a, 'a'), (b, 'b'), (c, 'c')];
+    let mut out = String.new();
+    loop {
+        left.sort_by(|x, y| y.0.cmp(x.0));
+        let mut placed = false;
+        for i in 0..3 {
+            let (n, ch) = left[i];
+            if n == 0 {
+                break;
+            }
+            if out.ends_with(f"{ch}{ch}") {
+                continue;
+            }
+            out.push(ch);
+            left[i] = (n - 1, ch);
+            placed = true;
+            break;
+        }
+        if not placed {
+            return out;
+        }
+    }
+}
+
+// ---- longest_diverse_string_pick.kara ----
+fn a1_longest_diverse_string(a: i32, b: i32, c: i32) -> String {
+    // the letter with the most left that may go next, by `max_by_key`
+    let letters = ['a', 'b', 'c'];
+    let mut left = [a, b, c];
+    let mut out: Vec[char] = Vec.new();
+    loop {
+        let n = out.len();
+        let barred = if n >= 2 and out[n - 1] == out[n - 2] { Some(out[n - 1]) } else { None };
+        let next = (0..3).filter(|i| left[i] > 0 and barred != Some(letters[i])).max_by_key(|i| left[i]);
+        match next {
+            Some(i) => {
+                out.push(letters[i]);
+                left[i] -= 1;
+            }
+            None => break,
+        }
+    }
+    out.iter().collect()
+}
+
+// ---- longest_diverse_string_heap.kara ----
+fn a2_longest_diverse_string(a: i32, b: i32, c: i32) -> String {
+    // the letters in a queue by what is left of each, the most first; one
+    // that would make three in a row waits a turn behind the next
+    let mut queue = PriorityQueue.max_first();
+    for (n, ch) in [(a, 'a'), (b, 'b'), (c, 'c')] {
+        if n > 0 {
+            queue.push((n, ch));
+        }
+    }
+    let mut out = String.new();
+    while let Some((n, ch)) = queue.pop() {
+        if out.ends_with(f"{ch}{ch}") {
+            match queue.pop() {
+                Some((m, other)) => {
+                    out.push(other);
+                    if m > 1 {
+                        queue.push((m - 1, other));
+                    }
+                    queue.push((n, ch));
+                }
+                None => break,
+            }
+        } else {
+            out.push(ch);
+            if n > 1 {
+                queue.push((n - 1, ch));
+            }
+        }
+    }
+    out
+}
+
+// ---- longest_diverse_string_recursive.kara ----
+fn a3_longest(a: i32, b: i32, c: i32, x: char, y: char, z: char) -> String {
+    if a < b {
+        return a3_longest(b, a, c, y, x, z);
+    }
+    if b < c {
+        return a3_longest(a, c, b, x, z, y);
+    }
+    if b == 0 {
+        return x.to_string().repeat(a.min(2) as i64);
+    }
+    let most = a.min(2);
+    let second: i32 = if a - most >= b { 1 } else { 0 };
+    x.to_string().repeat(most as i64) + y.to_string().repeat(second) + a3_longest(a - most, b - second, c, x, y, z)
+}
+
+fn a3_longest_diverse_string(a: i32, b: i32, c: i32) -> String {
+    a3_longest(a, b, c, 'a', 'b', 'c')
+}
+
+// ---- longest_diverse_string_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_longest_diverse_string(a: i32, b: i32, c: i32) -> String {
+        let mut heap = PriorityQueue.max_first();
+        if a > 0 {
+            heap.push((a, 'a'));
+        }
+        if b > 0 {
+            heap.push((b, 'b'));
+        }
+        if c > 0 {
+            heap.push((c, 'c'));
+        }
+        let mut res: Vec[char] = Vec.new();
+        while let Some((cnt, ch)) = heap.pop() {
+            let n = res.len();
+            if n >= 2 and res[n - 1] == ch and res[n - 2] == ch {
+                if let Some((cnt2, ch2)) = heap.pop() {
+                    res.push(ch2);
+                    if cnt2 > 1 {
+                        heap.push((cnt2 - 1, ch2));
+                    }
+                    heap.push((cnt, ch));
+                } else {
+                    break;
+                }
+            } else {
+                res.push(ch);
+                if cnt > 1 {
+                    heap.push((cnt - 1, ch));
+                }
+            }
+        }
+        res.into_iter().collect()
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: the longest string of 'a', 'b' and 'c',
+// no more of each than given, with no three alike in a row, every way of
+// going on tried; `left` is what is left of each, `last` the letter
+// written last and `run` how many of it end the string
+fn literal(left: Array[i64, 3], last: i64, run: i64, memo: mut ref Map[(i64, i64, i64, i64, i64), i64]) -> i64 {
+    let key = (left[0], left[1], left[2], last, run);
+    if let Some(known) = memo.get(key) {
+        return known;
+    }
+    let mut best = 0;
+    for x in 0..3 {
+        if left[x] > 0 and not (x == last and run == 2) {
+            let mut rest = left;
+            rest[x] -= 1;
+            let longer = if x == last { run + 1 } else { 1 };
+            best = best.max(1 + literal(rest, x, longer, mut memo));
+        }
+    }
+    memo.insert(key, best);
+    best
+}
+
+// is `s` happy, with no more than a 'a's, b 'b's and c 'c's?
+fn happy(s: String, a: i64, b: i64, c: i64) -> bool {
+    let chars: Vec[char] = s.chars().collect();
+    let count = |x: char| chars.iter().filter(|y| y == x).count();
+    let no_three = (2..chars.len()).all(|i| not (chars[i] == chars[i - 1] and chars[i] == chars[i - 2]));
+    let only_abc = chars.iter().all(|x| x == 'a' or x == 'b' or x == 'c');
+    no_three and only_abc and count('a') <= a and count('b') <= b and count('c') <= c
+}
+
+// the length in closed form: with x >= y >= z the counts sorted, the most
+// common letter fits two to each gap the others leave, y + z + 1 gaps
+fn closed(a: i64, b: i64, c: i64) -> i64 {
+    let mut n = [a, b, c];
+    n.sort();
+    let (z, y, x) = (n[0], n[1], n[2]);
+    x.min(2 * (y + z + 1)) + y + z
+}
+
+fn arm(i: i64, a: i64, b: i64, c: i64) -> String {
+    let (a, b, c) = (a as i32, b as i32, c as i32);
+    match i {
+        0 => a0_longest_diverse_string(a, b, c),
+        1 => a1_longest_diverse_string(a, b, c),
+        2 => a2_longest_diverse_string(a, b, c),
+        3 => a3_longest_diverse_string(a, b, c),
+        _ => A4Solution.a4_longest_diverse_string(a, b, c),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, a: i64, b: i64, c: i64, memo: mut ref Map[(i64, i64, i64, i64, i64), i64]) {
+    t.cases += 1;
+    let star = arm(0, a, b, c);
+    for ch in star.chars() {
+        t.check = (t.check * 131 + ch as i64) % 1000000007;
+    }
+    t.check = (t.check * 131 + star.len()) % 1000000007;
+    let small = a <= 10 and b <= 10 and c <= 10;
+    let want = if small { literal([a, b, c], 3, 0, mut memo) } else { -1 };
+    for i in 0..5 {
+        let got = arm(i, a, b, c);
+        let n = got.len();
+        let what = f"arm {i} on ({a}, {b}, {c})";
+        // P1: the statement read literally, every count up to 10
+        if small {
+            expect(mut t, 1, n == want, f"P1 {what}: literal {want}, got {got}");
+        }
+        // P2: happy, within the counts
+        expect(mut t, 2, happy(got, a, b, c), f"P2 {what}: {got}");
+        // P3: the letters' names do not matter: the counts turned round
+        // give a string as long
+        let turned = arm(i, c, a, b).len();
+        expect(mut t, 3, turned == n, f"P3 {what}: {turned} turned round");
+        // P4: the length in closed form
+        expect(mut t, 4, n == closed(a, b, c), f"P4 {what}: {n}, closed form {closed(a, b, c)}");
+        // P5: one more 'a' never makes it shorter
+        if a < 100 {
+            let more = arm(i, a + 1, b, c).len();
+            expect(mut t, 5, more >= n, f"P5 {what}: {more} with one more a");
+        }
+        // P6: as long as the ★ arm's answer
+        expect(mut t, 6, n == star.len(), f"P6 {what}: {n}, ★ {star.len()}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    let mut memo = Map.new();
+    // LeetCode's examples and the edges: one letter alone, two alike, all
+    // equal, the constraints' corners. Every case is drawn before any arm
+    // answers.
+    let mut cases: Vec[(i64, i64, i64)] = Vec.new();
+    for (a, b, c) in [(1, 1, 7), (7, 1, 0), (0, 0, 1), (5, 0, 0), (0, 2, 2), (4, 4, 4), (100, 100, 100), (100, 0, 0), (0, 0, 100), (100, 1, 1), (1, 100, 0), (100, 49, 0)] {
+        cases.push((a, b, c));
+    }
+    // 1991 random counts: up to 10 each two times in three, else up to 100
+    let mut seed = 14051;
+    for i in 0..1991 {
+        let hi = if i % 3 == 2 { 101 } else { 11 };
+        let mut abc = (next_random(mut seed) % hi, next_random(mut seed) % hi, next_random(mut seed) % hi);
+        if abc == (0, 0, 0) {
+            abc = (0, 1, 0);
+        }
+        cases.push(abc);
+    }
+    for (a, b, c) in cases.iter() {
+        check_case(mut t, a, b, c, mut memo);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
