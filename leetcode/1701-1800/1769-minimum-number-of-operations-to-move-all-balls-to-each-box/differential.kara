@@ -1,0 +1,248 @@
+// LeetCode #1769: Minimum Number of Operations to Move All Balls to Each
+// Box -- differential test of the five arms against the statement read
+// literally, with five more properties.
+
+// ---- min_operations.kara ----
+fn a0_min_operations(boxes: String) -> Vec[i32] {
+    let b = boxes.bytes();
+    let n = b.len();
+    let mut answer: Vec[i32] = Vec.filled(n, 0);
+    let mut balls = 0;
+    let mut moves = 0;
+    for i in 0..n {
+        answer[i] += moves;
+        if b[i] == b'1' {
+            balls += 1;
+        }
+        moves += balls;
+    }
+    balls = 0;
+    moves = 0;
+    for i in (0..n).rev() {
+        answer[i] += moves;
+        if b[i] == b'1' {
+            balls += 1;
+        }
+        moves += balls;
+    }
+    answer
+}
+
+// ---- min_operations_brute.kara ----
+fn a1_min_operations(boxes: String) -> Vec[i32] {
+    let full: Vec[i64] = boxes.chars().enumerate().filter(|(_, c)| c == '1').map(|(j, _)| j).collect();
+    (0..boxes.len()).map(|i| full.iter().map(|j| (i - *j).abs()).sum() as i32).collect()
+}
+
+// ---- min_operations_prefix.kara ----
+fn a2_min_operations(boxes: String) -> Vec[i32] {
+    let n = boxes.len();
+    let b = boxes.bytes();
+    // count[i], place[i]: the balls in the first i boxes and their positions' sum
+    let mut count: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut place: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        let ball = if b[i] == b'1' { 1 } else { 0 };
+        count[i + 1] = count[i] + ball;
+        place[i + 1] = place[i] + ball * i;
+    }
+    let mut answer: Vec[i32] = Vec.new();
+    for i in 0..n {
+        let left = i * count[i] - place[i];
+        let right = (place[n] - place[i + 1]) - i * (count[n] - count[i + 1]);
+        answer.push((left + right) as i32);
+    }
+    answer
+}
+
+// ---- min_operations_delta.kara ----
+fn a3_min_operations(boxes: String) -> Vec[i32] {
+    let balls: Vec[bool] = boxes.chars().map(|c| c == '1').collect();
+    let n = balls.len();
+    let total = balls.iter().filter(|b| *b).count();
+    let mut moves: i32 = 0;
+    for j in 0..n {
+        if balls[j] {
+            moves += j as i32;
+        }
+    }
+    let mut answer = [moves];
+    let mut left = 0;
+    for i in 1..n {
+        if balls[i - 1] {
+            left += 1;
+        }
+        moves += (left - (total - left)) as i32;
+        answer.push(moves);
+    }
+    answer
+}
+
+// ---- min_operations_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn min_operations(boxes: String) -> Vec[i32] {
+        let b = boxes.bytes();
+        let n = b.len();
+        let mut ans = Vec.filled(n, 0i32);
+        let mut (cnt, ops) = (0i32, 0);
+        for i in 0..n {
+            ans[i] += ops;
+            cnt += b[i] - b'0';
+            ops += cnt;
+        }
+        let mut (cnt, ops) = (0i32, 0);
+        for i in (0..n).rev() {
+            ans[i] += ops;
+            cnt += b[i] - b'0';
+            ops += cnt;
+        }
+        ans
+    }
+}
+
+fn a4_min_operations(boxes: String) -> Vec[i32] {
+    A4Solution.min_operations(boxes)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_boxes(seed: mut ref i64, n: i64, full: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(if next_random(mut seed) % 100 < full { '1' } else { '0' });
+    }
+    s
+}
+
+// the statement read literally: for each box, balls moved one at a time
+// into an adjacent box, the one nearest the target's left or right edge
+// first, counting operations until every ball is there
+fn literal(boxes: String) -> Vec[i32] {
+    let start: Vec[i32] = boxes.chars().map(|c| if c == '1' { 1 } else { 0 }).collect();
+    let n = start.len();
+    let mut answer: Vec[i32] = Vec.new();
+    for target in 0..n {
+        let mut held = start.clone();
+        let mut ops = 0;
+        loop {
+            let mut moved = false;
+            for j in 0..n {
+                if j != target and held[j] > 0 {
+                    let next = if j < target { j + 1 } else { j - 1 };
+                    held[j] -= 1;
+                    held[next] += 1;
+                    ops += 1;
+                    moved = true;
+                    break;
+                }
+            }
+            if not moved {
+                break;
+            }
+        }
+        answer.push(ops);
+    }
+    answer
+}
+
+fn digest(answer: Vec[i32]) -> i64 {
+    answer.iter().fold(answer.len(), |check, a| (check * 31 + *a) % 1000000007)
+}
+
+fn arm(i: i64, boxes: String) -> Vec[i32] {
+    match i {
+        0 => a0_min_operations(boxes),
+        1 => a1_min_operations(boxes),
+        2 => a2_min_operations(boxes),
+        3 => a3_min_operations(boxes),
+        _ => a4_min_operations(boxes),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, boxes: String) {
+    t.cases += 1;
+    let n = boxes.len();
+    let want = literal(boxes);
+    t.check = (t.check * 31 + digest(want)) % 1000000007;
+    let star = arm(0, boxes);
+    let balls = boxes.chars().filter(|c| c == '1').count() as i32;
+    let reversed: String = boxes.chars().rev().collect();
+    // a ball added to the first empty box, if there is one
+    let empty = boxes.find("0");
+    let added: String = match empty {
+        Some(k) => boxes[..k].to_string() + "1" + boxes[k + 1..].to_string(),
+        None => boxes.clone(),
+    };
+    let longer = boxes.clone() + "0";
+    for i in 0..5 {
+        let what = f"arm {i} on {boxes}";
+        let got = arm(i, boxes);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: no box below 0, and the answers convex along the row
+        let convex = got.len() == n and got.iter().all(|a| *a >= 0) and (1..n - 1).all(|k| got[k - 1] + got[k + 1] >= 2 * got[k]);
+        expect(mut t, 2, convex, f"P2 {what}");
+        // P3: the row reversed gives the answers reversed
+        let back: Vec[i32] = got.iter().rev().map(|a| *a).collect();
+        expect(mut t, 3, arm(i, reversed) == back, f"P3 {what}");
+        // P4: a ball added at box k raises each box's answer by its
+        // distance to k
+        if let Some(k) = empty {
+            let more = arm(i, added);
+            expect(mut t, 4, (0..n).all(|j| more[j] == got[j] + (j - k).abs() as i32), f"P4 {what}");
+        }
+        // P5: an empty box at the end changes no answer, and its own is
+        // the last box's plus one move for every ball
+        let wider = arm(i, longer);
+        expect(mut t, 5, wider[..n] == got.as_slice() and wider[n] == got[n - 1] + balls, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges. Every case is drawn before any arm
+    // answers.
+    let mut cases: Vec[String] = ["110", "001011", "0", "1", "0000", "1111", "100001", "0110110"].iter().map(|s| s.to_string()).collect();
+    let mut seed = 17691;
+    // 1992 random rows of 1 to 14 boxes, each with its own chance of a ball
+    for _ in 0..1992 {
+        let n = 1 + next_random(mut seed) % 14;
+        let full = next_random(mut seed) % 101;
+        cases.push(random_boxes(mut seed, n, full));
+    }
+    for j in 0..cases.len() {
+        check_case(mut t, cases[j]);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
