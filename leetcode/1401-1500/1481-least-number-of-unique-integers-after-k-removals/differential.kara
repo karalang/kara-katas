@@ -1,0 +1,256 @@
+// LeetCode #1481: Least Number of Unique Integers after K Removals --
+// differential test of the five arms against the statement read
+// literally, with five more properties.
+
+// ---- find_least_num_of_unique_ints.kara ----
+fn a0_find_least_num_of_unique_ints(arr: Vec[i32], k: i32) -> i32 {
+    let mut count: Map[i32, i64] = Map.new();
+    for x in arr.iter() {
+        count[x] = (count.get(x) ?? 0) + 1;
+    }
+    let mut counts: Vec[i64] = count.values().collect();
+    counts.sort();
+    let mut left: i64 = k;
+    let mut unique = counts.len();
+    for c in counts.iter() {
+        if c > left {
+            break;
+        }
+        left -= c;
+        unique -= 1;
+    }
+    unique as i32
+}
+
+// ---- find_least_num_of_unique_ints_bucket.kara ----
+fn a1_find_least_num_of_unique_ints(arr: Vec[i32], k: i32) -> i32 {
+    let mut count: Map[i32, i64] = Map.new();
+    for x in arr.iter() {
+        count[x] = (count.get(x) ?? 0) + 1;
+    }
+    // with_count[c]: how many values occur c times
+    let mut with_count = Vec.filled(arr.len() + 1, 0);
+    for c in count.values() {
+        with_count[c] += 1;
+    }
+    let mut left: i64 = k;
+    let mut unique = count.len();
+    for c in 1..=arr.len() {
+        if with_count[c] == 0 {
+            continue;
+        }
+        let gone = (left / c).min(with_count[c]);
+        unique -= gone;
+        left -= gone * c;
+        if gone < with_count[c] {
+            break;
+        }
+    }
+    unique as i32
+}
+
+// ---- find_least_num_of_unique_ints_heap.kara ----
+fn a2_find_least_num_of_unique_ints(arr: Vec[i32], k: i32) -> i32 {
+    let mut count: Map[i32, i64] = Map.new();
+    for x in arr.iter() {
+        count[x] = (count.get(x) ?? 0) + 1;
+    }
+    let mut rarest: PriorityQueue[i64] = PriorityQueue.new();
+    for c in count.values() {
+        rarest.push(c);
+    }
+    let mut left: i64 = k;
+    while let Some(c) = rarest.peek() {
+        if c > left {
+            break;
+        }
+        left -= c;
+        rarest.pop();
+    }
+    rarest.len() as i32
+}
+
+// ---- find_least_num_of_unique_ints_sorted.kara ----
+fn a3_find_least_num_of_unique_ints(arr: Vec[i32], k: i32) -> i32 {
+    let mut sorted = arr.clone();
+    sorted.sort();
+    let mut runs: Vec[i64] = Vec.new();
+    let mut start = 0;
+    for i in 1..=sorted.len() {
+        if i == sorted.len() or sorted[i] != sorted[start] {
+            runs.push(i - start);
+            start = i;
+        }
+    }
+    runs.sort();
+    let mut left: i64 = k;
+    let mut gone = 0;
+    while gone < runs.len() and runs[gone] <= left {
+        left -= runs[gone];
+        gone += 1;
+    }
+    (runs.len() - gone) as i32
+}
+
+// ---- find_least_num_of_unique_ints_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn find_least_num_of_unique_ints(arr: Vec[i32], k: i32) -> i32 {
+        let mut map: Map[i32, i32] = Map.new();
+        for x in arr {
+            *map.entry(x).or_insert(0) += 1;
+        }
+        let mut counts: Vec[i32] = map.into_values().collect();
+        counts.sort();
+        let mut k = k;
+        let mut remaining = counts.len() as i32;
+        for c in counts {
+            if k >= c {
+                k -= c;
+                remaining -= 1;
+            } else {
+                break;
+            }
+        }
+        remaining
+    }
+}
+
+fn a4_find_least_num_of_unique_ints(arr: Vec[i32], k: i32) -> i32 {
+    A4Solution.find_least_num_of_unique_ints(arr, k)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n values from 1 to top
+fn draw(seed: mut ref i64, n: i64, top: i64) -> Vec[i32] {
+    (0..n).map(|_| (1 + next_random(mut seed) % top) as i32).collect()
+}
+
+// the fewest distinct values left over every way to remove `left` more of
+// the places from `from` on, the places kept so far in `kept`
+fn remove(arr: Vec[i32], kept: mut ref Vec[i32], from: i64, left: i64) -> i64 {
+    if from == arr.len() {
+        if left > 0 {
+            return i64.MAX;
+        }
+        let distinct: Set[i32] = kept.iter().collect();
+        return distinct.len();
+    }
+    // remove the place at `from`, or keep it
+    let mut best = if left > 0 { remove(arr, mut kept, from + 1, left - 1) } else { i64.MAX };
+    kept.push(arr[from]);
+    best = best.min(remove(arr, mut kept, from + 1, left));
+    kept.pop();
+    best
+}
+
+// the statement read literally: of every way to remove exactly k
+// elements, the least number of unique integers left
+fn literal(arr: Vec[i32], k: i32) -> i32 {
+    let mut kept: Vec[i32] = Vec.new();
+    remove(arr, mut kept, 0, k) as i32
+}
+
+fn arm(i: i64, arr: Vec[i32], k: i32) -> i32 {
+    match i {
+        0 => a0_find_least_num_of_unique_ints(arr, k),
+        1 => a1_find_least_num_of_unique_ints(arr, k),
+        2 => a2_find_least_num_of_unique_ints(arr, k),
+        3 => a3_find_least_num_of_unique_ints(arr, k),
+        _ => a4_find_least_num_of_unique_ints(arr, k),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, arr: Vec[i32], k: i32) {
+    t.cases += 1;
+    let n = arr.len() as i32;
+    let star = arm(0, arr, k);
+    t.check = (t.check * 31 + star) % 1000000007;
+    let want = literal(arr, k);
+    let reversed: Vec[i32] = arr.iter().rev().collect();
+    let distinct: Set[i32] = arr.iter().collect();
+    let mut twice = arr.clone();
+    twice.extend(arr.iter());
+    for i in 0..5 {
+        let what = f"arm {i} on {n} values, {k} removals";
+        let got = arm(i, arr, k);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: the array reversed has the same answer
+        expect(mut t, 2, arm(i, reversed, k) == got, f"P2 {what}");
+        // P3: no removals leave every distinct value, and removing all
+        // leaves none
+        expect(mut t, 3, arm(i, arr, 0) == distinct.len() and arm(i, arr, n) == 0, f"P3 {what}");
+        // P4: one removal more leaves the same or one value fewer
+        let fewer = k == n or {
+            let next = arm(i, arr, k + 1);
+            next == got or next == got - 1
+        };
+        expect(mut t, 4, fewer, f"P4 {what}");
+        // P5: every value twice over, and twice the removals, has the same
+        // answer
+        expect(mut t, 5, arm(i, twice, 2 * k) == got, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges. Every case is drawn before any arm
+    // answers.
+    let mut cases: Vec[(Vec[i32], i32)] = [
+        ([5, 5, 4].to_vec(), 1),
+        ([4, 3, 1, 1, 3, 3, 2].to_vec(), 3),
+        ([1, 2, 2, 3, 3, 3].to_vec(), 0),
+        ([1, 2, 2, 3, 3, 3].to_vec(), 6),
+        ([1000000000, 1000000000, 1000000000, 1000000000].to_vec(), 3),
+        ([9, 8, 7, 6, 5].to_vec(), 2),
+        ([1, 1, 2, 2, 2, 3, 3, 3, 3].to_vec(), 4),
+    ].to_vec();
+    let mut seed = 14811;
+    // 1993 random arrays: half of 1 to 10 values from 1 to 4, so values
+    // repeat often, and half of 1 to 14 values from 1 to top, top from 1
+    // to 10, each with 0 removals to all of them
+    for c in 0..1993 {
+        let (most, top) = if c % 2 == 0 { (10, 4) } else { (14, 1 + next_random(mut seed) % 10) };
+        let n = 1 + next_random(mut seed) % most;
+        let arr = draw(mut seed, n, top);
+        cases.push((arr, (next_random(mut seed) % (n + 1)) as i32));
+    }
+    for j in 0..cases.len() {
+        let (arr, k) = cases[j].clone();
+        check_case(mut t, arr, k);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
