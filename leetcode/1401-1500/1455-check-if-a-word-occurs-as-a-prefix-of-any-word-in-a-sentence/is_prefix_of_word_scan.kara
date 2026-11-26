@@ -1,0 +1,94 @@
+fn is_prefix_of_word(sentence: String, search_word: String) -> i32 {
+    // one walk along the sentence's bytes: at each word's start the search
+    // word's bytes are matched while they last, and the words are counted
+    let s = sentence.bytes();
+    let w = search_word.bytes();
+    let mut index = 1;
+    let mut start = 0;
+    while start < s.len() {
+        let mut k = 0;
+        while k < w.len() and start + k < s.len() and s[start + k] == w[k] {
+            k += 1;
+        }
+        if k == w.len() {
+            return index;
+        }
+        while start < s.len() and s[start] != b' ' {
+            start += 1;
+        }
+        start += 1;
+        index += 1;
+    }
+    -1
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a word of 1 to `longest` letters drawn from the first `k` of the alphabet
+fn word(longest: i64, k: i64, seed: mut ref i64) -> String {
+    let len = 1 + next_random(mut seed) % longest;
+    let mut w = String.new();
+    for _ in 0..len {
+        w.push((b'a' + (next_random(mut seed) % k) as u8) as char);
+    }
+    w
+}
+
+// words drawn while the sentence stays within `most` letters
+fn sentence(most: i64, longest: i64, k: i64, seed: mut ref i64) -> String {
+    let mut s = word(longest, k, mut seed);
+    loop {
+        let w = word(longest, k, mut seed);
+        if s.len() + 1 + w.len() > most {
+            break;
+        }
+        s.push(' ');
+        s.push_str(w);
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's three examples, and three more: the search word the whole
+    // sentence, longer than every word, and found only inside a word
+    let cases = [("i love eating burger", "burg"), ("this problem is an easy problem", "pro"), ("i am tired", "you"), ("hello", "hello"), ("a bb ccc", "cccc"), ("abc xbc", "bc")];
+    for (s, w) in cases {
+        println(is_prefix_of_word(s.to_string(), w.to_string()));
+    }
+    // the constraints' most: a sentence of 99 letters of one-letter words
+    // with the word at the end, and one of words of up to 10 letters
+    // searched for the start of its last word
+    let mut seed = 1455;
+    let mut tail = "a".to_string();
+    while tail.len() < 97 {
+        tail.push_str(" b");
+    }
+    tail.push_str(" c");
+    let long = sentence(100, 10, 3, mut seed);
+    let last = long.split(" ").last().unwrap().to_string();
+    let probe = last[..last.len().min(3)].to_string();
+    println(f"100 letters: {is_prefix_of_word(tail, "c".to_string())} and {is_prefix_of_word(long, probe)}");
+    // 2000 random cases of sentences up to 1 to 100 letters of words of 1
+    // to 1 to 6 letters, and a search word of 1 to 3 letters, drawn from the
+    // first 1 to 3 letters of the alphabet
+    let mut found = 0;
+    let mut check: i64 = 0;
+    for _ in 0..2000 {
+        let most = 1 + next_random(mut seed) % 100;
+        let longest = 1 + next_random(mut seed) % 6;
+        let k = 1 + next_random(mut seed) % 3;
+        let s = sentence(most, longest, k, mut seed);
+        let w = word(3, k, mut seed);
+        let got = is_prefix_of_word(s, w);
+        if got > 0 {
+            found += 1;
+        }
+        check = (check * 131 + got + 1) % 1000000007;
+    }
+    println(f"2000 random cases: {found} found, checksum {check}");
+}

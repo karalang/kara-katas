@@ -1,0 +1,255 @@
+// LeetCode #1455: Check If a Word Occurs As a Prefix of Any Word in a
+// Sentence -- differential test of the five arms against the statement read
+// literally, with five more properties.
+
+// ---- is_prefix_of_word.kara ----
+fn a0_is_prefix_of_word(sentence: String, search_word: String) -> i32 {
+    // the first word that starts with the search word, counted from 1
+    match sentence.split(" ").position(|w| w.starts_with(search_word)) {
+        Some(i) => i as i32 + 1,
+        None => -1,
+    }
+}
+
+// ---- is_prefix_of_word_scan.kara ----
+fn a1_is_prefix_of_word(sentence: String, search_word: String) -> i32 {
+    // one walk along the sentence's bytes: at each word's start the search
+    // word's bytes are matched while they last, and the words are counted
+    let s = sentence.bytes();
+    let w = search_word.bytes();
+    let mut index = 1;
+    let mut start = 0;
+    while start < s.len() {
+        let mut k = 0;
+        while k < w.len() and start + k < s.len() and s[start + k] == w[k] {
+            k += 1;
+        }
+        if k == w.len() {
+            return index;
+        }
+        while start < s.len() and s[start] != b' ' {
+            start += 1;
+        }
+        start += 1;
+        index += 1;
+    }
+    -1
+}
+
+// ---- is_prefix_of_word_find.kara ----
+fn a2_is_prefix_of_word(sentence: String, search_word: String) -> i32 {
+    // a space before the sentence and before the search word, so a match is
+    // a word's start; the word's number is the spaces before the match
+    let text = " ".to_string() + sentence;
+    let needle = " ".to_string() + search_word;
+    match text.find(needle) {
+        Some(at) => text[..at + 1].matches(" ").count() as i32,
+        None => -1,
+    }
+}
+
+// ---- is_prefix_of_word_slices.kara ----
+fn a3_is_prefix_of_word(sentence: String, search_word: String) -> i32 {
+    // each word by `split_whitespace` with its number from `enumerate`, and
+    // its first letters compared as a slice when it has enough
+    let k = search_word.len();
+    for (i, w) in sentence.split_whitespace().enumerate() {
+        if w.len() >= k and w[..k] == search_word {
+            return (i + 1) as i32;
+        }
+    }
+    -1
+}
+
+// ---- is_prefix_of_word_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_is_prefix_of_word(sentence: String, search_word: String) -> i32 {
+        sentence
+            .split(" ")
+            .enumerate()
+            .find(|(_, w)| w.starts_with(search_word))
+            .map(|(i, _)| i as i32 + 1)
+            .unwrap_or(-1)
+    }
+}
+
+fn a4_is_prefix_of_word(sentence: String, search_word: String) -> i32 {
+    A4Solution.a4_is_prefix_of_word(sentence, search_word)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a word of 1 to `longest` letters drawn from the first `k` of the alphabet
+fn word(longest: i64, k: i64, seed: mut ref i64) -> String {
+    let len = 1 + next_random(mut seed) % longest;
+    let mut w = String.new();
+    for _ in 0..len {
+        w.push((b'a' + (next_random(mut seed) % k) as u8) as char);
+    }
+    w
+}
+
+// words drawn while the sentence stays within `most` letters
+fn sentence(most: i64, longest: i64, k: i64, seed: mut ref i64) -> String {
+    let mut s = word(longest, k, mut seed);
+    loop {
+        let w = word(longest, k, mut seed);
+        if s.len() + 1 + w.len() > most {
+            break;
+        }
+        s.push(' ');
+        s.push_str(w);
+    }
+    s
+}
+
+// the statement read literally: the words found letter by letter between
+// the spaces, and the first whose first letters are the search word's, each
+// letter compared in turn, counted from 1
+fn literal(sentence: String, search_word: String) -> i64 {
+    let letters: Vec[char] = sentence.chars().collect();
+    let wanted: Vec[char] = search_word.chars().collect();
+    let mut words: Vec[Vec[char]] = [Vec.new()].to_vec();
+    for c in letters.iter() {
+        if c == ' ' {
+            words.push(Vec.new());
+        } else {
+            let last = words.len() - 1;
+            words[last].push(c);
+        }
+    }
+    for i in 0..words.len() {
+        let mut starts = words[i].len() >= wanted.len();
+        for j in 0..wanted.len() {
+            if starts and words[i][j] != wanted[j] {
+                starts = false;
+            }
+        }
+        if starts {
+            return i + 1;
+        }
+    }
+    -1
+}
+
+fn arm(i: i64, sentence: String, search_word: String) -> i64 {
+    let sentence = sentence.clone();
+    let search_word = search_word.clone();
+    let got = match i {
+        0 => a0_is_prefix_of_word(sentence, search_word),
+        1 => a1_is_prefix_of_word(sentence, search_word),
+        2 => a2_is_prefix_of_word(sentence, search_word),
+        3 => a3_is_prefix_of_word(sentence, search_word),
+        _ => a4_is_prefix_of_word(sentence, search_word),
+    };
+    got
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, sentence: String, search_word: String) {
+    t.cases += 1;
+    let star = arm(0, sentence, search_word);
+    t.check = (t.check * 131 + star + 1) % 1000000007;
+    let want = literal(sentence, search_word);
+    let words: Vec[String] = sentence.split(" ").map(|w| w.to_string()).collect();
+    // the search word put after the sentence as a last word; a word of `z`s
+    // put before it, which no search word starts; and its first letter alone
+    let after = f"{sentence} {search_word}";
+    let before = f"zz {sentence}";
+    let first = search_word[..1].to_string();
+    for i in 0..5 {
+        let what = f"arm {i} on {sentence.len()} letters, {search_word}";
+        let got = arm(i, sentence, search_word);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: the search word as a last word is found there when it is not
+        // found before, while the sentence stays within 100 letters
+        if after.len() <= 100 {
+            let last = if got > 0 { got } else { words.len() + 1 };
+            expect(mut t, 2, arm(i, after, search_word) == last, f"P2 {what}");
+        }
+        // P3: a word before the sentence that holds no search word moves the
+        // answer on by one, while the sentence stays within 100 letters
+        if before.len() <= 100 {
+            let moved = if got > 0 { got + 1 } else { -1 };
+            expect(mut t, 3, arm(i, before, search_word) == moved, f"P3 {what}");
+        }
+        // P4: the search word's first letter alone is found no later
+        if got > 0 {
+            let alone = arm(i, sentence, first);
+            expect(mut t, 4, alone > 0 and alone <= got, f"P4 {what}");
+        }
+        // P5: the sentence cut after the word found gives the same, and cut
+        // after its first word gives the same when that is the word found or
+        // none
+        let kept = if got > 0 { words[..got].join(" ") } else { words[0].clone() };
+        let cut = arm(i, kept, search_word);
+        let same = if got > 0 { cut == got } else { cut == -1 };
+        expect(mut t, 5, same, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: the search word the whole sentence,
+    // longer than every word, and found only inside a word; and the
+    // constraints' most, a sentence of 99 letters of one-letter words with
+    // the word at the end, and one of words of up to 10 letters with a
+    // search word of 10. Every case is drawn before any arm answers.
+    let named = [("i love eating burger", "burg"), ("this problem is an easy problem", "pro"), ("i am tired", "you"), ("hello", "hello"), ("a bb ccc", "cccc"), ("abc xbc", "bc")];
+    let mut cases: Vec[(String, String)] = named.iter().map(|(s, w)| (s.to_string(), w.to_string())).collect();
+    let mut tail = "a".to_string();
+    while tail.len() < 97 {
+        tail.push_str(" b");
+    }
+    tail.push_str(" c");
+    cases.push((tail, "c".to_string()));
+    let mut seed = 14551;
+    let long = sentence(100, 10, 2, mut seed);
+    let ten = word(10, 2, mut seed);
+    cases.push((long, ten));
+    // 1992 random cases drawn as the harness draws them
+    for _ in 0..1992 {
+        let most = 1 + next_random(mut seed) % 100;
+        let longest = 1 + next_random(mut seed) % 6;
+        let k = 1 + next_random(mut seed) % 3;
+        let s = sentence(most, longest, k, mut seed);
+        let w = word(3, k, mut seed);
+        cases.push((s, w));
+    }
+    for j in 0..cases.len() {
+        let (s, w) = cases[j].clone();
+        check_case(mut t, s, w);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

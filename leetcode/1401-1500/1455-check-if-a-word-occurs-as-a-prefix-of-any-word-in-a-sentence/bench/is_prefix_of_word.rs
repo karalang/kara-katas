@@ -1,0 +1,52 @@
+// LeetCode #1455 bench mirror: the first word that starts with the search
+// word, counted from 1.
+
+fn is_prefix_of_word(sentence: &str, search_word: &str) -> i32 {
+    match sentence.split(' ').position(|w| w.starts_with(search_word)) {
+        Some(i) => i as i32 + 1,
+        None => -1,
+    }
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a word of 1 to `longest` letters drawn from the first 4 of the alphabet
+fn word(longest: i64, seed: &mut i64) -> String {
+    let len = 1 + next_random(seed) % longest;
+    let mut w = String::new();
+    for _ in 0..len {
+        w.push((b'a' + (next_random(seed) % 4) as u8) as char);
+    }
+    w
+}
+
+fn main() {
+    // 2000 sentences of 100 letters of words of 1 to 8 letters and 2000
+    // search words of 1 to 4 letters, drawn once, then every search word
+    // looked for in every sentence, the answers folded to a checksum
+    let mut seed: i64 = 1455;
+    let mut sentences: Vec<String> = Vec::new();
+    for _ in 0..2000 {
+        let mut s = word(8, &mut seed);
+        loop {
+            let w = word(8, &mut seed);
+            if s.len() + 1 + w.len() > 100 {
+                break;
+            }
+            s.push(' ');
+            s.push_str(&w);
+        }
+        sentences.push(s);
+    }
+    let searches: Vec<String> = (0..2000).map(|_| word(4, &mut seed)).collect();
+    let mut check: i64 = 0;
+    for s in sentences.iter() {
+        for w in searches.iter() {
+            check = (check * 131 + is_prefix_of_word(s, w) as i64 + 1) % 1000000007;
+        }
+    }
+    println!("4 x 10^6 searches: checksum {}", check);
+}
