@@ -1,0 +1,266 @@
+// LeetCode #1404: Number of Steps to Reduce a Number in Binary Representation to One -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- num_steps.kara ----
+fn a0_num_steps(s: String) -> i32 {
+    // from the last digit up, a carry left by the additions so far: a 1
+    // there is odd, so it takes an addition and a halving and leaves a
+    // carry; a 0 is halved at once
+    let bits: Vec[char] = s.chars().collect();
+    let mut steps = 0;
+    let mut carry = 0;
+    for i in (1..bits.len()).rev() {
+        let bit = if bits[i] == '1' { 1 } else { 0 } + carry;
+        if bit == 1 {
+            steps += 2;
+            carry = 1;
+        } else {
+            steps += 1;
+        }
+    }
+    steps + carry
+}
+
+// ---- num_steps_simulate.kara ----
+fn a1_num_steps(s: String) -> i32 {
+    // the number itself, its digits last first, halved by dropping the
+    // last digit and one added by carrying
+    let mut digits: Vec[u8] = s.bytes().iter().rev().map(|b| b - b'0').collect();
+    let mut steps = 0;
+    while digits.len() > 1 {
+        if digits[0] == 0 {
+            digits.remove(0);
+        } else {
+            let mut at = 0;
+            while at < digits.len() and digits[at] == 1 {
+                digits[at] = 0;
+                at += 1;
+            }
+            if at == digits.len() {
+                digits.push(1);
+            } else {
+                digits[at] = 1;
+            }
+        }
+        steps += 1;
+    }
+    steps
+}
+
+// ---- num_steps_count.kara ----
+fn a2_num_steps(s: String) -> i32 {
+    // the zeros after the last 1 are each one halving. Before them, a
+    // number ending in 1 that is not 1 takes one addition, which turns its
+    // trailing 1s to 0s and the 0 before them to 1, and in all one halving
+    // per digit, one more for the digit the first addition carries out,
+    // and one more addition for each 0 inside it
+    let n = s.len() as i32;
+    let last = s.rfind("1").unwrap();
+    if last == 0 {
+        return n - 1;
+    }
+    let zeros = s[..last].chars().filter(|c| c == '0').count() as i32;
+    n + 1 + zeros
+}
+
+// ---- num_steps_recursive.kara ----
+fn a3_plus_one(s: Str) -> String {
+    match s.strip_suffix("1") {
+        Some(head) => {
+            if head.is_empty() {
+                String.from("10")
+            } else {
+                a3_plus_one(head) + "0"
+            }
+        }
+        None => s[..s.len() - 1].to_string() + "1",
+    }
+}
+
+fn a3_num_steps(s: String) -> i32 {
+    if s == "1" {
+        0
+    } else if s.ends_with("0") {
+        1 + a3_num_steps(s[..s.len() - 1].to_string())
+    } else {
+        1 + a3_num_steps(a3_plus_one(s))
+    }
+}
+
+// ---- num_steps_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_num_steps(s: String) -> i32 {
+        let bytes = s.bytes();
+        let mut steps: i32 = 0;
+        let mut carry: i32 = 0;
+        for i in (1..bytes.len()).rev() {
+            let bit = (bytes[i] - b'0') + carry;
+            if bit == 1 {
+                steps += 2;
+                carry = 1;
+            } else {
+                steps += 1;
+            }
+        }
+        steps + carry
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a binary number of n digits, its first digit 1
+fn drawn(n: i64, seed: mut ref i64) -> String {
+    let mut s = String.from("1");
+    for _ in 1..n {
+        s.push(if next_random(mut seed) % 2 == 0 { '0' } else { '1' });
+    }
+    s
+}
+
+// the statement read literally, on a number that fits in an `i64`: halved
+// while even, one added while odd, until it is 1
+fn literal(s: String) -> i64 {
+    let mut x: i64 = 0;
+    for c in s.chars() {
+        x = x * 2 + if c == '1' { 1 } else { 0 };
+    }
+    let mut steps = 0;
+    while x != 1 {
+        if x % 2 == 0 {
+            x /= 2;
+        } else {
+            x += 1;
+        }
+        steps += 1;
+    }
+    steps
+}
+
+// one added to a binary number, by carrying through its trailing 1s
+fn plus_one(s: String) -> String {
+    let mut digits: Vec[char] = s.chars().collect();
+    let mut at = digits.len();
+    while at > 0 and digits[at - 1] == '1' {
+        digits[at - 1] = '0';
+        at -= 1;
+    }
+    if at == 0 {
+        digits.insert(0, '1');
+    } else {
+        digits[at - 1] = '1';
+    }
+    digits.iter().collect()
+}
+
+fn arm(i: i64, s: String) -> i64 {
+    let s = s.clone();
+    match i {
+        0 => a0_num_steps(s),
+        1 => a1_num_steps(s),
+        2 => a2_num_steps(s),
+        3 => a3_num_steps(s),
+        _ => A4Solution.a4_num_steps(s),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, s: String) {
+    t.cases += 1;
+    let star = arm(0, s);
+    t.check = (t.check * 131 + star) % 1000000007;
+    t.check = (t.check * 131 + s.len()) % 1000000007;
+    let n = s.len();
+    let small = n <= 62;
+    let want = if small { literal(s) } else { -1 };
+    let room = n < 500;
+    let odd = s != "1" and s.ends_with("1");
+    for i in 0..5 {
+        let got = arm(i, s);
+        let what = f"arm {i} on {s}";
+        // P1: the statement read literally, on up to 62 digits
+        if small {
+            expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        }
+        // P2: every halving drops a digit, so at least n - 1 steps; an
+        // addition is never needed twice in a row, so at most 2n - 1
+        expect(mut t, 2, got >= n - 1 and got <= 2 * n - 1, f"P2 {what}: {got}");
+        // P3: the number doubled takes one more step, its halving
+        if room {
+            let doubled = arm(i, s + "0");
+            expect(mut t, 3, doubled == got + 1, f"P3 {what}: {doubled} doubled");
+        }
+        // P4: a number ending in 1, other than 1, takes the same steps with a
+        // 1 or a 0 after it: 2x + 1 goes to 2x + 2 and then x + 1, and 2x
+        // goes to x and then x + 1
+        if room and odd {
+            let one = arm(i, s + "1");
+            let zero = arm(i, s + "0");
+            expect(mut t, 4, one == zero, f"P4 {what}: {one} and {zero} with 1 and 0 after");
+        }
+        // P5: a number ending in 1, other than 1, takes one step more than
+        // the number after it
+        if odd {
+            let next = arm(i, plus_one(s));
+            expect(mut t, 5, got == next + 1, f"P5 {what}: {next} for the next");
+        }
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: 1, 2, 3, all 1s, a power of two,
+    // alternating digits, a power of two plus one, at 62 and at 500 digits.
+    // Every case is drawn before any arm answers.
+    let mut cases: Vec[String] = Vec.new();
+    for s in ["1101", "10", "1", "11", "1111", "1000", "1011"] {
+        cases.push(s.clone());
+    }
+    for n in [62, 500] {
+        cases.push("1".repeat(n));
+        cases.push("1" + "0".repeat(n - 1));
+        cases.push("10".repeat(n / 2));
+        cases.push("1" + "0".repeat(n - 2) + "1");
+    }
+    // 1988 random numbers: 1 to 62 digits two times in three, else 63 to
+    // 500
+    let mut seed = 14041;
+    for i in 0..1988 {
+        let n = if i % 3 == 2 { 63 + next_random(mut seed) % 438 } else { 1 + next_random(mut seed) % 62 };
+        cases.push(drawn(n, mut seed));
+    }
+    for s in cases.iter() {
+        check_case(mut t, s);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

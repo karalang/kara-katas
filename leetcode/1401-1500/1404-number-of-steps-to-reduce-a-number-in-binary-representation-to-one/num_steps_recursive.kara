@@ -1,0 +1,61 @@
+// one added to a binary number
+fn plus_one(s: Str) -> String {
+    match s.strip_suffix("1") {
+        Some(head) => {
+            if head.is_empty() {
+                String.from("10")
+            } else {
+                plus_one(head) + "0"
+            }
+        }
+        None => s[..s.len() - 1].to_string() + "1",
+    }
+}
+
+fn num_steps(s: String) -> i32 {
+    if s == "1" {
+        0
+    } else if s.ends_with("0") {
+        1 + num_steps(s[..s.len() - 1].to_string())
+    } else {
+        1 + num_steps(plus_one(s))
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a binary number of n digits, its first digit 1
+fn drawn(n: i64, seed: mut ref i64) -> String {
+    let mut s = String.from("1");
+    for _ in 1..n {
+        s.push(if next_random(mut seed) % 2 == 0 { '0' } else { '1' });
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's three examples, and three more
+    let shown: Vec[String] = ["1101", "10", "1", "1111", "1000", "1011"].iter().map(|s| f"{num_steps(String.from(s))}").collect();
+    println(shown.join(" "));
+    // the constraints' most: 500 digits, all 1, 1 and then 0s, and drawn
+    let mut seed = 1404;
+    let ones = "1".repeat(500);
+    let power = "1" + "0".repeat(499);
+    let big = drawn(500, mut seed);
+    println(f"500 digits: {num_steps(ones)} {num_steps(power)} {num_steps(big)}");
+    // 2000 random numbers of 1 to 100 digits
+    let mut check: i64 = 0;
+    let mut total: i64 = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 100;
+        let steps = num_steps(drawn(n, mut seed));
+        total += steps;
+        check = (check * 131 + steps) % 1000000007;
+    }
+    println(f"2000 random numbers: {total} steps in all, checksum {check}");
+}

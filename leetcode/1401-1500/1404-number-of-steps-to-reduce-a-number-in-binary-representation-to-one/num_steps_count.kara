@@ -1,0 +1,52 @@
+fn num_steps(s: String) -> i32 {
+    // the zeros after the last 1 are each one halving. Before them, a
+    // number ending in 1 that is not 1 takes one addition, which turns its
+    // trailing 1s to 0s and the 0 before them to 1, and in all one halving
+    // per digit, one more for the digit the first addition carries out,
+    // and one more addition for each 0 inside it
+    let n = s.len() as i32;
+    let last = s.rfind("1").unwrap();
+    if last == 0 {
+        return n - 1;
+    }
+    let zeros = s[..last].chars().filter(|c| c == '0').count() as i32;
+    n + 1 + zeros
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a binary number of n digits, its first digit 1
+fn drawn(n: i64, seed: mut ref i64) -> String {
+    let mut s = String.from("1");
+    for _ in 1..n {
+        s.push(if next_random(mut seed) % 2 == 0 { '0' } else { '1' });
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's three examples, and three more
+    let shown: Vec[String] = ["1101", "10", "1", "1111", "1000", "1011"].iter().map(|s| f"{num_steps(String.from(s))}").collect();
+    println(shown.join(" "));
+    // the constraints' most: 500 digits, all 1, 1 and then 0s, and drawn
+    let mut seed = 1404;
+    let ones = "1".repeat(500);
+    let power = "1" + "0".repeat(499);
+    let big = drawn(500, mut seed);
+    println(f"500 digits: {num_steps(ones)} {num_steps(power)} {num_steps(big)}");
+    // 2000 random numbers of 1 to 100 digits
+    let mut check: i64 = 0;
+    let mut total: i64 = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 100;
+        let steps = num_steps(drawn(n, mut seed));
+        total += steps;
+        check = (check * 131 + steps) % 1000000007;
+    }
+    println(f"2000 random numbers: {total} steps in all, checksum {check}");
+}
