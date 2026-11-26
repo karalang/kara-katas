@@ -1,0 +1,78 @@
+// LeetCode #1451: Rearrange Words in a Sentence -- a Rust solution as
+// LeetCode's Rust users write it: `split(' ')` and `to_lowercase()` into a
+// `Vec<String>`, `sort_by_key(|w| w.len())`, and the first letter raised as
+// `s[..1].to_uppercase() + &s[1..]`, carried to Kāra by `karac fix`
+
+struct Solution {}
+
+impl Solution {
+    pub fn arrange_words(text: String) -> String {
+        let mut words: Vec[String] = text.split(" ").map(|w| w.to_lowercase()).collect();
+        words.sort_by_key(|w| w.len());
+        let s = words.join(" ");
+        s[..1].to_uppercase() + s[1..].to_string()
+    }
+}
+
+fn arrange_words(text: String) -> String {
+    Solution.arrange_words(text)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n words of 1 to `longest` letters drawn from the first `k` of the
+// alphabet, the first letter raised
+fn sentence(n: i64, longest: i64, k: i64, seed: mut ref i64) -> String {
+    let mut text = String.new();
+    for i in 0..n {
+        if i > 0 {
+            text.push(' ');
+        }
+        let len = 1 + next_random(mut seed) % longest;
+        for j in 0..len {
+            let c = (b'a' + (next_random(mut seed) % k) as u8) as char;
+            text.push(if i == 0 and j == 0 { c.to_ascii_uppercase() } else { c });
+        }
+    }
+    text
+}
+
+fn fold(s: String, check: mut ref i64) {
+    for b in s.bytes() {
+        *check = (*check * 131 + b) % 1000000007;
+    }
+}
+
+fn main() {
+    // LeetCode's three examples, and three more: one letter, one word, and
+    // two words of one length
+    for text in ["Leetcode is cool", "Keep calm and code on", "To be or not to be", "A", "Word", "Ab cd"] {
+        println(arrange_words(text.to_string()));
+    }
+    // the constraints' most: a text of 10^5 letters and spaces, one
+    // letter a word, and words of 1 to 10 letters
+    let mut seed = 1451;
+    let mut short = "A".to_string();
+    for _ in 0..49999 {
+        short.push_str(" a");
+    }
+    let mut check: i64 = 0;
+    fold(arrange_words(short), mut check);
+    let long = sentence(15000, 10, 26, mut seed);
+    fold(arrange_words(long), mut check);
+    println(f"10^5 letters: checksum {check}");
+    // 2000 random texts of 1 to 60 words of 1 to 1 to 12 letters
+    let mut check: i64 = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 60;
+        let longest = 1 + next_random(mut seed) % 12;
+        let k = 1 + next_random(mut seed) % 26;
+        fold(arrange_words(sentence(n, longest, k, mut seed)), mut check);
+    }
+    println(f"2000 random texts: checksum {check}");
+}

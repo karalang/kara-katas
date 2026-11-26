@@ -1,0 +1,37 @@
+// LeetCode #1451 Rearrange Words in a Sentence: the bench, a mirror of
+// arrange_words.kara.
+
+fn arrange_words(text: &str) -> String {
+    // the words lowered, sorted by length with ties kept in order by the
+    // stable `sort_by_key`, joined, and the first letter raised
+    let mut words: Vec<String> = text.split(' ').map(|w| w.to_lowercase()).collect();
+    words.sort_by_key(|w| w.len());
+    let joined = words.join(" ");
+    joined[..1].to_uppercase() + &joined[1..]
+}
+
+fn main() {
+    // 200 texts of 15000 words of 1 to 10 letters, the constraints' most,
+    // each arranged and its letters folded to a checksum
+    let mut seed: i64 = 1451;
+    let mut check: i64 = 0;
+    for _ in 0..200 {
+        let mut text = String::new();
+        for i in 0..15000 {
+            if i > 0 {
+                text.push(' ');
+            }
+            seed = (seed * 1103515245 + 12345) % 2147483648;
+            let len = 1 + seed / 65536 % 10;
+            for j in 0..len {
+                seed = (seed * 1103515245 + 12345) % 2147483648;
+                let c = (b'a' + (seed / 65536 % 26) as u8) as char;
+                text.push(if i == 0 && j == 0 { c.to_ascii_uppercase() } else { c });
+            }
+        }
+        for b in arrange_words(&text).bytes() {
+            check = (check * 131 + b as i64) % 1000000007;
+        }
+    }
+    println!("200 texts of 15000 words: checksum {}", check);
+}

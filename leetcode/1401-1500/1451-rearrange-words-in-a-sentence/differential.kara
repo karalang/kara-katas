@@ -1,0 +1,256 @@
+// LeetCode #1451: Rearrange Words in a Sentence -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- arrange_words.kara ----
+fn a0_arrange_words(text: String) -> String {
+    // the words lowered, sorted by length with ties kept in order by the
+    // stable `sort_by_key`, joined, and the first letter raised
+    let mut words: Vec[String] = text.split(" ").map(|w| w.to_lowercase()).collect();
+    words.sort_by_key(|w| w.len());
+    let joined = words.join(" ");
+    joined[..1].to_uppercase() + joined[1..].to_string()
+}
+
+// ---- arrange_words_buckets.kara ----
+fn a1_arrange_words(text: String) -> String {
+    // the words dealt into buckets by length, then read back from the
+    // shortest bucket, each bucket in the order its words came
+    let lowered = text.to_lowercase();
+    let mut buckets: Vec[Vec[Str]] = Vec.new();
+    for w in lowered.split(" ") {
+        while buckets.len() <= w.len() {
+            buckets.push(Vec.new());
+        }
+        buckets[w.len()].push(w);
+    }
+    let words: Vec[Str] = buckets.into_iter().flat_map(|v| v.into_iter()).collect();
+    let mut letters: Vec[char] = words.join(" ").chars().collect();
+    letters[0] = letters[0].to_ascii_uppercase();
+    letters.into_iter().collect()
+}
+
+// ---- arrange_words_pairs.kara ----
+fn a2_arrange_words(text: String) -> String {
+    // each word keyed by its length and its place, so a plain `sort` of
+    // the keys keeps words of one length in order
+    let mut keyed: Vec[(i64, i64, String)] = text.split(" ").enumerate().map(|(i, w)| (w.len(), i, w.to_lowercase())).collect();
+    keyed.sort();
+    let mut out = String.new();
+    for (i, (_, _, w)) in keyed.iter().enumerate() {
+        if i == 0 {
+            out.push_str(w[..1].to_uppercase());
+            out.push_str(w[1..]);
+        } else {
+            out.push(' ');
+            out.push_str(w);
+        }
+    }
+    out
+}
+
+// ---- arrange_words_merge.kara ----
+fn a3_arrange_words(text: String) -> String {
+    // a merge sort by length written out, taking from the left half on a
+    // tie so words of one length keep their order
+    let words: Vec[String] = text.to_lowercase().split(" ").map(|w| w.to_string()).collect();
+    let sorted = a3_merge_sort(words);
+    let joined = sorted.join(" ");
+    let (first, rest) = joined.split_at(1);
+    f"{first.to_uppercase()}{rest}"
+}
+
+fn a3_merge_sort(words: Vec[String]) -> Vec[String] {
+    if words.len() <= 1 {
+        return words.clone();
+    }
+    let mid = words.len() / 2;
+    let left = a3_merge_sort(words[..mid].to_vec());
+    let right = a3_merge_sort(words[mid..].to_vec());
+    let mut merged: Vec[String] = Vec.with_capacity(words.len());
+    let mut (i, j) = (0, 0);
+    while i < left.len() and j < right.len() {
+        if left[i].len() <= right[j].len() {
+            merged.push(left[i].clone());
+            i += 1;
+        } else {
+            merged.push(right[j].clone());
+            j += 1;
+        }
+    }
+    merged.extend_from_slice(left[i..]);
+    merged.extend_from_slice(right[j..]);
+    merged
+}
+
+// ---- arrange_words_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_arrange_words(text: String) -> String {
+        let mut words: Vec[String] = text.split(" ").map(|w| w.to_lowercase()).collect();
+        words.sort_by_key(|w| w.len());
+        let s = words.join(" ");
+        s[..1].to_uppercase() + s[1..].to_string()
+    }
+}
+
+fn a4_arrange_words(text: String) -> String {
+    A4Solution.a4_arrange_words(text)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n words of 1 to `longest` letters drawn from the first `k` of the
+// alphabet, the first letter raised
+fn sentence(n: i64, longest: i64, k: i64, seed: mut ref i64) -> String {
+    let mut text = String.new();
+    for i in 0..n {
+        if i > 0 {
+            text.push(' ');
+        }
+        let len = 1 + next_random(mut seed) % longest;
+        for j in 0..len {
+            let c = (b'a' + (next_random(mut seed) % k) as u8) as char;
+            text.push(if i == 0 and j == 0 { c.to_ascii_uppercase() } else { c });
+        }
+    }
+    text
+}
+
+// the words, lowered
+fn lowered(text: String) -> Vec[String] {
+    text.split(" ").map(|w| w.to_lowercase()).collect()
+}
+
+// the statement read literally: again and again the first of the words left
+// with the fewest letters, so words of one length keep their order; then
+// written with single spaces and the first letter raised
+fn literal(text: String) -> String {
+    let mut left = lowered(text);
+    let mut out: Vec[String] = Vec.new();
+    while left.len() > 0 {
+        let mut pick = 0;
+        for i in 1..left.len() {
+            if left[i].len() < left[pick].len() {
+                pick = i;
+            }
+        }
+        out.push(left.remove(pick));
+    }
+    let joined = out.join(" ");
+    let mut letters: Vec[char] = joined.chars().collect();
+    letters[0] = letters[0].to_ascii_uppercase();
+    letters.into_iter().collect()
+}
+
+fn arm(i: i64, text: String) -> String {
+    let text = text.clone();
+    match i {
+        0 => a0_arrange_words(text),
+        1 => a1_arrange_words(text),
+        2 => a2_arrange_words(text),
+        3 => a3_arrange_words(text),
+        _ => a4_arrange_words(text),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, text: String) {
+    t.cases += 1;
+    let star = arm(0, text);
+    for b in star.bytes() {
+        t.check = (t.check * 131 + b) % 1000000007;
+    }
+    let words = lowered(text);
+    let want = if words.len() <= 1000 { Some(literal(text)) } else { None };
+    let mut in_order = words.clone();
+    in_order.sort();
+    let longest = words.iter().map(|w| w.len()).max().unwrap();
+    for i in 0..5 {
+        let what = f"arm {i} on {words.len()} words";
+        let got = arm(i, text);
+        // P1: the statement read literally, while there are at most 1000
+        // words
+        if let Some(ref w) = want {
+            expect(mut t, 1, got == w, f"P1 {what}");
+        }
+        // P2: the same words, lowered, in some order
+        let out = lowered(got);
+        let mut out_order = out.clone();
+        out_order.sort();
+        expect(mut t, 2, out_order == in_order, f"P2 {what}");
+        // P3: the lengths never fall, and the words of each length come in
+        // the order the text has them
+        let rising = out.windows(2).into_iter().all(|w| w[0].len() <= w[1].len());
+        let kept = (1..=longest).all(|len| {
+            let before: Vec[String] = words.iter().filter(|w| w.len() == len).cloned().collect();
+            let after: Vec[String] = out.iter().filter(|w| w.len() == len).cloned().collect();
+            before == after
+        });
+        expect(mut t, 3, rising and kept, f"P3 {what}");
+        // P4: the answer rearranged again is itself
+        expect(mut t, 4, arm(i, got) == got, f"P4 {what}");
+        // P5: as long as the text, the first letter raised and every other
+        // lowered
+        let chars: Vec[char] = got.chars().collect();
+        let shaped = got.len() == text.len() and chars[0].is_ascii_uppercase() and chars.iter().skip(1).all(|c| c == ' ' or c.is_ascii_lowercase());
+        expect(mut t, 5, shaped, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: one letter, one word, and two words
+    // of one length; and the constraints' most, a text of one-letter words
+    // and one of words of 1 to 10 letters. Every case is drawn before any
+    // arm answers.
+    let mut cases: Vec[String] = ["Leetcode is cool", "Keep calm and code on", "To be or not to be", "A", "Word", "Ab cd"].iter().map(|s| s.to_string()).collect();
+    let mut short = "A".to_string();
+    for _ in 0..49999 {
+        short.push_str(" a");
+    }
+    cases.push(short);
+    let mut seed = 14511;
+    cases.push(sentence(15000, 10, 26, mut seed));
+    // 1995 random texts drawn as the harness draws them
+    for _ in 0..1995 {
+        let n = 1 + next_random(mut seed) % 60;
+        let longest = 1 + next_random(mut seed) % 12;
+        let k = 1 + next_random(mut seed) % 26;
+        cases.push(sentence(n, longest, k, mut seed));
+    }
+    for j in 0..cases.len() {
+        let text = cases[j].clone();
+        check_case(mut t, text);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
