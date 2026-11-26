@@ -1,0 +1,69 @@
+// LeetCode #1770: Maximum Score from Performing Multiplication Operations
+// -- top-down: the best score from operation i on, with `left` numbers
+// taken from the front, is the better of the two ends, each answer
+// remembered.
+
+fn best_from(nums: Vec[i32], multipliers: Vec[i32], memo: mut ref Vec[Vec[Option[i32]]], i: i64, left: i64) -> i32 {
+    if i == multipliers.len() {
+        return 0;
+    }
+    if let Some(known) = memo[i][left] {
+        return known;
+    }
+    let right = nums.len() - 1 - (i - left);
+    let take_left = multipliers[i] * nums[left] + best_from(nums, multipliers, mut memo, i + 1, left + 1);
+    let take_right = multipliers[i] * nums[right] + best_from(nums, multipliers, mut memo, i + 1, left);
+    let best = take_left.max(take_right);
+    memo[i][left] = Some(best);
+    best
+}
+
+fn maximum_score(nums: Vec[i32], multipliers: Vec[i32]) -> i32 {
+    let m = multipliers.len();
+    let mut memo: Vec[Vec[Option[i32]]] = Vec.filled(m, Vec.filled(m, None));
+    best_from(nums, multipliers, mut memo, 0, 0)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n numbers from -bound to bound
+fn random_numbers(seed: mut ref i64, n: i64, bound: i64) -> Vec[i32] {
+    let mut v: Vec[i32] = Vec.with_capacity(n);
+    for _ in 0..n {
+        v.push((next_random(mut seed) % (2 * bound + 1) - bound) as i32);
+    }
+    v
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{maximum_score([1, 2, 3], [3, 2, 1])} {maximum_score([-5, -3, -3, -2, 7, 1], [-10, -5, 3, 4, 6])}");
+    // the edges: one number; as many multipliers as numbers; everything
+    // negative; a zero multiplier; the best end the worse one now
+    println(f"{maximum_score([7], [-3])} {maximum_score([1, -2, 3], [-1, -1, -1])} {maximum_score([-4, -1, -9, -2], [-2, -3])} {maximum_score([5, 0, -5], [0, 2])} {maximum_score([1, 1, 1, 100, -100], [1, 10])}");
+    // the constraints' most: 300 multipliers over 100000 numbers, every one
+    // 1000, then the same sizes at random
+    let mut seed = 1770;
+    let thousands: Vec[i32] = Vec.filled(100000, 1000);
+    let top: Vec[i32] = Vec.filled(300, 1000);
+    let nums = random_numbers(mut seed, 100000, 1000);
+    let multipliers = random_numbers(mut seed, 300, 1000);
+    println(f"the most: {maximum_score(thousands, top)} {maximum_score(nums, multipliers)}");
+    // 3000 random cases of 1 to 12 multipliers over up to 10 numbers more,
+    // values up to 1 to 1000 either side
+    let mut check = 0;
+    for _ in 0..3000 {
+        let m = 1 + next_random(mut seed) % 12;
+        let n = m + next_random(mut seed) % 11;
+        let bound = 1 + next_random(mut seed) % 1000;
+        let nums = random_numbers(mut seed, n, bound);
+        let multipliers = random_numbers(mut seed, m, bound);
+        check = (check * 31 + maximum_score(nums, multipliers) as i64 % 1000000007 + 1000000007) % 1000000007;
+    }
+    println(f"3000 random cases: checksum {check}");
+}
