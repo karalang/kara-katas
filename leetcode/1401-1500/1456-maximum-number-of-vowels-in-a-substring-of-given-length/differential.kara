@@ -1,0 +1,252 @@
+// LeetCode #1456: Maximum Number of Vowels in a Substring of Given
+// Length -- differential test of the five arms against the statement read
+// literally, with five more properties.
+
+// ---- max_vowels.kara ----
+fn a0_max_vowels(s: String, k: i32) -> i32 {
+    // a window of k letters slid along the string, its vowels counted as a
+    // letter comes in and another goes out
+    let letters: Vec[char] = s.chars().collect();
+    let k = k as i64;
+    let is_vowel = |c: char| "aeiou".contains(c.to_string());
+    let mut count: i32 = 0;
+    for i in 0..k {
+        if is_vowel(letters[i]) {
+            count += 1;
+        }
+    }
+    let mut best = count;
+    for i in k..letters.len() {
+        if is_vowel(letters[i]) {
+            count += 1;
+        }
+        if is_vowel(letters[i - k]) {
+            count -= 1;
+        }
+        best = best.max(count);
+    }
+    best
+}
+
+// ---- max_vowels_prefix.kara ----
+fn a1_max_vowels(s: String, k: i32) -> i32 {
+    // the vowels before each place as prefix sums, and each window's vowels
+    // the difference of two of them
+    let mut before: Vec[i32] = [0].to_vec();
+    for b in s.bytes() {
+        let vowel = match b { b'a' | b'e' | b'i' | b'o' | b'u' => true, _ => false };
+        before.push(before[before.len() - 1] + if vowel { 1 } else { 0 });
+    }
+    let k = k as i64;
+    (k..before.len()).map(|i| before[i] - before[i - k]).max().unwrap()
+}
+
+// ---- max_vowels_table.kara ----
+fn a2_max_vowels(s: String, k: i32) -> i32 {
+    // each byte looked up in a table of the 26 letters, 1 for a vowel, and
+    // the window's count kept as it slides
+    let mut table = [0; 26];
+    for v in "aeiou".bytes() {
+        table[v - b'a'] = 1;
+    }
+    let bytes = s.bytes();
+    let k = k as i64;
+    let mut count: i32 = 0;
+    let mut best: i32 = 0;
+    for i in 0..bytes.len() {
+        count += table[bytes[i] - b'a'];
+        if i >= k {
+            count -= table[bytes[i - k] - b'a'];
+        }
+        if i >= k - 1 {
+            best = best.max(count);
+        }
+    }
+    best
+}
+
+// ---- max_vowels_zip.kara ----
+fn a3_max_vowels(s: String, k: i32) -> i32 {
+    // the first window's vowels, then the letters coming in zipped with the
+    // letters going out, each pair's change folded in by `scan`
+    let vowel = |c: char| match c { 'a' | 'e' | 'i' | 'o' | 'u' => true, _ => false };
+    let k = k as i64;
+    let first = s.chars().take(k).filter(|c| vowel(c)).count() as i32;
+    let later = s.chars().skip(k).zip(s.chars()).scan(first, |count, (inn, out)| {
+        let count = count + (vowel(inn) as i32 - vowel(out) as i32);
+        Some((count, count))
+    });
+    later.fold(first, |best, c| best.max(c))
+}
+
+// ---- max_vowels_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_max_vowels(s: String, k: i32) -> i32 {
+        let s = s.bytes();
+        let k = k as i64;
+        let is_vowel = |b: u8| match b {
+            b'a' | b'e' | b'i' | b'o' | b'u' => 1,
+            _ => 0,
+        };
+        let mut cur: i32 = 0;
+        for i in 0..k {
+            cur += is_vowel(s[i]);
+        }
+        let mut ans = cur;
+        for i in k..s.len() {
+            cur += is_vowel(s[i]) - is_vowel(s[i - k]);
+            ans = i32.max(ans, cur);
+        }
+        ans
+    }
+}
+
+fn a4_max_vowels(s: String, k: i32) -> i32 {
+    A4Solution.a4_max_vowels(s, k)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n letters, each a vowel one time in `odds`, else a consonant
+fn text(n: i64, odds: i64, seed: mut ref i64) -> String {
+    let vowels = "aeiou";
+    let others = "bcdfghjklmnpqrstvwxyz";
+    let mut s = String.new();
+    for _ in 0..n {
+        if next_random(mut seed) % odds == 0 {
+            s.push(vowels.chars().nth(next_random(mut seed) % 5).unwrap());
+        } else {
+            s.push(others.chars().nth(next_random(mut seed) % 21).unwrap());
+        }
+    }
+    s
+}
+
+fn vowel(c: char) -> bool {
+    c == 'a' or c == 'e' or c == 'i' or c == 'o' or c == 'u'
+}
+
+// the statement read literally, while n k is at most 10^6: every substring
+// of k letters, its vowels counted one by one, and the most of them
+fn literal(s: String, k: i64) -> i64 {
+    let letters: Vec[char] = s.chars().collect();
+    let mut best = 0;
+    for start in 0..=letters.len() - k {
+        let mut count = 0;
+        for j in start..start + k {
+            if vowel(letters[j]) {
+                count += 1;
+            }
+        }
+        best = best.max(count);
+    }
+    best
+}
+
+fn arm(i: i64, s: String, k: i64) -> i64 {
+    let s = s.clone();
+    let k = k as i32;
+    let got = match i {
+        0 => a0_max_vowels(s, k),
+        1 => a1_max_vowels(s, k),
+        2 => a2_max_vowels(s, k),
+        3 => a3_max_vowels(s, k),
+        _ => a4_max_vowels(s, k),
+    };
+    got
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, s: String, k: i64) {
+    t.cases += 1;
+    let n = s.len();
+    let star = arm(0, s, k);
+    t.check = (t.check * 131 + star) % 1000000007;
+    let want = if n * k <= 1000000 { Some(literal(s, k)) } else { None };
+    // the string backwards; a vowel put in front of it, while it stays
+    // within 10^5 letters; and its vowels in all
+    let backwards: String = s.chars().rev().collect();
+    let fronted = f"a{s}";
+    let all = s.chars().filter(|c| vowel(c)).count();
+    for i in 0..5 {
+        let what = f"arm {i} on {n} letters, k {k}";
+        let got = arm(i, s, k);
+        // P1: the statement read literally, while n k is at most 10^6
+        if let Some(w) = want {
+            expect(mut t, 1, got == w, f"P1 {what}");
+        }
+        // P2: the string backwards gives the same
+        expect(mut t, 2, arm(i, backwards, k) == got, f"P2 {what}");
+        // P3: a window one longer gives the same or one more
+        if k < n {
+            let longer = arm(i, s, k + 1);
+            expect(mut t, 3, longer == got or longer == got + 1, f"P3 {what}");
+        }
+        // P4: a vowel in front gives the same or one more
+        if n < 100000 {
+            let more = arm(i, fronted, k);
+            expect(mut t, 4, more == got or more == got + 1, f"P4 {what}");
+        }
+        // P5: from 0 to k, and the whole string's vowels when k is n
+        let bounded = got >= 0 and got <= k and got <= all;
+        let whole = k != n or got == all;
+        expect(mut t, 5, bounded and whole, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: one letter, no vowel, and the
+    // window the whole string; and the constraints' most, 10^5 letters with
+    // windows of 1, of 1000 and of the whole string. Every case is drawn
+    // before any arm answers.
+    let named = [("abciiidef", 3), ("aeiou", 2), ("leetcode", 3), ("a", 1), ("rhythm", 4), ("education", 9)];
+    let mut cases: Vec[(String, i64)] = named.iter().map(|(s, k)| (s.to_string(), k)).collect();
+    let mut seed = 14561;
+    let long = text(100000, 3, mut seed);
+    cases.push((long.clone(), 1));
+    cases.push((long.clone(), 1000));
+    cases.push((long, 100000));
+    // 1994 random cases drawn as the harness draws them
+    for _ in 0..1994 {
+        let n = 1 + next_random(mut seed) % 60;
+        let odds = 1 + next_random(mut seed) % 5;
+        let k = 1 + next_random(mut seed) % n;
+        cases.push((text(n, odds, mut seed), k));
+    }
+    for j in 0..cases.len() {
+        let (s, k) = cases[j].clone();
+        check_case(mut t, s, k);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
