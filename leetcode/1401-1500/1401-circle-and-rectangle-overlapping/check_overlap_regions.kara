@@ -1,0 +1,84 @@
+// LeetCode #1401: Circle and Rectangle Overlapping -- the center against
+// the rectangle grown by the radius, a rounded rectangle: inside the
+// rectangle widened by the radius left and right, or heightened by it
+// above and below, or within the radius of one of the four corners.
+// O(1)
+
+fn near_corner(radius: i32, x: i32, y: i32, cx: i32, cy: i32) -> bool {
+    (x - cx) * (x - cx) + (y - cy) * (y - cy) <= radius * radius
+}
+
+fn check_overlap(radius: i32, x_center: i32, y_center: i32, x1: i32, y1: i32, x2: i32, y2: i32) -> bool {
+    let wide = x1 - radius <= x_center and x_center <= x2 + radius and y1 <= y_center and y_center <= y2;
+    let tall = x1 <= x_center and x_center <= x2 and y1 - radius <= y_center and y_center <= y2 + radius;
+    let corners = [(x1, y1), (x1, y2), (x2, y1), (x2, y2)];
+    wide or tall or corners.iter().any(|(cx, cy)| near_corner(radius, x_center, y_center, cx, cy))
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a whole number from lo to hi, from two draws
+fn between(lo: i64, hi: i64, seed: mut ref i64) -> i32 {
+    (lo + (next_random(mut seed) * 32768 + next_random(mut seed)) % (hi - lo + 1)) as i32
+}
+
+fn main() {
+    // LeetCode's three examples, and three more: the circle inside the
+    // rectangle, reaching a corner, and falling short of it
+    let shown: Vec[String] = [
+        check_overlap(1, 0, 0, 1, -1, 3, 1),
+        check_overlap(1, 1, 1, 1, -3, 2, -1),
+        check_overlap(1, 0, 0, -1, 0, 0, 1),
+        check_overlap(1, 1, 1, -3, -3, 3, 3),
+        check_overlap(2, 0, 0, 1, 1, 3, 3),
+        check_overlap(1, 0, 0, 1, 1, 3, 3),
+    ].iter().map(|b| f"{b}").collect();
+    println(shown.join(" "));
+    // every center from -10 to 10 each way around the rectangle
+    // [-3, 2] x [-1, 4], for radii 1 to 6: how many overlap
+    let mut counts: Vec[String] = Vec.new();
+    for radius in 1..=6 {
+        let mut count = 0;
+        for x in -10..=10 {
+            for y in -10..=10 {
+                if check_overlap(radius, x, y, -3, -1, 2, 4) {
+                    count += 1;
+                }
+            }
+        }
+        counts.push(f"{count}");
+    }
+    println(f"grid of 441 centers: {counts.join(" ")}");
+    // 20000 random draws: radius up to 20 beside a rectangle within 50 of
+    // the center, or up to 2000 beside one within 2000; a draw whose
+    // rectangle has an empty side is skipped
+    let mut seed = 1401;
+    let mut check: i64 = 0;
+    let mut cases = 0;
+    let mut overlaps = 0;
+    for i in 0..20000 {
+        let near = if i % 2 == 0 { 50 } else { 2000 };
+        let radius = between(1, if i % 2 == 0 { 20 } else { 2000 }, mut seed);
+        let x = between(-10000 + near, 10000 - near, mut seed);
+        let y = between(-10000 + near, 10000 - near, mut seed);
+        let a = between(x - near, x + near, mut seed);
+        let b = between(x - near, x + near, mut seed);
+        let c = between(y - near, y + near, mut seed);
+        let d = between(y - near, y + near, mut seed);
+        if a == b or c == d {
+            continue;
+        }
+        cases += 1;
+        let hit = check_overlap(radius, x, y, a.min(b), c.min(d), a.max(b), c.max(d));
+        if hit {
+            overlaps += 1;
+        }
+        check = (check * 131 + if hit { 2 } else { 1 }) % 1000000007;
+    }
+    println(f"{cases} random cases: {overlaps} overlap, checksum {check}");
+}

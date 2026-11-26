@@ -1,0 +1,218 @@
+// LeetCode #1401: Circle and Rectangle Overlapping --
+// differential test of the five arms against the statement read
+// literally, with five more properties.
+
+// ---- check_overlap.kara ----
+fn a0_check_overlap(radius: i32, x_center: i32, y_center: i32, x1: i32, y1: i32, x2: i32, y2: i32) -> bool {
+    let dx = x_center.clamp(x1, x2) - x_center;
+    let dy = y_center.clamp(y1, y2) - y_center;
+    dx * dx + dy * dy <= radius * radius
+}
+
+// ---- check_overlap_regions.kara ----
+fn a1_near_corner(radius: i32, x: i32, y: i32, cx: i32, cy: i32) -> bool {
+    (x - cx) * (x - cx) + (y - cy) * (y - cy) <= radius * radius
+}
+
+fn a1_check_overlap(radius: i32, x_center: i32, y_center: i32, x1: i32, y1: i32, x2: i32, y2: i32) -> bool {
+    let wide = x1 - radius <= x_center and x_center <= x2 + radius and y1 <= y_center and y_center <= y2;
+    let tall = x1 <= x_center and x_center <= x2 and y1 - radius <= y_center and y_center <= y2 + radius;
+    let corners = [(x1, y1), (x1, y2), (x2, y1), (x2, y2)];
+    wide or tall or corners.iter().any(|(cx, cy)| a1_near_corner(radius, x_center, y_center, cx, cy))
+}
+
+// ---- check_overlap_columns.kara ----
+fn a2_check_overlap(radius: i32, x_center: i32, y_center: i32, x1: i32, y1: i32, x2: i32, y2: i32) -> bool {
+    let from = x1.max(x_center - radius);
+    let to = x2.min(x_center + radius);
+    for x in from..=to {
+        let dx = x - x_center;
+        let reach = (radius * radius - dx * dx).isqrt();
+        if y_center - reach <= y2 and y1 <= y_center + reach {
+            return true;
+        }
+    }
+    false
+}
+
+// ---- check_overlap_float.kara ----
+fn a3_gap(c: i32, lo: i32, hi: i32) -> f64 {
+    if c < lo {
+        (lo - c) as f64
+    } else if c > hi {
+        (c - hi) as f64
+    } else {
+        0.0
+    }
+}
+
+fn a3_check_overlap(radius: i32, x_center: i32, y_center: i32, x1: i32, y1: i32, x2: i32, y2: i32) -> bool {
+    a3_gap(x_center, x1, x2).hypot(a3_gap(y_center, y1, y2)) <= radius as f64
+}
+
+// ---- check_overlap_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_check_overlap(radius: i32, x_center: i32, y_center: i32, x1: i32, y1: i32, x2: i32, y2: i32) -> bool {
+        let x = i32.max(x1, i32.min(x_center, x2));
+        let y = i32.max(y1, i32.min(y_center, y2));
+        let (dx, dy) = (x - x_center, y - y_center);
+        dx * dx + dy * dy <= radius * radius
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a whole number from lo to hi, from two draws
+fn between(lo: i64, hi: i64, seed: mut ref i64) -> i32 {
+    (lo + (next_random(mut seed) * 32768 + next_random(mut seed)) % (hi - lo + 1)) as i32
+}
+
+struct Case {
+    radius: i32,
+    x: i32,
+    y: i32,
+    x1: i32,
+    y1: i32,
+    x2: i32,
+    y2: i32,
+}
+
+// the statement read literally: is there a point in the circle and the
+// rectangle at once? The corners and the center are whole numbers, so if
+// any point is shared, the rectangle's point nearest the center is one,
+// and it is a lattice point; so every lattice point of the rectangle
+// within the circle's bounding square is tried, as a point of the circle
+// when its squared distance is at most the squared radius
+fn literal(c: Case) -> bool {
+    let r = c.radius as i64;
+    let (x, y) = (c.x as i64, c.y as i64);
+    for px in (c.x1 as i64).max(x - r)..=(c.x2 as i64).min(x + r) {
+        for py in (c.y1 as i64).max(y - r)..=(c.y2 as i64).min(y + r) {
+            if (px - x) * (px - x) + (py - y) * (py - y) <= r * r {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn arm(i: i64, c: Case) -> bool {
+    match i {
+        0 => a0_check_overlap(c.radius, c.x, c.y, c.x1, c.y1, c.x2, c.y2),
+        1 => a1_check_overlap(c.radius, c.x, c.y, c.x1, c.y1, c.x2, c.y2),
+        2 => a2_check_overlap(c.radius, c.x, c.y, c.x1, c.y1, c.x2, c.y2),
+        3 => a3_check_overlap(c.radius, c.x, c.y, c.x1, c.y1, c.x2, c.y2),
+        _ => A4Solution.a4_check_overlap(c.radius, c.x, c.y, c.x1, c.y1, c.x2, c.y2),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, c: Case) {
+    t.cases += 1;
+    let want = literal(c);
+    let star = arm(0, c);
+    t.check = (t.check * 131 + if star { 2 } else { 1 }) % 1000000007;
+    t.check = (t.check * 131 + c.radius) % 1000000007;
+    let mirrored = Case { radius: c.radius, x: -c.x, y: -c.y, x1: -c.x2, y1: -c.y2, x2: -c.x1, y2: -c.y1 };
+    let swapped = Case { radius: c.radius, x: c.y, y: c.x, x1: c.y1, y1: c.x1, x2: c.y2, y2: c.x2 };
+    let wider = Case { radius: c.radius + 1, ..c };
+    let moved = Case { radius: c.radius, x: c.x + 7, y: c.y - 3, x1: c.x1 + 7, y1: c.y1 - 3, x2: c.x2 + 7, y2: c.y2 - 3 };
+    let movable = c.x.max(c.x2) + 7 <= 10000 and c.y.min(c.y1) - 3 >= -10000;
+    for i in 0..5 {
+        let got = arm(i, c);
+        let what = f"arm {i} on radius {c.radius} at ({c.x}, {c.y}), [{c.x1}, {c.x2}] x [{c.y1}, {c.y2}]";
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: the whole picture turned half round about the origin
+        let turned = arm(i, mirrored);
+        expect(mut t, 2, turned == got, f"P2 {what}: {turned} turned round");
+        // P3: x and y swapped, a reflection in the diagonal
+        let flipped = arm(i, swapped);
+        expect(mut t, 3, flipped == got, f"P3 {what}: {flipped} with x and y swapped");
+        // P4: a circle one wider still overlaps what this one did
+        if got and c.radius < 2000 {
+            let grown = arm(i, wider);
+            expect(mut t, 4, grown, f"P4 {what}: no overlap at radius {c.radius + 1}");
+        }
+        // P5: the picture moved 7 right and 3 down
+        if movable {
+            let shifted = arm(i, moved);
+            expect(mut t, 5, shifted == got, f"P5 {what}: {shifted} moved");
+        }
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: the center inside, a corner touched
+    // exactly and missed by one, an edge touched, the largest circle and the
+    // whole plane, the largest circle short of a corner. Every case is drawn
+    // before any arm answers.
+    let mut cases: Vec[Case] = Vec.new();
+    for (radius, x, y, x1, y1, x2, y2) in [
+        (1i32, 0i32, 0i32, 1i32, -1i32, 3i32, 1i32),
+        (1, 1, 1, 1, -3, 2, -1),
+        (1, 0, 0, -1, 0, 0, 1),
+        (1, 0, 0, -5, -5, 5, 5),
+        (5, 0, 0, 3, 4, 9, 9),
+        (5, 0, 0, 4, 4, 9, 9),
+        (3, 0, 0, 3, -10, 4, 10),
+        (3, 0, 0, 4, -10, 5, 10),
+        (2000, 0, 0, -10000, -10000, 10000, 10000),
+        (2000, 0, 0, 1500, 1500, 10000, 10000),
+        (2000, 10000, 10000, -10000, -10000, -9999, -9999),
+        (1, -10000, -10000, -10000, -10000, -9999, -9999),
+        (2000, 0, 0, 1200, 1600, 1300, 1700),
+    ] {
+        cases.push(Case { radius, x, y, x1, y1, x2, y2 });
+    }
+    // 1990 random cases: radius up to 50, the rectangle's corners within
+    // 100 of the center
+    let mut seed = 14011;
+    while cases.len() < 2003 {
+        let radius = between(1, 50, mut seed);
+        let x = between(-9800, 9800, mut seed);
+        let y = between(-9800, 9800, mut seed);
+        let a = between(x - 100, x + 100, mut seed);
+        let b = between(x - 100, x + 100, mut seed);
+        let c = between(y - 100, y + 100, mut seed);
+        let d = between(y - 100, y + 100, mut seed);
+        if a != b and c != d {
+            cases.push(Case { radius, x, y, x1: a.min(b), y1: c.min(d), x2: a.max(b), y2: c.max(d) });
+        }
+    }
+    for c in cases.iter() {
+        check_case(mut t, c);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
