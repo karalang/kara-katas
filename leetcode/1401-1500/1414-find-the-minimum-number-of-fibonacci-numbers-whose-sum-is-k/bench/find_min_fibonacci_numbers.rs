@@ -1,0 +1,30 @@
+// LeetCode #1414 bench, Rust: the Fibonacci numbers up to k, and the
+// largest that fits taken each time, workload and checksum as
+// find_min_fibonacci_numbers.kara.
+
+fn find_min_fibonacci_numbers(k: i32) -> i32 {
+    let mut fib: Vec<i32> = vec![1, 1];
+    while fib[fib.len() - 1] <= k - fib[fib.len() - 2] {
+        fib.push(fib[fib.len() - 1] + fib[fib.len() - 2]);
+    }
+    let mut left = k;
+    let mut count = 0;
+    for &f in fib.iter().rev() {
+        if f <= left {
+            left -= f;
+            count += 1;
+        }
+    }
+    count
+}
+
+fn main() {
+    let mut seed: i64 = 1414;
+    let mut check: i64 = 0;
+    for _ in 0..3000000 {
+        seed = (seed * 1103515245 + 12345) % 2147483648;
+        let k = 1 + seed % 1000000000;
+        check = (check * 131 + find_min_fibonacci_numbers(k as i32) as i64) % 1000000007;
+    }
+    println!("3 * 10^6 values of k: checksum {}", check);
+}
