@@ -1,0 +1,58 @@
+// LeetCode #1463 bench: the ★ arm (the most cherries over each pair of
+// robot columns, row by row) on 40 grids of 70 by 70, the constraints'
+// most, with 0 to 100 cherries a cell, drawn once; each answered after one
+// cell is set from the checksum so far, so no answer carries over, and the
+// answer folded into the checksum.
+
+fn cherry_pickup(grid: Vec[Vec[i32]]) -> i32 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    // best[a][b]: the most cherries picked down to this row with robot 1 at
+    // column a and robot 2 at column b, -1 where they cannot both be
+    let mut best = Vec.filled(cols, Vec.filled(cols, -1));
+    best[0][cols - 1] = grid[0][0] + grid[0][cols - 1];
+    for r in 1..rows {
+        let mut next = Vec.filled(cols, Vec.filled(cols, -1i32));
+        for a in 0..cols {
+            for b in 0..cols {
+                if best[a][b] < 0 {
+                    continue;
+                }
+                for da in -1..=1 {
+                    for db in -1..=1 {
+                        let (x, y) = (a + da, b + db);
+                        if x < 0 or x >= cols or y < 0 or y >= cols {
+                            continue;
+                        }
+                        let here = if x == y { grid[r][x] } else { grid[r][x] + grid[r][y] };
+                        next[x][y] = next[x][y].max(best[a][b] + here);
+                    }
+                }
+            }
+        }
+        best = next;
+    }
+    best.iter().map(|row| row.iter().max().unwrap()).max().unwrap()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1463;
+    let mut grids: Vec[Vec[Vec[i32]]] = Vec.new();
+    for _ in 0..40 {
+        let grid: Vec[Vec[i32]] = (0..70).map(|_| (0..70).map(|_| (next_random(mut seed) % 101) as i32).collect()).collect();
+        grids.push(grid);
+    }
+    let mut check: i64 = 0;
+    for g in 0..40 {
+        let cell = check % 4900;
+        grids[g][cell / 70][cell % 70] = (check % 101) as i32;
+        let most = cherry_pickup(grids[g]) as i64;
+        check = (check * 31 + most) % 1000000007;
+    }
+    println(f"40 grids of 70 by 70: checksum {check}");
+}

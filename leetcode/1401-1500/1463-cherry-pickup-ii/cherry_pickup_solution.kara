@@ -1,0 +1,81 @@
+// LeetCode #1463: Cherry Pickup II -- a Rust solution as LeetCode's Rust
+// users write it: a three-dimensional `vec![vec![vec![-1; n]; n]; m]`
+// filled row by row with `i32` columns cast to `usize`, the nine moves as
+// `for d1 in -1..=1`, and the answer folded from the last row through
+// `iter().flatten().max()`, carried to Kāra by `karac fix`
+
+struct Solution {}
+
+impl Solution {
+    pub fn cherry_pickup(grid: Vec[Vec[i32]]) -> i32 {
+        let (m, n) = (grid.len(), grid[0].len());
+        let mut dp = Vec.filled(m, Vec.filled(n, Vec.filled(n, -1)));
+        dp[0][0][n - 1] = grid[0][0] + grid[0][n - 1];
+        for i in 1..m {
+            for j1 in 0..n {
+                for j2 in 0..n {
+                    for d1 in -1..=1 {
+                        for d2 in -1..=1 {
+                            let p1 = j1 as i32 + d1;
+                            let p2 = j2 as i32 + d2;
+                            if p1 < 0 or p2 < 0 or p1 >= n as i32 or p2 >= n as i32 {
+                                continue;
+                            }
+                            let prev = dp[i - 1][p1 as usize][p2 as usize];
+                            if prev < 0 {
+                                continue;
+                            }
+                            let gain = if j1 == j2 { grid[i][j1] } else { grid[i][j1] + grid[i][j2] };
+                            dp[i][j1][j2] = dp[i][j1][j2].max(prev + gain);
+                        }
+                    }
+                }
+            }
+        }
+        *dp[m - 1].iter().flat_map(|v| v.iter()).max().unwrap()
+    }
+}
+
+fn cherry_pickup(grid: Vec[Vec[i32]]) -> i32 {
+    Solution.cherry_pickup(grid)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// rows by cols cherries from 0 to top
+fn draw(seed: mut ref i64, rows: i64, cols: i64, top: i64) -> Vec[Vec[i32]] {
+    (0..rows).map(|_| (0..cols).map(|_| (next_random(mut seed) % (top + 1)) as i32).collect()).collect()
+}
+
+fn main() {
+    // LeetCode's two examples, and four more: a 2 by 2 grid, 3 by 2 of
+    // 5s, a 70 by 70 grid of 100s, and one of 0s
+    let e1: Vec[Vec[i32]] = [[3, 1, 1].to_vec(), [2, 5, 1].to_vec(), [1, 5, 5].to_vec(), [2, 1, 1].to_vec()].to_vec();
+    let e2: Vec[Vec[i32]] = [[1, 0, 0, 0, 0, 0, 1].to_vec(), [2, 0, 0, 0, 0, 3, 0].to_vec(), [2, 0, 9, 0, 0, 0, 0].to_vec(), [0, 3, 0, 5, 4, 0, 0].to_vec(), [1, 0, 2, 3, 0, 0, 6].to_vec()].to_vec();
+    let e3: Vec[Vec[i32]] = [[1, 2].to_vec(), [3, 4].to_vec()].to_vec();
+    let e4: Vec[Vec[i32]] = [[5, 5].to_vec(), [5, 5].to_vec(), [5, 5].to_vec()].to_vec();
+    let full: Vec[Vec[i32]] = Vec.filled(70, Vec.filled(70, 100));
+    let empty: Vec[Vec[i32]] = Vec.filled(70, Vec.filled(70, 0));
+    println(f"{cherry_pickup(e1)} {cherry_pickup(e2)} {cherry_pickup(e3)} {cherry_pickup(e4)} {cherry_pickup(full)} {cherry_pickup(empty)}");
+    // the constraints' most, 70 by 70 with 0 to 100 cherries a cell
+    let mut seed = 1463;
+    println(f"70 by 70: {cherry_pickup(draw(mut seed, 70, 70, 100))}");
+    // 1000 random grids of 2 to 12 rows and columns, 0 to top cherries a
+    // cell, top from 0 to 100
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let rows = 2 + next_random(mut seed) % 11;
+        let cols = 2 + next_random(mut seed) % 11;
+        let top = next_random(mut seed) % 101;
+        let got = cherry_pickup(draw(mut seed, rows, cols, top));
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"1000 random grids: {total} cherries, checksum {check}");
+}

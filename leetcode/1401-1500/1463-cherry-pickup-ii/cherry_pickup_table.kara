@@ -1,0 +1,65 @@
+fn cherry_pickup(grid: Vec[Vec[i32]]) -> i32 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    // from the bottom row up: most[r][a][b] the cherries from row r down
+    // with the robots at a and b, every pair of columns filled since any
+    // can be reached from below
+    let mut most: Vec[Vec[Vec[i32]]] = Vec.filled(rows, Vec.filled(cols, Vec.filled(cols, 0)));
+    for r in (0..rows).rev() {
+        for a in 0..cols {
+            for b in 0..cols {
+                let here = grid[r][a] + if a == b { 0 } else { grid[r][b] };
+                let mut below: i32 = 0;
+                if r + 1 < rows {
+                    for x in a.max(1) - 1..=(a + 1).min(cols - 1) {
+                        for y in b.max(1) - 1..=(b + 1).min(cols - 1) {
+                            below = below.max(most[r + 1][x][y]);
+                        }
+                    }
+                }
+                most[r][a][b] = here + below;
+            }
+        }
+    }
+    most[0][0][cols - 1]
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// rows by cols cherries from 0 to top
+fn draw(seed: mut ref i64, rows: i64, cols: i64, top: i64) -> Vec[Vec[i32]] {
+    (0..rows).map(|_| (0..cols).map(|_| (next_random(mut seed) % (top + 1)) as i32).collect()).collect()
+}
+
+fn main() {
+    // LeetCode's two examples, and four more: a 2 by 2 grid, 3 by 2 of
+    // 5s, a 70 by 70 grid of 100s, and one of 0s
+    let e1: Vec[Vec[i32]] = [[3, 1, 1].to_vec(), [2, 5, 1].to_vec(), [1, 5, 5].to_vec(), [2, 1, 1].to_vec()].to_vec();
+    let e2: Vec[Vec[i32]] = [[1, 0, 0, 0, 0, 0, 1].to_vec(), [2, 0, 0, 0, 0, 3, 0].to_vec(), [2, 0, 9, 0, 0, 0, 0].to_vec(), [0, 3, 0, 5, 4, 0, 0].to_vec(), [1, 0, 2, 3, 0, 0, 6].to_vec()].to_vec();
+    let e3: Vec[Vec[i32]] = [[1, 2].to_vec(), [3, 4].to_vec()].to_vec();
+    let e4: Vec[Vec[i32]] = [[5, 5].to_vec(), [5, 5].to_vec(), [5, 5].to_vec()].to_vec();
+    let full: Vec[Vec[i32]] = Vec.filled(70, Vec.filled(70, 100));
+    let empty: Vec[Vec[i32]] = Vec.filled(70, Vec.filled(70, 0));
+    println(f"{cherry_pickup(e1)} {cherry_pickup(e2)} {cherry_pickup(e3)} {cherry_pickup(e4)} {cherry_pickup(full)} {cherry_pickup(empty)}");
+    // the constraints' most, 70 by 70 with 0 to 100 cherries a cell
+    let mut seed = 1463;
+    println(f"70 by 70: {cherry_pickup(draw(mut seed, 70, 70, 100))}");
+    // 1000 random grids of 2 to 12 rows and columns, 0 to top cherries a
+    // cell, top from 0 to 100
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let rows = 2 + next_random(mut seed) % 11;
+        let cols = 2 + next_random(mut seed) % 11;
+        let top = next_random(mut seed) % 101;
+        let got = cherry_pickup(draw(mut seed, rows, cols, top));
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"1000 random grids: {total} cherries, checksum {check}");
+}

@@ -1,0 +1,326 @@
+// LeetCode #1463: Cherry Pickup II -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- cherry_pickup.kara ----
+fn a0_cherry_pickup(grid: Vec[Vec[i32]]) -> i32 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    // best[a][b]: the most cherries picked down to this row with robot 1 at
+    // column a and robot 2 at column b, -1 where they cannot both be
+    let mut best = Vec.filled(cols, Vec.filled(cols, -1));
+    best[0][cols - 1] = grid[0][0] + grid[0][cols - 1];
+    for r in 1..rows {
+        let mut next = Vec.filled(cols, Vec.filled(cols, -1i32));
+        for a in 0..cols {
+            for b in 0..cols {
+                if best[a][b] < 0 {
+                    continue;
+                }
+                for da in -1..=1 {
+                    for db in -1..=1 {
+                        let (x, y) = (a + da, b + db);
+                        if x < 0 or x >= cols or y < 0 or y >= cols {
+                            continue;
+                        }
+                        let here = if x == y { grid[r][x] } else { grid[r][x] + grid[r][y] };
+                        next[x][y] = next[x][y].max(best[a][b] + here);
+                    }
+                }
+            }
+        }
+        best = next;
+    }
+    best.iter().map(|row| row.iter().max().unwrap()).max().unwrap()
+}
+
+// ---- cherry_pickup_memo.kara ----
+fn a1_cherry_pickup(grid: Vec[Vec[i32]]) -> i32 {
+    let cols = grid[0].len();
+    let mut memo: Map[(i64, i64, i64), i32] = Map.new();
+    a1_pick(grid, 0, 0, cols - 1, mut memo)
+}
+
+// the most cherries from row r down with the robots at columns a and b,
+// each answer kept in `memo` the first time it is worked out
+fn a1_pick(grid: Vec[Vec[i32]], r: i64, a: i64, b: i64, memo: mut ref Map[(i64, i64, i64), i32]) -> i32 {
+    let cols = grid[0].len();
+    if a < 0 or a >= cols or b < 0 or b >= cols {
+        return i32.MIN;
+    }
+    if let Some(known) = memo.get((r, a, b)) {
+        return known;
+    }
+    let here = if a == b { grid[r][a] } else { grid[r][a] + grid[r][b] };
+    let mut below = 0;
+    if r + 1 < grid.len() {
+        below = i32.MIN;
+        for da in [-1, 0, 1] {
+            for db in [-1, 0, 1] {
+                below = below.max(a1_pick(grid, r + 1, a + da, b + db, mut memo));
+            }
+        }
+    }
+    let answer = here + below;
+    memo.insert((r, a, b), answer);
+    answer
+}
+
+// ---- cherry_pickup_table.kara ----
+fn a2_cherry_pickup(grid: Vec[Vec[i32]]) -> i32 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    // from the bottom row up: most[r][a][b] the cherries from row r down
+    // with the robots at a and b, every pair of columns filled since any
+    // can be reached from below
+    let mut most: Vec[Vec[Vec[i32]]] = Vec.filled(rows, Vec.filled(cols, Vec.filled(cols, 0)));
+    for r in (0..rows).rev() {
+        for a in 0..cols {
+            for b in 0..cols {
+                let here = grid[r][a] + if a == b { 0 } else { grid[r][b] };
+                let mut below: i32 = 0;
+                if r + 1 < rows {
+                    for x in a.max(1) - 1..=(a + 1).min(cols - 1) {
+                        for y in b.max(1) - 1..=(b + 1).min(cols - 1) {
+                            below = below.max(most[r + 1][x][y]);
+                        }
+                    }
+                }
+                most[r][a][b] = here + below;
+            }
+        }
+    }
+    most[0][0][cols - 1]
+}
+
+// ---- cherry_pickup_ordered.kara ----
+fn a3_cherry_pickup(grid: Vec[Vec[i32]]) -> i32 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    // the robots never need to cross: a path pair that crosses picks the
+    // same cherries as the pair swapped where they meet, so robot 1 stays at
+    // or left of robot 2, and only a <= b is kept, in one flat row of
+    // cols * cols, a cell a * cols + b, -1 where they cannot be
+    let mut best: Vec[i32] = Vec.filled(cols * cols, -1);
+    best[cols - 1] = grid[0][0] + grid[0][cols - 1];
+    for r in 1..rows {
+        let mut next: Vec[i32] = Vec.filled(cols * cols, -1);
+        for a in 0..cols {
+            for b in a..cols {
+                let was = best[a * cols + b];
+                if was < 0 {
+                    continue;
+                }
+                for x in [a - 1, a, a + 1] {
+                    for y in [b - 1, b, b + 1] {
+                        if x >= 0 and y < cols and x <= y {
+                            let here = if x == y { grid[r][x] } else { grid[r][x] + grid[r][y] };
+                            let cell = x * cols + y;
+                            next[cell] = next[cell].max(was + here);
+                        }
+                    }
+                }
+            }
+        }
+        best = next;
+    }
+    best.iter().max().unwrap()
+}
+
+// ---- cherry_pickup_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_cherry_pickup(grid: Vec[Vec[i32]]) -> i32 {
+        let (m, n) = (grid.len(), grid[0].len());
+        let mut dp = Vec.filled(m, Vec.filled(n, Vec.filled(n, -1)));
+        dp[0][0][n - 1] = grid[0][0] + grid[0][n - 1];
+        for i in 1..m {
+            for j1 in 0..n {
+                for j2 in 0..n {
+                    for d1 in -1..=1 {
+                        for d2 in -1..=1 {
+                            let p1 = j1 as i32 + d1;
+                            let p2 = j2 as i32 + d2;
+                            if p1 < 0 or p2 < 0 or p1 >= n as i32 or p2 >= n as i32 {
+                                continue;
+                            }
+                            let prev = dp[i - 1][p1 as usize][p2 as usize];
+                            if prev < 0 {
+                                continue;
+                            }
+                            let gain = if j1 == j2 { grid[i][j1] } else { grid[i][j1] + grid[i][j2] };
+                            dp[i][j1][j2] = dp[i][j1][j2].max(prev + gain);
+                        }
+                    }
+                }
+            }
+        }
+        *dp[m - 1].iter().flat_map(|v| v.iter()).max().unwrap()
+    }
+}
+
+fn a4_cherry_pickup(grid: Vec[Vec[i32]]) -> i32 {
+    A4Solution.a4_cherry_pickup(grid)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// rows by cols cherries from 0 to top
+fn draw(seed: mut ref i64, rows: i64, cols: i64, top: i64) -> Vec[Vec[i32]] {
+    (0..rows).map(|_| (0..cols).map(|_| (next_random(mut seed) % (top + 1)) as i32).collect()).collect()
+}
+
+// every path from the top row's column `from` down, one column a row,
+// each step down-left, down or down-right
+fn paths(rows: i64, cols: i64, from: i64) -> Vec[Vec[i64]] {
+    let mut all: Vec[Vec[i64]] = [[from].to_vec()].to_vec();
+    for _ in 1..rows {
+        let mut longer: Vec[Vec[i64]] = Vec.new();
+        for p in all.iter() {
+            let at = p[p.len() - 1];
+            for step in [at - 1, at, at + 1] {
+                if step >= 0 and step < cols {
+                    let mut q = p.clone();
+                    q.push(step);
+                    longer.push(q);
+                }
+            }
+        }
+        all = longer;
+    }
+    all
+}
+
+// the statement read literally: every path of robot 1 against every path
+// of robot 2, each cell's cherries taken once when both pass through it
+fn literal(grid: Vec[Vec[i32]]) -> i64 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let ones = paths(rows, cols, 0);
+    let twos = paths(rows, cols, cols - 1);
+    let mut best = 0;
+    for p in ones.iter() {
+        for q in twos.iter() {
+            let mut sum: i64 = 0;
+            for r in 0..rows {
+                sum += grid[r][p[r]];
+                if q[r] != p[r] {
+                    sum += grid[r][q[r]];
+                }
+            }
+            best = best.max(sum);
+        }
+    }
+    best
+}
+
+fn arm(i: i64, grid: Vec[Vec[i32]]) -> i64 {
+    match i {
+        0 => a0_cherry_pickup(grid),
+        1 => a1_cherry_pickup(grid),
+        2 => a2_cherry_pickup(grid),
+        3 => a3_cherry_pickup(grid),
+        _ => a4_cherry_pickup(grid),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, grid: Vec[Vec[i32]]) {
+    t.cases += 1;
+    let star = arm(0, grid);
+    t.check = (t.check * 131 + star) % 1000000007;
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let want = if rows <= 5 { Some(literal(grid)) } else { None };
+    let mirrored: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().rev().collect()).collect();
+    let doubled: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|c| c * 2).collect()).collect();
+    let mut deeper = grid.clone();
+    deeper.push(Vec.filled(cols, 0i32));
+    // the two straight columns at the edges, and each row's two largest
+    let mut straight: i64 = 0;
+    let mut most: i64 = 0;
+    for row in grid.iter() {
+        straight += row[0] as i64 + row[cols - 1] as i64;
+        let mut sorted = row.clone();
+        sorted.sort();
+        most += sorted[cols - 1] as i64 + sorted[cols - 2] as i64;
+    }
+    for i in 0..5 {
+        let what = f"arm {i} on {rows} by {cols}";
+        let got = arm(i, grid);
+        // P1: the statement read literally, while there are at most 5 rows
+        if let Some(w) = want {
+            expect(mut t, 1, got == w, f"P1 {what}");
+        }
+        // P2: the grid mirrored left to right gives the same
+        expect(mut t, 2, arm(i, mirrored) == got, f"P2 {what}");
+        // P3: every cell doubled gives double
+        expect(mut t, 3, arm(i, doubled) == 2 * got, f"P3 {what}");
+        // P4: a row of 0s more at the bottom gives the same
+        expect(mut t, 4, arm(i, deeper) == got, f"P4 {what}");
+        // P5: at least the two edge columns straight down, at most each
+        // row's two largest
+        expect(mut t, 5, got >= straight and got <= most, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: 2 by 2, 3 by 2 of 5s, a cell of
+    // cherries only the robots' meeting reaches, and 70 by 70 of 100s, of
+    // 0s and the constraints' most. Every case is drawn before any arm
+    // answers.
+    let e1: Vec[Vec[i32]] = [[3, 1, 1].to_vec(), [2, 5, 1].to_vec(), [1, 5, 5].to_vec(), [2, 1, 1].to_vec()].to_vec();
+    let e2: Vec[Vec[i32]] = [[1, 0, 0, 0, 0, 0, 1].to_vec(), [2, 0, 0, 0, 0, 3, 0].to_vec(), [2, 0, 9, 0, 0, 0, 0].to_vec(), [0, 3, 0, 5, 4, 0, 0].to_vec(), [1, 0, 2, 3, 0, 0, 6].to_vec()].to_vec();
+    let e3: Vec[Vec[i32]] = [[1, 2].to_vec(), [3, 4].to_vec()].to_vec();
+    let e4: Vec[Vec[i32]] = [[5, 5].to_vec(), [5, 5].to_vec(), [5, 5].to_vec()].to_vec();
+    let e5: Vec[Vec[i32]] = [[0, 0, 0].to_vec(), [0, 0, 0].to_vec(), [0, 50, 0].to_vec()].to_vec();
+    let mut cases: Vec[Vec[Vec[i32]]] = [e1, e2, e3, e4, e5].to_vec();
+    cases.push(Vec.filled(70, Vec.filled(70, 100)));
+    cases.push(Vec.filled(70, Vec.filled(70, 0)));
+    let mut seed = 14631;
+    cases.push(draw(mut seed, 70, 70, 100));
+    // 1995 random grids: half of 2 to 5 rows and half of 2 to 12, 2 to 12
+    // columns, 0 to top cherries a cell, top from 0 to 100
+    for c in 0..1995 {
+        let most = if c % 2 == 0 { 4 } else { 11 };
+        let rows = 2 + next_random(mut seed) % most;
+        let cols = 2 + next_random(mut seed) % 11;
+        let top = next_random(mut seed) % 101;
+        cases.push(draw(mut seed, rows, cols, top));
+    }
+    for j in 0..cases.len() {
+        let grid = cases[j].clone();
+        check_case(mut t, grid);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
