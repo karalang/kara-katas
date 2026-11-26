@@ -1,0 +1,34 @@
+// LeetCode #1784: Check if Binary String Has at Most One Segment of Ones --
+// the bench: the ★ arm, a search for "01", over 4000 strings of 100 digits
+// built once, 4000000 calls.
+
+fn check_ones_segment(s: String) -> bool {
+    not s.contains("01")
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1784;
+    let mut strings: Vec[String] = Vec.new();
+    for k in 0..4000 {
+        // ones, then zeros, then half the time a 1 somewhere in the zeros
+        let ones = 1 + next_random(mut seed) % 100;
+        let mut s = "1".repeat(ones);
+        s.push_str("0".repeat(100 - ones).as_str());
+        if k % 2 == 1 and ones < 100 {
+            let at = ones + next_random(mut seed) % (100 - ones);
+            s = f"{s[0..at]}1{s[at + 1..100]}";
+        }
+        strings.push(s);
+    }
+    let mut check = 0;
+    for call in 0..4000000 {
+        let s = ref strings[(check + call) % 4000];
+        check = (check * 31 + if check_ones_segment(s) { 2 } else { 1 }) % 1000000007;
+    }
+    println(f"4000000 calls over 4000 strings: checksum {check}");
+}

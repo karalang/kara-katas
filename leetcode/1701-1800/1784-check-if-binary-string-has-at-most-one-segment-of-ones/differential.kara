@@ -1,0 +1,177 @@
+// LeetCode #1784: Check if Binary String Has at Most One Segment of Ones --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- check_ones_segment.kara ----
+fn a0_check_ones_segment(s: String) -> bool {
+    not s.contains("01")
+}
+
+// ---- check_ones_segment_scan.kara ----
+fn a1_check_ones_segment(s: String) -> bool {
+    let mut segments = 0;
+    let mut previous = '0';
+    for c in s.chars() {
+        if c == '1' and previous == '0' {
+            segments += 1;
+        }
+        previous = c;
+    }
+    segments <= 1
+}
+
+// ---- check_ones_segment_split.kara ----
+fn a2_check_ones_segment(s: String) -> bool {
+    s.split("0").filter(|piece| not piece.is_empty()).count() <= 1
+}
+
+// ---- check_ones_segment_trim.kara ----
+fn a3_check_ones_segment(s: String) -> bool {
+    let mut rest = s.as_str();
+    while let Some(after) = rest.strip_prefix("1") {
+        rest = after;
+    }
+    not rest.contains("1")
+}
+
+// ---- check_ones_segment_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn check_ones_segment(s: String) -> bool {
+        let b = s.bytes();
+        let mut seen_zero = false;
+        for c in b {
+            if c == b'0' {
+                seen_zero = true;
+            } else if seen_zero {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+fn a4_check_ones_segment(s: String) -> bool {
+    A4Solution.check_ones_segment(s)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_binary(seed: mut ref i64, n: i64, zeros: i64) -> String {
+    let mut s = "1".to_string();
+    for _ in 1..n {
+        s.push(if next_random(mut seed) % 4 < zeros { '0' } else { '1' });
+    }
+    s
+}
+
+// the statement read literally: every run of digits from i to j that is
+// all ones and cannot grow at either end is a segment; at most one
+fn literal(s: String) -> bool {
+    let d: Vec[char] = s.chars().collect();
+    let n = d.len();
+    let mut segments = 0;
+    for i in 0..n {
+        for j in i..n {
+            let ones = (i..j + 1).all(|k| d[k] == '1');
+            let left = i == 0 or d[i - 1] == '0';
+            let right = j == n - 1 or d[j + 1] == '0';
+            if ones and left and right {
+                segments += 1;
+            }
+        }
+    }
+    segments <= 1
+}
+
+fn arm(i: i64, s: String) -> bool {
+    match i {
+        0 => a0_check_ones_segment(s),
+        1 => a1_check_ones_segment(s),
+        2 => a2_check_ones_segment(s),
+        3 => a3_check_ones_segment(s),
+        _ => a4_check_ones_segment(s),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, s: String) {
+    t.cases += 1;
+    let want = literal(s);
+    t.check = (t.check * 31 + if want { 2 } else { 1 }) % 1000000007;
+    let star = arm(0, s);
+    let all_ones = s.chars().all(|c| c == '1');
+    let mut sorted: Vec[char] = s.chars().collect();
+    sorted.sort();
+    sorted.reverse();
+    let descending: String = sorted.iter().collect();
+    let with_zero = f"{s}0";
+    let with_one = f"{s}1";
+    let twice = f"{s}{s}";
+    for i in 0..5 {
+        let what = f"arm {i} on \"{s}\"";
+        let got = arm(i, s);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: a 0 at the end never changes the answer
+        expect(mut t, 2, arm(i, with_zero) == got, f"P2 {what}");
+        // P3: a 1 at the end leaves one segment exactly when every digit is
+        // a 1
+        expect(mut t, 3, arm(i, with_one) == all_ones, f"P3 {what}");
+        // P4: one segment exactly when the digits are already in descending
+        // order
+        expect(mut t, 4, got == (descending == s), f"P4 {what}");
+        // P5: the string twice over has one segment exactly when every digit
+        // is a 1
+        expect(mut t, 5, arm(i, twice) == all_ones, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges. Every case is drawn before any arm
+    // answers.
+    let mut cases: Vec[String] = ["1001", "110", "1", "10", "101", "111", "1000001", "1101"].iter().map(|w| w.to_string()).collect();
+    cases.push("1".repeat(100));
+    cases.push(f"1{"0".repeat(98)}1");
+    let mut seed = 17841;
+    // 1990 random strings of 1 to 14 digits, a 0 with chance 0 to 3 in 4
+    for _ in 0..1990 {
+        let n = 1 + next_random(mut seed) % 14;
+        let zeros = next_random(mut seed) % 4;
+        cases.push(random_binary(mut seed, n, zeros));
+    }
+    for j in 0..cases.len() {
+        check_case(mut t, cases[j]);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

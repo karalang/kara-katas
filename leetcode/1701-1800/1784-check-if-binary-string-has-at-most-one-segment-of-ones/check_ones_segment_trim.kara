@@ -1,0 +1,50 @@
+// LeetCode #1784: Check if Binary String Has at Most One Segment of Ones --
+// the leading ones trimmed off: one segment exactly when no 1 is left.
+
+fn check_ones_segment(s: String) -> bool {
+    let mut rest = s.as_str();
+    while let Some(after) = rest.strip_prefix("1") {
+        rest = after;
+    }
+    not rest.contains("1")
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a 1, then n - 1 digits, each a 0 with chance `zeros` in 4
+fn random_binary(seed: mut ref i64, n: i64, zeros: i64) -> String {
+    let mut s = "1".to_string();
+    for _ in 1..n {
+        s.push(if next_random(mut seed) % 4 < zeros { '0' } else { '1' });
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{check_ones_segment("1001")} {check_ones_segment("110")}");
+    // the edges: one digit; a 1 then a 0; two segments of one; all ones;
+    // two segments far apart
+    println(f"{check_ones_segment("1")} {check_ones_segment("10")} {check_ones_segment("101")} {check_ones_segment("111")} {check_ones_segment("1000001")}");
+    // the constraints' most: 100 ones, 50 ones then 50 zeros, and a 1 at
+    // each end of 98 zeros
+    let ones = "1".repeat(100);
+    let half = f"{"1".repeat(50)}{"0".repeat(50)}";
+    let ends = f"1{"0".repeat(98)}1";
+    println(f"the most: {check_ones_segment(ones)} {check_ones_segment(half)} {check_ones_segment(ends)}");
+    // 3000 random strings of 1 to 20 digits, a 0 with chance 0 to 3 in 4
+    let mut seed = 1784;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 20;
+        let zeros = next_random(mut seed) % 4;
+        let s = random_binary(mut seed, n, zeros);
+        check = (check * 31 + if check_ones_segment(s) { 2 } else { 1 }) % 1000000007;
+    }
+    println(f"3000 random cases: checksum {check}");
+}
