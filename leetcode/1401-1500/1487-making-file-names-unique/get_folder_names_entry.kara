@@ -1,0 +1,100 @@
+// LeetCode #1487: Making File Names Unique -- every name's counter reached
+// through `entry`: a name's first use takes it as it is, and every later
+// one walks its counter past the made names already taken
+
+fn get_folder_names(names: Vec[String]) -> Vec[String] {
+    let mut seen: Map[String, i64] = Map.new();
+    names.iter().map(|name| {
+        let count = *seen.entry(name.clone()).or_insert(0);
+        if count == 0 {
+            seen[name.clone()] = 1;
+            return name.clone();
+        }
+        let mut k = count;
+        while seen.contains_key(f"{name}({k})") {
+            k += 1;
+        }
+        seen[name.clone()] = k + 1;
+        let made = f"{name}({k})";
+        seen[made.clone()] = 1;
+        made
+    }).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a name from `bases` base names, with up to two suffixes `(k)`, k from 1
+// to 3, so that drawn names collide with the ones the system makes
+fn draw_name(seed: mut ref i64, bases: i64) -> String {
+    let b = next_random(mut seed) % bases;
+    let mut name = f"{(b'a' + (b % 26) as u8) as char}{b / 26}";
+    for _ in 0..2 {
+        if next_random(mut seed) % 3 == 0 {
+            name = f"{name}({1 + next_random(mut seed) % 3})";
+        }
+    }
+    name
+}
+
+fn draw(seed: mut ref i64, n: i64, bases: i64) -> Vec[String] {
+    (0..n).map(|_| draw_name(mut seed, bases)).collect()
+}
+
+// the folders made, folded into a checksum, their text hashed in order
+fn fold(check: i64, folders: Vec[String]) -> i64 {
+    let mut h = check;
+    for f in folders.iter() {
+        for b in f.bytes() {
+            h = (h * 131 + b) % 1000000007;
+        }
+        h = (h * 131 + 7) % 1000000007;
+    }
+    h
+}
+
+fn main() {
+    // LeetCode's five examples
+    let examples = [
+        ["pes", "fifa", "gta", "pes(2019)"].to_vec(),
+        ["gta", "gta(1)", "gta", "avalon"].to_vec(),
+        ["onepiece", "onepiece(1)", "onepiece(2)", "onepiece(3)", "onepiece"].to_vec(),
+        ["wano", "wano", "wano", "wano"].to_vec(),
+        ["kaido", "kaido(1)", "kaido", "kaido(1)"].to_vec(),
+    ];
+    for names in examples.iter() {
+        let names: Vec[String] = names.iter().map(|s| s.to_string()).collect();
+        println(get_folder_names(names).join(","));
+    }
+    // the edges: one name; a name that already looks made, twice; a made
+    // name taken before the system makes it; a suffix past 9
+    let edges = [
+        ["a"].to_vec(),
+        ["a(1)", "a(1)"].to_vec(),
+        ["a", "a", "a(1)"].to_vec(),
+        ["b", "b", "b", "b", "b", "b", "b", "b", "b", "b", "b", "b(10)", "b"].to_vec(),
+    ];
+    let shown: Vec[String] = edges.iter().map(|names| get_folder_names(names.iter().map(|s| s.to_string()).collect()).join(",")).collect();
+    println(shown.join(" | "));
+    // the constraints' most: 50000 copies of one name, and 50000 names
+    // drawn from 300 base names
+    let same: Vec[String] = Vec.filled(50000, "x".to_string());
+    let made = get_folder_names(same);
+    let mut seed = 1487;
+    let drawn = draw(mut seed, 50000, 300);
+    let renamed = get_folder_names(drawn);
+    println(f"50000 names: last {made[49999]}, checksum {fold(0, made)} | checksum {fold(0, renamed)}");
+    // 2000 random lists of 1 to 30 names from 1 to 6 base names, every
+    // list's folders folded into a checksum
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let bases = 1 + next_random(mut seed) % 6;
+        check = fold(check, get_folder_names(draw(mut seed, n, bases)));
+    }
+    println(f"2000 random lists: checksum {check}");
+}

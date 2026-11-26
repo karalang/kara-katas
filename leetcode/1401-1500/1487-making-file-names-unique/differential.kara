@@ -1,0 +1,281 @@
+// LeetCode #1487: Making File Names Unique -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- get_folder_names.kara ----
+fn a0_get_folder_names(names: Vec[String]) -> Vec[String] {
+    let mut next: Map[String, i64] = Map.new();
+    let mut out: Vec[String] = Vec.new();
+    for name in names.iter() {
+        match next.get(name) {
+            None => {
+                next.insert(name.clone(), 1);
+                out.push(name.clone());
+            }
+            Some(from) => {
+                let mut k = from;
+                while next.contains_key(f"{name}({k})") {
+                    k += 1;
+                }
+                let made = f"{name}({k})";
+                next.insert(name.clone(), k + 1);
+                next.insert(made.clone(), 1);
+                out.push(made);
+            }
+        }
+    }
+    out
+}
+
+// ---- get_folder_names_set.kara ----
+fn a1_get_folder_names(names: Vec[String]) -> Vec[String] {
+    let mut taken: Set[String] = Set.new();
+    let mut from: Map[String, i64] = Map.new();
+    let mut out: Vec[String] = Vec.new();
+    for name in names.iter() {
+        let mut made = name.clone();
+        if taken.contains(name) {
+            let mut k = from.get(name) ?? 1;
+            while taken.contains(f"{name}({k})") {
+                k += 1;
+            }
+            from.insert(name.clone(), k + 1);
+            made = f"{name}({k})";
+        }
+        taken.insert(made.clone());
+        out.push(made);
+    }
+    out
+}
+
+// ---- get_folder_names_sorted.kara ----
+fn a2_get_folder_names(names: Vec[String]) -> Vec[String] {
+    let mut next: SortedMap[String, i64] = SortedMap.new();
+    let mut out: Vec[String] = Vec.new();
+    for name in names.iter() {
+        if not next.contains_key(name) {
+            next.insert(name.clone(), 1);
+            out.push(name.clone());
+            continue;
+        }
+        let mut k = next[name];
+        loop {
+            let mut made = name.clone();
+            made.push_str("(");
+            made.push_str(k.to_string());
+            made.push_str(")");
+            if not next.contains_key(made) {
+                next.insert(name.clone(), k + 1);
+                next.insert(made.clone(), 1);
+                out.push(made);
+                break;
+            }
+            k += 1;
+        }
+    }
+    out
+}
+
+// ---- get_folder_names_entry.kara ----
+fn a3_get_folder_names(names: Vec[String]) -> Vec[String] {
+    let mut seen: Map[String, i64] = Map.new();
+    names.iter().map(|name| {
+        let count = *seen.entry(name.clone()).or_insert(0);
+        if count == 0 {
+            seen[name.clone()] = 1;
+            return name.clone();
+        }
+        let mut k = count;
+        while seen.contains_key(f"{name}({k})") {
+            k += 1;
+        }
+        seen[name.clone()] = k + 1;
+        let made = f"{name}({k})";
+        seen[made.clone()] = 1;
+        made
+    }).collect()
+}
+
+// ---- get_folder_names_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn get_folder_names(names: own Vec[String]) -> Vec[String] {
+        let mut map: Map[String, i32] = Map.new();
+        let mut res = Vec.with_capacity(names.len());
+        for name in names.into_iter() {
+            if let Some(k) = map.get(name).cloned() {
+                let mut k = k;
+                let mut new_name = f"{name}({k})";
+                while map.contains_key(new_name) {
+                    k += 1;
+                    new_name = f"{name}({k})";
+                }
+                map.insert(name, k + 1);
+                map.insert(new_name.clone(), 1);
+                res.push(new_name);
+            } else {
+                map.insert(name.clone(), 1);
+                res.push(name);
+            }
+        }
+        res
+    }
+}
+
+fn a4_get_folder_names(names: own Vec[String]) -> Vec[String] {
+    A4Solution.get_folder_names(names)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn draw_name(seed: mut ref i64, bases: i64) -> String {
+    let b = next_random(mut seed) % bases;
+    let mut name = f"{(b'a' + (b % 26) as u8) as char}{b / 26}";
+    for _ in 0..2 {
+        if next_random(mut seed) % 3 == 0 {
+            name = f"{name}({1 + next_random(mut seed) % 3})";
+        }
+    }
+    name
+}
+
+// the statement read literally: each name taken as it is when no folder
+// has it yet, else with the smallest k from 1 up that makes it new
+fn literal(names: Vec[String]) -> Vec[String] {
+    let mut made: Vec[String] = Vec.new();
+    for name in names.iter() {
+        if not made.contains(name) {
+            made.push(name.clone());
+            continue;
+        }
+        let mut k = 1;
+        while made.contains(f"{name}({k})") {
+            k += 1;
+        }
+        made.push(f"{name}({k})");
+    }
+    made
+}
+
+fn arm(i: i64, names: Vec[String]) -> Vec[String] {
+    match i {
+        0 => a0_get_folder_names(names),
+        1 => a1_get_folder_names(names),
+        2 => a2_get_folder_names(names),
+        3 => a3_get_folder_names(names),
+        _ => a4_get_folder_names(names.clone()),
+    }
+}
+
+// whether `made` is `name` itself or `name(k)` for some k from 1
+fn made_from(made: String, name: String) -> bool {
+    if made == name {
+        return true;
+    }
+    if not made.starts_with(name.as_str()) or not made.ends_with(")") {
+        return false;
+    }
+    let inner = made[name.len()..made.len() - 1].to_string();
+    if not inner.starts_with("(") or inner.len() < 2 {
+        return false;
+    }
+    let digits = inner[1..].to_string();
+    match i64.parse(digits) {
+        Ok(k) => k >= 1 and not digits.starts_with("0"),
+        Err(_) => false,
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, names: Vec[String], cut: i64) {
+    t.cases += 1;
+    let star = arm(0, names);
+    for f in star.iter() {
+        for b in f.bytes() {
+            t.check = (t.check * 131 + b) % 1000000007;
+        }
+        t.check = (t.check * 131 + 7) % 1000000007;
+    }
+    let want = literal(names);
+    let head: Vec[String] = names[..cut].to_vec();
+    for i in 0..5 {
+        let what = f"arm {i} on {names.join(",")}";
+        let got = arm(i, names);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: one folder for each name, all of them different
+        let distinct: Set[String] = got.iter().cloned().collect();
+        expect(mut t, 2, got.len() == names.len() and distinct.len() == got.len(), f"P2 {what}");
+        // P3: each folder is its name, or its name with a suffix `(k)`
+        expect(mut t, 3, (0..names.len()).all(|j| made_from(got[j], names[j])), f"P3 {what}");
+        // P4: the first names alone get the same folders
+        let first = arm(i, head);
+        expect(mut t, 4, first == got[..cut].to_vec(), f"P4 {what}");
+        // P5: a name keeps its own text exactly when no earlier folder has it
+        expect(mut t, 5, (0..names.len()).all(|j| (got[j] == names[j]) == not got[..j].contains(names[j])), f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn strings(names: Vec[Str]) -> Vec[String] {
+    names.iter().map(|s| s.to_string()).collect()
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges. Every case is drawn before any arm
+    // answers.
+    let mut cases: Vec[Vec[String]] = [
+        strings(["pes", "fifa", "gta", "pes(2019)"].to_vec()),
+        strings(["gta", "gta(1)", "gta", "avalon"].to_vec()),
+        strings(["onepiece", "onepiece(1)", "onepiece(2)", "onepiece(3)", "onepiece"].to_vec()),
+        strings(["wano", "wano", "wano", "wano"].to_vec()),
+        strings(["kaido", "kaido(1)", "kaido", "kaido(1)"].to_vec()),
+        strings(["a"].to_vec()),
+        strings(["a(1)", "a(1)"].to_vec()),
+        strings(["a", "a", "a(1)"].to_vec()),
+        strings(["b", "b", "b", "b", "b", "b", "b", "b", "b", "b", "b", "b(10)", "b"].to_vec()),
+    ].to_vec();
+    let mut seed = 14871;
+    // 1991 random lists of 1 to 12 names from 1 to 4 base names, each with
+    // up to two suffixes
+    for _ in 0..1991 {
+        let n = 1 + next_random(mut seed) % 12;
+        let bases = 1 + next_random(mut seed) % 4;
+        cases.push((0..n).map(|_| draw_name(mut seed, bases)).collect());
+    }
+    for j in 0..cases.len() {
+        let names = cases[j].clone();
+        let cut = 1 + next_random(mut seed) % names.len();
+        check_case(mut t, names, cut);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
