@@ -1,0 +1,192 @@
+// LeetCode #1791: Find Center of Star Graph --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- find_center.kara ----
+fn a0_find_center(edges: Vec[Vec[i32]]) -> i32 {
+    let (a, b) = (edges[0][0], edges[0][1]);
+    if a == edges[1][0] or a == edges[1][1] { a } else { b }
+}
+
+// ---- find_center_degree.kara ----
+fn a1_find_center(edges: Vec[Vec[i32]]) -> i32 {
+    let n = edges.len() + 1;
+    let mut degree: Vec[i64] = Vec.filled(n + 1, 0);
+    for e in edges.iter() {
+        degree[e[0]] += 1;
+        degree[e[1]] += 1;
+    }
+    let mut center = 0;
+    for v in 1..n + 1 {
+        if degree[v] == n - 1 {
+            center = v;
+        }
+    }
+    center as i32
+}
+
+// ---- find_center_repeat.kara ----
+fn a2_find_center(edges: Vec[Vec[i32]]) -> i32 {
+    let mut seen: Set[i32] = Set.new();
+    for e in edges.iter() {
+        for v in e.iter() {
+            if not seen.insert(v) {
+                return v;
+            }
+        }
+    }
+    -1
+}
+
+// ---- find_center_sum.kara ----
+fn a3_find_center(edges: Vec[Vec[i32]]) -> i32 {
+    let n = edges.len() + 1;
+    let mut total: i64 = 0;
+    for e in edges.iter() {
+        total += e[0] + e[1];
+    }
+    ((total - n * (n + 1) / 2) / (n - 2)) as i32
+}
+
+// ---- find_center_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn find_center(edges: Vec[Vec[i32]]) -> i32 {
+        let (a, b) = (edges[0][0], edges[0][1]);
+        if a == edges[1][0] or a == edges[1][1] {
+            a
+        } else {
+            b
+        }
+    }
+}
+
+fn a4_find_center(edges: Vec[Vec[i32]]) -> i32 {
+    A4Solution.find_center(edges)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_star(seed: mut ref i64, n: i64, center: i64) -> Vec[Vec[i32]] {
+    let mut edges: Vec[Vec[i32]] = Vec.new();
+    for leaf in 1..n + 1 {
+        if leaf == center {
+            continue;
+        }
+        if next_random(mut seed) % 2 == 0 {
+            edges.push([center as i32, leaf as i32].to_vec());
+        } else {
+            edges.push([leaf as i32, center as i32].to_vec());
+        }
+    }
+    for i in (1..edges.len()).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        edges.swap(i, j);
+    }
+    edges
+}
+
+// the statement read literally: the node joined to every other node, each
+// node tried against every edge
+fn literal(edges: Vec[Vec[i32]]) -> i32 {
+    let n = edges.len() as i32 + 1;
+    for v in 1..n + 1 {
+        if edges.iter().all(|e| e[0] == v or e[1] == v) {
+            return v;
+        }
+    }
+    -1
+}
+
+fn arm(i: i64, edges: Vec[Vec[i32]]) -> i32 {
+    match i {
+        0 => a0_find_center(edges),
+        1 => a1_find_center(edges),
+        2 => a2_find_center(edges),
+        3 => a3_find_center(edges),
+        _ => a4_find_center(edges),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, edges: Vec[Vec[i32]]) {
+    t.cases += 1;
+    let n = edges.len() as i32 + 1;
+    let star = arm(0, edges);
+    t.check = (t.check * 41 + star) % 1000000007;
+    let want = if n <= 60 { Some(literal(edges)) } else { None };
+    let mut back = edges.clone();
+    back.reverse();
+    let turned: Vec[Vec[i32]] = edges.iter().map(|e| [e[1], e[0]].to_vec()).collect();
+    let relabelled: Vec[Vec[i32]] = edges.iter().map(|e| [n + 1 - e[0], n + 1 - e[1]].to_vec()).collect();
+    let mut grown = edges.clone();
+    grown.push([star, n + 1].to_vec());
+    for i in 0..5 {
+        let what = f"arm {i} on {edges}";
+        let got = arm(i, edges);
+        // P1: the statement read literally, while there are at most 60
+        // nodes
+        if let Some(w) = want {
+            expect(mut t, 1, got == w, f"P1 {what}");
+        }
+        // P2: the edges in reverse order give the same answer
+        expect(mut t, 2, arm(i, back) == got, f"P2 {what}");
+        // P3: each edge written from its other end gives the same answer
+        expect(mut t, 3, arm(i, turned) == got, f"P3 {what}");
+        // P4: the labels reversed, v to n + 1 - v, reverse the answer
+        expect(mut t, 4, arm(i, relabelled) == n + 1 - got, f"P4 {what}");
+        // P5: one more leaf on the ★ arm's center gives the same answer
+        expect(mut t, 5, arm(i, grown) == got, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples, the edges, and 5000 nodes around 1, 5000 and
+    // one at random. Every case is drawn before any arm answers.
+    let mut cases: Vec[Vec[Vec[i32]]] = [[[1, 2], [2, 3], [4, 2]].to_vec(), [[1, 2], [5, 1], [1, 3], [1, 4]].to_vec(), [[1, 2], [1, 3]].to_vec(), [[1, 2], [3, 2]].to_vec(), [[3, 1], [2, 3]].to_vec(), [[1, 4], [4, 2], [3, 4]].to_vec()].to_vec();
+    let mut seed = 17911;
+    cases.push(random_star(mut seed, 5000, 1));
+    cases.push(random_star(mut seed, 5000, 5000));
+    let center = 1 + next_random(mut seed) % 5000;
+    cases.push(random_star(mut seed, 5000, center));
+    // 1991 random stars of 3 to 60 nodes
+    for _ in 0..1991 {
+        let n = 3 + next_random(mut seed) % 58;
+        let center = 1 + next_random(mut seed) % n;
+        cases.push(random_star(mut seed, n, center));
+    }
+    for j in 0..cases.len() {
+        check_case(mut t, cases[j]);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
