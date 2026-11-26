@@ -1,0 +1,437 @@
+// LeetCode #1444: Number of Ways of Cutting a Pizza -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- ways.kara ----
+fn a0_ways(pizza: Vec[String], k: i32) -> i32 {
+    // the apples from each row and column on to the far corner, and for
+    // each count of pieces still to give, the ways to cut the part from
+    // each row and column on: a cut gives away the part above or left of
+    // it when that part holds an apple, and the rest goes on with one
+    // piece fewer
+    let rows = pizza.len();
+    let cols = pizza[0].len();
+    let mut apples: Vec[Vec[i64]] = Vec.filled(rows + 1, Vec.filled(cols + 1, 0));
+    for r in (0..rows).rev() {
+        let line = pizza[r].bytes();
+        for c in (0..cols).rev() {
+            let here = if line[c] == b'A' { 1 } else { 0 };
+            apples[r][c] = here + apples[r + 1][c] + apples[r][c + 1] - apples[r + 1][c + 1];
+        }
+    }
+    let mut ways: Vec[Vec[i64]] = Vec.filled(rows + 1, Vec.filled(cols + 1, 0));
+    for r in 0..rows {
+        for c in 0..cols {
+            if apples[r][c] > 0 {
+                ways[r][c] = 1;
+            }
+        }
+    }
+    for _ in 1..k {
+        let mut next: Vec[Vec[i64]] = Vec.filled(rows + 1, Vec.filled(cols + 1, 0));
+        for r in 0..rows {
+            for c in 0..cols {
+                let mut total = 0;
+                for cut in r + 1..rows {
+                    if apples[r][c] - apples[cut][c] > 0 {
+                        total += ways[cut][c];
+                    }
+                }
+                for cut in c + 1..cols {
+                    if apples[r][c] - apples[r][cut] > 0 {
+                        total += ways[r][cut];
+                    }
+                }
+                next[r][c] = total % 1000000007;
+            }
+        }
+        ways = next;
+    }
+    ways[0][0] as i32
+}
+
+// ---- ways_memo.kara ----
+fn a1_count(pieces: i64, r: i64, c: i64, apples: Slice[Vec[i64]], memo: mut ref Map[(i64, i64, i64), i64]) -> i64 {
+    if apples[r][c] == 0 {
+        return 0;
+    }
+    if pieces == 1 {
+        return 1;
+    }
+    if let Some(known) = memo.get((pieces, r, c)) {
+        return known;
+    }
+    let rows = apples.len() - 1;
+    let cols = apples[0].len() - 1;
+    let mut total = 0;
+    for cut in r + 1..rows {
+        if apples[r][c] > apples[cut][c] {
+            total = (total + a1_count(pieces - 1, cut, c, apples, mut memo)) % 1000000007;
+        }
+    }
+    for cut in c + 1..cols {
+        if apples[r][c] > apples[r][cut] {
+            total = (total + a1_count(pieces - 1, r, cut, apples, mut memo)) % 1000000007;
+        }
+    }
+    memo.insert((pieces, r, c), total);
+    total
+}
+
+fn a1_ways(pizza: Vec[String], k: i32) -> i32 {
+    // top down from the whole pizza, the apples from each row and column
+    // on counted first
+    let rows = pizza.len();
+    let cols = pizza[0].len();
+    let mut apples: Vec[Vec[i64]] = Vec.filled(rows + 1, Vec.filled(cols + 1, 0));
+    for r in (0..rows).rev() {
+        for c in (0..cols).rev() {
+            let here = if pizza[r].chars().nth(c) == Some('A') { 1 } else { 0 };
+            apples[r][c] = here + apples[r + 1][c] + apples[r][c + 1] - apples[r + 1][c + 1];
+        }
+    }
+    let mut memo: Map[(i64, i64, i64), i64] = Map.new();
+    a1_count(k, 0, 0, apples, mut memo) as i32
+}
+
+// ---- ways_sums.kara ----
+fn a2_ways(pizza: Vec[String], k: i32) -> i32 {
+    // the cuts that give away an apple are those past the first row, or
+    // column, with an apple in the part: so each count is a running sum of
+    // the last count's ways from that row, or column, to the edge
+    let rows = pizza.len();
+    let cols = pizza[0].len();
+    let grid: Vec[Vec[bool]] = pizza.iter().map(|line| line.chars().map(|ch| ch == 'A').collect()).collect();
+    // the first row from r on, and column from c on, with an apple in the
+    // part from (r, c), or the edge when there is none
+    let mut first_row: Vec[Vec[i64]] = Vec.filled(rows + 1, Vec.filled(cols + 1, rows));
+    let mut first_col: Vec[Vec[i64]] = Vec.filled(rows + 1, Vec.filled(cols + 1, cols));
+    // whether row r has an apple from c on, and column c from r on
+    let mut row_has: Vec[Vec[bool]] = Vec.filled(rows + 1, Vec.filled(cols + 1, false));
+    let mut col_has: Vec[Vec[bool]] = Vec.filled(rows + 1, Vec.filled(cols + 1, false));
+    for r in (0..rows).rev() {
+        for c in (0..cols).rev() {
+            row_has[r][c] = grid[r][c] or row_has[r][c + 1];
+            col_has[r][c] = grid[r][c] or col_has[r + 1][c];
+            first_row[r][c] = if row_has[r][c] { r } else { first_row[r + 1][c] };
+            first_col[r][c] = if col_has[r][c] { c } else { first_col[r][c + 1] };
+        }
+    }
+    let mut ways: Vec[Vec[i64]] = Vec.filled(rows + 1, Vec.filled(cols + 1, 0));
+    for r in 0..rows {
+        for c in 0..cols {
+            if first_row[r][c] < rows {
+                ways[r][c] = 1;
+            }
+        }
+    }
+    for _ in 1..k {
+        // down[r][c]: the ways from rows r on in column c; across[r][c]:
+        // from columns c on in row r
+        let mut down: Vec[Vec[i64]] = Vec.filled(rows + 1, Vec.filled(cols + 1, 0));
+        let mut across: Vec[Vec[i64]] = Vec.filled(rows + 1, Vec.filled(cols + 1, 0));
+        for r in (0..rows).rev() {
+            for c in (0..cols).rev() {
+                down[r][c] = (ways[r][c] + down[r + 1][c]) % 1000000007;
+                across[r][c] = (ways[r][c] + across[r][c + 1]) % 1000000007;
+            }
+        }
+        let mut next: Vec[Vec[i64]] = Vec.filled(rows + 1, Vec.filled(cols + 1, 0));
+        for r in 0..rows {
+            for c in 0..cols {
+                let fr = first_row[r][c];
+                let fc = first_col[r][c];
+                if fr < rows {
+                    next[r][c] = (down[fr + 1][c] + across[r][fc + 1]) % 1000000007;
+                }
+            }
+        }
+        ways = next;
+    }
+    ways[0][0] as i32
+}
+
+// ---- ways_rows.kara ----
+fn a3_holds(in_row: Slice[Vec[i64]], top: i64, bottom: i64, left: i64, right: i64) -> bool {
+    (top..bottom).any(|r| in_row[r][left] > in_row[r][right])
+}
+
+fn a3_ways(pizza: Vec[String], k: i32) -> i32 {
+    // the apples in each row from each column on, and every cut's part
+    // checked row by row, the ways for each count of pieces built from
+    // the count before
+    let rows = pizza.len();
+    let cols = pizza[0].len();
+    let mut in_row: Vec[Vec[i64]] = Vec.new();
+    for line in pizza.iter() {
+        let mut counts: Vec[i64] = Vec.filled(cols + 1, 0);
+        let cells: Vec[char] = line.chars().collect();
+        for c in (0..cols).rev() {
+            counts[c] = counts[c + 1] + if cells[c] == 'A' { 1 } else { 0 };
+        }
+        in_row.push(counts);
+    }
+    let mut ways: Vec[Vec[i64]] = Vec.filled(rows, Vec.filled(cols, 0));
+    for r in 0..rows {
+        for c in 0..cols {
+            if a3_holds(in_row, r, rows, c, cols) {
+                ways[r][c] = 1;
+            }
+        }
+    }
+    for _ in 1..k {
+        let mut next: Vec[Vec[i64]] = Vec.filled(rows, Vec.filled(cols, 0));
+        for r in 0..rows {
+            for c in 0..cols {
+                let mut total = 0;
+                for cut in r + 1..rows {
+                    if a3_holds(in_row, r, cut, c, cols) {
+                        total += ways[cut][c];
+                    }
+                }
+                for cut in c + 1..cols {
+                    if a3_holds(in_row, r, rows, c, cut) {
+                        total += ways[r][cut];
+                    }
+                }
+                next[r][c] = total % 1000000007;
+            }
+        }
+        ways = next;
+    }
+    ways[0][0] as i32
+}
+
+// ---- ways_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_ways(pizza: Vec[String], k: i32) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let m = pizza.len();
+        let n = pizza[0].len();
+        let p: Vec[Slice[u8]] = pizza.iter().map(|s| s.bytes()).collect();
+        let mut pre = Vec.filled(m + 1, Vec.filled(n + 1, 0));
+        for i in (0..m).rev() {
+            for j in (0..n).rev() {
+                pre[i][j] = pre[i + 1][j] + pre[i][j + 1] - pre[i + 1][j + 1] + if p[i][j] == b'A' { 1 } else { 0 };
+            }
+        }
+        let k = k as i64;
+        let mut dp = Vec.filled(k, Vec.filled(m, Vec.filled(n, 0)));
+        for i in 0..m {
+            for j in 0..n {
+                if pre[i][j] > 0 {
+                    dp[0][i][j] = 1;
+                }
+            }
+        }
+        for t in 1..k {
+            for i in 0..m {
+                for j in 0..n {
+                    let mut s = 0;
+                    for x in i + 1..m {
+                        if pre[i][j] - pre[x][j] > 0 {
+                            s = (s + dp[t - 1][x][j]) % MOD;
+                        }
+                    }
+                    for y in j + 1..n {
+                        if pre[i][j] - pre[i][y] > 0 {
+                            s = (s + dp[t - 1][i][y]) % MOD;
+                        }
+                    }
+                    dp[t][i][j] = s;
+                }
+            }
+        }
+        dp[k - 1][0][0] as i32
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a pizza of `rows` by `cols`, each cell an apple `rate` times in 100
+fn drawn(rows: i64, cols: i64, rate: i64, seed: mut ref i64) -> Vec[String] {
+    let mut pizza: Vec[String] = Vec.new();
+    for _ in 0..rows {
+        let mut line = String.new();
+        for _ in 0..cols {
+            line.push(if next_random(mut seed) % 100 < rate { 'A' } else { '.' });
+        }
+        pizza.push(line);
+    }
+    pizza
+}
+
+// whether the cells of rows `top` to `bottom` - 1 and columns `left` to
+// `right` - 1 hold an apple, each cell looked at
+fn has_apple(cells: Slice[Vec[char]], top: i64, bottom: i64, left: i64, right: i64) -> bool {
+    for r in top..bottom {
+        for c in left..right {
+            if cells[r][c] == 'A' {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+// the statement read literally: every way to make the cuts one after
+// another, each horizontal cut giving away the part above it and each
+// vertical one the part left of it, every piece given away and the last
+// piece with an apple, counted one by one
+fn cuts(cells: Slice[Vec[char]], top: i64, left: i64, left_to_give: i64) -> i64 {
+    let rows = cells.len();
+    let cols = cells[0].len();
+    if left_to_give == 1 {
+        return if has_apple(cells, top, rows, left, cols) { 1 } else { 0 };
+    }
+    let mut count = 0;
+    for cut in top + 1..rows {
+        if has_apple(cells, top, cut, left, cols) {
+            count += cuts(cells, cut, left, left_to_give - 1);
+        }
+    }
+    for cut in left + 1..cols {
+        if has_apple(cells, top, rows, left, cut) {
+            count += cuts(cells, top, cut, left_to_give - 1);
+        }
+    }
+    count
+}
+
+fn literal(pizza: Vec[String], k: i32) -> i64 {
+    let cells: Vec[Vec[char]] = pizza.iter().map(|line| line.chars().collect()).collect();
+    cuts(cells, 0, 0, k)
+}
+
+// the pizza turned about its diagonal, rows for columns
+fn transposed(pizza: Slice[String]) -> Vec[String] {
+    let cells: Vec[Vec[char]] = pizza.iter().map(|line| line.chars().collect()).collect();
+    (0..cells[0].len()).map(|c| (0..cells.len()).map(|r| cells[r][c]).collect()).collect()
+}
+
+fn arm(i: i64, pizza: Vec[String], k: i32) -> i64 {
+    let pizza = pizza.clone();
+    match i {
+        0 => a0_ways(pizza, k),
+        1 => a1_ways(pizza, k),
+        2 => a2_ways(pizza, k),
+        3 => a3_ways(pizza, k),
+        _ => A4Solution.a4_ways(pizza, k),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, pizza: Vec[String], k: i32) {
+    t.cases += 1;
+    let star = arm(0, pizza, k);
+    t.check = (t.check * 131 + star) % 1000000007;
+    let rows = pizza.len();
+    let cols = pizza[0].len();
+    let want = if rows * cols <= 16 and k <= 5 { Some(literal(pizza, k)) } else { None };
+    let turned = transposed(pizza);
+    let any = pizza.iter().any(|line| line.contains("A"));
+    let blank = ".".repeat(cols);
+    // an empty row below and an empty column right; and above and left
+    let mut after: Vec[String] = pizza.iter().map(|line| f"{line}.").collect();
+    after.push(f"{blank}.");
+    let mut before: Vec[String] = [f".{blank}"].to_vec();
+    before.extend(pizza.iter().map(|line| f".{line}"));
+    let room = rows < 50 and cols < 50;
+    for i in 0..5 {
+        let what = f"arm {i} on {rows} by {cols}, k = {k}";
+        let got = arm(i, pizza, k);
+        // P1: the statement read literally, while there are at most 16
+        // cells and 5 pieces
+        if let Some(w) = want {
+            expect(mut t, 1, got == w, f"P1 {what}");
+        }
+        // P2: the pizza turned about its diagonal gives the same count
+        expect(mut t, 2, arm(i, turned, k) == got, f"P2 {what}");
+        // P3: one piece gives 1 exactly when there is an apple
+        expect(mut t, 3, arm(i, pizza, 1) == if any { 1 } else { 0 }, f"P3 {what}");
+        // P4: an empty row below and an empty column right give the same
+        // count, while there is room
+        if room {
+            expect(mut t, 4, arm(i, after, k) == got, f"P4 {what}");
+        }
+        // P5: an empty row above and an empty column left give the same
+        // count, while there is room
+        if room {
+            expect(mut t, 5, arm(i, before, k) == got, f"P5 {what}");
+        }
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: one cell with an apple and
+    // without, more pieces than a pizza can give, a row and a column of
+    // apples cut into every cell, and apples only in the last cell; and
+    // the constraints' most three ways. Every case is drawn before any arm
+    // answers.
+    let firsts: Vec[(Vec[String], i32)] = [
+        (["A..", "AAA", "..."], 3),
+        (["A..", "AA.", "..."], 3),
+        (["A..", "A..", "..."], 1),
+        (["A"], 1),
+        (["."], 1),
+        (["AA", "AA"], 10),
+        (["AAAA"], 4),
+        (["A", "A", "A"], 3),
+        (["...", "...", "..A"], 2),
+    ]
+        .iter()
+        .map(|(pizza, k)| (pizza.iter().map(|line| line.to_string()).collect(), k))
+        .collect();
+    let mut cases: Vec[(Vec[String], i32)] = firsts;
+    let mut seed = 14441;
+    cases.push((drawn(50, 50, 100, mut seed), 10));
+    cases.push((drawn(50, 50, 10, mut seed), 10));
+    let mut corner = drawn(50, 50, 0, mut seed);
+    corner[49] = f"{".".repeat(49)}A";
+    cases.push((corner, 1));
+    // 1991 random pizzas of 1 to 8 by 1 to 8, an apple 0 to 100 times in
+    // 100, with k from 1 to 10
+    for _ in 0..1991 {
+        let rows = 1 + next_random(mut seed) % 8;
+        let cols = 1 + next_random(mut seed) % 8;
+        let rate = next_random(mut seed) % 101;
+        let k = (1 + next_random(mut seed) % 10) as i32;
+        cases.push((drawn(rows, cols, rate, mut seed), k));
+    }
+    for j in 0..cases.len() {
+        let (pizza, k) = cases[j].clone();
+        check_case(mut t, pizza, k);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

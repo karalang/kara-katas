@@ -1,0 +1,105 @@
+// the ways to cut the part from row r and column c on into `pieces`
+// pieces, each answer kept in `memo` by its pieces, row and column
+fn count(pieces: i64, r: i64, c: i64, apples: Slice[Vec[i64]], memo: mut ref Map[(i64, i64, i64), i64]) -> i64 {
+    if apples[r][c] == 0 {
+        return 0;
+    }
+    if pieces == 1 {
+        return 1;
+    }
+    if let Some(known) = memo.get((pieces, r, c)) {
+        return known;
+    }
+    let rows = apples.len() - 1;
+    let cols = apples[0].len() - 1;
+    let mut total = 0;
+    for cut in r + 1..rows {
+        if apples[r][c] > apples[cut][c] {
+            total = (total + count(pieces - 1, cut, c, apples, mut memo)) % 1000000007;
+        }
+    }
+    for cut in c + 1..cols {
+        if apples[r][c] > apples[r][cut] {
+            total = (total + count(pieces - 1, r, cut, apples, mut memo)) % 1000000007;
+        }
+    }
+    memo.insert((pieces, r, c), total);
+    total
+}
+
+fn ways(pizza: Vec[String], k: i32) -> i32 {
+    // top down from the whole pizza, the apples from each row and column
+    // on counted first
+    let rows = pizza.len();
+    let cols = pizza[0].len();
+    let mut apples: Vec[Vec[i64]] = Vec.filled(rows + 1, Vec.filled(cols + 1, 0));
+    for r in (0..rows).rev() {
+        for c in (0..cols).rev() {
+            let here = if pizza[r].chars().nth(c) == Some('A') { 1 } else { 0 };
+            apples[r][c] = here + apples[r + 1][c] + apples[r][c + 1] - apples[r + 1][c + 1];
+        }
+    }
+    let mut memo: Map[(i64, i64, i64), i64] = Map.new();
+    count(k, 0, 0, apples, mut memo) as i32
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a pizza of `rows` by `cols`, each cell an apple `rate` times in 100
+fn drawn(rows: i64, cols: i64, rate: i64, seed: mut ref i64) -> Vec[String] {
+    let mut pizza: Vec[String] = Vec.new();
+    for _ in 0..rows {
+        let mut line = String.new();
+        for _ in 0..cols {
+            line.push(if next_random(mut seed) % 100 < rate { 'A' } else { '.' });
+        }
+        pizza.push(line);
+    }
+    pizza
+}
+
+fn main() {
+    // LeetCode's three examples, and five more
+    let cases: Vec[(Vec[String], i32)] = [
+        (["A..", "AAA", "..."], 3),
+        (["A..", "AA.", "..."], 3),
+        (["A..", "A..", "..."], 1),
+        (["A"], 1),
+        (["."], 1),
+        (["A.A"], 2),
+        (["A", "A", "A"], 3),
+        ([".A", "A."], 2),
+    ]
+        .iter()
+        .map(|(pizza, k)| (pizza.iter().map(|line| line.to_string()).collect(), k))
+        .collect();
+    let firsts: Vec[String] = cases.iter().map(|(pizza, k)| f"{ways(pizza, k)}").collect();
+    println(firsts.join(" "));
+    // the constraints' most: 50 by 50 all apples, an apple a tenth of the
+    // time, and one apple in the far corner, with k = 10, 10 and 1
+    let mut seed = 1444;
+    let full = drawn(50, 50, 100, mut seed);
+    let sparse = drawn(50, 50, 10, mut seed);
+    let mut corner = drawn(50, 50, 0, mut seed);
+    corner[49] = f"{".".repeat(49)}A";
+    println(f"50 by 50: {ways(full, 10)} {ways(sparse, 10)} {ways(corner, 1)}");
+    // 2000 random pizzas of 1 to 8 by 1 to 8, an apple 0 to 100 times in
+    // 100, with k from 1 to 10
+    let mut check: i64 = 0;
+    let mut total: i64 = 0;
+    for _ in 0..2000 {
+        let rows = 1 + next_random(mut seed) % 8;
+        let cols = 1 + next_random(mut seed) % 8;
+        let rate = next_random(mut seed) % 101;
+        let k = (1 + next_random(mut seed) % 10) as i32;
+        let got = ways(drawn(rows, cols, rate, mut seed), k);
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random pizzas: {total} in all, checksum {check}");
+}
