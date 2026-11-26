@@ -1,0 +1,87 @@
+// LeetCode #1283: Find the Smallest Divisor Given a Threshold -- no
+// divisor below the total over the threshold, rounded up, can fit, since
+// each quotient is at least x / d; so the search starts there, and
+// gallops: steps of 1, 2, 4 and on until a divisor fits, then a binary
+// search in the last step. O(n log max)
+
+fn fits(nums: Vec[i32], d: i64, threshold: i32) -> bool {
+    let mut sum = 0;
+    for x in nums.iter() {
+        sum += (x + d - 1) / d;
+        if sum > threshold {
+            return false;
+        }
+    }
+    true
+}
+
+fn smallest_divisor(nums: Vec[i32], threshold: i32) -> i32 {
+    let mut total = 0;
+    for x in nums.iter() {
+        total += x as i64;
+    }
+    let start = ((total + threshold - 1) / threshold).max(1);
+    if fits(nums, start, threshold) {
+        return start as i32;
+    }
+    // `lo` does not fit, `lo + step` is the next to try
+    let mut lo = start;
+    let mut step = 1;
+    while not fits(nums, lo + step, threshold) {
+        lo += step;
+        step *= 2;
+    }
+    let mut hi = lo + step;
+    while hi - lo > 1 {
+        let mid = (lo + hi) / 2;
+        if fits(nums, mid, threshold) {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    hi as i32
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n numbers from 1 to `top`, each from two draws so they reach 10^6
+fn drawn(n: i64, top: i64, seed: mut ref i64) -> Vec[i32] {
+    (0..n).map(|_| (1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % top) as i32).collect()
+}
+
+fn main() {
+    // LeetCode's three examples, and one more
+    let shown: Vec[String] = [
+        smallest_divisor([1, 2, 5, 9], 6),
+        smallest_divisor([44, 22, 33, 11, 1], 5),
+        smallest_divisor([21212, 10101, 12121], 1000000),
+        smallest_divisor([2, 3, 5, 7, 11], 11),
+    ].iter().map(|d| f"{d}").collect();
+    println(shown.join(" "));
+    // the constraints' most: 5 * 10^4 numbers up to 10^6, against the
+    // tightest threshold, twice it, and 10^6
+    let mut seed = 1283;
+    let big = drawn(50000, 1000000, mut seed);
+    let at: Vec[String] = [50000, 100000, 1000000].iter().map(|t| f"{smallest_divisor(big, t)}").collect();
+    println(f"5 * 10^4 numbers: {at.join(" ")}");
+    // 2000 random cases of 1 to 30 numbers up to 10, 1000 or 10^6, the
+    // threshold from n to n + 100 or up to 10^6
+    let mut check: i64 = 0;
+    let mut total: i64 = 0;
+    for i in 0..2000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let top = if i % 3 == 0 { 10 } else if i % 3 == 1 { 1000 } else { 1000000 };
+        let nums = drawn(n, top, mut seed);
+        let threshold = if i % 2 == 0 { n + next_random(mut seed) % 101 } else { n + next_random(mut seed) % (1000001 - n) };
+        let d = smallest_divisor(nums, threshold as i32);
+        total += d;
+        check = (check * 131 + d) % 1000000007;
+    }
+    println(f"2000 random cases: {total} in all, checksum {check}");
+}
