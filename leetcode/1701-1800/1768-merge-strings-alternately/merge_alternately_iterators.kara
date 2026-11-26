@@ -1,0 +1,68 @@
+// LeetCode #1768: Merge Strings Alternately -- two `chars` iterators taken
+// in turn: each round asks both for their next letter and stops when both
+// are spent.
+
+fn merge_alternately(word1: String, word2: String) -> String {
+    let mut first = word1.chars();
+    let mut second = word2.chars();
+    let mut merged = String.new();
+    loop {
+        let a = first.next();
+        let b = second.next();
+        if a.is_none() and b.is_none() {
+            break;
+        }
+        if let Some(c) = a {
+            merged.push(c);
+        }
+        if let Some(c) = b {
+            merged.push(c);
+        }
+    }
+    merged
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(seed: mut ref i64, n: i64, letters: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(char.try_from((97 + next_random(mut seed) % letters) as u32).ok().unwrap());
+    }
+    s
+}
+
+fn digest(s: String) -> i64 {
+    s.bytes().iter().fold(s.len(), |check, b| (check * 31 + b) % 1000000007)
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{merge_alternately("abc", "pqr")} {merge_alternately("ab", "pqrs")} {merge_alternately("abcd", "pq")}");
+    // the edges: one letter each; the first word of one letter; the second
+    // of one; the same letters in both
+    println(f"{merge_alternately("a", "b")} {merge_alternately("a", "bcd")} {merge_alternately("abcd", "e")} {merge_alternately("zz", "zz")}");
+    // the constraints' most: two words of 100 letters, and 100 beside 1
+    let mut seed = 1768;
+    let long1 = random_word(mut seed, 100, 26);
+    let long2 = random_word(mut seed, 100, 26);
+    let one = random_word(mut seed, 1, 26);
+    let both = merge_alternately(long1, long2);
+    let lopsided = merge_alternately(one, long1);
+    println(f"the most: {both.len()} {digest(both)}, {lopsided.len()} {digest(lopsided)}");
+    // 3000 random pairs of words of 1 to 20 letters
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n1 = 1 + next_random(mut seed) % 20;
+        let n2 = 1 + next_random(mut seed) % 20;
+        let w1 = random_word(mut seed, n1, 26);
+        let w2 = random_word(mut seed, n2, 26);
+        check = (check * 31 + digest(merge_alternately(w1, w2))) % 1000000007;
+    }
+    println(f"3000 random pairs: checksum {check}");
+}
