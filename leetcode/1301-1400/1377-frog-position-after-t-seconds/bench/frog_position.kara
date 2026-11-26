@@ -1,0 +1,73 @@
+// LeetCode #1377 bench -- the ★ arm: the chance of the frog being on each
+// vertex, moved one second at a time, a vertex with unvisited neighbours
+// handing its chance to them in equal shares.
+
+fn frog_position(n: i32, edges: Vec[Vec[i32]], t: i32, target: i32) -> f64 {
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.new());
+    for e in edges.iter() {
+        adjacent[e[0]].push(e[1]);
+        adjacent[e[1]].push(e[0]);
+    }
+    let mut seen = Vec.filled(n + 1, false);
+    seen[1] = true;
+    let mut chance = Vec.filled(n + 1, 0.0);
+    chance[1] = 1.0;
+    let mut level: Vec[i64] = [1];
+    for _ in 0..t {
+        let mut next: Vec[i64] = Vec.new();
+        for u in level.iter() {
+            let ahead: Vec[i64] = adjacent[u].iter().filter(|v| not seen[v]).collect();
+            if ahead.is_empty() {
+                continue;
+            }
+            let share = chance[u] / ahead.len() as f64;
+            for v in ahead.iter() {
+                seen[v] = true;
+                chance[v] = share;
+                next.push(v);
+            }
+            chance[u] = 0.0;
+        }
+        level = next;
+    }
+    chance[target]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 50 trees of 100 vertices, the constraints' most, built once: each
+    // vertex after the first, in a random order, joined to any taken
+    // before it, or to one of the last three; then 100000 rounds, each
+    // asking one tree, a time of 1 to 50 seconds and a target, all drawn
+    // from the checksum so far, for the frog's chance, counted in units of
+    // 2^-20
+    let n = 100;
+    let mut seed = 1377;
+    let mut trees: Vec[Vec[Vec[i32]]] = Vec.new();
+    for c in 0..50 {
+        let mut order: Vec[i64] = (1..n + 1).collect();
+        for i in (1..n).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            order.swap(i, j);
+        }
+        let mut edges: Vec[Vec[i32]] = Vec.new();
+        for k in 1..n {
+            let back = if c % 2 == 0 { next_random(mut seed) % k } else { k - 1 - next_random(mut seed) % k.min(3) };
+            edges.push([order[k] as i32, order[back] as i32]);
+        }
+        trees.push(edges);
+    }
+    let mut check: i64 = 0;
+    for r in 0..100000 {
+        let c = check % 50;
+        let t = 1 + (check / 50) % 50;
+        let target = 1 + (check / 2500 + r) % n;
+        let p = frog_position(n as i32, trees[c], t as i32, target as i32);
+        check = (check * 31 + (p * 1048576.0 + 0.5).floor() as i64 + r) % 1000000007;
+    }
+    println(f"100000 rounds over 50 trees of 100 vertices: checksum {check}");
+}

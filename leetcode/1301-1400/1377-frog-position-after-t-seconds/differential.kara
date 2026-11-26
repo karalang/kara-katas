@@ -1,0 +1,345 @@
+// LeetCode #1377: Frog Position After T Seconds -- differential test of
+// the five arms against the statement read literally, with five more
+// properties.
+
+// ---- frog_position.kara ----
+fn a0_frog_position(n: i32, edges: Vec[Vec[i32]], t: i32, target: i32) -> f64 {
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.new());
+    for e in edges.iter() {
+        adjacent[e[0]].push(e[1]);
+        adjacent[e[1]].push(e[0]);
+    }
+    let mut seen = Vec.filled(n + 1, false);
+    seen[1] = true;
+    let mut chance = Vec.filled(n + 1, 0.0);
+    chance[1] = 1.0;
+    let mut level: Vec[i64] = [1];
+    for _ in 0..t {
+        let mut next: Vec[i64] = Vec.new();
+        for u in level.iter() {
+            let ahead: Vec[i64] = adjacent[u].iter().filter(|v| not seen[v]).collect();
+            if ahead.is_empty() {
+                continue;
+            }
+            let share = chance[u] / ahead.len() as f64;
+            for v in ahead.iter() {
+                seen[v] = true;
+                chance[v] = share;
+                next.push(v);
+            }
+            chance[u] = 0.0;
+        }
+        level = next;
+    }
+    chance[target]
+}
+
+// ---- frog_position_dfs.kara ----
+fn a1_reach(adjacent: Vec[Vec[i64]], u: i64, from: i64, left: i32, target: i64) -> f64 {
+    let ways = adjacent[u].iter().filter(|v| v != from).count();
+    if u == target {
+        return if left == 0 or ways == 0 { 1.0 } else { 0.0 };
+    }
+    if left == 0 {
+        return 0.0;
+    }
+    for v in adjacent[u].iter() {
+        if v != from {
+            let p = a1_reach(adjacent, v, u, left - 1, target);
+            if p > 0.0 {
+                return p / ways as f64;
+            }
+        }
+    }
+    0.0
+}
+
+fn a1_frog_position(n: i32, edges: Vec[Vec[i32]], t: i32, target: i32) -> f64 {
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.new());
+    for e in edges.iter() {
+        adjacent[e[0]].push(e[1]);
+        adjacent[e[1]].push(e[0]);
+    }
+    a1_reach(adjacent, 1, 0, t, target)
+}
+
+// ---- frog_position_climb.kara ----
+fn a2_frog_position(n: i32, edges: Vec[Vec[i32]], t: i32, target: i32) -> f64 {
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.new());
+    for e in edges.iter() {
+        adjacent[e[0]].push(e[1]);
+        adjacent[e[1]].push(e[0]);
+    }
+    let mut parent = Vec.filled(n + 1, 0);
+    let mut depth = Vec.filled(n + 1, 0);
+    let mut children = Vec.filled(n + 1, 0);
+    let mut order: Vec[i64] = [1];
+    let mut i = 0;
+    while i < order.len() {
+        let u = order[i];
+        for v in adjacent[u].iter() {
+            if v != parent[u] {
+                parent[v] = u;
+                depth[v] = depth[u] + 1;
+                children[u] += 1;
+                order.push(v);
+            }
+        }
+        i += 1;
+    }
+    if depth[target] > t or (depth[target] < t and children[target] > 0) {
+        return 0.0;
+    }
+    let mut p = 1.0;
+    let mut at: i64 = target;
+    while at != 1 {
+        at = parent[at];
+        p /= children[at] as f64;
+    }
+    p
+}
+
+// ---- frog_position_stack.kara ----
+fn a3_frog_position(n: i32, edges: Vec[Vec[i32]], t: i32, target: i32) -> f64 {
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.new());
+    for e in edges.iter() {
+        adjacent[e[0]].push(e[1]);
+        adjacent[e[1]].push(e[0]);
+    }
+    let mut stack: Vec[(i64, i64, f64, i32)] = [(1, 0, 1.0, t)];
+    while let Some((u, from, p, left)) = stack.pop() {
+        let ways: Vec[i64] = adjacent[u].iter().filter(|v| v != from).collect();
+        if u == target {
+            return if left == 0 or ways.is_empty() { p } else { 0.0 };
+        }
+        if left > 0 {
+            for v in ways.iter() {
+                stack.push((v, u, p / ways.len() as f64, left - 1));
+            }
+        }
+    }
+    0.0
+}
+
+// ---- frog_position_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_frog_position(n: i32, edges: Vec[Vec[i32]], t: i32, target: i32) -> f64 {
+        let n = n as i64;
+        let mut g = Vec.filled(n + 1, Vec.new());
+        for e in ref edges {
+            let (a, b) = (e[0] as i64, e[1] as i64);
+            g[a].push(b);
+            g[b].push(a);
+        }
+        let mut visited = Vec.filled(n + 1, false);
+        let mut q = VecDeque.new();
+        q.push_back((1, 1.0));
+        visited[1] = true;
+        let mut time = 0;
+        while not q.is_empty() and time <= t {
+            for _ in 0..q.len() {
+                let (u, p) = q.pop_front().unwrap();
+                let cnt = g[u].iter().filter(|v| not visited[v]).count();
+                if u == target {
+                    return if time == t or cnt == 0 { p } else { 0.0 };
+                }
+                for v in ref g[u] {
+                    if not visited[v] {
+                        visited[v] = true;
+                        q.push_back((v, p / cnt as f64));
+                    }
+                }
+            }
+            time += 1;
+        }
+        0.0
+    }
+}
+
+fn a4_frog_position(n: i32, edges: Vec[Vec[i32]], t: i32, target: i32) -> f64 {
+    A4Solution.a4_frog_position(n, edges, t, target)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// The statement read literally: the frog's whole state is where it sits,
+// which vertices it has visited, and the chance of that state. Each
+// second, every state with an unvisited neighbour of where it sits gives
+// way to one state per such neighbour, the chance split evenly; a state
+// with none stays as it is. After t seconds, the chances of the states on
+// the target are added.
+fn literal(n: i32, edges: Vec[Vec[i32]], t: i32, target: i32) -> f64 {
+    let mut states: Vec[(i64, Vec[bool], f64)] = Vec.new();
+    let mut start = Vec.filled(n + 1, false);
+    start[1] = true;
+    states.push((1, start, 1.0));
+    for _ in 0..t {
+        let mut after: Vec[(i64, Vec[bool], f64)] = Vec.new();
+        for (at, visited, p) in states.iter() {
+            let mut ways: Vec[i64] = Vec.new();
+            for e in edges.iter() {
+                if e[0] == at and not visited[e[1]] {
+                    ways.push(e[1]);
+                }
+                if e[1] == at and not visited[e[0]] {
+                    ways.push(e[0]);
+                }
+            }
+            if ways.is_empty() {
+                after.push((at, visited.clone(), p));
+            }
+            for v in ways.iter() {
+                let mut seen = visited.clone();
+                seen[v] = true;
+                after.push((v, seen, p / ways.len() as f64));
+            }
+        }
+        states = after;
+    }
+    let mut total = 0.0;
+    for (at, _, p) in states.iter() {
+        if at == target {
+            total += p;
+        }
+    }
+    total
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn near(a: f64, b: f64) -> bool {
+    (a - b).abs() < 0.000000001
+}
+
+fn arm(i: i64, n: i32, edges: Vec[Vec[i32]], t: i32, target: i32) -> f64 {
+    match i {
+        0 => a0_frog_position(n, edges, t, target),
+        1 => a1_frog_position(n, edges, t, target),
+        2 => a2_frog_position(n, edges, t, target),
+        3 => a3_frog_position(n, edges, t, target),
+        _ => a4_frog_position(n, edges, t, target),
+    }
+}
+
+fn check_case(t: mut ref Tally, n: i32, edges: Vec[Vec[i32]], secs: i32, target: i32, perm: Vec[i32]) {
+    t.cases += 1;
+    let want = literal(n, edges, secs, target);
+    t.check = (t.check * 131 + (want * 1048576.0 + 0.5).floor() as i64 * 13 + n) % 1000000007;
+    let star = a0_frog_position(n, edges, secs, target);
+    // every vertex v renumbered perm[v], 1 kept
+    let renamed: Vec[Vec[i32]] = edges.iter().map(|e| [perm[e[0]], perm[e[1]]]).collect();
+    // the edges listed the other way, each written the other way round
+    let turned: Vec[Vec[i32]] = edges.iter().rev().map(|e| [e[1], e[0]]).collect();
+    for i in 0..5 {
+        let got = arm(i, n, edges, secs, target);
+        let what = f"arm {i} on n {n}, edges {edges}, t {secs}, target {target}";
+        // P1: the statement read literally
+        expect(mut t, 1, near(got, want), f"P1 {what}: literal {want}, got {got}");
+        // P2: the vertices renumbered, 1 kept: the same chance
+        let rn = arm(i, n, renamed, secs, perm[target]);
+        expect(mut t, 2, near(rn, got), f"P2 {what}, renamed: {rn}");
+        // P3: the chances on every vertex add up to 1
+        let mut sum = 0.0;
+        for v in 1..n + 1 {
+            sum += arm(i, n, edges, secs, v);
+        }
+        expect(mut t, 3, near(sum, 1.0), f"P3 {what}: chances add up to {sum}");
+        // P4: given n seconds, the frog has stopped: n + 5 the same
+        let late = arm(i, n, edges, n, target);
+        let later = arm(i, n, edges, n + 5, target);
+        expect(mut t, 4, near(late, later), f"P4 {what}: {late} at {n} seconds, {later} at {n + 5}");
+        // P5: the edges listed the other way, each the other way round
+        let tn = arm(i, n, turned, secs, target);
+        expect(mut t, 5, near(tn, got), f"P5 {what}, turned: {tn}");
+        // P6: the ★ arm's chance
+        expect(mut t, 6, near(got, star), f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's two examples, renumbered by the identity
+    let example: Vec[Vec[i32]] = [[1, 2], [1, 3], [1, 7], [2, 4], [2, 6], [3, 5]];
+    let same: Vec[i32] = (0..8).map(|v| v as i32).collect();
+    check_case(mut t, 7, example, 2, 4, same);
+    check_case(mut t, 7, example, 1, 7, same);
+    // 2000 trees of 1 to 12 vertices, 500 of each kind: each vertex after
+    // the first, in a random order, joined to any taken before it, to one
+    // of the last three, to one of the first three, or to one of the last
+    // half, each edge either way round and the edges in a random order;
+    // 1 to 8 seconds, a target, and a renumbering that keeps 1. Every
+    // case is drawn before any arm answers.
+    let mut seed = 13771;
+    let mut cases: Vec[(i32, Vec[Vec[i32]], i32, i32, Vec[i32])] = Vec.new();
+    for c in 0..2000 {
+        let kind = c % 4;
+        let n = 1 + next_random(mut seed) % 12;
+        let mut order: Vec[i64] = (1..n + 1).collect();
+        for i in (1..n).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            order.swap(i, j);
+        }
+        let mut edges: Vec[Vec[i32]] = Vec.new();
+        for k in 1..n {
+            let back = if kind == 0 {
+                next_random(mut seed) % k
+            } else if kind == 1 {
+                k - 1 - next_random(mut seed) % k.min(3)
+            } else if kind == 2 {
+                next_random(mut seed) % k.min(3)
+            } else {
+                k / 2 + next_random(mut seed) % (k - k / 2)
+            };
+            let (a, b) = (order[k] as i32, order[back] as i32);
+            if next_random(mut seed) % 2 == 0 {
+                edges.push([a, b]);
+            } else {
+                edges.push([b, a]);
+            }
+        }
+        for i in (1..edges.len()).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            edges.swap(i, j);
+        }
+        let secs = (1 + next_random(mut seed) % 8) as i32;
+        let target = (1 + next_random(mut seed) % n) as i32;
+        let mut perm: Vec[i32] = (0..n + 1).map(|v| v as i32).collect();
+        for i in (3..n + 1).rev() {
+            let j = 2 + next_random(mut seed) % (i - 1);
+            perm.swap(i, j);
+        }
+        cases.push((n as i32, edges, secs, target, perm));
+    }
+    for (n, edges, secs, target, perm) in cases.iter() {
+        check_case(mut t, n, edges, secs, target, perm);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
