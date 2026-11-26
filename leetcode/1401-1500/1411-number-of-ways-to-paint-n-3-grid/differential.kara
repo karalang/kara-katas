@@ -1,0 +1,271 @@
+// LeetCode #1411: Number of Ways to Paint N × 3 Grid -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- num_of_ways.kara ----
+fn a0_num_of_ways(n: i32) -> i32 {
+    // every row is one of 6 with two colours, `aba`, or one of 6 with
+    // three, `abc`; below an `aba` row can go 3 `aba` and 2 `abc` rows,
+    // below an `abc` row 2 of each
+    let modulus: i64 = 1000000007;
+    let mut two: i64 = 6;
+    let mut three: i64 = 6;
+    for _ in 1..n {
+        let next_two = (3 * two + 2 * three) % modulus;
+        let next_three = (2 * two + 2 * three) % modulus;
+        two = next_two;
+        three = next_three;
+    }
+    ((two + three) % modulus) as i32
+}
+
+// ---- num_of_ways_states.kara ----
+fn a1_num_of_ways(n: i32) -> i32 {
+    // the 12 rows with no two neighbours alike, which rows may sit on
+    // which, and a count of the ways to end in each row
+    let modulus: i64 = 1000000007;
+    let mut rows: Vec[(i64, i64, i64)] = Vec.new();
+    for a in 0..3 {
+        for b in 0..3 {
+            for c in 0..3 {
+                if a != b and b != c {
+                    rows.push((a, b, c));
+                }
+            }
+        }
+    }
+    let k = rows.len();
+    let mut fits: Vec[Vec[bool]] = Vec.new();
+    for (a, b, c) in rows.iter() {
+        let line: Vec[bool] = rows.iter().map(|(x, y, z)| a != x and b != y and c != z).collect();
+        fits.push(line);
+    }
+    let mut ways: Vec[i64] = Vec.filled(k, 1);
+    for _ in 1..n {
+        let mut next: Vec[i64] = Vec.filled(k, 0);
+        for i in 0..k {
+            for j in 0..k {
+                if fits[i][j] {
+                    next[j] = (next[j] + ways[i]) % modulus;
+                }
+            }
+        }
+        ways = next;
+    }
+    (ways.iter().sum() % modulus) as i32
+}
+
+// ---- num_of_ways_matrix.kara ----
+struct A2Matrix {
+    a: i64,
+    b: i64,
+    c: i64,
+    d: i64,
+}
+
+const MODULUS: i64 = 1000000007;
+
+fn a2_times(x: A2Matrix, y: A2Matrix) -> A2Matrix {
+    A2Matrix {
+        a: (x.a * y.a + x.b * y.c) % MODULUS,
+        b: (x.a * y.b + x.b * y.d) % MODULUS,
+        c: (x.c * y.a + x.d * y.c) % MODULUS,
+        d: (x.c * y.b + x.d * y.d) % MODULUS,
+    }
+}
+
+fn a2_num_of_ways(n: i32) -> i32 {
+    let mut power = A2Matrix { a: 1, b: 0, c: 0, d: 1 };
+    let mut base = A2Matrix { a: 3, b: 2, c: 2, d: 2 };
+    let mut e = n - 1;
+    while e > 0 {
+        if e % 2 == 1 {
+            power = a2_times(power, base);
+        }
+        base = a2_times(base, base);
+        e /= 2;
+    }
+    // the first row is 6 of each kind
+    ((6 * (power.a + power.b + power.c + power.d)) % MODULUS) as i32
+}
+
+// ---- num_of_ways_cells.kara ----
+fn a3_num_of_ways(n: i32) -> i32 {
+    // the grid painted a cell at a time, row by row: the state is the
+    // last three cells painted, which are the ones above and to the left
+    // of the next, as one number of three base-3 digits
+    let modulus: i64 = 1000000007;
+    let mut ways: Vec[i64] = Vec.filled(27, 0);
+    // the first row, painted whole
+    for a in 0..3 {
+        for b in 0..3 {
+            for c in 0..3 {
+                if a != b and b != c {
+                    ways[a * 9 + b * 3 + c] += 1;
+                }
+            }
+        }
+    }
+    for _ in 1..n {
+        for column in 0..3 {
+            let mut next: Vec[i64] = Vec.filled(27, 0);
+            for state in 0..27 {
+                if ways[state] == 0 {
+                    continue;
+                }
+                // the oldest digit is the cell above, the newest the one
+                // to the left
+                let above = state / 9;
+                let left = state % 3;
+                for colour in 0..3 {
+                    if colour != above and (column == 0 or colour != left) {
+                        let to = state % 9 * 3 + colour;
+                        next[to] = (next[to] + ways[state]) % modulus;
+                    }
+                }
+            }
+            ways = next;
+        }
+    }
+    (ways.iter().sum() % modulus) as i32
+}
+
+// ---- num_of_ways_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_num_of_ways(n: i32) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let mut (a, b) = (6, 6);
+        for _ in 1..n {
+            let na = (3 * a + 2 * b) % MOD;
+            let nb = (2 * a + 2 * b) % MOD;
+            a = na;
+            b = nb;
+        }
+        ((a + b) % MOD) as i32
+    }
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every cell of the n x 3 grid painted in
+// turn, row by row, with each of the three colours its painted neighbours
+// above and to the left allow, and every whole grid counted
+fn painted(grid: mut ref Vec[i64], at: i64, cells: i64) -> i64 {
+    if at == cells {
+        return 1;
+    }
+    let mut count = 0;
+    for colour in 0..3 {
+        let above_ok = at < 3 or grid[at - 3] != colour;
+        let left_ok = at % 3 == 0 or grid[at - 1] != colour;
+        if above_ok and left_ok {
+            grid[at] = colour;
+            count += painted(mut grid, at + 1, cells);
+        }
+    }
+    count
+}
+
+fn literal(n: i32) -> i64 {
+    let mut grid: Vec[i64] = Vec.filled(3 * n as i64, -1);
+    painted(mut grid, 0, 3 * n as i64) % 1000000007
+}
+
+fn arm(i: i64, n: i32) -> i64 {
+    let ways = match i {
+        0 => a0_num_of_ways(n),
+        1 => a1_num_of_ways(n),
+        2 => a2_num_of_ways(n),
+        3 => a3_num_of_ways(n),
+        _ => A4Solution.a4_num_of_ways(n),
+    };
+    ways
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, n: i32) {
+    t.cases += 1;
+    let modulus: i64 = 1000000007;
+    let star = arm(0, n);
+    t.check = (t.check * 131 + star + n) % modulus;
+    // LeetCode's answers and the first terms, counted by hand from the
+    // two kinds of row
+    let known = [(1, 12), (2, 54), (3, 246), (4, 1122), (5, 5118), (6, 23346), (7, 106494), (5000, 30228214)];
+    for i in 0..5 {
+        let what = f"arm {i} at n = {n}";
+        let got = arm(i, n);
+        // P1: the statement read literally, while the grids are few
+        if n <= 6 {
+            let want = literal(n);
+            expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        }
+        // P2: a count taken modulo 10^9 + 7
+        expect(mut t, 2, got >= 0 and got < modulus, f"P2 {what}: {got}");
+        // P3: the step from a row to the next is a 2 x 2 matrix of trace 5
+        // and determinant 2, so f(n + 2) = 5 f(n + 1) - 2 f(n)
+        let after = arm(i, n + 1);
+        let twice = arm(i, n + 2);
+        expect(mut t, 3, twice == ((5 * after - 2 * got) % modulus + modulus) % modulus, f"P3 {what}: {got} {after} {twice}");
+        // P4: while no count wraps, a colouring with its three colours
+        // swapped around is another, so the count is a multiple of 6, and
+        // each row more multiplies it by more than 4 and less than 5
+        if n <= 11 {
+            expect(mut t, 4, got % 6 == 0 and 4 * got < after and after < 5 * got, f"P4 {what}: {got} then {after}");
+        }
+        // P5: the known values
+        for (k, v) in known.iter() {
+            if k == n {
+                expect(mut t, 5, got == v, f"P5 {what}: {v}, got {got}");
+            }
+        }
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // every n from 1 to 60, the constraints' most and below it, and 1940
+    // random n up to 300. Every case is drawn before any arm answers.
+    let mut cases: Vec[i32] = (1..=60).collect();
+    cases.push(4998);
+    cases.push(4999);
+    cases.push(5000);
+    let mut seed = 14111;
+    for _ in 0..1940 {
+        cases.push((1 + next_random(mut seed) % 300) as i32);
+    }
+    for n in cases.iter() {
+        check_case(mut t, n);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

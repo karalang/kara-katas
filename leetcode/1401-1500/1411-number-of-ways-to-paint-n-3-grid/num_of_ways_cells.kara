@@ -1,0 +1,55 @@
+fn num_of_ways(n: i32) -> i32 {
+    // the grid painted a cell at a time, row by row: the state is the
+    // last three cells painted, which are the ones above and to the left
+    // of the next, as one number of three base-3 digits
+    let modulus: i64 = 1000000007;
+    let mut ways: Vec[i64] = Vec.filled(27, 0);
+    // the first row, painted whole
+    for a in 0..3 {
+        for b in 0..3 {
+            for c in 0..3 {
+                if a != b and b != c {
+                    ways[a * 9 + b * 3 + c] += 1;
+                }
+            }
+        }
+    }
+    for _ in 1..n {
+        for column in 0..3 {
+            let mut next: Vec[i64] = Vec.filled(27, 0);
+            for state in 0..27 {
+                if ways[state] == 0 {
+                    continue;
+                }
+                // the oldest digit is the cell above, the newest the one
+                // to the left
+                let above = state / 9;
+                let left = state % 3;
+                for colour in 0..3 {
+                    if colour != above and (column == 0 or colour != left) {
+                        let to = state % 9 * 3 + colour;
+                        next[to] = (next[to] + ways[state]) % modulus;
+                    }
+                }
+            }
+            ways = next;
+        }
+    }
+    (ways.iter().sum() % modulus) as i32
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn main() {
+    // LeetCode's two examples, and the first ten
+    let small: Vec[String] = (1..=10).map(|n| f"{num_of_ways(n)}").collect();
+    println(f"{num_of_ways(1)} {num_of_ways(5000)} | {small.join(" ")}");
+    // the constraints' most, and its neighbours
+    println(f"n = 4998..5000: {num_of_ways(4998)} {num_of_ways(4999)} {num_of_ways(5000)}");
+    // every n from 1 to 600, folded
+    let mut check: i64 = 0;
+    for n in 1..=600 {
+        check = (check * 131 + num_of_ways(n)) % 1000000007;
+    }
+    println(f"n = 1..600: checksum {check}");
+}
