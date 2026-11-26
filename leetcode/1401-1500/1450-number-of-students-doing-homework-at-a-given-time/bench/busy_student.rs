@@ -1,0 +1,32 @@
+// LeetCode #1450 Number of Students Doing Homework at a Given Time: the
+// bench, a mirror of busy_student.kara.
+
+fn busy_student(start_time: &[i32], end_time: &[i32], query_time: i32) -> i32 {
+    // each student's start and end side by side, kept when the query falls
+    // between them, and counted
+    start_time.iter().zip(end_time.iter()).filter(|(&s, &e)| s <= query_time && query_time <= e).count() as i32
+}
+
+fn main() {
+    // 3000 classes of 100 students, the constraints' most, each from a
+    // start to an end drawn from 1 to 1000, each class asked at every time
+    // from 1 to 1000, the counts folded to a checksum
+    let mut seed: i64 = 1450;
+    let mut check: i64 = 0;
+    for _ in 0..3000 {
+        let mut start_time: Vec<i32> = Vec::new();
+        let mut end_time: Vec<i32> = Vec::new();
+        for _ in 0..100 {
+            seed = (seed * 1103515245 + 12345) % 2147483648;
+            let a = 1 + seed / 65536 % 1000;
+            seed = (seed * 1103515245 + 12345) % 2147483648;
+            let b = 1 + seed / 65536 % 1000;
+            start_time.push(a.min(b) as i32);
+            end_time.push(a.max(b) as i32);
+        }
+        for q in 1..=1000 {
+            check = (check * 131 + busy_student(&start_time, &end_time, q) as i64) % 1000000007;
+        }
+    }
+    println!("3000 classes asked 1000 times: checksum {}", check);
+}

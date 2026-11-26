@@ -1,0 +1,64 @@
+fn busy_student(start_time: Vec[i32], end_time: Vec[i32], query_time: i32) -> i32 {
+    // each student's start and end side by side, kept when the query falls
+    // between them, and counted
+    start_time.iter().zip(end_time.iter()).filter(|(s, e)| s <= query_time and query_time <= e).count() as i32
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n students, each from a start to an end drawn from 1 to `top`
+fn students(n: i64, top: i64, seed: mut ref i64) -> (Vec[i32], Vec[i32]) {
+    let mut start_time: Vec[i32] = Vec.new();
+    let mut end_time: Vec[i32] = Vec.new();
+    for _ in 0..n {
+        let a = 1 + next_random(mut seed) % top;
+        let b = 1 + next_random(mut seed) % top;
+        start_time.push(a.min(b) as i32);
+        end_time.push(a.max(b) as i32);
+    }
+    (start_time, end_time)
+}
+
+fn main() {
+    // LeetCode's two examples, and four more: a query just after the one
+    // student, one student over every time, a query at a start and a query
+    // at an end
+    let firsts = [
+        busy_student([1, 2, 3].to_vec(), [3, 2, 7].to_vec(), 4),
+        busy_student([4].to_vec(), [4].to_vec(), 4),
+        busy_student([4].to_vec(), [4].to_vec(), 5),
+        busy_student([1].to_vec(), [1000].to_vec(), 500),
+        busy_student([1, 5, 9].to_vec(), [5, 9, 13].to_vec(), 5),
+        busy_student([1, 5, 9].to_vec(), [5, 9, 13].to_vec(), 9),
+    ];
+    let shown: Vec[String] = firsts.iter().map(|x| f"{x}").collect();
+    println(shown.join(" "));
+    // the constraints' most: 100 students over every time, asked at 1000,
+    // and 100 drawn students asked at every time from 1 to 1000
+    let all = busy_student(Vec.filled(100, 1), Vec.filled(100, 1000), 1000);
+    let mut seed = 1450;
+    let (start_time, end_time) = students(100, 1000, mut seed);
+    let mut asked = 0;
+    for q in 1..=1000 {
+        asked += busy_student(start_time, end_time, q);
+    }
+    println(f"100 students: {all}, and {asked} over every time");
+    // 2000 random cases of 1 to 100 students, times from 1 to 1 to 1000
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 100;
+        let top = 1 + next_random(mut seed) % 1000;
+        let (start_time, end_time) = students(n, top, mut seed);
+        let q = (1 + next_random(mut seed) % top) as i32;
+        let got = busy_student(start_time, end_time, q) as i64;
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random cases: {total} students, checksum {check}");
+}
