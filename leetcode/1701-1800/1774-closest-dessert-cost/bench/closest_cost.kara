@@ -1,0 +1,53 @@
+// LeetCode #1774: Closest Dessert Cost -- the bench: the ★ arm, a
+// depth-first search over the toppings for each base.
+
+fn better(cost: i32, best: i32, target: i32) -> bool {
+    let (d, e) = ((cost - target).abs(), (best - target).abs());
+    d < e or (d == e and cost < best)
+}
+
+fn add_toppings(toppings: Vec[i32], i: i64, cost: i32, target: i32, best: mut ref i32) {
+    if better(cost, *best, target) {
+        *best = cost;
+    }
+    if i == toppings.len() or cost >= target {
+        return;
+    }
+    for times in 0i32..3 {
+        add_toppings(toppings, i + 1, cost + times * toppings[i], target, mut best);
+    }
+}
+
+fn closest_cost(base_costs: Vec[i32], topping_costs: Vec[i32], target: i32) -> i32 {
+    let mut best = base_costs[0];
+    for base in base_costs.iter() {
+        add_toppings(topping_costs, 0, *base, target, mut best);
+    }
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_costs(seed: mut ref i64, n: i64, most: i64) -> Vec[i32] {
+    (0..n).map(|_| (1 + next_random(mut seed) % most) as i32).collect()
+}
+
+fn main() {
+    let mut seed = 1774;
+    let mut bases: Vec[Vec[i32]] = Vec.new();
+    let mut toppings: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..100 {
+        bases.push(random_costs(mut seed, 10, 5000));
+        toppings.push(random_costs(mut seed, 8, 1000));
+    }
+    let mut check = 0;
+    for call in 0..1000 {
+        let target = (1 + (check + call * 7919) % 10000) as i32;
+        let cost = closest_cost(bases[(check + call) % 100], toppings[(check / 100 + call * 31) % 100], target);
+        check = (check * 31 + cost) % 1000000007;
+    }
+    println(f"1000 calls over 100 menus: checksum {check}");
+}

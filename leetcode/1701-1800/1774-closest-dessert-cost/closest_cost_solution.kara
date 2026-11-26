@@ -1,0 +1,74 @@
+// LeetCode #1774: Closest Dessert Cost -- a Rust solution as LeetCode's
+// Rust users write it, carried to Kāra by `karac fix`
+
+struct Solution {}
+
+fn dfs(i: i64, cur: i32, tops: ref Vec[i32], target: i32, ans: mut ref i32) {
+    if (cur - target).abs() < (*ans - target).abs()
+        or ((cur - target).abs() == (*ans - target).abs() and cur < *ans)
+    {
+        *ans = cur;
+    }
+    if i == tops.len() or cur >= target {
+        return;
+    }
+    for k in 0i32..3 {
+        dfs(i + 1, cur + k * tops[i], tops, target, mut ans);
+    }
+}
+
+impl Solution {
+    pub fn closest_cost(base_costs: Vec[i32], topping_costs: Vec[i32], target: i32) -> i32 {
+        let mut ans = i32.MAX;
+        for b in ref base_costs {
+            dfs(0, b, topping_costs, target, mut ans);
+        }
+        ans
+    }
+}
+
+fn closest_cost(base_costs: Vec[i32], topping_costs: Vec[i32], target: i32) -> i32 {
+
+    Solution.closest_cost(base_costs, topping_costs, target)
+
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n costs from 1 to `most`
+fn random_costs(seed: mut ref i64, n: i64, most: i64) -> Vec[i32] {
+    (0..n).map(|_| (1 + next_random(mut seed) % most) as i32).collect()
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{closest_cost([1, 7], [3, 4], 10)} {closest_cost([2, 3], [4, 5, 100], 18)} {closest_cost([3, 10], [2, 5], 9)}");
+    // the edges: every base above the target; one topping twice; a tie,
+    // the cheaper kept; the target out of reach above; the target exact
+    println(f"{closest_cost([10], [1], 1)} {closest_cost([5], [1], 8)} {closest_cost([4], [2], 5)} {closest_cost([1, 2], [3], 10000)} {closest_cost([9, 4], [1, 2], 9)}");
+    // the constraints' most: 10 bases and 10 toppings of up to 10000, and
+    // 10 toppings of 1 under a target of 10000
+    let mut seed = 1774;
+    let bases = random_costs(mut seed, 10, 10000);
+    let toppings = random_costs(mut seed, 10, 10000);
+    let ones: Vec[i32] = Vec.filled(10, 1);
+    println(f"the most: {closest_cost(bases, toppings, 10000)} {closest_cost(bases, toppings, 1)} {closest_cost(bases, ones, 10000)}");
+    // 3000 random cases of 1 to 10 bases and 1 to 6 toppings, costs and
+    // target from 1 to a bound of 10 to 10000
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 10;
+        let m = 1 + next_random(mut seed) % 6;
+        let most = 10 + next_random(mut seed) % 9991;
+        let bases = random_costs(mut seed, n, most);
+        let toppings = random_costs(mut seed, m, most);
+        let target = (1 + next_random(mut seed) % (2 * most)).min(10000) as i32;
+        check = (check * 31 + closest_cost(bases, toppings, target)) % 1000000007;
+    }
+    println(f"3000 random cases: checksum {check}");
+}

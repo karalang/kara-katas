@@ -1,0 +1,264 @@
+// LeetCode #1774: Closest Dessert Cost -- differential test of the five
+// arms against the statement read literally, with five more properties.
+
+// ---- closest_cost.kara ----
+fn a0_better(cost: i32, best: i32, target: i32) -> bool {
+    let (d, e) = ((cost - target).abs(), (best - target).abs());
+    d < e or (d == e and cost < best)
+}
+
+fn a0_add_toppings(toppings: Vec[i32], i: i64, cost: i32, target: i32, best: mut ref i32) {
+    if a0_better(cost, *best, target) {
+        *best = cost;
+    }
+    if i == toppings.len() or cost >= target {
+        return;
+    }
+    for times in 0i32..3 {
+        a0_add_toppings(toppings, i + 1, cost + times * toppings[i], target, mut best);
+    }
+}
+
+fn a0_closest_cost(base_costs: Vec[i32], topping_costs: Vec[i32], target: i32) -> i32 {
+    let mut best = base_costs[0];
+    for base in base_costs.iter() {
+        a0_add_toppings(topping_costs, 0, *base, target, mut best);
+    }
+    best
+}
+
+// ---- closest_cost_enumerate.kara ----
+fn a1_closest_cost(base_costs: Vec[i32], topping_costs: Vec[i32], target: i32) -> i32 {
+    let mut ways = 1;
+    for _ in 0..topping_costs.len() {
+        ways *= 3;
+    }
+    let mut best = base_costs[0];
+    for base in base_costs.iter() {
+        for code in 0..ways {
+            let mut cost = *base;
+            let mut rest = code;
+            for t in topping_costs.iter() {
+                cost += (rest % 3) as i32 * t;
+                rest /= 3;
+            }
+            let (d, e) = ((cost - target).abs(), (best - target).abs());
+            if d < e or (d == e and cost < best) {
+                best = cost;
+            }
+        }
+    }
+    best
+}
+
+// ---- closest_cost_reach.kara ----
+const A2_LIMIT: i64 = 20001;
+
+fn a2_closest_cost(base_costs: Vec[i32], topping_costs: Vec[i32], target: i32) -> i32 {
+    let mut reach: Vec[bool] = Vec.filled(A2_LIMIT, false);
+    reach[0] = true;
+    for t in topping_costs.iter() {
+        let before = reach.clone();
+        for s in 0..A2_LIMIT {
+            if before[s] {
+                for k in 1..3 {
+                    let next = s + k * t;
+                    if next < A2_LIMIT {
+                        reach[next] = true;
+                    }
+                }
+            }
+        }
+    }
+    let mut best = base_costs[0];
+    for base in base_costs.iter() {
+        for s in 0..A2_LIMIT {
+            if reach[s] {
+                let cost = base + s as i32;
+                let (d, e) = ((cost - target).abs(), (best - target).abs());
+                if d < e or (d == e and cost < best) {
+                    best = cost;
+                }
+            }
+        }
+    }
+    best
+}
+
+// ---- closest_cost_sorted.kara ----
+fn a3_closest_cost(base_costs: Vec[i32], topping_costs: Vec[i32], target: i32) -> i32 {
+    let mut sums: Vec[i32] = [0];
+    for t in topping_costs.iter() {
+        let mut next: Vec[i32] = Vec.with_capacity(3 * sums.len());
+        for s in sums.iter() {
+            for k in 0i32..3 {
+                next.push(s + k * t);
+            }
+        }
+        sums = next;
+    }
+    sums.sort();
+    let mut best = base_costs[0];
+    for base in base_costs.iter() {
+        let i = sums.partition_point(|s| base + s < target);
+        for j in [i - 1, i] {
+            if j >= 0 and j < sums.len() {
+                let cost = base + sums[j];
+                let (d, e) = ((cost - target).abs(), (best - target).abs());
+                if d < e or (d == e and cost < best) {
+                    best = cost;
+                }
+            }
+        }
+    }
+    best
+}
+
+// ---- closest_cost_solution.kara ----
+struct A4Solution {}
+
+fn a4_dfs(i: i64, cur: i32, tops: ref Vec[i32], target: i32, ans: mut ref i32) {
+    if (cur - target).abs() < (*ans - target).abs()
+        or ((cur - target).abs() == (*ans - target).abs() and cur < *ans)
+    {
+        *ans = cur;
+    }
+    if i == tops.len() or cur >= target {
+        return;
+    }
+    for k in 0i32..3 {
+        a4_dfs(i + 1, cur + k * tops[i], tops, target, mut ans);
+    }
+}
+
+impl A4Solution {
+    pub fn closest_cost(base_costs: Vec[i32], topping_costs: Vec[i32], target: i32) -> i32 {
+        let mut ans = i32.MAX;
+        for b in ref base_costs {
+            a4_dfs(0, b, topping_costs, target, mut ans);
+        }
+        ans
+    }
+}
+
+fn a4_closest_cost(base_costs: Vec[i32], topping_costs: Vec[i32], target: i32) -> i32 {
+
+    A4Solution.closest_cost(base_costs, topping_costs, target)
+
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_costs(seed: mut ref i64, n: i64, most: i64) -> Vec[i32] {
+    (0..n).map(|_| (1 + next_random(mut seed) % most) as i32).collect()
+}
+
+// the statement read literally: every dessert, one base and each topping
+// none, once or twice, its cost listed; the closest to the target, and of
+// two as close the lower
+fn literal(base_costs: Vec[i32], topping_costs: Vec[i32], target: i32) -> i32 {
+    let mut costs: Vec[i32] = base_costs.clone();
+    for t in topping_costs.iter() {
+        let mut more: Vec[i32] = Vec.new();
+        for c in costs.iter() {
+            more.push(*c);
+            more.push(c + t);
+            more.push(c + 2 * t);
+        }
+        costs = more;
+    }
+    costs.sort_by_key(|c| ((c - target).abs(), c));
+    costs[0]
+}
+
+fn arm(i: i64, base_costs: Vec[i32], topping_costs: Vec[i32], target: i32) -> i32 {
+    match i {
+        0 => a0_closest_cost(base_costs, topping_costs, target),
+        1 => a1_closest_cost(base_costs, topping_costs, target),
+        2 => a2_closest_cost(base_costs, topping_costs, target),
+        3 => a3_closest_cost(base_costs, topping_costs, target),
+        _ => a4_closest_cost(base_costs, topping_costs, target),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, bases: Vec[i32], toppings: Vec[i32], target: i32) {
+    t.cases += 1;
+    let want = literal(bases, toppings, target);
+    t.check = (t.check * 31 + want) % 1000000007;
+    let star = arm(0, bases, toppings, target);
+    let lowest = *bases.iter().min().unwrap();
+    let highest = *bases.iter().max().unwrap() + 2 * toppings.iter().sum();
+    let backwards_bases: Vec[i32] = bases.iter().rev().cloned().collect();
+    let backwards_toppings: Vec[i32] = toppings.iter().rev().cloned().collect();
+    let doubled_bases: Vec[i32] = bases.iter().map(|b| 2 * b).collect();
+    let doubled_toppings: Vec[i32] = toppings.iter().map(|c| 2 * c).collect();
+    for i in 0..5 {
+        let what = f"arm {i} on {bases} {toppings} {target}";
+        let got = arm(i, bases, toppings, target);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: from the cheapest base to the dearest with every topping
+        // twice, and no further from the target than any base alone
+        let near = bases.iter().all(|b| (got - target).abs() <= (b - target).abs());
+        expect(mut t, 2, got >= lowest and got <= highest and near, f"P2 {what}");
+        // P3: the bases and the toppings each in reverse give the same cost
+        expect(mut t, 3, arm(i, backwards_bases, backwards_toppings, target) == got, f"P3 {what}");
+        // P4: every cost and the target doubled give the cost doubled
+        expect(mut t, 4, arm(i, doubled_bases, doubled_toppings, 2 * target) == 2 * got, f"P4 {what}");
+        // P5: the answer as the target gives itself, exactly
+        expect(mut t, 5, arm(i, bases, toppings, got) == got, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges. Every case is drawn before any arm
+    // answers.
+    let mut cases: Vec[(Vec[i32], Vec[i32], i32)] = [([1, 7], [3, 4], 10), ([2, 3], [4, 5, 100], 18), ([3, 10], [2, 5], 9), ([10], [1], 1), ([5], [1], 8), ([4], [2], 5), ([1, 2], [3], 5000), ([9, 4], [1, 2], 9)];
+    let mut seed = 17741;
+    // 1992 random cases of 1 to 6 bases and 1 to 5 toppings, costs and
+    // target from 1 to a bound of 5 to 5000, the target at most 5000 so
+    // that doubled it is still within the constraints
+    for _ in 0..1992 {
+        let n = 1 + next_random(mut seed) % 6;
+        let m = 1 + next_random(mut seed) % 5;
+        let most = 5 + next_random(mut seed) % 4996;
+        let bases = random_costs(mut seed, n, most);
+        let toppings = random_costs(mut seed, m, most);
+        let target = (1 + next_random(mut seed) % (2 * most).min(5000)) as i32;
+        cases.push((bases, toppings, target));
+    }
+    for j in 0..cases.len() {
+        check_case(mut t, cases[j].0, cases[j].1, cases[j].2);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
