@@ -1,0 +1,75 @@
+// the number with each digit read through `to`, a table of ten
+fn mapped(s: Str, to: Array[i32, 10]) -> i32 {
+    s.bytes().iter().fold(0, |n, b| n * 10 + to[b - b'0'])
+}
+
+fn max_diff(num: i32) -> i32 {
+    // the two choices as tables from each digit to what it becomes, every
+    // digit its own unless it is the one chosen
+    let s = num.to_string();
+    let bytes = s.bytes();
+    let mut up: Array[i32, 10] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+    let mut down = up;
+    for b in bytes.iter() {
+        if b != b'9' {
+            up[b - b'0'] = 9;
+            break;
+        }
+    }
+    if bytes[0] != b'1' {
+        down[bytes[0] - b'0'] = 1;
+    } else {
+        for b in bytes[1..].iter() {
+            if b != b'0' and b != b'1' {
+                down[b - b'0'] = 0;
+                break;
+            }
+        }
+    }
+    mapped(s, up) - mapped(s, down)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples, and five more
+    let firsts: Vec[String] = [555, 9, 123456, 10000, 9288, 1, 100000000, 111]
+        .iter()
+        .map(|n| f"{max_diff(n)}")
+        .collect();
+    println(firsts.join(" "));
+    // the constraints' most: 10^8 and the numbers below it, and every number
+    // up to 10^5 summed
+    let mut seed = 1432;
+    let mut all: i64 = 0;
+    for n in 1..=100000 {
+        all += max_diff(n);
+    }
+    println(f"10^8: {max_diff(100000000)} {max_diff(99999999)} {max_diff(12345678)}, 1 to 10^5: {all}");
+    // 2000 random numbers of 1 to 8 digits, each drawn from 0 to 2, 0 to
+    // 9, or 1 and 9
+    let mut check: i64 = 0;
+    let mut total: i64 = 0;
+    for _ in 0..2000 {
+        let digits = 1 + next_random(mut seed) % 8;
+        let kind = next_random(mut seed) % 3;
+        let mut n: i64 = 0;
+        for d in 0..digits {
+            let digit = match kind {
+                0 => next_random(mut seed) % 3,
+                1 => next_random(mut seed) % 10,
+                _ => [1, 9][next_random(mut seed) % 2],
+            };
+            n = n * 10 + if d == 0 and digit == 0 { 1 } else { digit };
+        }
+        let got = max_diff(n as i32);
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random numbers: {total} in all, checksum {check}");
+}

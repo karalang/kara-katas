@@ -1,0 +1,77 @@
+// LeetCode #1432: Max Difference You Can Get From Changing an Integer -- a
+// Rust solution as LeetCode's Rust users write it: `num.to_string()`, the
+// greedy choices with `s.replace(c, "9")` on a `char`, and the two results
+// read back with `parse::<i32>().unwrap()`, carried to Kāra by `karac fix`
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_diff(num: i32) -> i32 {
+        let s = num.to_string();
+        let mut a = s.clone();
+        for c in s.chars() {
+            if c != '9' {
+                a = s.replace(c.to_string(), "9");
+                break;
+            }
+        }
+        let mut b = s.clone();
+        let first = s.chars().next().unwrap();
+        if first != '1' {
+            b = s.replace(first.to_string(), "1");
+        } else {
+            for c in s.chars().skip(1) {
+                if c != '0' and c != '1' {
+                    b = s.replace(c.to_string(), "0");
+                    break;
+                }
+            }
+        }
+        i32.parse(a).unwrap() - i32.parse(b).unwrap()
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples, and five more
+    let firsts: Vec[String] = [555, 9, 123456, 10000, 9288, 1, 100000000, 111]
+        .iter()
+        .map(|n| f"{Solution.max_diff(n)}")
+        .collect();
+    println(firsts.join(" "));
+    // the constraints' most: 10^8 and the numbers below it, and every number
+    // up to 10^5 summed
+    let mut seed = 1432;
+    let mut all: i64 = 0;
+    for n in 1..=100000 {
+        all += Solution.max_diff(n);
+    }
+    println(f"10^8: {Solution.max_diff(100000000)} {Solution.max_diff(99999999)} {Solution.max_diff(12345678)}, 1 to 10^5: {all}");
+    // 2000 random numbers of 1 to 8 digits, each drawn from 0 to 2, 0 to
+    // 9, or 1 and 9
+    let mut check: i64 = 0;
+    let mut total: i64 = 0;
+    for _ in 0..2000 {
+        let digits = 1 + next_random(mut seed) % 8;
+        let kind = next_random(mut seed) % 3;
+        let mut n: i64 = 0;
+        for d in 0..digits {
+            let digit = match kind {
+                0 => next_random(mut seed) % 3,
+                1 => next_random(mut seed) % 10,
+                _ => [1, 9][next_random(mut seed) % 2],
+            };
+            n = n * 10 + if d == 0 and digit == 0 { 1 } else { digit };
+        }
+        let got = Solution.max_diff(n as i32);
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random numbers: {total} in all, checksum {check}");
+}
