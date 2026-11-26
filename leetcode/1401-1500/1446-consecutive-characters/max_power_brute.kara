@@ -1,0 +1,55 @@
+fn max_power(s: String) -> i32 {
+    // every start, the run from it carried on while the letter holds
+    let letters: Vec[char] = s.chars().collect();
+    let mut best = 0;
+    for i in 0..letters.len() {
+        let mut j = i;
+        while j < letters.len() and letters[j] == letters[i] {
+            j += 1;
+        }
+        best = best.max(j - i);
+    }
+    best as i32
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n letters drawn from the first `k` of the alphabet
+fn drawn(n: i64, k: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push((b'a' + (next_random(mut seed) % k) as u8) as char);
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's two examples, and five more
+    let cases: Vec[String] = ["leetcode", "abbcccddddeeeeedcba", "a", "zzzzz", "ab", "aabbb", "abba"].iter().map(|s| s.to_string()).collect();
+    let firsts: Vec[String] = cases.iter().map(|s| f"{max_power(s)}").collect();
+    println(firsts.join(" "));
+    // the constraints' most: 500 a's, 500 letters a and b by turns, and
+    // 500 drawn of two letters
+    let mut seed = 1446;
+    let same = "a".repeat(500);
+    let turns = "ab".repeat(250);
+    let two = drawn(500, 2, mut seed);
+    println(f"500 letters: {max_power(same)} {max_power(turns)} {max_power(two)}");
+    // 2000 random strings of 1 to 60 letters of the first 1 to 26 of the
+    // alphabet
+    let mut check: i64 = 0;
+    let mut total: i64 = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 60;
+        let k = 1 + next_random(mut seed) % 26;
+        let got = max_power(drawn(n, k, mut seed));
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random strings: {total} in all, checksum {check}");
+}
