@@ -1,0 +1,392 @@
+// LeetCode #1797: Design Authentication Manager --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- authentication_manager.kara ----
+struct A0AuthenticationManager {
+    ttl: i32,
+    expiry: Map[String, i32],
+}
+
+impl A0AuthenticationManager {
+    fn new(time_to_live: i32) -> A0AuthenticationManager {
+        A0AuthenticationManager { ttl: time_to_live, expiry: Map.new() }
+    }
+
+    fn generate(mut ref self, token_id: own String, current_time: i32) {
+        self.expiry[token_id] = current_time + self.ttl;
+    }
+
+    fn renew(mut ref self, token_id: own String, current_time: i32) {
+        if let Some(e) = self.expiry.get(token_id) {
+            if e > current_time {
+                self.expiry[token_id] = current_time + self.ttl;
+            }
+        }
+    }
+
+    fn count_unexpired_tokens(self, current_time: i32) -> i32 {
+        self.expiry.values().filter(|e| e > current_time).count() as i32
+    }
+}
+
+// ---- authentication_manager_queue.kara ----
+struct A1AuthenticationManager {
+    ttl: i32,
+    expiry: Map[String, i32],
+    order: VecDeque[(i32, String)],
+}
+
+impl A1AuthenticationManager {
+    fn new(time_to_live: i32) -> A1AuthenticationManager {
+        A1AuthenticationManager { ttl: time_to_live, expiry: Map.new(), order: VecDeque.new() }
+    }
+
+    fn set(mut ref self, token_id: own String, until: i32) {
+        self.expiry[token_id.clone()] = until;
+        self.order.push_back((until, token_id));
+    }
+
+    fn generate(mut ref self, token_id: own String, current_time: i32) {
+        self.set(token_id, current_time + self.ttl);
+    }
+
+    fn renew(mut ref self, token_id: own String, current_time: i32) {
+        if self.expiry.get(token_id).is_some_and(|e| e > current_time) {
+            self.set(token_id, current_time + self.ttl);
+        }
+    }
+
+    fn count_unexpired_tokens(mut ref self, current_time: i32) -> i32 {
+        while self.order.len() > 0 and self.order[0].0 <= current_time {
+            let (until, token) = self.order.pop_front().unwrap();
+            if self.expiry[token] == until {
+                self.expiry.remove(token);
+            }
+        }
+        self.expiry.len() as i32
+    }
+}
+
+// ---- authentication_manager_tree.kara ----
+struct A2AuthenticationManager {
+    ttl: i32,
+    expiry: Map[String, i32],
+    live: SortedSet[(i32, String)],
+}
+
+impl A2AuthenticationManager {
+    fn new(time_to_live: i32) -> A2AuthenticationManager {
+        A2AuthenticationManager { ttl: time_to_live, expiry: Map.new(), live: SortedSet.new() }
+    }
+
+    fn generate(mut ref self, token_id: own String, current_time: i32) {
+        let until = current_time + self.ttl;
+        self.expiry[token_id.clone()] = until;
+        self.live.insert((until, token_id));
+    }
+
+    fn renew(mut ref self, token_id: own String, current_time: i32) {
+        self.drop_expired(current_time);
+        if let Some(old) = self.expiry.get(token_id) {
+            if self.live.remove((old, token_id.clone())) {
+                let until = current_time + self.ttl;
+                self.expiry[token_id.clone()] = until;
+                self.live.insert((until, token_id));
+            }
+        }
+    }
+
+    fn drop_expired(mut ref self, current_time: i32) {
+        while let Some(first) = self.live.min() {
+            if first.0 > current_time {
+                break;
+            }
+            self.live.pop_first();
+        }
+    }
+
+    fn count_unexpired_tokens(mut ref self, current_time: i32) -> i32 {
+        self.drop_expired(current_time);
+        self.live.len() as i32
+    }
+}
+
+// ---- authentication_manager_retain.kara ----
+struct A3AuthenticationManager {
+    ttl: i32,
+    expiry: Map[String, i32],
+}
+
+impl A3AuthenticationManager {
+    fn new(time_to_live: i32) -> A3AuthenticationManager {
+        A3AuthenticationManager { ttl: time_to_live, expiry: Map.new() }
+    }
+
+    fn generate(mut ref self, token_id: own String, current_time: i32) {
+        self.expiry[token_id] = current_time + self.ttl;
+    }
+
+    fn renew(mut ref self, token_id: own String, current_time: i32) {
+        if self.expiry.contains_key(token_id) and self.expiry[token_id] > current_time {
+            self.expiry[token_id] = current_time + self.ttl;
+        }
+    }
+
+    fn count_unexpired_tokens(mut ref self, current_time: i32) -> i32 {
+        self.expiry.retain(|_, e| e > current_time);
+        self.expiry.len() as i32
+    }
+}
+
+// ---- authentication_manager_solution.kara ----
+struct A4AuthenticationManager {
+    ttl: i32,
+    tokens: Map[String, i32],
+}
+
+impl A4AuthenticationManager {
+    fn new(time_to_live: i32) -> Self {
+        A4AuthenticationManager { ttl: time_to_live, tokens: Map.new() }
+    }
+
+    fn generate(mut ref self, token_id: own String, current_time: i32) {
+        self.tokens.insert(token_id, current_time + self.ttl);
+    }
+
+    fn renew(mut ref self, token_id: String, current_time: i32) {
+        if let Some(exp) = self.tokens.get_mut(token_id) {
+            if *exp > current_time {
+                *exp = current_time + self.ttl;
+            }
+        }
+    }
+
+    fn count_unexpired_tokens(self, current_time: i32) -> i32 {
+        self.tokens.values().filter(|exp| exp > current_time).count() as i32
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn name(k: i64) -> String {
+    let mut s = String.new();
+    let mut k = k;
+    loop {
+        s.push("abcdefghijklmnopqrstuvwxyz".chars().nth(k % 26).unwrap());
+        k /= 26;
+        if k == 0 {
+            break;
+        }
+    }
+    s
+}
+
+// `n` random calls, as the arms' harness makes them: 0 a new token, 1 a
+// renewal of one made before or one never made, 2 a count
+fn random_calls(seed: mut ref i64, n: i64, step: i64) -> Vec[(i64, String, i32)] {
+    let mut calls: Vec[(i64, String, i32)] = Vec.new();
+    let mut made = 0;
+    let mut now = 0;
+    for _ in 0..n {
+        now += 1 + next_random(mut seed) % step;
+        let pick = next_random(mut seed) % 10;
+        if pick < 4 {
+            calls.push((0, name(made), now as i32));
+            made += 1;
+        } else if pick < 8 {
+            calls.push((1, name(next_random(mut seed) % (made + 2)), now as i32));
+        } else {
+            calls.push((2, "", now as i32));
+        }
+    }
+    calls
+}
+
+// the statement read literally: at each count, every call before it
+// replayed from the start, token by token: a token made at g expires at
+// g + ttl, and a renewal at r moves its expiry to r + ttl only while the
+// expiry is still after r
+fn literal(ttl: i32, calls: Vec[(i64, String, i32)]) -> Vec[i32] {
+    let mut counts: Vec[i32] = Vec.new();
+    for at in 0..calls.len() {
+        if calls[at].0 != 2 {
+            continue;
+        }
+        let now = calls[at].2;
+        let mut alive = 0;
+        for g in 0..at {
+            if calls[g].0 != 0 {
+                continue;
+            }
+            let mut until = calls[g].2 + ttl;
+            for r in g + 1..at {
+                if calls[r].0 == 1 and calls[r].1 == calls[g].1 and until > calls[r].2 {
+                    until = calls[r].2 + ttl;
+                }
+            }
+            if until > now {
+                alive += 1;
+            }
+        }
+        counts.push(alive);
+    }
+    counts
+}
+
+fn run0(ttl: i32, calls: Vec[(i64, String, i32)]) -> Vec[i32] {
+    let mut m = A0AuthenticationManager.new(ttl);
+    let mut counts: Vec[i32] = Vec.new();
+    for c in calls.iter() {
+        match c.0 {
+            0 => m.generate(c.1.clone(), c.2),
+            1 => m.renew(c.1.clone(), c.2),
+            _ => counts.push(m.count_unexpired_tokens(c.2)),
+        }
+    }
+    counts
+}
+
+fn run1(ttl: i32, calls: Vec[(i64, String, i32)]) -> Vec[i32] {
+    let mut m = A1AuthenticationManager.new(ttl);
+    let mut counts: Vec[i32] = Vec.new();
+    for c in calls.iter() {
+        match c.0 {
+            0 => m.generate(c.1.clone(), c.2),
+            1 => m.renew(c.1.clone(), c.2),
+            _ => counts.push(m.count_unexpired_tokens(c.2)),
+        }
+    }
+    counts
+}
+
+fn run2(ttl: i32, calls: Vec[(i64, String, i32)]) -> Vec[i32] {
+    let mut m = A2AuthenticationManager.new(ttl);
+    let mut counts: Vec[i32] = Vec.new();
+    for c in calls.iter() {
+        match c.0 {
+            0 => m.generate(c.1.clone(), c.2),
+            1 => m.renew(c.1.clone(), c.2),
+            _ => counts.push(m.count_unexpired_tokens(c.2)),
+        }
+    }
+    counts
+}
+
+fn run3(ttl: i32, calls: Vec[(i64, String, i32)]) -> Vec[i32] {
+    let mut m = A3AuthenticationManager.new(ttl);
+    let mut counts: Vec[i32] = Vec.new();
+    for c in calls.iter() {
+        match c.0 {
+            0 => m.generate(c.1.clone(), c.2),
+            1 => m.renew(c.1.clone(), c.2),
+            _ => counts.push(m.count_unexpired_tokens(c.2)),
+        }
+    }
+    counts
+}
+
+fn run4(ttl: i32, calls: Vec[(i64, String, i32)]) -> Vec[i32] {
+    let mut m = A4AuthenticationManager.new(ttl);
+    let mut counts: Vec[i32] = Vec.new();
+    for c in calls.iter() {
+        match c.0 {
+            0 => m.generate(c.1.clone(), c.2),
+            1 => m.renew(c.1, c.2),
+            _ => counts.push(m.count_unexpired_tokens(c.2)),
+        }
+    }
+    counts
+}
+
+fn arm(i: i64, ttl: i32, calls: Vec[(i64, String, i32)]) -> Vec[i32] {
+    match i {
+        0 => run0(ttl, calls),
+        1 => run1(ttl, calls),
+        2 => run2(ttl, calls),
+        3 => run3(ttl, calls),
+        _ => run4(ttl, calls),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, ttl: i32, calls: Vec[(i64, String, i32)]) {
+    t.cases += 1;
+    let star = arm(0, ttl, calls);
+    for c in star.iter() {
+        t.check = (t.check * 31 + c) % 1000000007;
+    }
+    let want = literal(ttl, calls);
+    let shifted: Vec[(i64, String, i32)] = calls.iter().map(|c| (c.0, c.1.clone(), c.2 + 1000)).collect();
+    let doubled: Vec[(i64, String, i32)] = calls.iter().map(|c| (c.0, c.1.clone(), 2 * c.2)).collect();
+    let made: Set[String] = calls.iter().filter(|c| c.0 == 0).map(|c| c.1.clone()).collect();
+    let known: Vec[(i64, String, i32)] = calls.iter().filter(|c| c.0 != 1 or made.contains(c.1)).cloned().collect();
+    for i in 0..5 {
+        let what = f"arm {i} on {ttl} {calls}";
+        let got = arm(i, ttl, calls);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: every time 1000 seconds later gives the same counts
+        expect(mut t, 2, arm(i, ttl, shifted) == got, f"P2 {what}");
+        // P3: every time and the time to live doubled give the same counts
+        expect(mut t, 3, arm(i, 2 * ttl, doubled) == got, f"P3 {what}");
+        // P4: the renewals of tokens never made, left out, change nothing
+        expect(mut t, 4, arm(i, ttl, known) == got, f"P4 {what}");
+        // P5: a time to live one second longer never lowers a count
+        let longer = arm(i, ttl + 1, calls);
+        expect(mut t, 5, (0..got.len()).all(|k| longer[k] >= got[k]), f"P5 {what}");
+        // P6: the ★ arm's counts
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's example, the edges, two runs of 300 calls, and 1997
+    // random runs of 1 to 40 calls. Every case is drawn before any arm
+    // answers.
+    let mut cases: Vec[(i32, Vec[(i64, String, i32)])] = Vec.new();
+    cases.push((5i32, [(1, "aaa", 1), (0, "aaa", 2), (2, "", 6), (0, "bbb", 7), (1, "aaa", 8), (1, "bbb", 10), (2, "", 15)].iter().map(|c| (c.0, c.1.to_string(), c.2)).collect()));
+    cases.push((5i32, [(0, "a", 1), (2, "", 5), (1, "a", 6), (2, "", 7), (0, "b", 8), (1, "b", 12), (1, "zz", 13), (2, "", 16), (2, "", 17)].iter().map(|c| (c.0, c.1.to_string(), c.2)).collect()));
+    let mut seed = 17971;
+    for _ in 0..2 {
+        let ttl = 1 + next_random(mut seed) % 500;
+        cases.push((ttl as i32, random_calls(mut seed, 300, 10)));
+    }
+    for _ in 0..1996 {
+        let ttl = 1 + next_random(mut seed) % 30;
+        let n = 1 + next_random(mut seed) % 40;
+        cases.push((ttl as i32, random_calls(mut seed, n, 10)));
+    }
+    for j in 0..cases.len() {
+        let (ttl, calls) = cases[j].clone();
+        check_case(mut t, ttl, calls);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

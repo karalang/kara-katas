@@ -1,0 +1,134 @@
+// LeetCode #1797: Design Authentication Manager -- a `Map` and a queue of
+// expiries. The clock only moves forward, so every expiry set is later than
+// the one before and the queue stays in order: a count first drops every
+// expired entry from its front, removing the token from the map unless a
+// renewal has moved it since, and the map's size is the answer. O(1) a
+// call, amortized.
+
+struct AuthenticationManager {
+    ttl: i32,
+    expiry: Map[String, i32],
+    order: VecDeque[(i32, String)],
+}
+
+impl AuthenticationManager {
+    fn new(time_to_live: i32) -> AuthenticationManager {
+        AuthenticationManager { ttl: time_to_live, expiry: Map.new(), order: VecDeque.new() }
+    }
+
+    fn set(mut ref self, token_id: own String, until: i32) {
+        self.expiry[token_id.clone()] = until;
+        self.order.push_back((until, token_id));
+    }
+
+    fn generate(mut ref self, token_id: own String, current_time: i32) {
+        self.set(token_id, current_time + self.ttl);
+    }
+
+    fn renew(mut ref self, token_id: own String, current_time: i32) {
+        if self.expiry.get(token_id).is_some_and(|e| e > current_time) {
+            self.set(token_id, current_time + self.ttl);
+        }
+    }
+
+    fn count_unexpired_tokens(mut ref self, current_time: i32) -> i32 {
+        while self.order.len() > 0 and self.order[0].0 <= current_time {
+            let (until, token) = self.order.pop_front().unwrap();
+            if self.expiry[token] == until {
+                self.expiry.remove(token);
+            }
+        }
+        self.expiry.len() as i32
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the k-th token name: k in base 26, the letters a to z for its digits
+fn name(k: i64) -> String {
+    let mut s = String.new();
+    let mut k = k;
+    loop {
+        s.push("abcdefghijklmnopqrstuvwxyz".chars().nth(k % 26).unwrap());
+        k /= 26;
+        if k == 0 {
+            break;
+        }
+    }
+    s
+}
+
+// `calls` random calls on a manager whose tokens live 1 to `life`
+// seconds, the clock moving 1 to `step` seconds a call: 0 to 3 in 10 make
+// a new token, 4 to 7 renew one made before or one never made, and the
+// rest count. The counts folded into the checksum.
+fn run(calls: i64, life: i64, step: i64, seed: mut ref i64, check: mut ref i64) {
+    let ttl = 1 + next_random(mut seed) % life;
+    let mut m = AuthenticationManager.new(ttl as i32);
+    let mut made = 0;
+    let mut now = 0;
+    for _ in 0..calls {
+        now += 1 + next_random(mut seed) % step;
+        let pick = next_random(mut seed) % 10;
+        if pick < 4 {
+            m.generate(name(made), now as i32);
+            made += 1;
+        } else if pick < 8 {
+            m.renew(name(next_random(mut seed) % (made + 2)), now as i32);
+        } else {
+            *check = (*check * 31 + m.count_unexpired_tokens(now as i32)) % 1000000007;
+        }
+    }
+}
+
+fn main() {
+    // LeetCode's example
+    let mut m = AuthenticationManager.new(5);
+    m.renew("aaa", 1);
+    m.generate("aaa", 2);
+    let first = m.count_unexpired_tokens(6);
+    m.generate("bbb", 7);
+    m.renew("aaa", 8);
+    m.renew("bbb", 10);
+    println(f"{first} {m.count_unexpired_tokens(15)}");
+    // the edges: a token counted the second before it expires and not at
+    // the second it does; a renewal at that second ignored; a renewal
+    // that moves the expiry; a renewal of a token never made
+    let mut m = AuthenticationManager.new(5);
+    m.generate("a", 1);
+    let before = m.count_unexpired_tokens(5);
+    m.renew("a", 6);
+    let after = m.count_unexpired_tokens(7);
+    m.generate("b", 8);
+    m.renew("b", 12);
+    m.renew("zz", 13);
+    println(f"{before} {after} {m.count_unexpired_tokens(16)} {m.count_unexpired_tokens(17)}");
+    // the constraints' most: 2000 calls with tokens that live 10^8
+    // seconds, 1000 made one a second then 1000 counts; and 2000 calls
+    // with the clock moving up to 50000 seconds a call
+    let mut m = AuthenticationManager.new(100000000);
+    for k in 0..1000 {
+        m.generate(name(k), (k + 1) as i32);
+    }
+    let mut total = 0;
+    for k in 0..1000 {
+        total += m.count_unexpired_tokens((100000000 - 999 + k) as i32);
+    }
+    let mut seed = 1797;
+    let mut wide = 0;
+    run(2000, 100000000, 50000, mut seed, mut wide);
+    println(f"the most: {total} {wide}");
+    // 3000 random runs of 1 to 40 calls, tokens that live 1 to 30
+    // seconds, the clock moving 1 to 10 seconds a call
+    let mut check = 0;
+    for _ in 0..3000 {
+        let calls = 1 + next_random(mut seed) % 40;
+        run(calls, 30, 10, mut seed, mut check);
+    }
+    println(f"3000 random runs: checksum {check}");
+}
