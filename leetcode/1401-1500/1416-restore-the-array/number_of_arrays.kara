@@ -1,0 +1,74 @@
+fn number_of_arrays(s: String, k: i32) -> i32 {
+    // ways[i] counts the arrays the digits from i on can be read as: each
+    // number starting at i that has no leading 0 and is at most k, which
+    // is at most 10 digits long, followed by any array of the rest
+    let modulus: i64 = 1000000007;
+    let digits = s.bytes();
+    let n = digits.len();
+    let mut ways: Vec[i64] = Vec.filled(n + 1, 0);
+    ways[n] = 1;
+    for i in (0..n).rev() {
+        if digits[i] == b'0' {
+            continue;
+        }
+        let mut number: i64 = 0;
+        let mut j = i;
+        while j < n {
+            number = number * 10 + (digits[j] - b'0');
+            if number > k {
+                break;
+            }
+            ways[i] = (ways[i] + ways[j + 1]) % modulus;
+            j += 1;
+        }
+    }
+    ways[0] as i32
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n digits, a 0 one time in `zeros`, and never a 0 first
+fn drawn(n: i64, zeros: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for i in 0..n {
+        let zero = i > 0 and next_random(mut seed) % zeros == 0;
+        let d = if zero { 0 } else { 1 + next_random(mut seed) % 9 };
+        s.push_str(f"{d}");
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's five examples, and three more
+    let firsts: Vec[String] = [("1000", 10000), ("1000", 10), ("1317", 2000), ("2020", 30), ("1234567890", 90), ("1", 1), ("10", 9), ("1111", 1)]
+        .iter()
+        .map(|(s, k)| f"{number_of_arrays(s.to_string(), k)}")
+        .collect();
+    println(firsts.join(" "));
+    // the constraints' most: 10^5 ones, and 10^5 drawn digits, with k at
+    // 10^9 and at 1000
+    let mut seed = 1416;
+    let ones = "1".repeat(100000);
+    let big = drawn(100000, 10, mut seed);
+    println(f"10^5 digits: {number_of_arrays(ones, 1000000000)} {number_of_arrays(ones, 1000)} {number_of_arrays(big, 1000000000)} {number_of_arrays(big, 1000)}");
+    // 2000 random cases of 1 to 40 digits, k up to 10, 10^4 or 10^9
+    let mut check: i64 = 0;
+    let mut none = 0;
+    for i in 0..2000 {
+        let n = 1 + next_random(mut seed) % 40;
+        let s = drawn(n, 2 + next_random(mut seed) % 8, mut seed);
+        let top = [10, 10000, 1000000000][i % 3];
+        let k = 1 + next_random(mut seed) % top;
+        let x = number_of_arrays(s, k as i32);
+        if x == 0 {
+            none += 1;
+        }
+        check = (check * 131 + x) % 1000000007;
+    }
+    println(f"2000 random cases: {none} with no array, checksum {check}");
+}
