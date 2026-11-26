@@ -1,0 +1,83 @@
+// LeetCode #1467: Probability of a Two Boxes Having The Same Number of
+// Distinct Balls -- a table over the colours, of the shuffles by the first
+// box's count and the difference of the two boxes' colours
+
+fn get_probability(balls: Vec[i32]) -> f64 {
+    let total: i64 = balls.iter().sum();
+    let half = total / 2;
+    let k = balls.len();
+    // pascal[n][j] is n choose j
+    let mut pascal: Vec[Vec[i64]] = Vec.filled(total + 1, Vec.filled(total + 1, 0));
+    for n in 0..=total {
+        pascal[n][0] = 1;
+        for j in 1..=n {
+            pascal[n][j] = pascal[n - 1][j - 1] + if j < n { pascal[n - 1][j] } else { 0 };
+        }
+    }
+    // ways[c][d + k]: the shuffles of the colours so far with c balls in
+    // the first box, which holds d more colours than the second
+    let mut ways: Vec[Vec[i64]] = Vec.filled(half + 1, Vec.filled(2 * k + 1, 0));
+    ways[0][k] = 1;
+    for b in balls.iter() {
+        let n = b as i64;
+        let mut next: Vec[Vec[i64]] = Vec.filled(half + 1, Vec.filled(2 * k + 1, 0));
+        for c in 0..=half {
+            for d in 0..2 * k + 1 {
+                let w = ways[c][d];
+                if w == 0 {
+                    continue;
+                }
+                for j in 0..=n.min(half - c) {
+                    // all of them in the second box, all in the first, or
+                    // split between the two
+                    let shift = if j == 0 { -1 } else if j == n { 1 } else { 0 };
+                    next[c + j][d + shift] += w * pascal[n][j];
+                }
+            }
+        }
+        ways = next;
+    }
+    ways[half][k] as f64 / pascal[total][half] as f64
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// 1 to 8 colours of 1 to 6 balls each, redrawn until the count is even
+fn draw(seed: mut ref i64) -> Vec[i32] {
+    loop {
+        let k = 1 + next_random(mut seed) % 8;
+        let balls: Vec[i32] = (0..k).map(|_| (1 + next_random(mut seed) % 6) as i32).collect();
+        if balls.iter().sum() % 2 == 0 {
+            return balls;
+        }
+    }
+}
+
+fn main() {
+    // LeetCode's three examples, and three more: one colour of two balls,
+    // two colours of one ball each, and the constraints' most, 8 colours
+    // of 6 balls
+    let e1 = get_probability([1, 1].to_vec());
+    let e2 = get_probability([2, 1, 1].to_vec());
+    let e3 = get_probability([1, 2, 1, 2].to_vec());
+    let e4 = get_probability([2].to_vec());
+    let e5 = get_probability([3, 1].to_vec());
+    let e6 = get_probability(Vec.filled(8, 6));
+    println(f"{e1} {e2} {e3} {e4} {e5} {e6}");
+    // 300 random sets of balls, their probabilities summed and the
+    // millionths folded into a checksum
+    let mut seed = 1467;
+    let mut total = 0.0;
+    let mut check = 0;
+    for _ in 0..300 {
+        let p = get_probability(draw(mut seed));
+        total += p;
+        check = (check * 31 + (p * 1000000.0).round() as i64) % 1000000007;
+    }
+    println(f"300 random sets: sum {total}, checksum {check}");
+}

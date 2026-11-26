@@ -1,0 +1,81 @@
+// LeetCode #1467: Probability of a Two Boxes Having The Same Number of
+// Distinct Balls -- a Rust solution as LeetCode's Rust users write it: a
+// Pascal triangle of `f64` in a `vec![vec![0.0; 49]; 49]`, a nested `fn
+// dfs` taking `&[i32]` and `&Vec<Vec<f64>>` with `usize` indices, and the
+// count of good splits over all of them, carried to Kāra by `karac fix`
+
+struct Solution {}
+
+fn dfs(balls: Slice[i32], comb: ref Vec[Vec[f64]], i: i64, left: i32, right: i32, a: i32, b: i32) -> f64 {
+    if i == balls.len() {
+        return if left == right and a == b { 1.0 } else { 0.0 };
+    }
+    let n = balls[i] as i64;
+    let mut res = 0.0;
+    for j in 0..=n {
+        let na = a + if j > 0 { 1 } else { 0 };
+        let nb = b + if j < n { 1 } else { 0 };
+        res += comb[n][j] * dfs(balls, comb, i + 1, left + j as i32, right + (n - j) as i32, na, nb);
+    }
+    res
+}
+
+impl Solution {
+    pub fn get_probability(balls: Vec[i32]) -> f64 {
+        let mut comb = Vec.filled(49, Vec.filled(49, 0.0));
+        for i in 0..49 {
+            comb[i][0] = 1.0;
+            for j in 1..=i {
+                comb[i][j] = comb[i - 1][j - 1] + comb[i - 1][j];
+            }
+        }
+        let total: i32 = balls.iter().sum();
+        dfs(balls, comb, 0, 0, 0, 0, 0) / comb[total][total / 2]
+    }
+}
+
+fn get_probability(balls: Vec[i32]) -> f64 {
+    Solution.get_probability(balls)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// 1 to 8 colours of 1 to 6 balls each, redrawn until the count is even
+fn draw(seed: mut ref i64) -> Vec[i32] {
+    loop {
+        let k = 1 + next_random(mut seed) % 8;
+        let balls: Vec[i32] = (0..k).map(|_| (1 + next_random(mut seed) % 6) as i32).collect();
+        if balls.iter().sum() % 2 == 0 {
+            return balls;
+        }
+    }
+}
+
+fn main() {
+    // LeetCode's three examples, and three more: one colour of two balls,
+    // two colours of one ball each, and the constraints' most, 8 colours
+    // of 6 balls
+    let e1 = get_probability([1, 1].to_vec());
+    let e2 = get_probability([2, 1, 1].to_vec());
+    let e3 = get_probability([1, 2, 1, 2].to_vec());
+    let e4 = get_probability([2].to_vec());
+    let e5 = get_probability([3, 1].to_vec());
+    let e6 = get_probability(Vec.filled(8, 6));
+    println(f"{e1} {e2} {e3} {e4} {e5} {e6}");
+    // 300 random sets of balls, their probabilities summed and the
+    // millionths folded into a checksum
+    let mut seed = 1467;
+    let mut total = 0.0;
+    let mut check = 0;
+    for _ in 0..300 {
+        let p = get_probability(draw(mut seed));
+        total += p;
+        check = (check * 31 + (p * 1000000.0).round() as i64) % 1000000007;
+    }
+    println(f"300 random sets: sum {total}, checksum {check}");
+}

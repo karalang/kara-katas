@@ -1,0 +1,355 @@
+// LeetCode #1467: Probability of a Two Boxes Having The Same Number of
+// Distinct Balls -- differential test of the five arms against the
+// statement read literally, with five more properties.
+
+// ---- get_probability.kara ----
+fn a0_choose(n: i64, k: i64) -> i64 {
+    let mut c = 1;
+    for i in 0..k {
+        c = c * (n - i) / (i + 1);
+    }
+    c
+}
+
+// the shuffles that put `first` balls into the first box and leave the
+// two boxes with as many colours each, over colours `i` onward, given the
+// colours each box holds so far
+fn a0_ways(balls: Vec[i32], i: i64, first: i64, a: i64, b: i64) -> i64 {
+    if i == balls.len() {
+        return if first == 0 and a == b { 1 } else { 0 };
+    }
+    let n = balls[i] as i64;
+    let mut total = 0;
+    for j in 0..=n.min(first) {
+        let a2 = if j > 0 { a + 1 } else { a };
+        let b2 = if j < n { b + 1 } else { b };
+        total += a0_choose(n, j) * a0_ways(balls, i + 1, first - j, a2, b2);
+    }
+    total
+}
+
+fn a0_get_probability(balls: Vec[i32]) -> f64 {
+    // a shuffle is fixed by which places of the first half each ball
+    // takes, so the balls of one colour split j to the first box in
+    // C(n, j) ways; the wanted shuffles over all C(total, total / 2)
+    let total = balls.iter().sum() as i64;
+    let good = a0_ways(balls, 0, total / 2, 0, 0);
+    good as f64 / a0_choose(total, total / 2) as f64
+}
+
+// ---- get_probability_table.kara ----
+fn a1_get_probability(balls: Vec[i32]) -> f64 {
+    let total: i64 = balls.iter().sum();
+    let half = total / 2;
+    let k = balls.len();
+    // pascal[n][j] is n choose j
+    let mut pascal: Vec[Vec[i64]] = Vec.filled(total + 1, Vec.filled(total + 1, 0));
+    for n in 0..=total {
+        pascal[n][0] = 1;
+        for j in 1..=n {
+            pascal[n][j] = pascal[n - 1][j - 1] + if j < n { pascal[n - 1][j] } else { 0 };
+        }
+    }
+    // ways[c][d + k]: the shuffles of the colours so far with c balls in
+    // the first box, which holds d more colours than the second
+    let mut ways: Vec[Vec[i64]] = Vec.filled(half + 1, Vec.filled(2 * k + 1, 0));
+    ways[0][k] = 1;
+    for b in balls.iter() {
+        let n = b as i64;
+        let mut next: Vec[Vec[i64]] = Vec.filled(half + 1, Vec.filled(2 * k + 1, 0));
+        for c in 0..=half {
+            for d in 0..2 * k + 1 {
+                let w = ways[c][d];
+                if w == 0 {
+                    continue;
+                }
+                for j in 0..=n.min(half - c) {
+                    // all of them in the second box, all in the first, or
+                    // split between the two
+                    let shift = if j == 0 { -1 } else if j == n { 1 } else { 0 };
+                    next[c + j][d + shift] += w * pascal[n][j];
+                }
+            }
+        }
+        ways = next;
+    }
+    ways[half][k] as f64 / pascal[total][half] as f64
+}
+
+// ---- get_probability_memo.kara ----
+fn a2_choose(n: i64, k: i64) -> i64 {
+    if k == 0 { 1 } else { a2_choose(n - 1, k - 1) * n / k }
+}
+
+fn a2_count(balls: Vec[i32], memo: mut ref Map[(i64, i64, i64), i64], i: i64, left: i64, diff: i64) -> i64 {
+    if i == balls.len() {
+        return if left == 0 and diff == 0 { 1 } else { 0 };
+    }
+    if let Some(w) = memo.get((i, left, diff)) {
+        return w;
+    }
+    let n = balls[i] as i64;
+    let mut total = 0;
+    for j in 0..=n.min(left) {
+        let shift = if j == 0 { -1 } else if j == n { 1 } else { 0 };
+        total += a2_choose(n, j) * a2_count(balls, mut memo, i + 1, left - j, diff + shift);
+    }
+    memo.insert((i, left, diff), total);
+    total
+}
+
+fn a2_get_probability(balls: Vec[i32]) -> f64 {
+    let total: i64 = balls.iter().sum();
+    let mut memo: Map[(i64, i64, i64), i64] = Map.new();
+    let good = a2_count(balls, mut memo, 0, total / 2, 0);
+    good as f64 / a2_choose(total, total / 2) as f64
+}
+
+// ---- get_probability_halves.kara ----
+fn a3_choose(n: i64, k: i64) -> i64 {
+    (0..k).fold(1, |c, i| c * (n - i) / (i + 1))
+}
+
+// every split of `colours`, tallied by (balls in the first box, colours
+// in the first box less colours in the second) with its shuffles
+fn a3_tally(colours: Vec[i32]) -> Map[(i64, i64), i64] {
+    let mut seen: Map[(i64, i64), i64] = Map.new();
+    seen.insert((0, 0), 1);
+    for b in colours.iter() {
+        let n = b as i64;
+        let mut next: Map[(i64, i64), i64] = Map.new();
+        for ((c, d), w) in seen.iter() {
+            for j in 0..=n {
+                let shift = if j == 0 { -1 } else if j == n { 1 } else { 0 };
+                *next.entry((c + j, d + shift)).or_insert(0) += w * a3_choose(n, j);
+            }
+        }
+        seen = next;
+    }
+    seen
+}
+
+fn a3_get_probability(balls: Vec[i32]) -> f64 {
+    let total: i64 = balls.iter().sum();
+    let half = total / 2;
+    let mid = balls.len() / 2;
+    let left = a3_tally(balls[..mid].to_vec());
+    let right = a3_tally(balls[mid..].to_vec());
+    // a split of the left half pairs with one of the right half that fills
+    // the first box and evens the colours
+    let mut good = 0;
+    for ((c, d), w) in left.iter() {
+        if let Some(v) = right.get((half - c, -d)) {
+            good += w * v;
+        }
+    }
+    good as f64 / a3_choose(total, half) as f64
+}
+
+// ---- get_probability_solution.kara ----
+struct A4Solution {}
+
+fn a4_dfs(balls: Slice[i32], comb: ref Vec[Vec[f64]], i: i64, left: i32, right: i32, a: i32, b: i32) -> f64 {
+    if i == balls.len() {
+        return if left == right and a == b { 1.0 } else { 0.0 };
+    }
+    let n = balls[i] as i64;
+    let mut res = 0.0;
+    for j in 0..=n {
+        let na = a + if j > 0 { 1 } else { 0 };
+        let nb = b + if j < n { 1 } else { 0 };
+        res += comb[n][j] * a4_dfs(balls, comb, i + 1, left + j as i32, right + (n - j) as i32, na, nb);
+    }
+    res
+}
+
+impl A4Solution {
+    pub fn a4_get_probability(balls: Vec[i32]) -> f64 {
+        let mut comb = Vec.filled(49, Vec.filled(49, 0.0));
+        for i in 0..49 {
+            comb[i][0] = 1.0;
+            for j in 1..=i {
+                comb[i][j] = comb[i - 1][j - 1] + comb[i - 1][j];
+            }
+        }
+        let total: i32 = balls.iter().sum();
+        a4_dfs(balls, comb, 0, 0, 0, 0, 0) / comb[total][total / 2]
+    }
+}
+
+fn a4_get_probability(balls: Vec[i32]) -> f64 {
+    A4Solution.a4_get_probability(balls)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// 1 to `colours` colours of 1 to `most` balls each, redrawn until the
+// count is even
+fn draw(seed: mut ref i64, colours: i64, most: i64) -> Vec[i32] {
+    loop {
+        let k = 1 + next_random(mut seed) % colours;
+        let balls: Vec[i32] = (0..k).map(|_| (1 + next_random(mut seed) % most) as i32).collect();
+        if balls.iter().sum() % 2 == 0 {
+            return balls;
+        }
+    }
+}
+
+// `values` shuffled
+fn shuffled(seed: mut ref i64, values: Vec[i32]) -> Vec[i32] {
+    let mut out = values.clone();
+    for i in (1..out.len()).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        out.swap(i, j);
+    }
+    out
+}
+
+// the statement read literally: the balls told apart and shuffled, the
+// first half into the first box, so every set of half the balls is as
+// likely as any other; each such set tried, and the share of them that
+// leaves the boxes with as many colours each
+fn literal(balls: Vec[i32]) -> f64 {
+    let mut colour: Vec[i64] = Vec.new();
+    for (c, n) in balls.iter().enumerate() {
+        for _ in 0..n {
+            colour.push(c);
+        }
+    }
+    let total = colour.len();
+    let k = balls.len();
+    let mut sets = 0;
+    let mut good = 0;
+    for mask in 0..1 << total {
+        if (0..total).filter(|i| (mask >> i) & 1 == 1).count() != total / 2 {
+            continue;
+        }
+        sets += 1;
+        let mut first = Vec.filled(k, false);
+        let mut second = Vec.filled(k, false);
+        for i in 0..total {
+            if (mask >> i) & 1 == 1 {
+                first[colour[i]] = true;
+            } else {
+                second[colour[i]] = true;
+            }
+        }
+        if first.iter().filter(|x| x).count() == second.iter().filter(|x| x).count() {
+            good += 1;
+        }
+    }
+    good as f64 / sets as f64
+}
+
+fn arm(i: i64, balls: Vec[i32]) -> f64 {
+    match i {
+        0 => a0_get_probability(balls),
+        1 => a1_get_probability(balls),
+        2 => a2_get_probability(balls),
+        3 => a3_get_probability(balls),
+        _ => a4_get_probability(balls),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+// n choose k, exactly
+fn choose(n: i64, k: i64) -> i64 {
+    let mut c = 1;
+    for i in 0..k {
+        c = c * (n - i) / (i + 1);
+    }
+    c
+}
+
+fn check_case(t: mut ref Tally, seed: mut ref i64, balls: Vec[i32]) {
+    t.cases += 1;
+    let star = arm(0, balls);
+    t.check = (t.check * 31 + (star * 1000000.0).round() as i64) % 1000000007;
+    let total: i64 = balls.iter().sum();
+    let want = if total <= 12 { Some(literal(balls)) } else { None };
+    let back: Vec[i32] = balls.iter().rev().collect();
+    let mixed = shuffled(mut seed, balls);
+    let sets = choose(total, total / 2) as f64;
+    let sure = balls.len() == 1 or balls.iter().all(|b| b == 1);
+    for i in 0..5 {
+        let what = f"arm {i} on {balls}";
+        let got = arm(i, balls);
+        // P1: the statement read literally, while there are at most 12
+        // balls
+        if let Some(w) = want {
+            expect(mut t, 1, got == w, f"P1 {what}");
+        }
+        // P2: the colours reversed give the same answer
+        expect(mut t, 2, arm(i, back) == got, f"P2 {what}");
+        // P3: the colours shuffled give the same answer
+        expect(mut t, 3, arm(i, mixed) == got, f"P3 {what}");
+        // P4: the answer is a whole number of the C(total, total / 2)
+        // equally likely splits
+        let splits = got * sets;
+        expect(mut t, 4, (splits - splits.round()).abs() < 0.000001, f"P4 {what}");
+        // P5: the answer lies from 0 to 1, and is 1 for a single colour or
+        // for colours of one ball each
+        expect(mut t, 5, got >= 0.0 and got <= 1.0 and (not sure or got == 1.0), f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: one colour of two balls, of 48
+    // balls, two colours that cannot split evenly, eight colours of one
+    // ball, a colour of six beside one of two, and the constraints' most.
+    // Every case is drawn before any arm answers.
+    let mut cases: Vec[Vec[i32]] = [
+        [1, 1].to_vec(),
+        [2, 1, 1].to_vec(),
+        [1, 2, 1, 2].to_vec(),
+        [2].to_vec(),
+        [3, 1].to_vec(),
+        Vec.filled(8, 1),
+        [6, 2].to_vec(),
+        [6, 6, 6, 6, 6, 6, 6, 6].to_vec(),
+    ];
+    let mut seed = 14671;
+    // 1995 random sets: 1500 of 1 to 6 colours of 1 to 3 balls, 495 of 1
+    // to 8 colours of 1 to 6 balls
+    for c in 0..1995 {
+        if c < 1500 {
+            cases.push(draw(mut seed, 6, 3));
+        } else {
+            cases.push(draw(mut seed, 8, 6));
+        }
+    }
+    for j in 0..cases.len() {
+        let balls = cases[j].clone();
+        check_case(mut t, mut seed, balls);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

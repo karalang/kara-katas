@@ -1,0 +1,80 @@
+// LeetCode #1467: Probability of a Two Boxes Having The Same Number of
+// Distinct Balls -- a depth-first search over how many of each colour go
+// into the first box, each choice weighted by its number of shuffles
+
+// n choose k, exactly, in i64
+fn choose(n: i64, k: i64) -> i64 {
+    let mut c = 1;
+    for i in 0..k {
+        c = c * (n - i) / (i + 1);
+    }
+    c
+}
+
+// the shuffles that put `first` balls into the first box and leave the
+// two boxes with as many colours each, over colours `i` onward, given the
+// colours each box holds so far
+fn ways(balls: Vec[i32], i: i64, first: i64, a: i64, b: i64) -> i64 {
+    if i == balls.len() {
+        return if first == 0 and a == b { 1 } else { 0 };
+    }
+    let n = balls[i] as i64;
+    let mut total = 0;
+    for j in 0..=n.min(first) {
+        let a2 = if j > 0 { a + 1 } else { a };
+        let b2 = if j < n { b + 1 } else { b };
+        total += choose(n, j) * ways(balls, i + 1, first - j, a2, b2);
+    }
+    total
+}
+
+fn get_probability(balls: Vec[i32]) -> f64 {
+    // a shuffle is fixed by which places of the first half each ball
+    // takes, so the balls of one colour split j to the first box in
+    // C(n, j) ways; the wanted shuffles over all C(total, total / 2)
+    let total = balls.iter().sum() as i64;
+    let good = ways(balls, 0, total / 2, 0, 0);
+    good as f64 / choose(total, total / 2) as f64
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// 1 to 8 colours of 1 to 6 balls each, redrawn until the count is even
+fn draw(seed: mut ref i64) -> Vec[i32] {
+    loop {
+        let k = 1 + next_random(mut seed) % 8;
+        let balls: Vec[i32] = (0..k).map(|_| (1 + next_random(mut seed) % 6) as i32).collect();
+        if balls.iter().sum() % 2 == 0 {
+            return balls;
+        }
+    }
+}
+
+fn main() {
+    // LeetCode's three examples, and three more: one colour of two balls,
+    // two colours of one ball each, and the constraints' most, 8 colours
+    // of 6 balls
+    let e1 = get_probability([1, 1].to_vec());
+    let e2 = get_probability([2, 1, 1].to_vec());
+    let e3 = get_probability([1, 2, 1, 2].to_vec());
+    let e4 = get_probability([2].to_vec());
+    let e5 = get_probability([3, 1].to_vec());
+    let e6 = get_probability(Vec.filled(8, 6));
+    println(f"{e1} {e2} {e3} {e4} {e5} {e6}");
+    // 300 random sets of balls, their probabilities summed and the
+    // millionths folded into a checksum
+    let mut seed = 1467;
+    let mut total = 0.0;
+    let mut check = 0;
+    for _ in 0..300 {
+        let p = get_probability(draw(mut seed));
+        total += p;
+        check = (check * 31 + (p * 1000000.0).round() as i64) % 1000000007;
+    }
+    println(f"300 random sets: sum {total}, checksum {check}");
+}
