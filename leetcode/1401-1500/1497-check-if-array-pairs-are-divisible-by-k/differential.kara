@@ -1,0 +1,236 @@
+// LeetCode #1497: Check If Array Pairs Are Divisible by k -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- can_arrange.kara ----
+fn a0_can_arrange(arr: Vec[i32], k: i32) -> bool {
+    let mut count: Vec[i64] = Vec.filled(k, 0);
+    for x in arr.iter() {
+        count[(x % k + k) % k] += 1;
+    }
+    if count[0] % 2 != 0 {
+        return false;
+    }
+    for r in 1..k {
+        if count[r] != count[k - r] {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- can_arrange_sort.kara ----
+fn a1_can_arrange(arr: Vec[i32], k: i32) -> bool {
+    let mut rest: Vec[i32] = arr.iter().map(|x| x.rem_euclid(k)).collect();
+    rest.sort();
+    let zeros = rest.iter().take_while(|r| r == 0).count();
+    if zeros % 2 != 0 {
+        return false;
+    }
+    let mut lo = zeros;
+    let mut hi = rest.len() - 1;
+    while lo < hi {
+        if rest[lo] + rest[hi] != k {
+            return false;
+        }
+        lo += 1;
+        hi -= 1;
+    }
+    true
+}
+
+// ---- can_arrange_map.kara ----
+fn a2_can_arrange(arr: Vec[i32], k: i32) -> bool {
+    let mut waiting: Map[i32, i64] = Map.new();
+    let mut unpaired = 0;
+    for x in arr.iter() {
+        let r = x.rem_euclid(k);
+        let partner = (k - r) % k;
+        let left = waiting.get(partner) ?? 0;
+        if left > 0 {
+            waiting.insert(partner, left - 1);
+            unpaired -= 1;
+        } else {
+            waiting.insert(r, (waiting.get(r) ?? 0) + 1);
+            unpaired += 1;
+        }
+    }
+    unpaired == 0
+}
+
+// ---- can_arrange_fold.kara ----
+fn a3_can_arrange(arr: Vec[i32], k: i32) -> bool {
+    let count: Vec[i64] = arr.iter().fold(Vec.filled(k, 0), |c, x| {
+        let mut c = c;
+        c[x.rem_euclid(k)] += 1;
+        c
+    });
+    let ups = (0..k).map(|r| count[r]);
+    let downs = (0..k).map(|r| count[(k - r) % k]);
+    ups.zip(downs).enumerate().all(|(r, (a, b))| if r as i32 == (k - r as i32) % k { a % 2 == 0 } else { a == b })
+}
+
+// ---- can_arrange_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn can_arrange(arr: Vec[i32], k: i32) -> bool {
+        let mut freq = Vec.filled(k, 0);
+        for num in arr.iter() {
+            let rem = ((num % k) + k) % k;
+            freq[rem as usize] += 1;
+        }
+        if freq[0] % 2 != 0 {
+            return false;
+        }
+        for i in 1..=(k / 2) as usize {
+            if freq[i] != freq[k as usize - i] {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+fn a4_can_arrange(arr: Vec[i32], k: i32) -> bool {
+    A4Solution.can_arrange(arr, k)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_values(seed: mut ref i64, n: i64, k: i64, spread: i64) -> Vec[i32] {
+    let mut arr: Vec[i32] = Vec.new();
+    for i in 0..n {
+        let x = next_random(mut seed) % (2 * spread + 1) - spread;
+        if i % 2 == 1 and next_random(mut seed) % 8 != 0 {
+            let want = (k - (arr[i - 1] % k + k) % k) % k;
+            let moved = x - (x % k + k) % k + want;
+            arr.push(if moved > spread { moved - k } else if moved < -spread { moved + k } else { moved } as i32);
+        } else {
+            arr.push(x as i32);
+        }
+    }
+    arr
+}
+
+// whether the values not yet `used` can all be paired, each pair's sum
+// divisible by k: the first of them tried with each of the others
+fn pairs_up(arr: Vec[i32], k: i64, used: mut ref Vec[bool]) -> bool {
+    let Some(first) = (0..arr.len()).find(|i| not used[i]) else {
+        return true;
+    };
+    used[first] = true;
+    for j in first + 1..arr.len() {
+        if not used[j] and (arr[first] as i64 + arr[j] as i64) % k == 0 {
+            used[j] = true;
+            if pairs_up(arr, k, mut used) {
+                return true;
+            }
+            used[j] = false;
+        }
+    }
+    used[first] = false;
+    false
+}
+
+// the statement read literally: some way to split the values into pairs
+// whose sums k divides
+fn literal(arr: Vec[i32], k: i64) -> bool {
+    let mut used: Vec[bool] = Vec.filled(arr.len(), false);
+    pairs_up(arr, k, mut used)
+}
+
+fn arm(i: i64, arr: Vec[i32], k: i64) -> bool {
+    let k = k as i32;
+    match i {
+        0 => a0_can_arrange(arr, k),
+        1 => a1_can_arrange(arr, k),
+        2 => a2_can_arrange(arr, k),
+        3 => a3_can_arrange(arr, k),
+        _ => a4_can_arrange(arr, k),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, arr: Vec[i32], k: i64, shift: i64) {
+    t.cases += 1;
+    let want = literal(arr, k);
+    t.check = (t.check * 31 + if want { 2 } else { 1 }) % 1000000007;
+    let star = arm(0, arr, k);
+    let total: i64 = arr.iter().map(|x| x as i64).sum();
+    let reversed: Vec[i32] = arr.iter().rev().collect();
+    let moved: Vec[i32] = arr.iter().enumerate().map(|(i, x)| (x + k * ((i + shift) % 5 - 2)) as i32).collect();
+    let mut more = arr.clone();
+    more.push(shift as i32);
+    more.push(-shift as i32);
+    for i in 0..5 {
+        let what = f"arm {i} on {arr}, k {k}";
+        let got = arm(i, arr, k);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: values that pair up have a sum k divides
+        expect(mut t, 2, not got or total % k == 0, f"P2 {what}");
+        // P3: the values in reverse order pair as they do
+        expect(mut t, 3, arm(i, reversed, k) == got, f"P3 {what}");
+        // P4: each value moved by a multiple of k pairs as it does
+        expect(mut t, 4, arm(i, moved, k) == got, f"P4 {what}");
+        // P5: a value and its negative added pair as they do
+        expect(mut t, 5, arm(i, more, k) == got, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges. Every case is drawn before any arm
+    // answers.
+    let mut cases: Vec[(Vec[i32], i64)] = Vec.new();
+    cases.push(([1, 2, 3, 4, 5, 10, 6, 7, 8, 9], 5));
+    cases.push(([1, 2, 3, 4, 5, 6], 7));
+    cases.push(([1, 2, 3, 4, 5, 6], 10));
+    cases.push(([7, 3], 1));
+    cases.push(([-1, -4], 5));
+    cases.push(([-1, 6], 5));
+    cases.push(([3, 3], 6));
+    cases.push(([3, 0], 6));
+    cases.push(([-3, 3, -3, 3], 6));
+    let mut seed = 14971;
+    // 1991 random arrays of 2 to 12 values from -50 to 50, k from 1 to 10
+    for _ in 0..1991 {
+        let n = 2 * (1 + next_random(mut seed) % 6);
+        let k = 1 + next_random(mut seed) % 10;
+        cases.push((random_values(mut seed, n, k, 50), k));
+    }
+    for j in 0..cases.len() {
+        let (arr, k) = ref cases[j];
+        check_case(mut t, arr, k, next_random(mut seed) % 50);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

@@ -1,0 +1,78 @@
+// LeetCode #1497: Check If Array Pairs Are Divisible by k -- the remainder
+// counts built by one `fold`, then checked from both ends at once with
+// `zip`: count r against count k - r, the 0s and an even k's half against
+// themselves, so each must be even. O(n + k)
+
+fn can_arrange(arr: Vec[i32], k: i32) -> bool {
+    let count: Vec[i64] = arr.iter().fold(Vec.filled(k, 0), |c, x| {
+        let mut c = c;
+        c[x.rem_euclid(k)] += 1;
+        c
+    });
+    let ups = (0..k).map(|r| count[r]);
+    let downs = (0..k).map(|r| count[(k - r) % k]);
+    ups.zip(downs).enumerate().all(|(r, (a, b))| if r as i32 == (k - r as i32) % k { a % 2 == 0 } else { a == b })
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n values from -spread to spread, most of them then moved so that each
+// pairs with the one before it, so that about half the arrays can pair
+fn random_values(seed: mut ref i64, n: i64, k: i64, spread: i64) -> Vec[i32] {
+    let mut arr: Vec[i32] = Vec.new();
+    for i in 0..n {
+        let x = next_random(mut seed) % (2 * spread + 1) - spread;
+        if i % 2 == 1 and next_random(mut seed) % 8 != 0 {
+            // a partner for the one before: the same remainder made up to k
+            let want = (k - (arr[i - 1] % k + k) % k) % k;
+            let moved = x - (x % k + k) % k + want;
+            arr.push(if moved > spread { moved - k } else if moved < -spread { moved + k } else { moved } as i32);
+        } else {
+            arr.push(x as i32);
+        }
+    }
+    arr
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{can_arrange([1, 2, 3, 4, 5, 10, 6, 7, 8, 9], 5)} {can_arrange([1, 2, 3, 4, 5, 6], 7)} {can_arrange([1, 2, 3, 4, 5, 6], 10)}");
+    // the edges: k = 1; a pair of negatives; a negative with its positive
+    // partner; two halves of an even k; one half and one zero; the most
+    // and least values
+    println(f"{can_arrange([7, 3], 1)} {can_arrange([-1, -4], 5)} {can_arrange([-1, 6], 5)} {can_arrange([3, 3], 6)} {can_arrange([3, 0], 6)} {can_arrange([1000000000, -1000000000], 100000)}");
+    // the constraints' most: 100000 values with k = 100000, paired and with
+    // one moved; and 100000 random values
+    let mut seed = 1497;
+    let mut paired: Vec[i32] = Vec.new();
+    for _ in 0..50000 {
+        let x = (next_random(mut seed) * 30011 % 2000000001 - 1000000000) as i32;
+        paired.push(x);
+        // a partner with the opposite remainder, kept within the bounds
+        let shift = 100000 * (next_random(mut seed) % 5);
+        paired.push((if x > 0 { shift - x } else { -x - shift }) as i32);
+    }
+    let mut moved = paired.clone();
+    moved[777] += 1;
+    let mixed = random_values(mut seed, 100000, 99991, 1000000000);
+    println(f"100000 values: {can_arrange(paired, 100000)} {can_arrange(moved, 100000)} {can_arrange(mixed, 99991)}");
+    // 3000 random arrays of 2 to 20 values, k from 1 to 12
+    let mut check = 0;
+    let mut yes = 0;
+    for _ in 0..3000 {
+        let n = 2 * (1 + next_random(mut seed) % 10);
+        let k = 1 + next_random(mut seed) % 12;
+        let arr = random_values(mut seed, n, k, 50);
+        let can = can_arrange(arr, k as i32);
+        if can {
+            yes += 1;
+        }
+        check = (check * 31 + if can { 2 } else { 1 }) % 1000000007;
+    }
+    println(f"3000 random arrays: {yes} pair, checksum {check}");
+}
