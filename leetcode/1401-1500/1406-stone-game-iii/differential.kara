@@ -1,0 +1,282 @@
+// LeetCode #1406: Stone Game III -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- stone_game_iii.kara ----
+fn a0_stone_game_iii(stone_value: Vec[i32]) -> String {
+    // `best[i]` is how far ahead the player to move from stone i can end,
+    // taking 1, 2 or 3 stones and leaving the rest to the other
+    let n = stone_value.len();
+    let mut best: Vec[i32] = Vec.filled(n + 1, 0);
+    for i in (0..n).rev() {
+        let mut taken: i32 = 0;
+        best[i] = i32.MIN;
+        for k in 1..=3 {
+            if i + k > n {
+                break;
+            }
+            taken += stone_value[i + k - 1];
+            best[i] = best[i].max(taken - best[i + k]);
+        }
+    }
+    if best[0] > 0 {
+        String.from("Alice")
+    } else if best[0] < 0 {
+        String.from("Bob")
+    } else {
+        String.from("Tie")
+    }
+}
+
+// ---- stone_game_iii_rolling.kara ----
+fn a1_stone_game_iii(stone_value: Vec[i32]) -> String {
+    // the same lead, kept for the next three stones only: `ahead` holds
+    // the leads from stones i + 1, i + 2 and i + 3
+    let mut ahead: (i32, i32, i32) = (0, 0, 0);
+    let n = stone_value.len();
+    for i in (0..n).rev() {
+        let one = stone_value[i];
+        let two = if i + 1 < n { one + stone_value[i + 1] } else { one };
+        let three = if i + 2 < n { two + stone_value[i + 2] } else { two };
+        let mut lead = one - ahead.0;
+        if i + 1 < n {
+            lead = lead.max(two - ahead.1);
+        }
+        if i + 2 < n {
+            lead = lead.max(three - ahead.2);
+        }
+        ahead = (lead, ahead.0, ahead.1);
+    }
+    match ahead.0.signum() {
+        1 => String.from("Alice"),
+        -1 => String.from("Bob"),
+        _ => String.from("Tie"),
+    }
+}
+
+// ---- stone_game_iii_memo.kara ----
+fn a2_lead(values: Vec[i32], i: i64, memo: mut ref Vec[Option[i32]]) -> i32 {
+    if i >= values.len() {
+        return 0;
+    }
+    if let Some(known) = memo[i] {
+        return known;
+    }
+    let mut taken: i32 = 0;
+    let mut best = i32.MIN;
+    for k in 1..=3 {
+        if i + k > values.len() {
+            break;
+        }
+        taken += values[i + k - 1];
+        best = best.max(taken - a2_lead(values, i + k, mut memo));
+    }
+    memo[i] = Some(best);
+    best
+}
+
+fn a2_stone_game_iii(stone_value: Vec[i32]) -> String {
+    let mut memo = Vec.filled(stone_value.len(), None);
+    // from the last stone back, so no call goes deeper than three
+    for i in (0..stone_value.len()).rev() {
+        a2_lead(stone_value, i, mut memo);
+    }
+    let first = a2_lead(stone_value, 0, mut memo);
+    String.from(if first > 0 { "Alice" } else if first < 0 { "Bob" } else { "Tie" })
+}
+
+// ---- stone_game_iii_suffix.kara ----
+fn a3_stone_game_iii(stone_value: Vec[i32]) -> String {
+    // whoever moves from stone i ends with what is left, the suffix sum,
+    // less the most the other can then get: `most[i]` is the score, and
+    // the other is held to the least of the next three
+    let n = stone_value.len();
+    let mut suffix: Vec[i32] = Vec.filled(n + 1, 0);
+    for i in (0..n).rev() {
+        suffix[i] = suffix[i + 1] + stone_value[i];
+    }
+    let mut most: Vec[i32] = Vec.filled(n + 1, 0);
+    for i in (0..n).rev() {
+        let other = (i + 1..=(i + 3).min(n)).map(|j| most[j]).min().unwrap();
+        most[i] = suffix[i] - other;
+    }
+    let alice = most[0];
+    let bob = suffix[0] - alice;
+    match alice.cmp(bob) {
+        Ordering.Greater => String.from("Alice"),
+        Ordering.Less => String.from("Bob"),
+        Ordering.Equal => String.from("Tie"),
+    }
+}
+
+// ---- stone_game_iii_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_stone_game_iii(stone_value: Vec[i32]) -> String {
+        let n = stone_value.len();
+        let mut dp = Vec.filled(n + 1, i32.MIN);
+        dp[n] = 0;
+        for i in (0..n).rev() {
+            let mut take: i32 = 0;
+            for k in 0..3 {
+                if i + k < n {
+                    take += stone_value[i + k];
+                    dp[i] = dp[i].max(take - dp[i + k + 1]);
+                }
+            }
+        }
+        match dp[0].cmp(0) {
+            Ordering.Greater => "Alice".to_string(),
+            Ordering.Less => "Bob".to_string(),
+            Ordering.Equal => "Tie".to_string(),
+        }
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n stone values from lo to hi
+fn drawn(n: i64, lo: i64, hi: i64, seed: mut ref i64) -> Vec[i32] {
+    (0..n).map(|_| (lo + next_random(mut seed) % (hi - lo + 1)) as i32).collect()
+}
+
+// the statement read literally: from stone i, the player to move takes 1,
+// 2 or 3 stones, each player playing for the highest score of their own;
+// every way the game can go is played out, and the two scores returned,
+// the mover's first
+fn play(values: Vec[i32], i: i64) -> (i64, i64) {
+    if i == values.len() {
+        return (0, 0);
+    }
+    let mut best: Option[(i64, i64)] = None;
+    let mut taken: i64 = 0;
+    for k in 1..=3 {
+        if i + k > values.len() {
+            break;
+        }
+        taken += values[i + k - 1];
+        let (other, mine) = play(values, i + k);
+        let score = (taken + mine, other);
+        if best.is_none() or score.0 > best.unwrap().0 {
+            best = Some(score);
+        }
+    }
+    best.unwrap()
+}
+
+fn literal(values: Vec[i32]) -> String {
+    let (alice, bob) = play(values, 0);
+    String.from(if alice > bob { "Alice" } else if alice < bob { "Bob" } else { "Tie" })
+}
+
+fn arm(i: i64, values: Vec[i32]) -> String {
+    let values = values.clone();
+    match i {
+        0 => a0_stone_game_iii(values),
+        1 => a1_stone_game_iii(values),
+        2 => a2_stone_game_iii(values),
+        3 => a3_stone_game_iii(values),
+        _ => A4Solution.a4_stone_game_iii(values),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, values: Vec[i32]) {
+    t.cases += 1;
+    let star = arm(0, values);
+    let code = if star == "Alice" { 1 } else if star == "Bob" { 2 } else { 3 };
+    t.check = (t.check * 131 + code) % 1000000007;
+    t.check = (t.check * 131 + values.len()) % 1000000007;
+    let n = values.len();
+    let small = n <= 12;
+    let want = if small { literal(values) } else { String.new() };
+    let doublable = values.iter().all(|v| v.abs() <= 500);
+    let doubled: Vec[i32] = values.iter().map(|v| v * 2).collect();
+    let mut padded = values.clone();
+    padded.extend_from_slice([0, 0, 0]);
+    let total: i64 = values.iter().map(|v| v as i64).sum();
+    for i in 0..5 {
+        let got = arm(i, values);
+        let what = f"arm {i} on {values}";
+        // P1: the statement read literally, on up to 12 stones
+        if small {
+            expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        }
+        // P2: every value doubled doubles every score, so the same winner
+        if doublable {
+            let twice = arm(i, doubled);
+            expect(mut t, 2, twice == got, f"P2 {what}: {twice} doubled");
+        }
+        // P3: stones worth 0 after the last change nothing: a move that
+        // reaches past the last real stone is worth what taking up to it is
+        if n + 3 <= 50000 {
+            let more = arm(i, padded);
+            expect(mut t, 3, more == got, f"P3 {what}: {more} with three 0s after");
+        }
+        // P4: Alice can take a row of up to three stones whole, so she
+        // wins one whose sum is more than nothing
+        if n <= 3 and total > 0 {
+            expect(mut t, 4, got == "Alice", f"P4 {what}: {got} on a sum of {total}");
+        }
+        // P5: one of the three answers the statement allows
+        expect(mut t, 5, got == "Alice" or got == "Bob" or got == "Tie", f"P5 {what}: {got}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: one stone of each sign and 0, all
+    // 0, the constraints' most. Every case is drawn before any arm answers.
+    let mut cases: Vec[Vec[i32]] = Vec.new();
+    cases.push([1i32, 2, 3, 7].to_vec());
+    cases.push([1i32, 2, 3, -9].to_vec());
+    cases.push([1i32, 2, 3, 6].to_vec());
+    cases.push([5i32].to_vec());
+    cases.push([-5i32].to_vec());
+    cases.push([0i32].to_vec());
+    cases.push([0i32, 0, 0, 0, 0].to_vec());
+    cases.push([-1i32, -2, -3].to_vec());
+    cases.push([1000i32, -1000, 1000, -1000, 1000, -1000, 1000].to_vec());
+    let mut seed = 14061;
+    cases.push(drawn(50000, -1000, 1000, mut seed));
+    // 1993 random rows: 1 to 12 stones two times in three, else 13 to 400,
+    // from -1000 to 1000, -3 to 3 or -50 to 20
+    for i in 0..1993 {
+        let n = if i % 3 == 2 { 13 + next_random(mut seed) % 388 } else { 1 + next_random(mut seed) % 12 };
+        let (lo, hi) = if i % 4 == 0 { (-1000, 1000) } else if i % 4 == 1 { (-3, 3) } else if i % 4 == 2 { (-50, 20) } else { (-3, 3) };
+        cases.push(drawn(n, lo, hi, mut seed));
+    }
+    for values in cases.iter() {
+        check_case(mut t, values);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
