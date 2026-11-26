@@ -1,0 +1,79 @@
+// LeetCode #1771: Maximize Palindrome Length From Subsequences -- top-down:
+// for every pair of matching letters, one in each word, the pair around
+// the longest palindromic subsequence between them, found by recursion
+// with each stretch's answer remembered.
+
+fn lps(s: Vec[u8], memo: mut ref Vec[i32], i: i64, j: i64) -> i32 {
+    if i > j {
+        return 0;
+    }
+    if i == j {
+        return 1;
+    }
+    let k = i * s.len() + j;
+    if memo[k] >= 0 {
+        return memo[k];
+    }
+    let r = if s[i] == s[j] { lps(s, mut memo, i + 1, j - 1) + 2 } else { lps(s, mut memo, i + 1, j).max(lps(s, mut memo, i, j - 1)) };
+    memo[k] = r;
+    r
+}
+
+fn longest_palindrome(word1: String, word2: String) -> i32 {
+    let s: Vec[u8] = f"{word1}{word2}".bytes().to_vec();
+    let n = s.len();
+    let mut memo: Vec[i32] = Vec.filled(n * n, -1);
+    let mut best: i32 = 0;
+    for i in 0..word1.len() {
+        for j in word1.len()..n {
+            if s[i] == s[j] {
+                best = best.max(lps(s, mut memo, i + 1, j - 1) + 2);
+            }
+        }
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n letters from the first `letters` of the alphabet
+fn random_word(seed: mut ref i64, n: i64, letters: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(char.try_from((97 + next_random(mut seed) % letters) as u32).ok().unwrap());
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{longest_palindrome("cacb", "cbba")} {longest_palindrome("ab", "ab")} {longest_palindrome("aa", "bb")}");
+    // the edges: one letter each, alike and not; one word the other
+    // reversed; a word of one letter repeated; the only match at the far
+    // ends
+    println(f"{longest_palindrome("a", "a")} {longest_palindrome("a", "b")} {longest_palindrome("abc", "cba")} {longest_palindrome("aaaa", "a")} {longest_palindrome("xbcd", "efgx")}");
+    // the constraints' most: two words of 1000 letters, every one an a,
+    // then two at random
+    let mut seed = 1771;
+    let all_a: String = (0..1000).map(|_| 'a').collect();
+    let w1 = random_word(mut seed, 1000, 26);
+    let w2 = random_word(mut seed, 1000, 26);
+    println(f"the most: {longest_palindrome(all_a, all_a)} {longest_palindrome(w1, w2)}");
+    // 3000 random pairs of 1 to 15 letters each from the first 2 to 26 of
+    // the alphabet
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n1 = 1 + next_random(mut seed) % 15;
+        let n2 = 1 + next_random(mut seed) % 15;
+        let letters = 2 + next_random(mut seed) % 25;
+        let w1 = random_word(mut seed, n1, letters);
+        let w2 = random_word(mut seed, n2, letters);
+        check = (check * 31 + longest_palindrome(w1, w2)) % 1000000007;
+    }
+    println(f"3000 random pairs: checksum {check}");
+}

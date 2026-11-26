@@ -1,0 +1,281 @@
+// LeetCode #1771: Maximize Palindrome Length From Subsequences --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- longest_palindrome.kara ----
+fn a0_longest_palindrome(word1: String, word2: String) -> i32 {
+    let joined = f"{word1}{word2}";
+    let s = joined.bytes();
+    let n = s.len();
+    let split = word1.len();
+    let mut dp: Vec[Vec[i32]] = Vec.filled(n, Vec.filled(n, 0));
+    let mut best: i32 = 0;
+    for i in (0..n).rev() {
+        dp[i][i] = 1;
+        for j in i + 1..n {
+            if s[i] == s[j] {
+                dp[i][j] = dp[i + 1][j - 1] + 2;
+                if i < split and j >= split {
+                    best = best.max(dp[i][j]);
+                }
+            } else {
+                dp[i][j] = dp[i + 1][j].max(dp[i][j - 1]);
+            }
+        }
+    }
+    best
+}
+
+// ---- longest_palindrome_rolling.kara ----
+fn a1_longest_palindrome(word1: String, word2: String) -> i32 {
+    let s: Vec[char] = word1.chars().chain(word2.chars()).collect();
+    let n = s.len();
+    let split = word1.len();
+    let mut below: Vec[i32] = Vec.filled(n, 0);
+    let mut best: i32 = 0;
+    for i in (0..n).rev() {
+        let mut row: Vec[i32] = Vec.filled(n, 0);
+        row[i] = 1;
+        for j in i + 1..n {
+            if s[i] == s[j] {
+                row[j] = below[j - 1] + 2;
+                if i < split and j >= split {
+                    best = best.max(row[j]);
+                }
+            } else {
+                row[j] = below[j].max(row[j - 1]);
+            }
+        }
+        below = row;
+    }
+    best
+}
+
+// ---- longest_palindrome_memo.kara ----
+fn a2_lps(s: Vec[u8], memo: mut ref Vec[i32], i: i64, j: i64) -> i32 {
+    if i > j {
+        return 0;
+    }
+    if i == j {
+        return 1;
+    }
+    let k = i * s.len() + j;
+    if memo[k] >= 0 {
+        return memo[k];
+    }
+    let r = if s[i] == s[j] { a2_lps(s, mut memo, i + 1, j - 1) + 2 } else { a2_lps(s, mut memo, i + 1, j).max(a2_lps(s, mut memo, i, j - 1)) };
+    memo[k] = r;
+    r
+}
+
+fn a2_longest_palindrome(word1: String, word2: String) -> i32 {
+    let s: Vec[u8] = f"{word1}{word2}".bytes().to_vec();
+    let n = s.len();
+    let mut memo: Vec[i32] = Vec.filled(n * n, -1);
+    let mut best: i32 = 0;
+    for i in 0..word1.len() {
+        for j in word1.len()..n {
+            if s[i] == s[j] {
+                best = best.max(a2_lps(s, mut memo, i + 1, j - 1) + 2);
+            }
+        }
+    }
+    best
+}
+
+// ---- longest_palindrome_outer.kara ----
+fn a3_longest_palindrome(word1: String, word2: String) -> i32 {
+    let a = word1.bytes();
+    let b = word2.bytes();
+    let s: Vec[u8] = a.iter().chain(b.iter()).collect();
+    let n = s.len();
+    // lps[i][j]: the longest palindromic subsequence of s[i..j]
+    let mut lps: Vec[Vec[i32]] = Vec.filled(n + 1, Vec.filled(n + 1, 0));
+    for len in 1..=n {
+        for i in 0..=n - len {
+            let j = i + len;
+            lps[i][j] = if len == 1 {
+                1
+            } else if s[i] == s[j - 1] {
+                lps[i + 1][j - 1] + 2
+            } else {
+                lps[i + 1][j].max(lps[i][j - 1])
+            };
+        }
+    }
+    let mut best: i32 = 0;
+    for c in b'a'..=b'z' {
+        let first = a.iter().position(|x| x == c);
+        let last = b.iter().rposition(|x| x == c);
+        if let (Some(i), Some(j)) = (first, last) {
+            best = best.max(lps[i + 1][a.len() + j] + 2);
+        }
+    }
+    best
+}
+
+// ---- longest_palindrome_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn longest_palindrome(word1: String, word2: String) -> i32 {
+        let s = word1.clone() + ref word2;
+        let s = s.bytes();
+        let n = s.len();
+        let m = word1.len();
+        let mut dp = Vec.filled(n, Vec.filled(n, 0i32));
+        let mut ans: i32 = 0;
+        for i in (0..n).rev() {
+            dp[i][i] = 1;
+            for j in i + 1..n {
+                if s[i] == s[j] {
+                    dp[i][j] = dp[i + 1][j - 1] + 2;
+                    if i < m and j >= m {
+                        ans = ans.max(dp[i][j]);
+                    }
+                } else {
+                    dp[i][j] = dp[i + 1][j].max(dp[i][j - 1]);
+                }
+            }
+        }
+        ans
+    }
+}
+
+fn a4_longest_palindrome(word1: String, word2: String) -> i32 {
+
+    A4Solution.longest_palindrome(word1, word2)
+
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(seed: mut ref i64, n: i64, letters: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(char.try_from((97 + next_random(mut seed) % letters) as u32).ok().unwrap());
+    }
+    s
+}
+
+// the statement read literally: every choice of letters from the two words
+// joined, with at least one from each, kept where it reads the same both
+// ways, and the longest such length
+fn literal(word1: String, word2: String) -> i32 {
+    let s: Vec[char] = word1.chars().chain(word2.chars()).collect();
+    let n1 = word1.len();
+    let n = s.len();
+    let mut best: i32 = 0;
+    for mask in 1..(1 << n) {
+        if mask & ((1 << n1) - 1) == 0 or mask >> n1 == 0 {
+            continue;
+        }
+        let picked: Vec[char] = (0..n).filter(|k| (mask >> k) & 1 == 1).map(|k| s[k]).collect();
+        let back: Vec[char] = picked.iter().rev().cloned().collect();
+        if picked == back {
+            best = best.max(picked.len() as i32);
+        }
+    }
+    best
+}
+
+// each letter moved one on in the alphabet, z to a
+fn rotated(s: Str) -> String {
+    s.chars().map(|c| char.try_from(97 + (c as u32 - 97 + 1) % 26).ok().unwrap()).collect()
+}
+
+fn reversed(s: Str) -> String {
+    s.chars().rev().collect()
+}
+
+fn arm(i: i64, word1: String, word2: String) -> i32 {
+    match i {
+        0 => a0_longest_palindrome(word1, word2),
+        1 => a1_longest_palindrome(word1, word2),
+        2 => a2_longest_palindrome(word1, word2),
+        3 => a3_longest_palindrome(word1, word2),
+        _ => a4_longest_palindrome(word1, word2),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, word1: String, word2: String) {
+    t.cases += 1;
+    let want = literal(word1, word2);
+    t.check = (t.check * 31 + want) % 1000000007;
+    let star = arm(0, word1, word2);
+    let shared = word1.chars().any(|c| word2.contains(c.to_string()));
+    let back1 = reversed(word1.as_str());
+    let back2 = reversed(word2.as_str());
+    let r1 = rotated(word1.as_str());
+    let r2 = rotated(word2.as_str());
+    let wrapped1 = f"q{word1}";
+    let wrapped2 = f"{word2}q";
+    for i in 0..5 {
+        let what = f"arm {i} on \"{word1}\" \"{word2}\"";
+        let got = arm(i, word1, word2);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: 0 exactly when the words share no letter, else 2 to every
+        // letter of both
+        let bounded = if shared { got >= 2 and got <= word1.len() + word2.len() } else { got == 0 };
+        expect(mut t, 2, bounded, f"P2 {what}");
+        // P3: the words swapped, each reversed, give the same length
+        expect(mut t, 3, arm(i, back2, back1) == got, f"P3 {what}");
+        // P4: the letters rotated give the same length
+        expect(mut t, 4, arm(i, r1, r2) == got, f"P4 {what}");
+        // P5: one letter put at both outer ends adds at least 2
+        let more = arm(i, wrapped1, wrapped2);
+        expect(mut t, 5, more >= got + 2 and more >= 2, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges. Every case is drawn before any arm
+    // answers.
+    let mut cases: Vec[(String, String)] = [("cacb", "cbba"), ("ab", "ab"), ("aa", "bb"), ("a", "a"), ("a", "b"), ("abc", "cba"), ("aaaa", "a"), ("xbcd", "efgx")].iter().map(|p| (p.0.to_string(), p.1.to_string())).collect();
+    let mut seed = 17711;
+    // 1992 random pairs of 1 to 6 letters each from the first 1 to 8 of the
+    // alphabet
+    for _ in 0..1992 {
+        let n1 = 1 + next_random(mut seed) % 6;
+        let n2 = 1 + next_random(mut seed) % 6;
+        let letters = 1 + next_random(mut seed) % 8;
+        let w1 = random_word(mut seed, n1, letters);
+        let w2 = random_word(mut seed, n2, letters);
+        cases.push((w1, w2));
+    }
+    for j in 0..cases.len() {
+        check_case(mut t, cases[j].0, cases[j].1);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
