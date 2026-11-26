@@ -1,0 +1,70 @@
+fn num_of_arrays(n: i32, m: i32, k: i32) -> i32 {
+    // the arrays pushed forward one element at a time: from largest j and
+    // cost c, j ways stay put, and one way each goes to every larger
+    // largest at cost c + 1, added over the range j + 1 to m at once
+    // through a difference array
+    let modulus: i64 = 1000000007;
+    let m = m as i64;
+    let k = k as i64;
+    let mut ways: Vec[Vec[i64]] = Vec.filled(k + 2, Vec.filled(m + 1, 0));
+    for j in 1..=m {
+        ways[1][j] = 1;
+    }
+    for _ in 1..n {
+        let mut next: Vec[Vec[i64]] = Vec.filled(k + 2, Vec.filled(m + 1, 0));
+        for c in 1..=k {
+            let mut starts: Vec[i64] = Vec.filled(m + 2, 0);
+            for j in 1..=m {
+                let w = ways[c][j];
+                if w == 0 {
+                    continue;
+                }
+                next[c][j] = (next[c][j] + w * j) % modulus;
+                starts[j + 1] = (starts[j + 1] + w) % modulus;
+            }
+            let mut running: i64 = 0;
+            for j in 1..=m {
+                running = (running + starts[j]) % modulus;
+                next[c + 1][j] = (next[c + 1][j] + running) % modulus;
+            }
+        }
+        ways = next;
+    }
+    if k == 0 {
+        return 0;
+    }
+    (ways[k].iter().sum() % modulus) as i32
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples, and five more
+    let firsts: Vec[String] = [(2, 3, 1), (5, 2, 3), (9, 1, 1), (1, 1, 1), (1, 5, 0), (3, 3, 3), (4, 2, 2), (50, 100, 25)]
+        .iter()
+        .map(|(n, m, k)| f"{num_of_arrays(n, m, k)}")
+        .collect();
+    println(firsts.join(" "));
+    // the constraints' most: n = 50 and m = 100, with k = 1, 2 and 50
+    println(f"n = 50, m = 100: {num_of_arrays(50, 100, 1)} {num_of_arrays(50, 100, 2)} {num_of_arrays(50, 100, 50)}");
+    // 2000 random cases: n up to 12, m up to 30, k up to n
+    let mut seed = 1420;
+    let mut check: i64 = 0;
+    let mut zero = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 12;
+        let m = 1 + next_random(mut seed) % 30;
+        let k = next_random(mut seed) % (n + 1);
+        let got = num_of_arrays(n as i32, m as i32, k as i32);
+        if got == 0 {
+            zero += 1;
+        }
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random cases: {zero} with no array, checksum {check}");
+}

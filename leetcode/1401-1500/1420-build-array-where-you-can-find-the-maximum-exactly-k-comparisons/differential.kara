@@ -1,0 +1,348 @@
+// LeetCode #1420: Build Array Where You Can Find The Maximum Exactly K Comparisons -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- num_of_arrays.kara ----
+fn a0_num_of_arrays(n: i32, m: i32, k: i32) -> i32 {
+    // ways[j][c]: the arrays so far whose largest is j and whose search
+    // cost is c. One element more is at most the largest, j ways, or a new
+    // largest, which costs one search more: the arrays of cost c - 1 whose
+    // largest is below j, summed as j climbs
+    let modulus: i64 = 1000000007;
+    let m = m as i64;
+    let k = k as i64;
+    let mut ways: Vec[Vec[i64]] = Vec.filled(m + 1, Vec.filled(k + 1, 0));
+    if k >= 1 {
+        for j in 1..=m {
+            ways[j][1] = 1;
+        }
+    }
+    for _ in 1..n {
+        let mut next: Vec[Vec[i64]] = Vec.filled(m + 1, Vec.filled(k + 1, 0));
+        for c in 1..=k {
+            let mut below: i64 = 0;
+            for j in 1..=m {
+                next[j][c] = (ways[j][c] * j + below) % modulus;
+                below = (below + ways[j][c - 1]) % modulus;
+            }
+        }
+        ways = next;
+    }
+    let mut total: i64 = 0;
+    for j in 1..=m {
+        total = (total + ways[j][k]) % modulus;
+    }
+    total as i32
+}
+
+// ---- num_of_arrays_memo.kara ----
+fn a1_count(left: i64, largest: i64, cost: i64, m: i64, memo: mut ref Vec[Vec[Vec[i64]]]) -> i64 {
+    // the ways to fill `left` more places after a prefix whose largest is
+    // `largest` and which has cost the search `cost` more than allowed
+    // short of k: each next element at most the largest, or a new largest
+    if cost < 0 {
+        return 0;
+    }
+    if left == 0 {
+        return if cost == 0 { 1 } else { 0 };
+    }
+    if memo[left][largest][cost] >= 0 {
+        return memo[left][largest][cost];
+    }
+    let modulus: i64 = 1000000007;
+    let mut ways = largest * a1_count(left - 1, largest, cost, m, mut memo) % modulus;
+    for next in largest + 1..=m {
+        ways = (ways + a1_count(left - 1, next, cost - 1, m, mut memo)) % modulus;
+    }
+    memo[left][largest][cost] = ways;
+    ways
+}
+
+fn a1_num_of_arrays(n: i32, m: i32, k: i32) -> i32 {
+    // a recursion on what is left to fill, from an empty prefix whose
+    // largest is 0, each answer kept once found
+    let mut memo: Vec[Vec[Vec[i64]]] = Vec.filled(n as i64 + 1, Vec.filled(m as i64 + 1, Vec.filled(k as i64 + 1, -1)));
+    a1_count(n, 0, k, m, mut memo) as i32
+}
+
+// ---- num_of_arrays_push.kara ----
+fn a2_num_of_arrays(n: i32, m: i32, k: i32) -> i32 {
+    // the arrays pushed forward one element at a time: from largest j and
+    // cost c, j ways stay put, and one way each goes to every larger
+    // largest at cost c + 1, added over the range j + 1 to m at once
+    // through a difference array
+    let modulus: i64 = 1000000007;
+    let m = m as i64;
+    let k = k as i64;
+    let mut ways: Vec[Vec[i64]] = Vec.filled(k + 2, Vec.filled(m + 1, 0));
+    for j in 1..=m {
+        ways[1][j] = 1;
+    }
+    for _ in 1..n {
+        let mut next: Vec[Vec[i64]] = Vec.filled(k + 2, Vec.filled(m + 1, 0));
+        for c in 1..=k {
+            let mut starts: Vec[i64] = Vec.filled(m + 2, 0);
+            for j in 1..=m {
+                let w = ways[c][j];
+                if w == 0 {
+                    continue;
+                }
+                next[c][j] = (next[c][j] + w * j) % modulus;
+                starts[j + 1] = (starts[j + 1] + w) % modulus;
+            }
+            let mut running: i64 = 0;
+            for j in 1..=m {
+                running = (running + starts[j]) % modulus;
+                next[c + 1][j] = (next[c + 1][j] + running) % modulus;
+            }
+        }
+        ways = next;
+    }
+    if k == 0 {
+        return 0;
+    }
+    (ways[k].iter().sum() % modulus) as i32
+}
+
+// ---- num_of_arrays_in_place.kara ----
+fn a3_num_of_arrays(n: i32, m: i32, k: i32) -> i32 {
+    // one table, ways[c][j], brought up to one element more in place: a
+    // cost counted downward and a largest downward, so every entry read
+    // is still the old one, and the sums of the old entries below each
+    // largest taken first
+    let modulus: i64 = 1000000007;
+    let m = m as i64;
+    let k = k as i64;
+    let mut ways: Vec[Vec[i64]] = Vec.filled(k + 1, Vec.filled(m + 1, 0));
+    if k >= 1 {
+        for j in 1..=m {
+            ways[1][j] = 1;
+        }
+    }
+    for _ in 1..n {
+        for c in (1..=k).rev() {
+            let mut below: Vec[i64] = Vec.filled(m + 1, 0);
+            for j in 1..=m {
+                below[j] = (below[j - 1] + ways[c - 1][j - 1]) % modulus;
+            }
+            for j in (1..=m).rev() {
+                ways[c][j] = (ways[c][j] * j + below[j]) % modulus;
+            }
+        }
+    }
+    let mut total: i64 = 0;
+    for j in 1..=m {
+        total = (total + ways[k][j]) % modulus;
+    }
+    total as i32
+}
+
+// ---- num_of_arrays_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_num_of_arrays(n: i32, m: i32, k: i32) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let (n, m, k) = (n as i64, m as i64, k as i64);
+        if k == 0 {
+            return 0;
+        }
+        let mut dp = Vec.filled(n + 1, Vec.filled(m + 1, Vec.filled(k + 1, 0)));
+        for j in 1..=m {
+            dp[1][j][1] = 1;
+        }
+        for i in 2..=n {
+            for j in 1..=m {
+                for c in 1..=k {
+                    let mut val = dp[i - 1][j][c] * j % MOD;
+                    for p in 1..j {
+                        val = (val + dp[i - 1][p][c - 1]) % MOD;
+                    }
+                    dp[i][j][c] = val;
+                }
+            }
+        }
+        let mut ans = 0;
+        for j in 1..=m {
+            ans = (ans + dp[n][j][k]) % MOD;
+        }
+        ans as i32
+    }
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the search the statement gives, run on one array: the cost is the
+// number of times a value beats the largest seen so far
+fn search_cost(arr: Vec[i64]) -> i64 {
+    let mut maximum_value = -1;
+    let mut search_cost = 0;
+    for x in arr.iter() {
+        if maximum_value < x {
+            maximum_value = x;
+            search_cost += 1;
+        }
+    }
+    search_cost
+}
+
+// the statement read literally: every array of n values from 1 to m,
+// counted in turn like an odometer, and the search run on each, while
+// there are at most 20000 of them
+fn literal(n: i64, m: i64, k: i64) -> i64 {
+    let mut arr: Vec[i64] = Vec.filled(n, 1);
+    let mut count = 0;
+    loop {
+        if search_cost(arr) == k {
+            count += 1;
+        }
+        let mut i = n - 1;
+        while i >= 0 and arr[i] == m {
+            arr[i] = 1;
+            i -= 1;
+        }
+        if i < 0 {
+            return count;
+        }
+        arr[i] += 1;
+    }
+}
+
+fn power(base: i64, exp: i64) -> i64 {
+    let mut result = 1;
+    for _ in 0..exp {
+        result = result * base % 1000000007;
+    }
+    result
+}
+
+// m choose r, modulo 10^9 + 7, by Pascal's rule
+fn choose(m: i64, r: i64) -> i64 {
+    let mut row: Vec[i64] = Vec.filled(r + 1, 0);
+    row[0] = 1;
+    for _ in 0..m {
+        for j in (1..=r).rev() {
+            row[j] = (row[j] + row[j - 1]) % 1000000007;
+        }
+    }
+    row[r]
+}
+
+fn arm(i: i64, n: i64, m: i64, k: i64) -> i64 {
+    let (n, m, k) = (n as i32, m as i32, k as i32);
+    let got = match i {
+        0 => a0_num_of_arrays(n, m, k),
+        1 => a1_num_of_arrays(n, m, k),
+        2 => a2_num_of_arrays(n, m, k),
+        3 => a3_num_of_arrays(n, m, k),
+        _ => A4Solution.a4_num_of_arrays(n, m, k),
+    };
+    got
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, n: i64, m: i64, k: i64) {
+    t.cases += 1;
+    let modulus: i64 = 1000000007;
+    let star = arm(0, n, m, k);
+    t.check = (t.check * 131 + star + n * 10000 + m * 100 + k) % modulus;
+    // whether every array can be listed, and whether no count of arrays
+    // with one value more wraps
+    let mut arrays: i64 = 1;
+    let mut wider: i64 = 1;
+    for _ in 0..n {
+        arrays = (arrays * m).min(1000000000000);
+        wider = (wider * (m + 1)).min(1000000000000);
+    }
+    let want = if arrays <= 20000 { literal(n, m, k) } else { -1 };
+    for i in 0..5 {
+        let what = f"arm {i} at n = {n}, m = {m}, k = {k}";
+        let got = arm(i, n, m, k);
+        // P1: the statement read literally, while the arrays are few
+        if want >= 0 {
+            expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        }
+        // P2: a count taken modulo 10^9 + 7, and none when the search
+        // costs nothing or more than there are values or places
+        expect(mut t, 2, got >= 0 and got < modulus and (got == 0 or (k >= 1 and k <= n.min(m))), f"P2 {what}: {got}");
+        // P3: over every k, every array once, m^n in all
+        if n <= 8 and m <= 10 and k == n / 2 {
+            let mut all = 0;
+            for c in 0..=n {
+                all = (all + arm(i, n, m, c)) % modulus;
+            }
+            expect(mut t, 3, all == power(m, n), f"P3 {what}: {all}");
+        }
+        // P4: at k = 1 the first value is the largest, j^(n - 1) ways for
+        // each j; at k = n with n <= m the array climbs, m choose n ways
+        if k == 1 {
+            let mut first = 0;
+            for j in 1..=m {
+                first = (first + power(j, n - 1)) % modulus;
+            }
+            expect(mut t, 4, got == first, f"P4 {what}: {first}");
+        } else if k == n and n <= m {
+            expect(mut t, 4, got == choose(m, n), f"P4 {what}: {choose(m, n)}");
+        }
+        // P5: one value more loses no array, while no count wraps
+        if wider < modulus {
+            expect(mut t, 5, arm(i, n, m + 1, k) >= got, f"P5 {what}");
+        }
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: one place, one value, no search,
+    // a search longer than the values, and the constraints' most. Every
+    // case is drawn before any arm answers.
+    let mut cases: Vec[(i64, i64, i64)] = [(2, 3, 1), (5, 2, 3), (9, 1, 1), (1, 1, 1), (1, 1, 0), (1, 100, 1), (50, 1, 1), (50, 100, 0), (50, 49, 50), (3, 3, 3), (50, 100, 1), (50, 100, 25), (50, 100, 50)].to_vec();
+    let mut seed = 14201;
+    // 1990 random cases: every array listable two times in three (n up to
+    // 6, values up to 5), and n up to 50 with values up to 40 otherwise,
+    // ten of them at the most values, 100
+    for i in 0..1990 {
+        if i % 3 != 2 {
+            let n = 1 + next_random(mut seed) % 6;
+            let m = 1 + next_random(mut seed) % 5;
+            cases.push((n, m, next_random(mut seed) % (n + 1)));
+        } else {
+            let n = 1 + next_random(mut seed) % 50;
+            let m = if i < 30 { 100 } else { 1 + next_random(mut seed) % 40 };
+            cases.push((n, m, next_random(mut seed) % (n + 1)));
+        }
+    }
+    for (n, m, k) in cases.iter() {
+        check_case(mut t, n, m, k);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
