@@ -1,0 +1,331 @@
+// LeetCode #1782: Count Pairs Of Nodes -- differential test of the five
+// arms against the statement read literally, with five more properties.
+
+// ---- count_pairs.kara ----
+fn a0_count_pairs(n: i32, edges: Vec[Vec[i32]], queries: Vec[i32]) -> Vec[i32] {
+    let mut degree: Vec[i32] = Vec.filled(n as i64 + 1, 0);
+    let mut shared: Map[(i32, i32), i32] = Map.new();
+    for e in edges.iter() {
+        let (a, b) = (e[0].min(e[1]), e[0].max(e[1]));
+        degree[a] += 1;
+        degree[b] += 1;
+        *shared.entry((a, b)).or_insert(0) += 1;
+    }
+    let mut sorted: Vec[i32] = degree[1..].to_vec();
+    sorted.sort();
+    let mut answers: Vec[i32] = Vec.new();
+    for q in queries.iter() {
+        let mut count = 0;
+        let mut (lo, hi) = (0, sorted.len() - 1);
+        while lo < hi {
+            if sorted[lo] + sorted[hi] > *q {
+                count += hi - lo;
+                hi -= 1;
+            } else {
+                lo += 1;
+            }
+        }
+        // a joined pair counts its shared edges in both degrees
+        for ((a, b), c) in shared.iter() {
+            let sum = degree[a] + degree[b];
+            if sum > *q and sum - c <= *q {
+                count -= 1;
+            }
+        }
+        answers.push(count as i32);
+    }
+    answers
+}
+
+// ---- count_pairs_binary.kara ----
+fn a1_count_pairs(n: i32, edges: Vec[Vec[i32]], queries: Vec[i32]) -> Vec[i32] {
+    let mut degree: Vec[i32] = Vec.filled(n as i64 + 1, 0);
+    let mut shared: Map[(i32, i32), i32] = Map.new();
+    for e in edges.iter() {
+        let (a, b) = (e[0].min(e[1]), e[0].max(e[1]));
+        degree[a] += 1;
+        degree[b] += 1;
+        *shared.entry((a, b)).or_insert(0) += 1;
+    }
+    let mut sorted: Vec[i32] = degree[1..].to_vec();
+    sorted.sort();
+    queries.iter().map(|q| {
+        let mut count = 0;
+        for i in 0..sorted.len() {
+            let need = q - sorted[i];
+            let rest = sorted[i + 1..];
+            count += rest.len() - rest.partition_point(|d| d <= need);
+        }
+        for ((a, b), c) in shared.iter() {
+            let sum = degree[a] + degree[b];
+            if sum > q and sum - c <= q {
+                count -= 1;
+            }
+        }
+        count as i32
+    }).collect()
+}
+
+// ---- count_pairs_counting.kara ----
+fn a2_count_pairs(n: i32, edges: Vec[Vec[i32]], queries: Vec[i32]) -> Vec[i32] {
+    let nodes = n as i64;
+    let mut degree: Vec[i64] = Vec.filled(nodes + 1, 0);
+    let mut shared: Map[(i64, i64), i64] = Map.new();
+    for e in edges.iter() {
+        let a = e[0].min(e[1]) as i64;
+        let b = e[0].max(e[1]) as i64;
+        degree[a] += 1;
+        degree[b] += 1;
+        *shared.entry((a, b)).or_insert(0) += 1;
+    }
+    // at_least[d]: how many nodes have degree d or more
+    let top = 2 * edges.len() + 2;
+    let mut at_least: Vec[i64] = Vec.filled(top + 1, 0);
+    for v in 1..nodes + 1 {
+        at_least[degree[v]] += 1;
+    }
+    for d in (0..top).rev() {
+        at_least[d] += at_least[d + 1];
+    }
+    let mut answers: Vec[i32] = Vec.new();
+    for q in queries {
+        let q = q as i64;
+        let mut twice = 0;
+        for v in 1..nodes + 1 {
+            let need = (q - degree[v] + 1).max(0).min(top);
+            twice += at_least[need];
+            if degree[v] >= need {
+                twice -= 1;
+            }
+        }
+        let mut count = twice / 2;
+        for ((a, b), c) in shared.iter() {
+            let sum = degree[a] + degree[b];
+            if sum > q and sum - c <= q {
+                count -= 1;
+            }
+        }
+        answers.push(count as i32);
+    }
+    answers
+}
+
+// ---- count_pairs_runs.kara ----
+fn a3_count_pairs(n: i32, edges: Vec[Vec[i32]], queries: Vec[i32]) -> Vec[i32] {
+    let mut degree: Vec[i32] = Vec.filled(n as i64 + 1, 0);
+    let mut pairs: Vec[(i32, i32)] = Vec.new();
+    for e in edges.iter() {
+        degree[e[0]] += 1;
+        degree[e[1]] += 1;
+        pairs.push((e[0].min(e[1]), e[0].max(e[1])));
+    }
+    pairs.sort();
+    // (a, b, how many edges join them), one per joined pair
+    let mut runs: Vec[(i32, i32, i32)] = Vec.new();
+    let mut k = 0;
+    while k < pairs.len() {
+        let mut end = k;
+        while end < pairs.len() and pairs[end] == pairs[k] {
+            end += 1;
+        }
+        runs.push((pairs[k].0, pairs[k].1, (end - k) as i32));
+        k = end;
+    }
+    let mut sorted: Vec[i32] = degree[1..].to_vec();
+    sorted.sort();
+    let mut answers: Vec[i32] = Vec.new();
+    for q in queries {
+        let mut count: i64 = 0;
+        let mut lo = 0;
+        let mut hi = sorted.len() - 1;
+        while lo < hi {
+            if sorted[lo] + sorted[hi] > q {
+                count += hi - lo;
+                hi -= 1;
+            } else {
+                lo += 1;
+            }
+        }
+        for (a, b, c) in runs.iter() {
+            let sum = degree[a] + degree[b];
+            if sum > q and sum - c <= q {
+                count -= 1;
+            }
+        }
+        answers.push(count as i32);
+    }
+    answers
+}
+
+// ---- count_pairs_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn count_pairs(n: i32, edges: Vec[Vec[i32]], queries: Vec[i32]) -> Vec[i32] {
+        let n = n as i64;
+        let mut deg = Vec.filled(n + 1, 0);
+        let mut cnt: Map[(i64, i64), i32] = Map.new();
+        for e in ref edges {
+            let mut (u, v) = (e[0] as i64, e[1] as i64);
+            if u > v {
+                swap(mut u, mut v);
+            }
+            deg[u] += 1;
+            deg[v] += 1;
+            *cnt.entry((u, v)).or_insert(0) += 1;
+        }
+        let mut sorted = deg[1..].to_vec();
+        sorted.sort();
+        let mut ans: Vec[i32] = Vec.with_capacity(queries.len());
+        for q in ref queries {
+            let mut res: i32 = 0;
+            let mut (l, r) = (0, n - 1);
+            while l < r {
+                if sorted[l] + sorted[r] > q {
+                    res += (r - l) as i32;
+                    r -= 1;
+                } else {
+                    l += 1;
+                }
+            }
+            for ((u, v), c) in ref cnt {
+                if deg[u] + deg[v] > q and deg[u] + deg[v] - c <= q {
+                    res -= 1;
+                }
+            }
+            ans.push(res);
+        }
+        ans
+    }
+}
+
+fn a4_count_pairs(n: i32, edges: Vec[Vec[i32]], queries: Vec[i32]) -> Vec[i32] {
+    A4Solution.count_pairs(n, edges, queries)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_edges(seed: mut ref i64, n: i64, m: i64) -> Vec[Vec[i32]] {
+    let mut edges: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..m {
+        let a = 1 + next_random(mut seed) % n;
+        let b = 1 + (a + next_random(mut seed) % (n - 1)) % n;
+        edges.push([a as i32, b as i32]);
+    }
+    edges
+}
+
+// the statement read literally: every pair a < b, the edges touching a or
+// b counted from the list, and the pairs above each query
+fn literal(n: i32, edges: Vec[Vec[i32]], queries: Vec[i32]) -> Vec[i32] {
+    let mut incident: Vec[i32] = Vec.new();
+    for a in 1..n + 1 {
+        for b in a + 1..n + 1 {
+            incident.push(edges.iter().filter(|e| e[0] == a or e[1] == a or e[0] == b or e[1] == b).count() as i32);
+        }
+    }
+    queries.iter().map(|q| incident.iter().filter(|c| *c > q).count() as i32).collect()
+}
+
+fn arm(i: i64, n: i32, edges: Vec[Vec[i32]], queries: Vec[i32]) -> Vec[i32] {
+    match i {
+        0 => a0_count_pairs(n, edges, queries),
+        1 => a1_count_pairs(n, edges, queries),
+        2 => a2_count_pairs(n, edges, queries),
+        3 => a3_count_pairs(n, edges, queries),
+        _ => a4_count_pairs(n, edges, queries),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, n: i32, edges: Vec[Vec[i32]], queries: Vec[i32]) {
+    t.cases += 1;
+    let want = literal(n, edges, queries);
+    t.check = want.iter().fold(t.check, |c, a| (c * 31 + a + 1) % 1000000007);
+    let star = arm(0, n, edges, queries);
+    let k = queries.len();
+    let pairs = n * (n - 1) / 2;
+    let mut flipped: Vec[Vec[i32]] = edges.iter().map(|e| [e[1], e[0]]).collect();
+    flipped.reverse();
+    let relabelled: Vec[Vec[i32]] = edges.iter().map(|e| [n + 1 - e[0], n + 1 - e[1]]).collect();
+    let mut degree: Vec[i32] = Vec.filled(n as i64 + 1, 0);
+    for e in edges.iter() {
+        degree[e[0]] += 1;
+        degree[e[1]] += 1;
+    }
+    for i in 0..5 {
+        let what = f"arm {i} on {n} {edges} {queries}";
+        let got = arm(i, n, edges, queries);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: each answer from 0 to every pair, and a larger query never
+        // more
+        let mut ordered = got.len() == k and got.iter().all(|a| *a >= 0 and *a <= pairs);
+        for x in 0..k {
+            for y in 0..k {
+                if ordered and queries[x] <= queries[y] and got[x] < got[y] {
+                    ordered = false;
+                }
+            }
+        }
+        expect(mut t, 2, ordered, f"P2 {what}");
+        // P3: each edge written the other way round, and the list reversed,
+        // give the same answers
+        expect(mut t, 3, arm(i, n, flipped, queries) == got, f"P3 {what}");
+        // P4: the nodes numbered from the other end give the same answers
+        expect(mut t, 4, arm(i, n, relabelled, queries) == got, f"P4 {what}");
+        // P5: a node with no edge added pairs with each node above the query
+        let more = arm(i, n + 1, edges, queries);
+        let grown = more.len() == k and (0..k).all(|j| more[j] == got[j] + (1..n as i64 + 1).filter(|v| degree[v] > queries[j]).count() as i32);
+        expect(mut t, 5, grown, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges. Every case is drawn before any arm
+    // answers.
+    let mut cases: Vec[(i32, Vec[Vec[i32]], Vec[i32])] = [(4, [[1, 2], [2, 4], [1, 3], [2, 3], [2, 1]], [2, 3]), (5, [[1, 5], [1, 5], [3, 4], [2, 5], [1, 3], [5, 1], [2, 3], [2, 5]], [1, 2, 3, 4, 5]), (2, [[1, 2]], [0, 1]), (2, [[1, 2], [2, 1], [1, 2]], [0, 2, 3]), (4, [[1, 2]], [0]), (5, [[1, 2], [1, 3], [1, 4], [1, 5]], [1, 3])];
+    let mut seed = 17821;
+    // 1994 random cases of 2 to 8 nodes, 1 to 12 edges and 1 to 5 queries
+    for _ in 0..1994 {
+        let n = 2 + next_random(mut seed) % 7;
+        let m = 1 + next_random(mut seed) % 12;
+        let edges = random_edges(mut seed, n, m);
+        let k = 1 + next_random(mut seed) % 5;
+        let queries: Vec[i32] = (0..k).map(|_| (next_random(mut seed) % m) as i32).collect();
+        cases.push((n as i32, edges, queries));
+    }
+    for j in 0..cases.len() {
+        check_case(mut t, cases[j].0, cases[j].1, cases[j].2);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

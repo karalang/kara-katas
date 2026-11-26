@@ -1,0 +1,69 @@
+// LeetCode #1782: Count Pairs Of Nodes -- the bench: the ★ arm, two
+// pointers over the sorted degrees less the joined pairs, over 10 graphs of
+// 20000 nodes and 100000 edges built once, 20 queries each.
+
+fn count_pairs(n: i32, edges: Vec[Vec[i32]], queries: Vec[i32]) -> Vec[i32] {
+    let mut degree: Vec[i32] = Vec.filled(n as i64 + 1, 0);
+    let mut shared: Map[(i32, i32), i32] = Map.new();
+    for e in edges.iter() {
+        let (a, b) = (e[0].min(e[1]), e[0].max(e[1]));
+        degree[a] += 1;
+        degree[b] += 1;
+        *shared.entry((a, b)).or_insert(0) += 1;
+    }
+    let mut sorted: Vec[i32] = degree[1..].to_vec();
+    sorted.sort();
+    let mut answers: Vec[i32] = Vec.new();
+    for q in queries.iter() {
+        let mut count = 0;
+        let mut (lo, hi) = (0, sorted.len() - 1);
+        while lo < hi {
+            if sorted[lo] + sorted[hi] > *q {
+                count += hi - lo;
+                hi -= 1;
+            } else {
+                lo += 1;
+            }
+        }
+        // a joined pair counts its shared edges in both degrees
+        for ((a, b), c) in shared.iter() {
+            let sum = degree[a] + degree[b];
+            if sum > *q and sum - c <= *q {
+                count -= 1;
+            }
+        }
+        answers.push(count as i32);
+    }
+    answers
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1782;
+    let mut graphs: Vec[Vec[Vec[i32]]] = Vec.new();
+    for g in 0..10 {
+        // the edges among the first 50 to 20000 nodes
+        let span = 50 + g * 2216;
+        let mut edges: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..100000 {
+            let a = 1 + next_random(mut seed) % span;
+            let b = 1 + (a + next_random(mut seed) % (span - 1)) % span;
+            edges.push([a as i32, b as i32]);
+        }
+        graphs.push(edges);
+    }
+    let mut check = 0;
+    for g in 0..10 {
+        // up to twice the mean degree sum of the graph's own nodes
+        let top = 400000 / (50 + g * 2216);
+        let queries: Vec[i32] = (0..20).map(|k| ((check + k * 997) % top) as i32).collect();
+        for a in count_pairs(20000, graphs[g], queries) {
+            check = (check * 31 + a + 1) % 1000000007;
+        }
+    }
+    println(f"10 graphs of 100000 edges: checksum {check}");
+}

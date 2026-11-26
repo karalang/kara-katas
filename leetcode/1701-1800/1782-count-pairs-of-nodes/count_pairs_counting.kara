@@ -1,0 +1,96 @@
+// LeetCode #1782: Count Pairs Of Nodes -- how many nodes have at least
+// each degree, so that a node's partners above the query are one lookup;
+// every pair is found from both its ends, so the total is halved.
+
+fn count_pairs(n: i32, edges: Vec[Vec[i32]], queries: Vec[i32]) -> Vec[i32] {
+    let nodes = n as i64;
+    let mut degree: Vec[i64] = Vec.filled(nodes + 1, 0);
+    let mut shared: Map[(i64, i64), i64] = Map.new();
+    for e in edges.iter() {
+        let a = e[0].min(e[1]) as i64;
+        let b = e[0].max(e[1]) as i64;
+        degree[a] += 1;
+        degree[b] += 1;
+        *shared.entry((a, b)).or_insert(0) += 1;
+    }
+    // at_least[d]: how many nodes have degree d or more
+    let top = 2 * edges.len() + 2;
+    let mut at_least: Vec[i64] = Vec.filled(top + 1, 0);
+    for v in 1..nodes + 1 {
+        at_least[degree[v]] += 1;
+    }
+    for d in (0..top).rev() {
+        at_least[d] += at_least[d + 1];
+    }
+    let mut answers: Vec[i32] = Vec.new();
+    for q in queries {
+        let q = q as i64;
+        let mut twice = 0;
+        for v in 1..nodes + 1 {
+            let need = (q - degree[v] + 1).max(0).min(top);
+            twice += at_least[need];
+            if degree[v] >= need {
+                twice -= 1;
+            }
+        }
+        let mut count = twice / 2;
+        for ((a, b), c) in shared.iter() {
+            let sum = degree[a] + degree[b];
+            if sum > q and sum - c <= q {
+                count -= 1;
+            }
+        }
+        answers.push(count as i32);
+    }
+    answers
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// m edges between random distinct nodes of 1 to n
+fn random_edges(seed: mut ref i64, n: i64, m: i64) -> Vec[Vec[i32]] {
+    let mut edges: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..m {
+        let a = 1 + next_random(mut seed) % n;
+        let b = 1 + (a + next_random(mut seed) % (n - 1)) % n;
+        edges.push([a as i32, b as i32]);
+    }
+    edges
+}
+
+fn digest(answers: Vec[i32]) -> i64 {
+    answers.iter().fold(0, |check, a| (check * 31 + a + 1) % 1000000007)
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{count_pairs(4, [[1, 2], [2, 4], [1, 3], [2, 3], [2, 1]], [2, 3])} {count_pairs(5, [[1, 5], [1, 5], [3, 4], [2, 5], [1, 3], [5, 1], [2, 3], [2, 5]], [1, 2, 3, 4, 5])}");
+    // the edges: two nodes and one edge; one edge three times over; nodes
+    // with no edge; a star
+    println(f"{count_pairs(2, [[1, 2]], [0, 1])} {count_pairs(2, [[1, 2], [2, 1], [1, 2]], [0, 2, 3])} {count_pairs(4, [[1, 2]], [0])} {count_pairs(5, [[1, 2], [1, 3], [1, 4], [1, 5]], [1, 3])}");
+    // the constraints' most: 20000 nodes, 100000 random edges and 20
+    // queries spread over the degrees; then 20000 nodes, 100000 edges among
+    // the first 50, so that pairs share many
+    let mut seed = 1782;
+    let wide = random_edges(mut seed, 20000, 100000);
+    let close = random_edges(mut seed, 50, 100000);
+    let queries: Vec[i32] = (0..20).map(|k| (k * k * 11) as i32).collect();
+    let many: Vec[i32] = (0..20).map(|k| (k * 400) as i32).collect();
+    println(f"the most: {digest(count_pairs(20000, wide, queries))} {digest(count_pairs(20000, close, many))}");
+    // 3000 random cases of 2 to 10 nodes, 1 to 15 edges and 1 to 5 queries
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 2 + next_random(mut seed) % 9;
+        let m = 1 + next_random(mut seed) % 15;
+        let edges = random_edges(mut seed, n, m);
+        let k = 1 + next_random(mut seed) % 5;
+        let queries: Vec[i32] = (0..k).map(|_| (next_random(mut seed) % m) as i32).collect();
+        check = (check * 31 + digest(count_pairs(n as i32, edges, queries))) % 1000000007;
+    }
+    println(f"3000 random cases: checksum {check}");
+}
