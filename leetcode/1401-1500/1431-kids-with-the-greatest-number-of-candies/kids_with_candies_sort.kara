@@ -1,0 +1,61 @@
+fn kids_with_candies(candies: Vec[i32], extra_candies: i32) -> Vec[bool] {
+    // the candies sorted, the most the last of them
+    let mut sorted = candies.clone();
+    sorted.sort();
+    let most = sorted[sorted.len() - 1];
+    let mut answer: Vec[bool] = Vec.new();
+    for c in candies.iter() {
+        answer.push(c + extra_candies >= most);
+    }
+    answer
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// each kid's answer as T or F
+fn shown(answer: Vec[bool]) -> String {
+    answer.iter().map(|b| if b { 'T' } else { 'F' }).collect()
+}
+
+fn main() {
+    // LeetCode's three examples, and three more
+    let firsts: Vec[String] = [
+        shown(kids_with_candies([2, 3, 5, 1, 3], 3)),
+        shown(kids_with_candies([4, 2, 1, 1, 2], 1)),
+        shown(kids_with_candies([12, 1, 12], 10)),
+        shown(kids_with_candies([1, 1], 1)),
+        shown(kids_with_candies([100, 50], 50)),
+        shown(kids_with_candies([100, 49], 50)),
+    ].to_vec();
+    println(firsts.join(" "));
+    // the constraints' most: 100 kids, of 1 to 100 candies drawn, with 1,
+    // 25 and 50 extra
+    let mut seed = 1431;
+    let kids: Vec[i32] = (0..100).map(|_| (1 + next_random(mut seed) % 100) as i32).collect();
+    let counts: Vec[String] = [1, 25, 50]
+        .iter()
+        .map(|e| f"{kids_with_candies(kids, e).iter().filter(|b| b).count()}")
+        .collect();
+    println(f"100 kids: {counts.join(" ")} can have the most");
+    // 2000 random cases of 2 to 100 kids, of up to 100 candies, with 1
+    // to 50 extra
+    let mut check: i64 = 0;
+    let mut total: i64 = 0;
+    for _ in 0..2000 {
+        let n = 2 + next_random(mut seed) % 99;
+        let top = 1 + next_random(mut seed) % 100;
+        let candies: Vec[i32] = (0..n).map(|_| (1 + next_random(mut seed) % top) as i32).collect();
+        let extra = (1 + next_random(mut seed) % 50) as i32;
+        for b in kids_with_candies(candies, extra).iter() {
+            let bit = if b { 1 } else { 0 };
+            total += bit;
+            check = (check * 3 + 1 + bit) % 1000000007;
+        }
+    }
+    println(f"2000 random cases: {total} can have the most, checksum {check}");
+}

@@ -1,0 +1,186 @@
+// LeetCode #1431: Kids With the Greatest Number of Candies -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- kids_with_candies.kara ----
+fn a0_kids_with_candies(candies: Vec[i32], extra_candies: i32) -> Vec[bool] {
+    // the most any kid has, and each kid against it with the extra
+    let most = candies.iter().max().unwrap();
+    candies.iter().map(|c| c + extra_candies >= most).collect()
+}
+
+// ---- kids_with_candies_sort.kara ----
+fn a1_kids_with_candies(candies: Vec[i32], extra_candies: i32) -> Vec[bool] {
+    // the candies sorted, the most the last of them
+    let mut sorted = candies.clone();
+    sorted.sort();
+    let most = sorted[sorted.len() - 1];
+    let mut answer: Vec[bool] = Vec.new();
+    for c in candies.iter() {
+        answer.push(c + extra_candies >= most);
+    }
+    answer
+}
+
+// ---- kids_with_candies_fold.kara ----
+fn a2_kids_with_candies(candies: Vec[i32], extra_candies: i32) -> Vec[bool] {
+    // the most found by `fold` from nothing, each kid then checked against it
+    let most = candies.iter().fold(0, |m, c| m.max(c));
+    candies.iter().map(|c| c + extra_candies >= most).collect()
+}
+
+// ---- kids_with_candies_pairs.kara ----
+fn a3_kids_with_candies(candies: Vec[i32], extra_candies: i32) -> Vec[bool] {
+    // each kid against every kid: with the extra, at least as many as all
+    // of them, so none has more
+    candies
+        .iter()
+        .map(|c| candies.iter().all(|other| c + extra_candies >= other))
+        .collect()
+}
+
+// ---- kids_with_candies_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_kids_with_candies(candies: Vec[i32], extra_candies: i32) -> Vec[bool] {
+        let max = *candies.iter().max().unwrap();
+        candies.iter().map(|c| c + extra_candies >= max).collect()
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: each kid given the extra candies in turn,
+// on a copy of the kids, and asked whether any other kid then has more
+fn literal(candies: Vec[i32], extra: i32) -> Vec[bool] {
+    let mut answer: Vec[bool] = Vec.new();
+    for i in 0..candies.len() {
+        let mut given = candies.clone();
+        given[i] += extra;
+        let mut greatest = true;
+        for j in 0..given.len() {
+            if given[j] > given[i] {
+                greatest = false;
+            }
+        }
+        answer.push(greatest);
+    }
+    answer
+}
+
+fn arm(i: i64, candies: Vec[i32], extra: i32) -> Vec[bool] {
+    let candies = candies.clone();
+    match i {
+        0 => a0_kids_with_candies(candies, extra),
+        1 => a1_kids_with_candies(candies, extra),
+        2 => a2_kids_with_candies(candies, extra),
+        3 => a3_kids_with_candies(candies, extra),
+        _ => A4Solution.a4_kids_with_candies(candies, extra),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, candies: Vec[i32], extra: i32) {
+    t.cases += 1;
+    let star = arm(0, candies, extra);
+    for b in star.iter() {
+        t.check = (t.check * 3 + if b { 2 } else { 1 }) % 1000000007;
+    }
+    t.check = (t.check * 131 + extra) % 1000000007;
+    let n = candies.len();
+    let want = literal(candies, extra);
+    let reversed: Vec[i32] = candies.iter().rev().cloned().collect();
+    let lifted: Vec[i32] = candies.iter().map(|c| c + 1).collect();
+    for i in 0..5 {
+        let what = f"arm {i} on {n} kids, {extra} extra";
+        let got = arm(i, candies, extra);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: an answer for every kid, and the kid with the most among them
+        let mut most = 0;
+        for j in 0..n {
+            if candies[j] > candies[most] {
+                most = j;
+            }
+        }
+        expect(mut t, 2, got.len() == n and got[most], f"P2 {what}");
+        // P3: one extra candy more takes no kid's answer away
+        let more = arm(i, candies, extra + 1);
+        let mut kept = more.len() == n;
+        for j in 0..n.min(more.len()) {
+            kept = kept and (not got[j] or more[j]);
+        }
+        expect(mut t, 3, kept, f"P3 {what}");
+        // P4: the kids turned round give the answers turned round
+        let back: Vec[bool] = arm(i, reversed, extra).iter().rev().cloned().collect();
+        expect(mut t, 4, back == got, f"P4 {what}");
+        // P5: a candy more for every kid changes no answer
+        expect(mut t, 5, arm(i, lifted, extra) == got, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: two kids alike, the extra just
+    // reaching the most, one short, and the constraints' most. Every case
+    // is drawn before any arm answers.
+    let mut cases: Vec[(Vec[i32], i32)] = [
+        ([2, 3, 5, 1, 3], 3),
+        ([4, 2, 1, 1, 2], 1),
+        ([12, 1, 12], 10),
+        ([1, 1], 1),
+        ([100, 50], 50),
+        ([100, 49], 50),
+        ([1, 100, 1, 100, 51], 49),
+    ];
+    let mut seed = 14311;
+    let alike: Vec[i32] = Vec.filled(100, 100);
+    cases.push((alike, 50));
+    let kids: Vec[i32] = (0..100).map(|_| (1 + next_random(mut seed) % 100) as i32).collect();
+    for extra in [1i32, 25, 50] {
+        cases.push((kids.clone(), extra));
+    }
+    // 1992 random cases: 2 to 100 kids, of up to 1 to 100 candies, with 1
+    // to 50 extra
+    for _ in 0..1992 {
+        let n = 2 + next_random(mut seed) % 99;
+        let top = 1 + next_random(mut seed) % 100;
+        let candies: Vec[i32] = (0..n).map(|_| (1 + next_random(mut seed) % top) as i32).collect();
+        let extra = (1 + next_random(mut seed) % 50) as i32;
+        cases.push((candies, extra));
+    }
+    for j in 0..cases.len() {
+        let (candies, extra) = cases[j].clone();
+        check_case(mut t, candies, extra);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
