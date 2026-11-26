@@ -1,0 +1,88 @@
+fn entity_parser(text: String) -> String {
+    // one walk: at each `&`, the name up to the next `;` within the seven
+    // characters the longest entity takes looked up, and the `&` kept as it
+    // is when it names none of the six
+    let mut out = String.new();
+    let mut i = 0;
+    while i < text.len() {
+        if text[i..].starts_with("&") {
+            let window = text[i..(i + 7).min(text.len())];
+            if let Some(end) = window.find(";") {
+                let symbol = match window[..end + 1] {
+                    "&quot;" => "\"",
+                    "&apos;" => "'",
+                    "&amp;" => "&",
+                    "&gt;" => ">",
+                    "&lt;" => "<",
+                    "&frasl;" => "/",
+                    _ => "",
+                };
+                if symbol != "" {
+                    out.push_str(symbol);
+                    i += end + 1;
+                    continue;
+                }
+            }
+        }
+        out.push_str(text[i..i + 1]);
+        i += 1;
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a text of n pieces: a letter, a space, a `&`, a `;`, or a whole or broken
+// entity, each drawn
+fn drawn(n: i64, seed: mut ref i64) -> String {
+    let pieces = ["a", "b", " ", "&", ";", "&quot;", "&apos;", "&amp;", "&gt;", "&lt;", "&frasl;", "&amp", "&gt", "&quot", "&ambassador;", "&lt;;", "&&", "amp;", "&frasl"];
+    let mut text = String.new();
+    for _ in 0..n {
+        text.push_str(pieces[next_random(mut seed) % pieces.len()]);
+    }
+    text
+}
+
+fn checksum(check: i64, s: String) -> i64 {
+    let mut c = check;
+    for b in s.bytes().iter() {
+        c = (c * 131 + b as i64) % 1000000007;
+    }
+    c
+}
+
+fn main() {
+    // LeetCode's two examples, and five more
+    println(entity_parser("&amp; is an HTML entity but &ambassador; is not."));
+    println(entity_parser("and I quote: &quot;...&quot;"));
+    println([
+        entity_parser("&amp;gt;"),
+        entity_parser("&&gt;"),
+        entity_parser("x &frasl; y &lt;&gt; &apos;z&apos;"),
+        entity_parser("&quot&quot;;"),
+        entity_parser("&"),
+    ].join(" | "));
+    // the constraints' most: 10^5 characters of `&gt;` after `&amp;`, and drawn
+    let mut seed = 1410;
+    let mut nested = String.new();
+    for _ in 0..12500 {
+        nested.push_str("&amp;gt;");
+    }
+    let big = entity_parser(drawn(20000, mut seed));
+    println(f"10^5 characters, 20000 pieces: {entity_parser(nested).len()} {big.len()} {checksum(0, big)}");
+    // 2000 random texts of 1 to 30 pieces
+    let mut check: i64 = 0;
+    let mut total: i64 = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let out = entity_parser(drawn(n, mut seed));
+        total += out.len();
+        check = checksum(check, out);
+    }
+    println(f"2000 random texts: {total} characters, checksum {check}");
+}
