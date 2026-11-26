@@ -1,0 +1,118 @@
+fn display_table(orders: Vec[Vec[String]]) -> Vec[Vec[String]] {
+    // counts kept in a hash map keyed by (table, dish), and the tables and
+    // dishes it holds sorted afterwards, since its own order is none
+    let mut counts: Map[(i64, String), i64] = Map.new();
+    let mut tables: Set[i64] = Set.new();
+    let mut foods: Set[String] = Set.new();
+    for order in orders.iter() {
+        let table = i64.parse(order[1]).unwrap();
+        *counts.entry((table, order[2].clone())).or_insert(0) += 1;
+        tables.insert(table);
+        foods.insert(order[2].clone());
+    }
+    let mut tables: Vec[i64] = tables.into_iter().collect();
+    tables.sort();
+    let mut foods: Vec[String] = foods.into_iter().collect();
+    foods.sort();
+    let mut out: Vec[Vec[String]] = Vec.new();
+    let mut header = ["Table".to_string()].to_vec();
+    header.extend(foods.iter().cloned());
+    out.push(header);
+    for table in tables.iter() {
+        let mut row = [f"{table}"].to_vec();
+        for food in foods.iter() {
+            row.push(f"{counts.get((table, food.clone())).unwrap_or(0)}");
+        }
+        out.push(row);
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// orders written as `name,table,dish;name,table,dish`
+fn parsed(text: Str) -> Vec[Vec[String]] {
+    text.split(";").map(|order| order.split(",").map(|cell| cell.to_string()).collect()).collect()
+}
+
+// a dish of 1 to 20 letters, a space one time in 6
+fn dish(seed: mut ref i64) -> String {
+    let letters: Vec[char] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".chars().collect();
+    let n = 1 + next_random(mut seed) % 20;
+    let mut s = String.new();
+    for _ in 0..n {
+        let r = next_random(mut seed);
+        if r % 6 == 0 {
+            s.push(' ');
+        } else {
+            s.push(letters[r / 6 % 52]);
+        }
+    }
+    s
+}
+
+// n orders at tables 1 to `tables`, of dishes from a pool of `dishes`
+fn drawn(n: i64, tables: i64, dishes: i64, seed: mut ref i64) -> Vec[Vec[String]] {
+    let mut pool: Vec[String] = Vec.new();
+    for _ in 0..dishes {
+        pool.push(dish(mut seed));
+    }
+    let names = ["David", "Corina", "Carla", "Rous", "James"];
+    let mut orders: Vec[Vec[String]] = Vec.new();
+    for _ in 0..n {
+        let r = next_random(mut seed);
+        let food = pool[next_random(mut seed) % dishes].clone();
+        orders.push([names[r % 5].to_string(), f"{1 + r / 5 % tables}", food].to_vec());
+    }
+    orders
+}
+
+// the table's rows joined by `|`, each row's cells by `,`
+fn shown(table: Vec[Vec[String]]) -> String {
+    let rows: Vec[String] = table.iter().map(|row| row.join(",")).collect();
+    rows.join("|")
+}
+
+fn checksum(check: i64, text: String) -> i64 {
+    let mut check = check;
+    for b in text.bytes().iter() {
+        check = (check * 131 + b as i64) % 1000000007;
+    }
+    (check * 131 + 7) % 1000000007
+}
+
+fn main() {
+    // LeetCode's three examples, and one more: a table 500, a table 1, and
+    // dishes apart only by a capital or a space
+    let examples = [
+        "David,3,Ceviche;Corina,10,Beef Burrito;David,3,Fried Chicken;Carla,5,Water;Carla,5,Ceviche;Rous,3,Ceviche",
+        "James,12,Fried Chicken;Ratesh,12,Fried Chicken;Amadeus,12,Fried Chicken;Adam,1,Canadian Waffles;Brianna,1,Canadian Waffles",
+        "Laura,2,Bean Burrito;Jhon,2,Beef Burrito;Melissa,2,Soda",
+        "Ann,500,ab;Bo,1,a b;Ann,500,Ab;Cy,1,ab;Bo,1,ab",
+    ];
+    for text in examples.iter() {
+        println(shown(display_table(parsed(text))));
+    }
+    // the constraints' most: 5 * 10^4 orders at 500 tables, of 20 dishes
+    let mut seed = 1418;
+    let big = display_table(drawn(50000, 500, 20, mut seed));
+    println(f"5 * 10^4 orders: {big.len()} rows of {big[0].len()} cells, checksum {checksum(0, shown(big))}");
+    // 2000 random cases of 1 to 40 orders, at up to 5 or 500 tables, of 1
+    // to 8 dishes
+    let mut check: i64 = 0;
+    let mut rows = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 40;
+        let tables = if next_random(mut seed) % 2 == 0 { 5 } else { 500 };
+        let dishes = 1 + next_random(mut seed) % 8;
+        let table = display_table(drawn(n, tables, dishes, mut seed));
+        rows += table.len();
+        check = checksum(check, shown(table));
+    }
+    println(f"2000 random cases: {rows} rows, checksum {check}");
+}

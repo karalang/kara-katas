@@ -1,0 +1,69 @@
+fn display_table(orders: Slice[Vec[String]]) -> Vec[Vec[String]] {
+    // each table's count of each dish, the tables in order, and the
+    // dishes anyone ordered, in order, for the header
+    let mut tables: SortedMap[i64, SortedMap[String, i64]] = SortedMap.new();
+    let mut foods: SortedSet[String] = SortedSet.new();
+    for order in orders.iter() {
+        let table = i64.parse(order[1]).unwrap();
+        foods.insert(order[2].clone());
+        *tables.entry(table).or_insert(SortedMap.new()).entry(order[2].clone()).or_insert(0) += 1;
+    }
+    let mut header = ["Table".to_string()].to_vec();
+    header.extend(foods.iter().cloned());
+    let mut out = [header].to_vec();
+    for (table, counts) in tables.iter() {
+        let mut row = [f"{table}"].to_vec();
+        for food in foods.iter() {
+            row.push(f"{counts.get(food).unwrap_or(0)}");
+        }
+        out.push(row);
+    }
+    out
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // a pool of 2 * 10^5 orders at tables 1 to 500, of 30 dishes of 1 to
+    // 20 letters, and 100 windows of 5 * 10^4 of them, each window's start
+    // drawn
+    let mut seed: i64 = 1418;
+    let letters: Vec[char] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".chars().collect();
+    let mut dishes: Vec[String] = Vec.new();
+    for _ in 0..30 {
+        let n = 1 + next_random(mut seed) % 20;
+        let mut s = String.new();
+        for _ in 0..n {
+            let r = next_random(mut seed);
+            if r % 6 == 0 {
+                s.push(' ');
+            } else {
+                s.push(letters[r / 6 % 52]);
+            }
+        }
+        dishes.push(s);
+    }
+    let mut pool: Vec[Vec[String]] = Vec.new();
+    for _ in 0..200000 {
+        let r = next_random(mut seed);
+        let food = dishes[next_random(mut seed) % 30].clone();
+        pool.push([f"guest{r % 100}", f"{1 + r / 100 % 500}", food].to_vec());
+    }
+    let mut check: i64 = 0;
+    for _ in 0..100 {
+        let start = next_random(mut seed) % 150001;
+        let table = display_table(pool[start..start + 50000]);
+        for row in table.iter() {
+            for cell in row.iter() {
+                for b in cell.bytes().iter() {
+                    check = (check * 131 + b as i64) % 1000000007;
+                }
+                check = (check * 131 + 7) % 1000000007;
+            }
+        }
+    }
+    println(f"100 windows of 5 * 10^4 orders: checksum {check}");
+}

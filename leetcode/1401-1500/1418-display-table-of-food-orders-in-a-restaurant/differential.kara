@@ -1,0 +1,368 @@
+// LeetCode #1418: Display Table of Food Orders in a Restaurant -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- display_table.kara ----
+fn a0_display_table(orders: Vec[Vec[String]]) -> Vec[Vec[String]] {
+    // each table's count of each dish, the tables in order, and the
+    // dishes anyone ordered, in order, for the header
+    let mut tables: SortedMap[i64, SortedMap[String, i64]] = SortedMap.new();
+    let mut foods: SortedSet[String] = SortedSet.new();
+    for order in orders.iter() {
+        let table = i64.parse(order[1]).unwrap();
+        foods.insert(order[2].clone());
+        *tables.entry(table).or_insert(SortedMap.new()).entry(order[2].clone()).or_insert(0) += 1;
+    }
+    let mut header = ["Table".to_string()].to_vec();
+    header.extend(foods.iter().cloned());
+    let mut out = [header].to_vec();
+    for (table, counts) in tables.iter() {
+        let mut row = [f"{table}"].to_vec();
+        for food in foods.iter() {
+            row.push(f"{counts.get(food).unwrap_or(0)}");
+        }
+        out.push(row);
+    }
+    out
+}
+
+// ---- display_table_grid.kara ----
+fn a1_display_table(orders: Vec[Vec[String]]) -> Vec[Vec[String]] {
+    // the dishes sorted with repeats dropped, each one's column found
+    // through a map, and a grid of counts with a row for every table
+    // number from 1 to 500
+    let mut foods: Vec[String] = orders.iter().map(|order| order[2].clone()).collect();
+    foods.sort();
+    foods.dedup();
+    let column: Map[String, i64] = foods.iter().enumerate().map(|(i, food)| (food.clone(), i)).collect();
+    let mut counts: Vec[Vec[i64]] = Vec.filled(501, Vec.filled(foods.len(), 0));
+    let mut seen: Vec[bool] = Vec.filled(501, false);
+    for order in orders.iter() {
+        let table = i64.parse(order[1]).unwrap();
+        counts[table][column[order[2]]] += 1;
+        seen[table] = true;
+    }
+    let mut header = ["Table".to_string()].to_vec();
+    header.extend(foods.iter().cloned());
+    let mut out = [header].to_vec();
+    for table in 1..=500 {
+        if seen[table] {
+            let mut row = [f"{table}"].to_vec();
+            row.extend(counts[table].iter().map(|c| f"{c}"));
+            out.push(row);
+        }
+    }
+    out
+}
+
+// ---- display_table_sorted.kara ----
+fn a2_display_table(orders: Vec[Vec[String]]) -> Vec[Vec[String]] {
+    // the orders as (table, dish) pairs sorted, so each table's orders
+    // come together, and each run counted into a row by the dish's place
+    // in the sorted dishes
+    let mut pairs: Vec[(i64, String)] = orders.iter().map(|order| (i64.parse(order[1]).unwrap(), order[2].clone())).collect();
+    pairs.sort();
+    let mut foods: Vec[String] = pairs.iter().map(|(_, food)| food.clone()).collect();
+    foods.sort();
+    foods.dedup();
+    let mut header = ["Table".to_string()].to_vec();
+    header.extend(foods.iter().cloned());
+    let mut out = [header].to_vec();
+    let mut i = 0;
+    while i < pairs.len() {
+        let table = pairs[i].0;
+        let mut counts: Vec[i64] = Vec.filled(foods.len(), 0);
+        while i < pairs.len() and pairs[i].0 == table {
+            counts[foods.binary_search(pairs[i].1).unwrap()] += 1;
+            i += 1;
+        }
+        let mut row = [f"{table}"].to_vec();
+        row.extend(counts.iter().map(|c| f"{c}"));
+        out.push(row);
+    }
+    out
+}
+
+// ---- display_table_hash.kara ----
+fn a3_display_table(orders: Vec[Vec[String]]) -> Vec[Vec[String]] {
+    // counts kept in a hash map keyed by (table, dish), and the tables and
+    // dishes it holds sorted afterwards, since its own order is none
+    let mut counts: Map[(i64, String), i64] = Map.new();
+    let mut tables: Set[i64] = Set.new();
+    let mut foods: Set[String] = Set.new();
+    for order in orders.iter() {
+        let table = i64.parse(order[1]).unwrap();
+        *counts.entry((table, order[2].clone())).or_insert(0) += 1;
+        tables.insert(table);
+        foods.insert(order[2].clone());
+    }
+    let mut tables: Vec[i64] = tables.into_iter().collect();
+    tables.sort();
+    let mut foods: Vec[String] = foods.into_iter().collect();
+    foods.sort();
+    let mut out: Vec[Vec[String]] = Vec.new();
+    let mut header = ["Table".to_string()].to_vec();
+    header.extend(foods.iter().cloned());
+    out.push(header);
+    for table in tables.iter() {
+        let mut row = [f"{table}"].to_vec();
+        for food in foods.iter() {
+            row.push(f"{counts.get((table, food.clone())).unwrap_or(0)}");
+        }
+        out.push(row);
+    }
+    out
+}
+
+// ---- display_table_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_display_table(orders: Vec[Vec[String]]) -> Vec[Vec[String]] {
+        let mut foods: SortedSet[String] = SortedSet.new();
+        let mut tables: SortedMap[i32, Map[String, i32]] = SortedMap.new();
+        for order in ref orders {
+            let table: i32 = i32.parse(order[1]).unwrap();
+            foods.insert(order[2].clone());
+            *tables.entry(table).or_insert(Map.new()).entry(order[2].clone()).or_insert(0) += 1;
+        }
+        let mut res = Vec.with_capacity(tables.len() + 1);
+        let mut header = ["Table".to_string()];
+        header.extend(foods.iter().cloned());
+        res.push(header);
+        for (table, counts) in ref tables {
+            let mut row = [table.to_string()];
+            for food in ref foods {
+                row.push(counts.get(food).unwrap_or(0).to_string());
+            }
+            res.push(row);
+        }
+        res
+    }
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// orders written as `name,table,dish;name,table,dish`
+fn parsed(text: Str) -> Vec[Vec[String]] {
+    text.split(";").map(|order| order.split(",").map(|cell| cell.to_string()).collect()).collect()
+}
+
+// a dish of 1 to `most` letters, a space one time in 6
+fn dish(most: i64, seed: mut ref i64) -> String {
+    let letters: Vec[char] = "abcAB".chars().collect();
+    let n = 1 + next_random(mut seed) % most;
+    let mut s = String.new();
+    for _ in 0..n {
+        let r = next_random(mut seed);
+        if r % 6 == 0 {
+            s.push(' ');
+        } else {
+            s.push(letters[r / 6 % 5]);
+        }
+    }
+    s
+}
+
+// n orders at tables 1 to `tables`, of dishes from a pool of `dishes`
+fn drawn(n: i64, tables: i64, dishes: i64, most: i64, seed: mut ref i64) -> Vec[Vec[String]] {
+    let mut pool: Vec[String] = Vec.new();
+    for _ in 0..dishes {
+        pool.push(dish(most, mut seed));
+    }
+    let mut orders: Vec[Vec[String]] = Vec.new();
+    for _ in 0..n {
+        let r = next_random(mut seed);
+        let food = pool[next_random(mut seed) % dishes].clone();
+        orders.push([f"guest{r % 7}", f"{1 + r / 7 % tables}", food].to_vec());
+    }
+    orders
+}
+
+// the statement read literally: the dishes anyone ordered, each one once,
+// put in alphabetical order by taking the least not yet taken each time;
+// then every table number from 1 to 500 that some order names, in turn,
+// and for each dish the orders at that table of that dish, counted
+fn literal(orders: Vec[Vec[String]]) -> Vec[Vec[String]] {
+    let mut seen: Vec[String] = Vec.new();
+    for order in orders.iter() {
+        if not seen.contains(order[2]) {
+            seen.push(order[2].clone());
+        }
+    }
+    let mut foods: Vec[String] = Vec.new();
+    let mut taken: Vec[bool] = Vec.filled(seen.len(), false);
+    for _ in 0..seen.len() {
+        let mut least = -1;
+        for j in 0..seen.len() {
+            if not taken[j] and (least < 0 or seen[j] < seen[least]) {
+                least = j;
+            }
+        }
+        taken[least] = true;
+        foods.push(seen[least].clone());
+    }
+    let mut header: Vec[String] = ["Table".to_string()].to_vec();
+    for food in foods.iter() {
+        header.push(food.clone());
+    }
+    let mut out: Vec[Vec[String]] = [header].to_vec();
+    for table in 1..=500 {
+        let name = f"{table}";
+        if orders.iter().any(|order| order[1] == name) {
+            let mut row: Vec[String] = [name.clone()].to_vec();
+            for food in foods.iter() {
+                let count = orders.iter().filter(|order| order[1] == name and order[2] == food).count();
+                row.push(f"{count}");
+            }
+            out.push(row);
+        }
+    }
+    out
+}
+
+fn arm(i: i64, orders: Vec[Vec[String]]) -> Vec[Vec[String]] {
+    let orders = orders.clone();
+    match i {
+        0 => a0_display_table(orders),
+        1 => a1_display_table(orders),
+        2 => a2_display_table(orders),
+        3 => a3_display_table(orders),
+        _ => A4Solution.a4_display_table(orders),
+    }
+}
+
+fn distinct(orders: Vec[Vec[String]], at: i64) -> i64 {
+    let mut seen: Vec[String] = orders.iter().map(|order| order[at].clone()).collect();
+    seen.sort();
+    seen.dedup();
+    seen.len()
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, orders: Vec[Vec[String]], seed: i64) {
+    t.cases += 1;
+    let star = arm(0, orders);
+    for row in star.iter() {
+        for cell in row.iter() {
+            for b in cell.bytes().iter() {
+                t.check = (t.check * 131 + b as i64) % 1000000007;
+            }
+            t.check = (t.check * 131 + 7) % 1000000007;
+        }
+    }
+    t.check = (t.check * 131 + orders.len()) % 1000000007;
+    let want = if orders.len() <= 300 { Some(literal(orders)) } else { None };
+    let tables = distinct(orders, 1);
+    let foods = distinct(orders, 2);
+    // the orders in another order: reversed, then a drawn shuffle
+    let mut shuffled: Vec[Vec[String]] = orders.iter().rev().cloned().collect();
+    let mut s = seed;
+    for j in (1..shuffled.len()).rev() {
+        shuffled.swap(j, next_random(mut s) % (j + 1));
+    }
+    let mut twice = orders.clone();
+    twice.extend(orders.iter().cloned());
+    for i in 0..5 {
+        let what = f"arm {i} on {orders.len()} orders";
+        let got = arm(i, orders);
+        // P1: the statement read literally, while the orders are few
+        if let Some(ref w) = want {
+            expect(mut t, 1, got == w, f"P1 {what}");
+        }
+        // P2: a header of "Table" and the dishes, each once and in order,
+        // and a row for each table, in order, each as wide as the header
+        let header_ok = got.len() == tables + 1 and got[0].len() == foods + 1 and got[0][0] == "Table" and (2..got[0].len()).all(|j| got[0][j - 1] < got[0][j]);
+        let numbers: Vec[i64] = got[1..].iter().map(|row| i64.parse(row[0]).unwrap_or(0)).collect();
+        let rows_ok = got.iter().all(|row| row.len() == foods + 1) and (1..numbers.len()).all(|j| numbers[j - 1] < numbers[j]) and numbers.iter().all(|n| n >= 1 and n <= 500);
+        expect(mut t, 2, header_ok and rows_ok, f"P2 {what}");
+        // P3: the counts add up to the orders, and each table's to the
+        // orders that name it
+        let mut total: i64 = 0;
+        let mut each_ok = true;
+        for row in got[1..].iter() {
+            let sum: i64 = row[1..].iter().map(|c| i64.parse(c).unwrap_or(-1000000)).sum();
+            total += sum;
+            each_ok = each_ok and sum == orders.iter().filter(|order| order[1] == row[0]).count();
+        }
+        expect(mut t, 3, total == orders.len() and each_ok, f"P3 {what}: {total}");
+        // P4: the orders taken in another order give the same table
+        expect(mut t, 4, arm(i, shuffled) == got, f"P4 {what}");
+        // P5: every order twice over doubles every count and nothing else
+        let doubled = arm(i, twice);
+        let mut double_ok = doubled.len() == got.len() and doubled[0] == got[0];
+        for r in 1..got.len().min(doubled.len()) {
+            double_ok = double_ok and doubled[r][0] == got[r][0];
+            for c in 1..got[r].len().min(doubled[r].len()) {
+                double_ok = double_ok and i64.parse(doubled[r][c]).unwrap_or(-1) == 2 * i64.parse(got[r][c]).unwrap_or(0);
+            }
+        }
+        expect(mut t, 5, double_ok, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: one order, every order at one
+    // table, each of 500 orders at its own table, dishes apart only by a
+    // capital, a space or a letter more, and the constraints' most. Every
+    // case is drawn before any arm answers.
+    let mut cases: Vec[Vec[Vec[String]]] = [
+        "David,3,Ceviche;Corina,10,Beef Burrito;David,3,Fried Chicken;Carla,5,Water;Carla,5,Ceviche;Rous,3,Ceviche",
+        "James,12,Fried Chicken;Ratesh,12,Fried Chicken;Amadeus,12,Fried Chicken;Adam,1,Canadian Waffles;Brianna,1,Canadian Waffles",
+        "Laura,2,Bean Burrito;Jhon,2,Beef Burrito;Melissa,2,Soda",
+        "Ann,500,x",
+        "Ann,7,b;Bo,7,a;Cy,7,b;Bo,7,c",
+        "Ann,500,ab;Bo,1,a b;Ann,500,Ab;Cy,1,ab;Bo,1,ab;Dee,2,a;Dee,2, a;Dee,9,abc;Ann,10,B",
+    ].iter().map(|text| parsed(text)).collect();
+    let own_tables: Vec[Vec[String]] = (1..=500).map(|n| [f"guest{n}", f"{n}", f"dish {n % 3}"].to_vec()).collect();
+    cases.push(own_tables);
+    let mut seed = 14181;
+    cases.push(drawn(50000, 500, 20, 20, mut seed));
+    cases.push(drawn(50000, 3, 1, 20, mut seed));
+    // 1994 random cases: 1 to 40 orders two times in three and up to 300
+    // otherwise, at up to 5 or 500 tables, of 1 to 8 dishes of up to 1, 3
+    // or 20 characters
+    for i in 0..1994 {
+        let n = if i % 3 == 2 { 1 + next_random(mut seed) % 300 } else { 1 + next_random(mut seed) % 40 };
+        let tables = if next_random(mut seed) % 2 == 0 { 5 } else { 500 };
+        let dishes = 1 + next_random(mut seed) % 8;
+        let most = [1, 3, 20][next_random(mut seed) % 3];
+        cases.push(drawn(n, tables, dishes, most, mut seed));
+    }
+    let mut shuffle_seed = 1418;
+    for orders in cases.iter() {
+        shuffle_seed = (shuffle_seed * 31 + 7) % 1000003;
+        check_case(mut t, orders, shuffle_seed);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
