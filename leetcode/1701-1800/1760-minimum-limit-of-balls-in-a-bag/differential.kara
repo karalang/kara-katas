@@ -1,0 +1,237 @@
+// LeetCode #1760: Minimum Limit of Balls in a Bag -- differential test
+// of the five arms against the statement read literally, with five more
+// properties.
+
+// ---- minimum_size.kara ----
+fn a0_operations(nums: Vec[i32], penalty: i64) -> i64 {
+    nums.iter().map(|x| (x - 1) / penalty).sum()
+}
+
+fn a0_minimum_size(nums: Vec[i32], max_operations: i32) -> i32 {
+    let mut lo: i32 = 1;
+    let mut hi = nums.iter().max().unwrap();
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if a0_operations(nums, mid) <= max_operations {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    lo
+}
+
+// ---- minimum_size_bits.kara ----
+fn a1_minimum_size(nums: Vec[i32], max_operations: i32) -> i32 {
+    let too_many = |p: i64| nums.iter().map(|x| (x as i64 - 1) / p).sum() > max_operations;
+    // 0 stands for "no penalty is too small", and every penalty of the
+    // form built is tried only when it is at least 1
+    let mut low = 0;
+    for bit in (0..31).rev() {
+        let next = low + (1 << bit);
+        if next <= 1000000000 and too_many(next) {
+            low = next;
+        }
+    }
+    (low + 1) as i32
+}
+
+// ---- minimum_size_grouped.kara ----
+fn a2_minimum_size(nums: Vec[i32], max_operations: i32) -> i32 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut groups: Vec[(i64, i64)] = Vec.new();
+    for x in sorted {
+        let n = groups.len();
+        if n > 0 and groups[n - 1].0 == x {
+            groups[n - 1].1 += 1;
+        } else {
+            groups.push((x as i64, 1));
+        }
+    }
+    let mut lo = 1;
+    let mut hi = groups[groups.len() - 1].0;
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        let needed: i64 = groups.iter().map(|(size, count)| (size - 1) / mid * count).sum();
+        if needed <= max_operations {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    lo as i32
+}
+
+// ---- minimum_size_recursive.kara ----
+fn a3_fits(nums: Vec[i32], max_operations: i32, penalty: i32) -> bool {
+    let mut needed = 0;
+    for x in nums.iter() {
+        needed += (x - 1) / penalty;
+        if needed > max_operations {
+            return false;
+        }
+    }
+    true
+}
+
+// the least penalty in lo..=hi that fits, hi known to fit
+fn a3_least(nums: Vec[i32], max_operations: i32, lo: i32, hi: i32) -> i32 {
+    if lo == hi {
+        return lo;
+    }
+    let mid = lo + (hi - lo) / 2;
+    if a3_fits(nums, max_operations, mid) {
+        a3_least(nums, max_operations, lo, mid)
+    } else {
+        a3_least(nums, max_operations, mid + 1, hi)
+    }
+}
+
+fn a3_minimum_size(nums: Vec[i32], max_operations: i32) -> i32 {
+    let most = nums.iter().max().unwrap();
+    a3_least(nums, max_operations, 1, most)
+}
+
+// ---- minimum_size_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn minimum_size(nums: Vec[i32], max_operations: i32) -> i32 {
+        let mut (left, right) = (1i32, *nums.iter().max().unwrap());
+        while left < right {
+            let mid = left + (right - left) / 2;
+            let ops: i64 = nums.iter().map(|x| ((x - 1) / mid) as i64).sum();
+            if ops <= max_operations {
+                right = mid;
+            } else {
+                left = mid + 1;
+            }
+        }
+        left
+    }
+}
+
+fn a4_minimum_size(nums: Vec[i32], max_operations: i32) -> i32 {
+    A4Solution.minimum_size(nums, max_operations)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the fewest divisions that leave every part of a bag of x balls at most
+// `penalty`, each division of a bag into two of a + b = x balls tried
+fn divisions(x: i64, penalty: i64, memo: mut ref Vec[i64]) -> i64 {
+    if x <= penalty {
+        return 0;
+    }
+    if memo[x] >= 0 {
+        return memo[x];
+    }
+    let mut best = i64.MAX;
+    for a in 1..x / 2 + 1 {
+        best = best.min(1 + divisions(a, penalty, mut memo) + divisions(x - a, penalty, mut memo));
+    }
+    memo[x] = best;
+    best
+}
+
+// the statement read literally: the least penalty that some way of
+// dividing bags, at most max_operations times, reaches
+fn literal(nums: Vec[i32], max_operations: i32) -> i32 {
+    let most = nums.iter().max().unwrap();
+    for penalty in 1..most + 1 {
+        let mut memo: Vec[i64] = Vec.filled(most as i64 + 1, -1);
+        let needed: i64 = nums.iter().map(|x| divisions(x, penalty, mut memo)).sum();
+        if needed <= max_operations {
+            return penalty;
+        }
+    }
+    most
+}
+
+fn arm(i: i64, nums: Vec[i32], max_operations: i32) -> i32 {
+    match i {
+        0 => a0_minimum_size(nums, max_operations),
+        1 => a1_minimum_size(nums, max_operations),
+        2 => a2_minimum_size(nums, max_operations),
+        3 => a3_minimum_size(nums, max_operations),
+        _ => a4_minimum_size(nums, max_operations),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, nums: Vec[i32], max_operations: i32) {
+    t.cases += 1;
+    let want = literal(nums, max_operations);
+    t.check = (t.check * 31 + want) % 1000000007;
+    let star = arm(0, nums, max_operations);
+    let reversed: Vec[i32] = nums.iter().rev().collect();
+    let mut with_one = nums.clone();
+    with_one.push(1);
+    let total: i64 = nums.iter().sum();
+    let bags = nums.len() + max_operations;
+    let most = nums.iter().max().unwrap();
+    for i in 0..5 {
+        let what = f"arm {i} on {nums}, {max_operations} operations";
+        let got = arm(i, nums, max_operations);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: the bags in reverse order give the same
+        expect(mut t, 2, arm(i, reversed, max_operations) == got, f"P2 {what}");
+        // P3: one more operation gives no more
+        expect(mut t, 3, arm(i, nums, max_operations + 1) <= got, f"P3 {what}");
+        // P4: a bag of one ball more changes nothing
+        expect(mut t, 4, arm(i, with_one, max_operations) == got, f"P4 {what}");
+        // P5: no more than the largest bag, and at least the balls shared
+        // out evenly over the most bags there can be
+        expect(mut t, 5, got <= most and got * bags >= total, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges. Every case is drawn before any arm
+    // answers.
+    let mut cases: Vec[(Vec[i32], i32)] = [([9], 2), ([2, 4, 8, 2], 4), ([1, 1, 1], 5), ([1], 1), ([3, 5], 6), ([3, 5], 5), ([7, 7, 7, 7], 4)];
+    let mut seed = 17601;
+    // 1993 random cases of 1 to 8 bags of 1 to 30 balls and 1 to 20
+    // operations
+    for _ in 0..1993 {
+        let n = 1 + next_random(mut seed) % 8;
+        let bags: Vec[i32] = (0..n).map(|_| (1 + next_random(mut seed) % 30) as i32).collect();
+        cases.push((bags, (1 + next_random(mut seed) % 20) as i32));
+    }
+    for j in 0..cases.len() {
+        let (nums, max_operations) = ref cases[j];
+        check_case(mut t, nums, max_operations);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

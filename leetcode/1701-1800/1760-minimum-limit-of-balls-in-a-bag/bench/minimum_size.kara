@@ -1,0 +1,40 @@
+// LeetCode #1760: Minimum Limit of Balls in a Bag -- the bench, mirroring
+// the ★ arm: a binary search on the penalty. One list of 100000 bags of up
+// to 1000000000 balls, and 100 calls, each with a number of operations
+// chosen from the checksum so far and first changing one bag.
+fn operations(nums: Vec[i32], penalty: i64) -> i64 {
+    nums.iter().map(|x| (x - 1) / penalty).sum()
+}
+
+fn minimum_size(nums: Vec[i32], max_operations: i32) -> i32 {
+    let mut lo: i32 = 1;
+    let mut hi = nums.iter().max().unwrap();
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if operations(nums, mid) <= max_operations {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    lo
+}
+
+fn main() {
+    let mut seed = 1760;
+    let mut bags: Vec[i32] = Vec.new();
+    for _ in 0..100000 {
+        seed = (seed * 1103515245 + 12345) % 2147483648;
+        let high = seed / 65536;
+        seed = (seed * 1103515245 + 12345) % 2147483648;
+        bags.push((1 + (high * 32768 + seed / 65536) % 1000000000) as i32);
+    }
+    let mut check = 0;
+    for call in 0..100 {
+        let at = (check + call * 7919) % 100000;
+        bags[at] = (1 + (check * 13 + call) % 1000000000) as i32;
+        let ops = 1 + (check + call * 104729) % 1000000000;
+        check = (check * 31 + minimum_size(bags, ops as i32)) % 1000000007;
+    }
+    println(f"100 calls over 100000 bags: checksum {check}");
+}
