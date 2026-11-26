@@ -1,0 +1,261 @@
+// LeetCode #1415: The k-th Lexicographical String of All Happy Strings of Length n -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- get_happy_string.kara ----
+fn a0_get_happy_string(n: i32, k: i32) -> String {
+    // there are 3 * 2^(n - 1) happy strings: the first letter is the
+    // (k - 1) / 2^(n - 1)-th of `abc`, and each letter after it the lower
+    // or the higher of the two that differ from the one before, by the
+    // bits of what is left of k - 1, highest first
+    let per_first: i32 = 1 << (n - 1);
+    if k > 3 * per_first {
+        return "";
+    }
+    let letters = ['a', 'b', 'c'];
+    let mut rest = k - 1;
+    let mut last = letters[rest / per_first];
+    rest %= per_first;
+    let mut s = String.new();
+    s.push(last);
+    let mut bit = per_first / 2;
+    while bit > 0 {
+        let options: Vec[char] = letters.iter().filter(|c| c != last).collect();
+        last = options[if rest >= bit { 1 } else { 0 }];
+        if rest >= bit {
+            rest -= bit;
+        }
+        s.push(last);
+        bit /= 2;
+    }
+    s
+}
+
+// ---- get_happy_string_backtrack.kara ----
+fn a1_build(n: i64, s: mut ref String, count: mut ref i64, k: i64, found: mut ref String) {
+    if *count >= k {
+        return;
+    }
+    if s.len() == n {
+        *count += 1;
+        if *count == k {
+            *found = s.clone();
+        }
+        return;
+    }
+    for c in "abc".chars() {
+        if not s.ends_with(c.to_string()) {
+            s.push(c);
+            a1_build(n, mut s, mut count, k, mut found);
+            s.pop();
+        }
+    }
+}
+
+fn a1_get_happy_string(n: i32, k: i32) -> String {
+    let mut s = String.new();
+    let mut count = 0;
+    let mut found = String.new();
+    a1_build(n, mut s, mut count, k, mut found);
+    found
+}
+
+// ---- get_happy_string_levels.kara ----
+fn a2_get_happy_string(n: i32, k: i32) -> String {
+    // the happy strings of each length from those one shorter, each
+    // extended in order, so every level stays sorted
+    let mut level: Vec[String] = ["a", "b", "c"].to_vec();
+    for _ in 1..n {
+        let mut next: Vec[String] = Vec.new();
+        for s in level.iter() {
+            for c in ["a", "b", "c"] {
+                if not s.ends_with(c) {
+                    next.push(f"{s}{c}");
+                }
+            }
+        }
+        level = next;
+    }
+    if k > level.len() {
+        ""
+    } else {
+        level[k as i64 - 1].clone()
+    }
+}
+
+// ---- get_happy_string_count.kara ----
+fn a3_get_happy_string(n: i32, k: i32) -> String {
+    // every string of n letters from `abc`, in order, as a number counted
+    // up in base 3, the happy ones counted until the k-th
+    let mut total = 1;
+    for _ in 0..n {
+        total *= 3;
+    }
+    let mut seen = 0;
+    for number in 0..total {
+        let mut digits: Vec[i64] = Vec.filled(n, 0);
+        let mut x = number;
+        for i in (0..n as i64).rev() {
+            digits[i] = x % 3;
+            x /= 3;
+        }
+        let happy = (1..n as i64).all(|i| digits[i] != digits[i - 1]);
+        if happy {
+            seen += 1;
+            if seen == k {
+                return digits.iter().map(|d| ['a', 'b', 'c'][d]).collect();
+            }
+        }
+    }
+    ""
+}
+
+// ---- get_happy_string_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_get_happy_string(n: i32, k: i32) -> String {
+        let total = 3 * (1 << (n - 1));
+        if k > total {
+            return String.new();
+        }
+        let mut k = k - 1;
+        let mut res = String.new();
+        let mut prev = ' ';
+        for i in 0..n {
+            let block: i32 = 1 << (n - 1 - i);
+            let choices: Vec[char] = ['a', 'b', 'c'].iter().filter(|c| c != prev).cloned().collect();
+            let idx = (k / block) as usize;
+            k %= block;
+            prev = choices[idx];
+            res.push(prev);
+        }
+        res
+    }
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally, for every n at once: every string of n
+// letters from `a`, `b` and `c`, sorted, and the happy ones kept in order
+fn literal() -> Vec[Vec[String]] {
+    let mut by_length: Vec[Vec[String]] = Vec.new();
+    by_length.push(Vec.new());
+    let mut every: Vec[String] = [""].to_vec();
+    for _ in 1..=10 {
+        let mut longer: Vec[String] = Vec.new();
+        for s in every.iter() {
+            for c in ["c", "a", "b"] {
+                longer.push(f"{s}{c}");
+            }
+        }
+        longer.sort();
+        let happy: Vec[String] = longer.iter().filter(|s| {
+            let b = s.bytes();
+            (1..b.len()).all(|i| b[i] != b[i - 1])
+        }).cloned().collect();
+        by_length.push(happy);
+        every = longer;
+    }
+    by_length
+}
+
+fn arm(i: i64, n: i32, k: i32) -> String {
+    match i {
+        0 => a0_get_happy_string(n, k),
+        1 => a1_get_happy_string(n, k),
+        2 => a2_get_happy_string(n, k),
+        3 => a3_get_happy_string(n, k),
+        _ => A4Solution.a4_get_happy_string(n, k),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, n: i32, k: i32, happy: Vec[Vec[String]]) {
+    t.cases += 1;
+    let star = arm(0, n, k);
+    for b in star.bytes().iter() {
+        t.check = (t.check * 131 + b as i64) % 1000000007;
+    }
+    t.check = (t.check * 131 + n * 101 + k) % 1000000007;
+    let list = ref happy[n];
+    let want = if k <= list.len() { list[k - 1].clone() } else { "" };
+    let count = 3 * (1 << (n - 1));
+    for i in 0..5 {
+        let what = f"arm {i} at n = {n}, k = {k}";
+        let got = arm(i, n, k);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: n letters, or none exactly when k is past the 3 * 2^(n - 1)
+        // happy strings
+        expect(mut t, 2, if k > count { got.is_empty() } else { got.len() == n }, f"P2 {what}: {got}");
+        // P3: only `a`, `b` and `c`, and no letter beside itself
+        let b = got.bytes();
+        let letters_ok = got.chars().all(|c| c == 'a' or c == 'b' or c == 'c');
+        expect(mut t, 3, letters_ok and (1..b.len()).all(|j| b[j] != b[j - 1]), f"P3 {what}: {got}");
+        // P4: the next k gives a later string
+        let after = arm(i, n, k + 1);
+        if not after.is_empty() {
+            expect(mut t, 4, got < after, f"P4 {what}: {got} then {after}");
+        }
+        // P5: every shorter happy string has two happy extensions, in
+        // order, so the k-th of n letters starts with the (k + 1) / 2-th
+        // of n - 1
+        if n > 1 and not got.is_empty() {
+            let shorter = arm(i, n - 1, (k + 1) / 2);
+            expect(mut t, 5, got[..got.len() - 1] == shorter, f"P5 {what}: {got} and {shorter}");
+        }
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    let happy = literal();
+    // every n from 1 to 10 with every k from 1 to 100, and 1003 random
+    // pairs. Every case is drawn before any arm answers.
+    let mut cases: Vec[(i32, i32)] = Vec.new();
+    for n in 1..=10 {
+        for k in 1..=100 {
+            cases.push((n, k));
+        }
+    }
+    let mut seed = 14151;
+    for _ in 0..1003 {
+        let n = 1 + next_random(mut seed) % 10;
+        let k = 1 + next_random(mut seed) % 100;
+        cases.push((n as i32, k as i32));
+    }
+    for (n, k) in cases.iter() {
+        check_case(mut t, n, k, happy);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
