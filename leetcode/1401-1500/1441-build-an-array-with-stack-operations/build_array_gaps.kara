@@ -1,0 +1,75 @@
+fn build_array(target: Vec[i32], n: i32) -> Vec[String] {
+    // each number of the target pushed, after a push and a pop for every
+    // number the stream gives between it and the one before
+    let mut ops: Vec[String] = Vec.new();
+    let mut before = 0;
+    for t in target.iter() {
+        for _ in before + 1..t {
+            ops.push("Push".to_string());
+            ops.push("Pop".to_string());
+        }
+        ops.push("Push".to_string());
+        before = t;
+    }
+    ops
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a target drawn from 1 to n, each number kept with a drawn chance, and
+// one number at least
+fn drawn(n: i64, seed: mut ref i64) -> Vec[i32] {
+    let keep = 1 + next_random(mut seed) % 100;
+    let mut target: Vec[i32] = Vec.new();
+    for x in 1..=n {
+        if next_random(mut seed) % 100 < keep {
+            target.push(x as i32);
+        }
+    }
+    if target.is_empty() {
+        target.push((1 + next_random(mut seed) % n) as i32);
+    }
+    target
+}
+
+// the operations folded to a number, a push as 1 and a pop as 2
+fn folded(ops: Slice[String]) -> i64 {
+    ops.iter().fold(0, |h, op| (h * 3 + if op == "Push" { 1 } else { 2 }) % 1000000007)
+}
+
+fn main() {
+    // LeetCode's three examples, and four more
+    let cases: Vec[(Vec[i32], i32)] = [
+        ([1, 3], 3),
+        ([1, 2, 3], 3),
+        ([1, 2], 4),
+        ([3], 3),
+        ([1], 1),
+        ([2, 4], 5),
+        ([1, 4, 5], 9),
+    ];
+    let firsts: Vec[String] = cases.iter().map(|(target, n)| build_array(target, n).join(",")).collect();
+    println(firsts.join(" "));
+    // the constraints' most: every number of 1 to 100, only 100, and
+    // every even number, each with n = 100
+    let all: Vec[i32] = (1..=100).collect();
+    let even: Vec[i32] = (1..=50).map(|x| 2 * x).collect();
+    println(f"n = 100: {build_array(all, 100).len()} {build_array([100], 100).len()} {build_array(even, 100).len()}");
+    // 2000 random cases of n from 1 to 100
+    let mut seed = 1441;
+    let mut check: i64 = 0;
+    let mut total: i64 = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 100;
+        let target = drawn(n, mut seed);
+        let ops = build_array(target, n as i32);
+        total += ops.len();
+        check = (check * 131 + folded(ops)) % 1000000007;
+    }
+    println(f"2000 random cases: {total} operations, checksum {check}");
+}

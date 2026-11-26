@@ -1,0 +1,261 @@
+// LeetCode #1441: Build an Array With Stack Operations -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- build_array.kara ----
+fn a0_build_array(target: Vec[i32], n: i32) -> Vec[String] {
+    // the stream read from 1, each number pushed, and popped again unless
+    // it is the next number of the target, until the target is built
+    let mut ops: Vec[String] = Vec.new();
+    let mut next = 0;
+    for x in 1..=n {
+        if next == target.len() {
+            break;
+        }
+        ops.push("Push".to_string());
+        if target[next] == x {
+            next += 1;
+        } else {
+            ops.push("Pop".to_string());
+        }
+    }
+    ops
+}
+
+// ---- build_array_gaps.kara ----
+fn a1_build_array(target: Vec[i32], n: i32) -> Vec[String] {
+    // each number of the target pushed, after a push and a pop for every
+    // number the stream gives between it and the one before
+    let mut ops: Vec[String] = Vec.new();
+    let mut before = 0;
+    for t in target.iter() {
+        for _ in before + 1..t {
+            ops.push("Push".to_string());
+            ops.push("Pop".to_string());
+        }
+        ops.push("Push".to_string());
+        before = t;
+    }
+    ops
+}
+
+// ---- build_array_stack.kara ----
+fn a2_build_array(target: Vec[i32], n: i32) -> Vec[String] {
+    // the stack itself: each number of the stream pushed, popped when it
+    // is not the target's number at its place, until the stack is the
+    // target
+    let mut stack: Vec[i32] = Vec.new();
+    let mut ops: Vec[String] = Vec.new();
+    for x in 1..=n {
+        if stack == target {
+            break;
+        }
+        stack.push(x);
+        ops.push("Push".to_string());
+        if stack[stack.len() - 1] != target[stack.len() - 1] {
+            stack.pop();
+            ops.push("Pop".to_string());
+        }
+    }
+    ops
+}
+
+// ---- build_array_set.kara ----
+fn a3_build_array(target: Vec[i32], n: i32) -> Vec[String] {
+    // the target's numbers in a set, and every number up to its last
+    // pushed, and popped again when the set does not hold it
+    let wanted: Set[i32] = target.iter().cloned().collect();
+    let last = target.last().unwrap();
+    let mut ops: Vec[String] = Vec.new();
+    for x in 1..=last {
+        ops.push("Push".to_string());
+        if not wanted.contains(x) {
+            ops.push("Pop".to_string());
+        }
+    }
+    ops
+}
+
+// ---- build_array_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_build_array(target: Vec[i32], n: i32) -> Vec[String] {
+        let mut res = Vec.new();
+        let mut cur = 1;
+        for t in target.iter() {
+            while cur < t {
+                res.push("Push".to_string());
+                res.push("Pop".to_string());
+                cur += 1;
+            }
+            res.push("Push".to_string());
+            cur += 1;
+        }
+        res
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a target drawn from 1 to n, each number kept with a drawn chance, and
+// one number at least
+fn drawn(n: i64, seed: mut ref i64) -> Vec[i32] {
+    let keep = 1 + next_random(mut seed) % 100;
+    let mut target: Vec[i32] = Vec.new();
+    for x in 1..=n {
+        if next_random(mut seed) % 100 < keep {
+            target.push(x as i32);
+        }
+    }
+    if target.is_empty() {
+        target.push((1 + next_random(mut seed) % n) as i32);
+    }
+    target
+}
+
+// the operations folded to a number, a push as 1 and a pop as 2
+fn folded(ops: Slice[String]) -> i64 {
+    ops.iter().fold(0, |h, op| (h * 3 + if op == "Push" { 1 } else { 2 }) % 1000000007)
+}
+
+// the statement read literally: the operations done in turn on an empty
+// stack, a push taking the stream's next number from 1 to n while there
+// is one and a pop only while the stack holds one, no operation once the
+// stack is the target, and the stack the target at the end
+fn literal(target: Slice[i32], n: i32, ops: Slice[String]) -> bool {
+    let mut stack: Vec[i32] = Vec.new();
+    let mut stream = 1;
+    for op in ops.iter() {
+        if stack == target {
+            return false;
+        }
+        if op == "Push" {
+            if stream > n {
+                return false;
+            }
+            stack.push(stream);
+            stream += 1;
+        } else if op == "Pop" {
+            if stack.pop().is_none() {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+    stack == target
+}
+
+fn arm(i: i64, target: Vec[i32], n: i32) -> Vec[String] {
+    let target = target.clone();
+    match i {
+        0 => a0_build_array(target, n),
+        1 => a1_build_array(target, n),
+        2 => a2_build_array(target, n),
+        3 => a3_build_array(target, n),
+        _ => A4Solution.a4_build_array(target, n),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, target: Vec[i32], n: i32) {
+    t.cases += 1;
+    let star = arm(0, target, n);
+    t.check = (t.check * 131 + folded(star)) % 1000000007;
+    let m = target.len();
+    let last = target[m - 1];
+    let shorter: Vec[i32] = target[..m - 1].to_vec();
+    let raised: Vec[i32] = target.iter().map(|x| x + 1).collect();
+    for i in 0..5 {
+        let what = f"arm {i} on {m} numbers, n = {n}";
+        let got = arm(i, target, n);
+        // P1: the statement read literally
+        expect(mut t, 1, literal(target, n, got), f"P1 {what}");
+        // P2: a longer stream, n = 100, gives the same operations
+        expect(mut t, 2, arm(i, target, 100) == got, f"P2 {what}");
+        // P3: as many pushes as the target's last number, and a pop for
+        // each number below it the target leaves out
+        let pushes = got.iter().filter(|op| op == "Push").count();
+        let pops = got.iter().filter(|op| op == "Pop").count();
+        expect(mut t, 3, pushes == last and pops == last - m, f"P3 {what}");
+        // P4: the target less its last number gives the operations up to
+        // the push before
+        if m > 1 {
+            let before = arm(i, shorter, n);
+            expect(mut t, 4, before.len() < got.len() and got[..before.len()] == before, f"P4 {what}");
+        }
+        // P5: every number one more, and the stream one longer, gives a
+        // push and a pop first and then the same operations, while n is
+        // below 100
+        if n < 100 {
+            let after = arm(i, raised, n + 1);
+            let ok = after.len() == got.len() + 2 and after[0] == "Push" and after[1] == "Pop" and after[2..] == got;
+            expect(mut t, 5, ok, f"P5 {what}");
+        }
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: one number in a stream of one,
+    // only the stream's last number, every number, a stream far longer
+    // than the target, and every other number; and the constraints' most
+    // three ways. Every case is drawn before any arm answers.
+    let mut cases: Vec[(Vec[i32], i32)] = [
+        ([1, 3], 3),
+        ([1, 2, 3], 3),
+        ([1, 2], 4),
+        ([1], 1),
+        ([5], 5),
+        ([1, 2, 3, 4, 5, 6], 6),
+        ([2, 3], 100),
+        ([1, 3, 5, 7, 9], 10),
+    ];
+    let all: Vec[i32] = (1..=100).collect();
+    cases.push((all, 100));
+    let only: Vec[i32] = [100].to_vec();
+    cases.push((only, 100));
+    let even: Vec[i32] = (1..=50).map(|x| 2 * x).collect();
+    cases.push((even, 100));
+    // 1992 random cases of n from 1 to 100
+    let mut seed = 14411;
+    for _ in 0..1992 {
+        let n = 1 + next_random(mut seed) % 100;
+        let target = drawn(n, mut seed);
+        cases.push((target, n as i32));
+    }
+    for j in 0..cases.len() {
+        let (target, n) = cases[j].clone();
+        check_case(mut t, target, n);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
