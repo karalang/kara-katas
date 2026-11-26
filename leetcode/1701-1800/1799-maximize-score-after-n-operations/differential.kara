@@ -1,0 +1,311 @@
+// LeetCode #1799: Maximize Score After N Operations --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- max_score.kara ----
+fn a0_gcd(a: i32, b: i32) -> i32 {
+    if b == 0 { a } else { a0_gcd(b, a % b) }
+}
+
+fn a0_max_score(nums: Vec[i32]) -> i32 {
+    let m = nums.len();
+    let full = 1 << m;
+    let mut best: Vec[i32] = Vec.filled(full, 0);
+    for mask in 0..full {
+        let taken = mask.count_ones();
+        if taken % 2 == 1 {
+            continue;
+        }
+        let op = (taken / 2 + 1) as i32;
+        for i in 0..m {
+            if mask >> i & 1 == 1 {
+                continue;
+            }
+            for j in i + 1..m {
+                if mask >> j & 1 == 1 {
+                    continue;
+                }
+                let next = mask | 1 << i | 1 << j;
+                best[next] = best[next].max(best[mask] + op * a0_gcd(nums[i], nums[j]));
+            }
+        }
+    }
+    best[full - 1]
+}
+
+// ---- max_score_memo.kara ----
+fn a1_gcd(a: i32, b: i32) -> i32 {
+    if b == 0 { a } else { a1_gcd(b, a % b) }
+}
+
+fn a1_best(nums: Vec[i32], free: i64, op: i32, memo: mut ref Map[i64, i32]) -> i32 {
+    if free == 0 {
+        return 0;
+    }
+    if let Some(known) = memo.get(free) {
+        return known;
+    }
+    let m = nums.len();
+    let mut most: i32 = 0;
+    for i in 0..m {
+        if free >> i & 1 == 0 {
+            continue;
+        }
+        for j in i + 1..m {
+            if free >> j & 1 == 1 {
+                let rest = free & ~(1 << i) & ~(1 << j);
+                most = most.max(op * a1_gcd(nums[i], nums[j]) + a1_best(nums, rest, op + 1, mut memo));
+            }
+        }
+    }
+    memo[free] = most;
+    most
+}
+
+fn a1_max_score(nums: Vec[i32]) -> i32 {
+    let mut memo: Map[i64, i32] = Map.new();
+    a1_best(nums, (1 << nums.len()) - 1, 1, mut memo)
+}
+
+// ---- max_score_match.kara ----
+fn a2_gcd(a: i32, b: i32) -> i32 {
+    if b == 0 { a } else { a2_gcd(b, a % b) }
+}
+
+fn a2_pairings(nums: Vec[i32], used: mut ref Vec[bool], gcds: mut ref Vec[i32], best: mut ref i32) {
+    let m = nums.len();
+    let mut i = 0;
+    while i < m and used[i] {
+        i += 1;
+    }
+    if i == m {
+        let mut sorted = gcds.clone();
+        sorted.sort();
+        let mut score: i32 = 0;
+        for k in 0..sorted.len() {
+            score += (k + 1) as i32 * sorted[k];
+        }
+        *best = (*best).max(score);
+        return;
+    }
+    used[i] = true;
+    for j in i + 1..m {
+        if not used[j] {
+            used[j] = true;
+            gcds.push(a2_gcd(nums[i], nums[j]));
+            a2_pairings(nums, mut used, mut gcds, mut best);
+            gcds.pop();
+            used[j] = false;
+        }
+    }
+    used[i] = false;
+}
+
+fn a2_max_score(nums: Vec[i32]) -> i32 {
+    let mut used: Vec[bool] = Vec.filled(nums.len(), false);
+    let mut gcds: Vec[i32] = Vec.new();
+    let mut best = 0;
+    a2_pairings(nums, mut used, mut gcds, mut best);
+    best
+}
+
+// ---- max_score_pull.kara ----
+fn a3_gcd(a: i32, b: i32) -> i32 {
+    if b == 0 { a } else { a3_gcd(b, a % b) }
+}
+
+fn a3_max_score(nums: Vec[i32]) -> i32 {
+    let m = nums.len();
+    let mut g: Vec[Vec[i32]] = Vec.filled(m, Vec.filled(m, 0));
+    for i in 0..m {
+        for j in i + 1..m {
+            g[i][j] = a3_gcd(nums[i], nums[j]);
+        }
+    }
+    let full = 1 << m;
+    let mut best: Vec[i32] = Vec.filled(full, 0);
+    for mask in 1..full {
+        let taken = mask.count_ones();
+        if taken % 2 == 1 {
+            continue;
+        }
+        let op = (taken / 2) as i32;
+        for i in 0..m {
+            if mask >> i & 1 == 0 {
+                continue;
+            }
+            for j in i + 1..m {
+                if mask >> j & 1 == 0 {
+                    continue;
+                }
+                let before = mask ^ 1 << i ^ 1 << j;
+                best[mask] = best[mask].max(best[before] + op * g[i][j]);
+            }
+        }
+    }
+    best[full - 1]
+}
+
+// ---- max_score_solution.kara ----
+struct A4Solution {}
+
+fn a4_gcd(a: i32, b: i32) -> i32 {
+    if b == 0 { a } else { a4_gcd(b, a % b) }
+}
+
+impl A4Solution {
+    pub fn max_score(nums: Vec[i32]) -> i32 {
+        let n = nums.len();
+        let mut dp = Vec.filled(1 << n, 0i32);
+        for mask in 0..(1usize << n) {
+            let cnt = (mask as u32).count_ones() as i32;
+            if cnt % 2 == 1 {
+                continue;
+            }
+            for i in 0..n {
+                if mask & (1 << i) != 0 {
+                    continue;
+                }
+                for j in (i + 1)..n {
+                    if mask & (1 << j) != 0 {
+                        continue;
+                    }
+                    let next = mask | (1 << i) | (1 << j);
+                    dp[next] = dp[next].max(dp[mask] + (cnt / 2 + 1) * a4_gcd(nums[i], nums[j]));
+                }
+            }
+        }
+        dp[(1 << n) - 1]
+    }
+}
+
+fn a4_max_score(nums: Vec[i32]) -> i32 {
+    A4Solution.max_score(nums)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn gcd_of(a: i32, b: i32) -> i32 {
+    if b == 0 { a } else { gcd_of(b, a % b) }
+}
+
+// the statement read literally: the `op`-th operation tries every pair of
+// the numbers left, scores `op` times its gcd, and the rest is played out
+// the same way, every order of every pairing
+fn literal(nums: Vec[i32], left: mut ref Vec[bool], op: i32) -> i32 {
+    let m = nums.len();
+    let mut best: i32 = 0;
+    for i in 0..m {
+        if not left[i] {
+            continue;
+        }
+        for j in i + 1..m {
+            if not left[j] {
+                continue;
+            }
+            left[i] = false;
+            left[j] = false;
+            best = best.max(op * gcd_of(nums[i], nums[j]) + literal(nums, mut left, op + 1));
+            left[i] = true;
+            left[j] = true;
+        }
+    }
+    best
+}
+
+fn arm(i: i64, nums: Vec[i32]) -> i32 {
+    match i {
+        0 => a0_max_score(nums),
+        1 => a1_max_score(nums),
+        2 => a2_max_score(nums),
+        3 => a3_max_score(nums),
+        _ => a4_max_score(nums),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, nums: Vec[i32]) {
+    t.cases += 1;
+    let star = arm(0, nums);
+    t.check = (t.check * 31 + star) % 1000000007;
+    let want = if nums.len() <= 8 {
+        let mut left: Vec[bool] = Vec.filled(nums.len(), true);
+        Some(literal(nums, mut left, 1))
+    } else {
+        None
+    };
+    let mut back = nums.clone();
+    back.reverse();
+    let twice: Vec[i32] = nums.iter().map(|x| 2 * x).collect();
+    let mut ones = nums.clone();
+    ones.push(1);
+    ones.push(1);
+    let mut turned = nums.clone();
+    turned.rotate_left(1);
+    for i in 0..5 {
+        let what = f"arm {i} on {nums}";
+        let got = arm(i, nums);
+        // P1: the statement read literally, while there are at most 4
+        // pairs
+        if let Some(w) = want {
+            expect(mut t, 1, got == w, f"P1 {what}");
+        }
+        // P2: the numbers in reverse order give the same answer
+        expect(mut t, 2, arm(i, back) == got, f"P2 {what}");
+        // P3: every number doubled doubles the answer
+        expect(mut t, 3, arm(i, twice) == 2 * got, f"P3 {what}");
+        // P4: a pair of ones more raises the answer by at least 1
+        if nums.len() < 14 {
+            expect(mut t, 4, arm(i, ones) >= got + 1, f"P4 {what}");
+        }
+        // P5: the first number moved to the end gives the same answer
+        expect(mut t, 5, arm(i, turned) == got, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples, the edges, two cases of 14 numbers, and 1991
+    // random cases of 1 to 4 pairs. Every case is drawn before any arm
+    // answers.
+    let mut cases: Vec[Vec[i32]] = [[1, 2].to_vec(), [3, 4, 6, 8].to_vec(), [1, 2, 3, 4, 5, 6].to_vec(), [5, 5].to_vec(), [2, 3].to_vec(), [1, 1, 1, 1, 1, 1].to_vec(), [6, 10, 15, 30].to_vec()].to_vec();
+    let mut seed = 17991;
+    cases.push((0..14).map(|_| (1 + next_random(mut seed) % 1000000) as i32).collect());
+    cases.push((0..14).map(|_| (1 + next_random(mut seed) % 60) as i32).collect());
+    for _ in 0..1991 {
+        let n = 2 * (1 + next_random(mut seed) % 4);
+        cases.push((0..n).map(|_| (1 + next_random(mut seed) % 60) as i32).collect());
+    }
+    for j in 0..cases.len() {
+        check_case(mut t, cases[j].clone());
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
