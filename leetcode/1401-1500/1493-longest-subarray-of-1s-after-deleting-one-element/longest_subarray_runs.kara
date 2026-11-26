@@ -1,0 +1,54 @@
+// LeetCode #1493: Longest Subarray of 1's After Deleting One Element -- the
+// run of 1s before the last 0 and the run since; a 0 joins them, and with
+// no 0 at all one of the 1s is the one deleted. O(n)
+
+fn longest_subarray(nums: Vec[i32]) -> i32 {
+    let mut before: i32 = 0;
+    let mut since: i32 = 0;
+    let mut best: i32 = 0;
+    let mut saw_zero = false;
+    for x in nums.iter() {
+        if x == 1 {
+            since += 1;
+        } else {
+            saw_zero = true;
+            before = since;
+            since = 0;
+        }
+        best = best.max(before + since);
+    }
+    if saw_zero { best } else { best - 1 }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{longest_subarray([1, 1, 0, 1])} {longest_subarray([0, 1, 1, 1, 0, 1, 1, 0, 1])} {longest_subarray([1, 1, 1])}");
+    // the edges: one 1; one 0; all 0s; a 0 at each end; two 0s side by
+    // side; the longest run last
+    println(f"{longest_subarray([1])} {longest_subarray([0])} {longest_subarray([0, 0, 0])} {longest_subarray([0, 1, 1, 0])} {longest_subarray([1, 1, 0, 0, 1, 1, 1])} {longest_subarray([1, 0, 1, 1, 0, 1, 1, 1, 1])}");
+    // the constraints' most: 100000 1s; 100000 1s with one 0 in the
+    // middle; and 100000 digits, nine in ten 1s
+    let ones: Vec[i32] = Vec.filled(100000, 1);
+    let mut middle = ones.clone();
+    middle[50000] = 0;
+    let mut seed = 1493;
+    let mostly: Vec[i32] = (0..100000).map(|_| if next_random(mut seed) % 10 == 0 { 0 } else { 1 }).collect();
+    println(f"100000 digits: {longest_subarray(ones)} | {longest_subarray(middle)} | {longest_subarray(mostly)}");
+    // 3000 random arrays of 1 to 30 digits, a 0 from one in five to four
+    // in five
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let zeros = 1 + next_random(mut seed) % 4;
+        let nums: Vec[i32] = (0..n).map(|_| if next_random(mut seed) % 5 < zeros { 0 } else { 1 }).collect();
+        check = (check * 31 + longest_subarray(nums) + 1) % 1000000007;
+    }
+    println(f"3000 random arrays: checksum {check}");
+}
