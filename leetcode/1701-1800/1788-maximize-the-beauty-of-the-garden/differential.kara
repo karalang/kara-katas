@@ -1,0 +1,277 @@
+// LeetCode #1788: Maximize the Beauty of the Garden --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- maximum_beauty.kara ----
+fn a0_maximum_beauty(flowers: Vec[i32]) -> i32 {
+    let n = flowers.len();
+    let mut positive: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        positive[i + 1] = positive[i] + flowers[i].max(0);
+    }
+    let mut first: Map[i32, i64] = Map.new();
+    let mut best = i64.MIN;
+    for j in 0..n {
+        let v = flowers[j];
+        match first.get(v) {
+            Some(i) => {
+                let garden = 2 * v + positive[j] - positive[i + 1];
+                best = best.max(garden);
+            }
+            None => {
+                first[v] = j;
+            }
+        }
+    }
+    best as i32
+}
+
+// ---- maximum_beauty_twopass.kara ----
+fn a1_maximum_beauty(flowers: Vec[i32]) -> i32 {
+    let n = flowers.len();
+    let mut last: Map[i32, i64] = Map.new();
+    for i in 0..n {
+        last[flowers[i]] = i;
+    }
+    let mut positive: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        positive[i + 1] = positive[i] + if flowers[i] > 0 { flowers[i] } else { 0 };
+    }
+    let mut seen: Set[i32] = Set.new();
+    let mut best: Option[i64] = None;
+    for i in 0..n {
+        let v = flowers[i];
+        if seen.contains(v) {
+            continue;
+        }
+        seen.insert(v);
+        let j = last[v];
+        if j > i {
+            let garden = 2 * v + positive[j] - positive[i + 1];
+            best = Some(match best {
+                Some(b) => b.max(garden),
+                None => garden,
+            });
+        }
+    }
+    best.unwrap() as i32
+}
+
+// ---- maximum_beauty_sorted.kara ----
+fn a2_maximum_beauty(flowers: Vec[i32]) -> i32 {
+    let n = flowers.len();
+    let mut positive: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        positive[i + 1] = positive[i] + flowers[i].max(0);
+    }
+    let mut order: Vec[i64] = (0..n).collect();
+    order.sort_by_key(|i| flowers[i]);
+    let mut best = i64.MIN;
+    let mut start = 0;
+    while start < n {
+        let mut end = start;
+        while end + 1 < n and flowers[order[end + 1]] == flowers[order[start]] {
+            end += 1;
+        }
+        if end > start {
+            let (i, j) = (order[start], order[end]);
+            best = best.max(2 * flowers[i] + positive[j] - positive[i + 1]);
+        }
+        start = end + 1;
+    }
+    best as i32
+}
+
+// ---- maximum_beauty_beststart.kara ----
+fn a3_maximum_beauty(flowers: Vec[i32]) -> i32 {
+    let mut open: Map[i32, i64] = Map.new();
+    let mut through: i64 = 0;
+    let mut best = i64.MIN;
+    for v in flowers.iter() {
+        let before = through;
+        through += v.max(0);
+        if let Some(o) = open.get(v) {
+            best = best.max(o + v + before);
+        }
+        let opened = v - through;
+        if open.get(v).is_none_or(|o| opened > o) {
+            open[v] = opened;
+        }
+    }
+    best as i32
+}
+
+// ---- maximum_beauty_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn maximum_beauty(flowers: Vec[i32]) -> i32 {
+        let n = flowers.len();
+        let mut pre = Vec.filled(n + 1, 0);
+        for i in 0..n {
+            pre[i + 1] = pre[i] + flowers[i].max(0);
+        }
+        let mut first: Map[i32, i64] = Map.new();
+        let mut ans = i64.MIN;
+        for (j, v) in flowers.iter().enumerate() {
+            if let Some(i) = first.get(v).cloned() {
+                ans = ans.max(2 * v as i64 + pre[j] - pre[i + 1]);
+            } else {
+                first.insert(v, j);
+            }
+        }
+        ans as i32
+    }
+}
+
+fn a4_maximum_beauty(flowers: Vec[i32]) -> i32 {
+    A4Solution.maximum_beauty(flowers)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_flowers(seed: mut ref i64, n: i64, most: i64) -> Vec[i32] {
+    let mut flowers: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % (2 * most + 1) - most) as i32).collect();
+    let a = next_random(mut seed) % n;
+    let b = next_random(mut seed) % n;
+    if a == b {
+        flowers[(a + 1) % n] = flowers[a];
+    } else {
+        flowers[b] = flowers[a];
+    }
+    flowers
+}
+
+// the statement read literally: every set of flowers left, at least two
+// whose first and last are alike, its beauties summed
+fn literal(flowers: Vec[i32]) -> i32 {
+    let n = flowers.len();
+    let mut best: Option[i32] = None;
+    for mask in 1..(1 << n) {
+        let kept: Vec[i32] = (0..n).filter(|i| (mask >> i) & 1 == 1).map(|i| flowers[i]).collect();
+        if kept.len() >= 2 and kept[0] == kept[kept.len() - 1] {
+            let total: i32 = kept.iter().sum();
+            if best.is_none_or(|b| total > b) {
+                best = Some(total);
+            }
+        }
+    }
+    best.unwrap()
+}
+
+fn arm(i: i64, flowers: Vec[i32]) -> i32 {
+    match i {
+        0 => a0_maximum_beauty(flowers),
+        1 => a1_maximum_beauty(flowers),
+        2 => a2_maximum_beauty(flowers),
+        3 => a3_maximum_beauty(flowers),
+        _ => a4_maximum_beauty(flowers),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, flowers: Vec[i32]) {
+    t.cases += 1;
+    let n = flowers.len();
+    let star = arm(0, flowers);
+    t.check = (t.check * 31 + star + 1000000000) % 1000000007;
+    let want = if n <= 12 { Some(literal(flowers)) } else { None };
+    let mut back = flowers.clone();
+    back.reverse();
+    let doubled: Vec[i32] = flowers.iter().map(|f| 2 * f).collect();
+    // a flower above every other at each end
+    let mut framed: Vec[i32] = [10001].to_vec();
+    framed.extend(flowers.iter());
+    framed.push(10001);
+    let positives: i32 = flowers.iter().filter(|f| f > 0).sum();
+    // two flowers alike and side by side, and the largest beauty that
+    // appears twice
+    let mut touching: Option[i32] = None;
+    for i in 1..n {
+        if flowers[i] == flowers[i - 1] and touching.is_none_or(|b| 2 * flowers[i] > b) {
+            touching = Some(2 * flowers[i]);
+        }
+    }
+    let mut repeated = i32.MIN;
+    for i in 0..n {
+        for j in i + 1..n {
+            if flowers[i] == flowers[j] {
+                repeated = repeated.max(flowers[i]);
+            }
+        }
+    }
+    for i in 0..5 {
+        let what = f"arm {i} on {flowers}";
+        let got = arm(i, flowers);
+        // P1: the statement read literally, while there are at most 12
+        // flowers
+        if let Some(w) = want {
+            expect(mut t, 1, got == w, f"P1 {what}");
+        }
+        // P2: the flowers reversed give the same answer
+        expect(mut t, 2, arm(i, back) == got, f"P2 {what}");
+        // P3: a flower above every other at each end: the answer is both
+        // and every positive one
+        expect(mut t, 3, arm(i, framed) == 20002 + positives, f"P3 {what}");
+        // P4: never less than two alike side by side, nor more than the
+        // largest repeated beauty twice and every positive
+        expect(mut t, 4, touching.is_none_or(|b| got >= b) and got <= 2 * repeated + positives, f"P4 {what}");
+        // P5: every beauty doubled doubles the answer
+        expect(mut t, 5, arm(i, doubled) == 2 * got, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples, the edges, and 20000 flowers three ways: all
+    // 10^4, all -10^4, and at random. Every case is drawn before any arm
+    // answers.
+    let mut cases: Vec[Vec[i32]] = [[1, 2, 3, 1, 2].to_vec(), [100, 1, 1, -3, 1].to_vec(), [-1, -2, 0, -1].to_vec(), [5, 5].to_vec(), [-5, -5].to_vec(), [-1, 50, -1].to_vec(), [9, 1, 2, 1, 9].to_vec(), [-9, 4, 4, -9].to_vec()].to_vec();
+    cases.push(Vec.filled(20000, 10000));
+    cases.push(Vec.filled(20000, -10000));
+    let mut seed = 17881;
+    cases.push(random_flowers(mut seed, 20000, 10000));
+    // 1989 random gardens: half of 2 to 12 flowers from -6 to 6, half of
+    // 2 to 40 from -10^4 to 10^4
+    for c in 0..1989 {
+        if c % 2 == 0 {
+            let n = 2 + next_random(mut seed) % 11;
+            cases.push(random_flowers(mut seed, n, 6));
+        } else {
+            let n = 2 + next_random(mut seed) % 39;
+            cases.push(random_flowers(mut seed, n, 10000));
+        }
+    }
+    for j in 0..cases.len() {
+        check_case(mut t, cases[j]);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

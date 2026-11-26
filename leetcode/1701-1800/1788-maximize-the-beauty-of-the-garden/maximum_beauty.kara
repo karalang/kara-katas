@@ -1,0 +1,73 @@
+// LeetCode #1788: Maximize the Beauty of the Garden -- the ★ arm: a garden
+// left with first and last flower of beauty v keeps both, and of the
+// flowers between them every positive one. For each flower, the best
+// garden ending there starts at the first flower of the same beauty, since
+// the sum of positives only grows to the left. A prefix sum of the positive
+// beauties and a `Map` of each beauty's first position. O(n)
+
+fn maximum_beauty(flowers: Vec[i32]) -> i32 {
+    let n = flowers.len();
+    let mut positive: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        positive[i + 1] = positive[i] + flowers[i].max(0);
+    }
+    let mut first: Map[i32, i64] = Map.new();
+    let mut best = i64.MIN;
+    for j in 0..n {
+        let v = flowers[j];
+        match first.get(v) {
+            Some(i) => {
+                let garden = 2 * v + positive[j] - positive[i + 1];
+                best = best.max(garden);
+            }
+            None => {
+                first[v] = j;
+            }
+        }
+    }
+    best as i32
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n beauties from -most to most, with two flowers of one beauty somewhere
+fn random_flowers(seed: mut ref i64, n: i64, most: i64) -> Vec[i32] {
+    let mut flowers: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % (2 * most + 1) - most) as i32).collect();
+    let a = next_random(mut seed) % n;
+    let b = next_random(mut seed) % n;
+    if a == b {
+        flowers[(a + 1) % n] = flowers[a];
+    } else {
+        flowers[b] = flowers[a];
+    }
+    flowers
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{maximum_beauty([1, 2, 3, 1, 2])} {maximum_beauty([100, 1, 1, -3, 1])} {maximum_beauty([-1, -2, 0, -1])}");
+    // the edges: two flowers alike, positive and negative; a negative
+    // pair around a large positive; the best pair not the largest value;
+    // two pairs, the inner one better
+    println(f"{maximum_beauty([5, 5])} {maximum_beauty([-5, -5])} {maximum_beauty([-1, 50, -1])} {maximum_beauty([9, 1, 2, 1, 9])} {maximum_beauty([-9, 4, 4, -9])}");
+    // the constraints' most: 100000 flowers of 10^4, whose garden is
+    // 10^9; 100000 of -10^4; and 100000 at random
+    let mut seed = 1788;
+    let high: Vec[i32] = Vec.filled(100000, 10000);
+    let low: Vec[i32] = Vec.filled(100000, -10000);
+    let wide = random_flowers(mut seed, 100000, 10000);
+    println(f"the most: {maximum_beauty(high)} {maximum_beauty(low)} {maximum_beauty(wide)}");
+    // 3000 random gardens of 2 to 30 flowers from -10 to 10
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 2 + next_random(mut seed) % 29;
+        let flowers = random_flowers(mut seed, n, 10);
+        check = (check * 31 + maximum_beauty(flowers) + 1000000) % 1000000007;
+    }
+    println(f"3000 random cases: checksum {check}");
+}
