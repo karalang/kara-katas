@@ -1,0 +1,65 @@
+// LeetCode #1402: Reducing Dishes -- the ★ arm: cooked in rising order of
+// satisfaction, each dish adds once for every dish cooked from it on, so
+// adding a dish at the front of the cooked ones adds the sum of them all;
+// so the dishes are taken from the most satisfying down while that
+// running sum stays positive, each one adding it. O(n log n)
+
+fn max_satisfaction(satisfaction: Vec[i32]) -> i32 {
+    let mut order = satisfaction.clone();
+    order.sort();
+    order.reverse();
+    let mut running: i32 = 0;
+    let mut total: i32 = 0;
+    for s in order.iter() {
+        if running + s <= 0 {
+            break;
+        }
+        running += s;
+        total += running;
+    }
+    total
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n satisfactions from lo to hi
+fn drawn(n: i64, lo: i64, hi: i64, seed: mut ref i64) -> Vec[i32] {
+    (0..n).map(|_| (lo + next_random(mut seed) % (hi - lo + 1)) as i32).collect()
+}
+
+fn main() {
+    // LeetCode's three examples, and three more
+    let shown: Vec[String] = [
+        max_satisfaction([-1, -8, 0, 5, -9]),
+        max_satisfaction([4, 3, 2]),
+        max_satisfaction([-1, -4, -5]),
+        max_satisfaction([0]),
+        max_satisfaction([-2, 5, -1, 0, 3, -3]),
+        max_satisfaction([1000, -1000]),
+    ].iter().map(|k| f"{k}").collect();
+    println(shown.join(" "));
+    // the constraints' most: 500 dishes each way of -1000 to 1000, all
+    // 1000, and all drawn
+    let mut seed = 1402;
+    let top: Vec[i32] = (0..500).map(|_| 1000).collect();
+    let bottom: Vec[i32] = (0..500).map(|_| -1000).collect();
+    let big = drawn(500, -1000, 1000, mut seed);
+    println(f"500 dishes: {max_satisfaction(top)} {max_satisfaction(bottom)} {max_satisfaction(big)}");
+    // 2000 random cases of 1 to 30 dishes, from -1000 to 1000 or leaning
+    // negative, -1000 to 100
+    let mut check: i64 = 0;
+    let mut total: i64 = 0;
+    for i in 0..2000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let hi = if i % 2 == 0 { 1000 } else { 100 };
+        let best = max_satisfaction(drawn(n, -1000, hi, mut seed));
+        total += best;
+        check = (check * 131 + best) % 1000000007;
+    }
+    println(f"2000 random cases: {total} in all, checksum {check}");
+}

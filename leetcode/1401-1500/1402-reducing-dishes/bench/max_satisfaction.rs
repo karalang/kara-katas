@@ -1,0 +1,34 @@
+// LeetCode #1402 bench, Rust: the same sort and running sum, workload and
+// checksum as max_satisfaction.kara.
+
+fn max_satisfaction(satisfaction: &Vec<i32>) -> i32 {
+    let mut order = satisfaction.clone();
+    order.sort();
+    order.reverse();
+    let mut running: i32 = 0;
+    let mut total: i32 = 0;
+    for &s in order.iter() {
+        if running + s <= 0 {
+            break;
+        }
+        running += s;
+        total += running;
+    }
+    total
+}
+
+fn main() {
+    let mut seed: i64 = 1402;
+    let mut pool: Vec<i32> = Vec::new();
+    for _ in 0..100000 {
+        seed = (seed * 1103515245 + 12345) % 2147483648;
+        pool.push((seed % 2001 - 1000) as i32);
+    }
+    let mut check: i64 = 0;
+    for r in 0..20000i64 {
+        let at = ((check + r * 7919) % 99501) as usize;
+        let window = pool[at..at + 500].to_vec();
+        check = (check * 131 + max_satisfaction(&window) as i64) % 1000000007;
+    }
+    println!("20000 windows of 500 dishes: checksum {}", check);
+}

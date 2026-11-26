@@ -1,0 +1,234 @@
+// LeetCode #1402: Reducing Dishes -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- max_satisfaction.kara ----
+fn a0_max_satisfaction(satisfaction: Vec[i32]) -> i32 {
+    let mut order = satisfaction.clone();
+    order.sort();
+    order.reverse();
+    let mut running: i32 = 0;
+    let mut total: i32 = 0;
+    for s in order.iter() {
+        if running + s <= 0 {
+            break;
+        }
+        running += s;
+        total += running;
+    }
+    total
+}
+
+// ---- max_satisfaction_dp.kara ----
+fn a1_max_satisfaction(satisfaction: Vec[i32]) -> i32 {
+    let mut order = satisfaction.clone();
+    order.sort();
+    let n = order.len();
+    // `best[k]` is `None` until k dishes can have been cooked
+    let mut best: Vec[Option[i32]] = Vec.filled(n + 1, None);
+    best[0] = Some(0);
+    for s in order.iter() {
+        for k in (1..=n).rev() {
+            if let Some(before) = best[k - 1] {
+                let cooked = before + k as i32 * s;
+                best[k] = Some(match best[k] {
+                    Some(now) => now.max(cooked),
+                    None => cooked,
+                });
+            }
+        }
+    }
+    best.iter().filter_map(|b| b).max().unwrap()
+}
+
+// ---- max_satisfaction_suffix.kara ----
+fn a2_max_satisfaction(satisfaction: Vec[i32]) -> i32 {
+    let mut order = satisfaction.clone();
+    order.sort();
+    let mut best: i32 = 0;
+    for start in 0..order.len() {
+        let sum: i32 = order[start..].iter().enumerate().map(|(i, s)| (i as i32 + 1) * s).sum();
+        best = best.max(sum);
+    }
+    best
+}
+
+// ---- max_satisfaction_memo.kara ----
+fn a3_most(order: Vec[i32], i: i64, t: i64, memo: mut ref Map[(i64, i64), i64]) -> i64 {
+    if i == order.len() {
+        return 0;
+    }
+    if let Some(known) = memo.get((i, t)) {
+        return known;
+    }
+    let cooked = t * order[i] + a3_most(order, i + 1, t + 1, mut memo);
+    let skipped = a3_most(order, i + 1, t, mut memo);
+    let answer = cooked.max(skipped);
+    memo.insert((i, t), answer);
+    answer
+}
+
+fn a3_max_satisfaction(satisfaction: Vec[i32]) -> i32 {
+    let mut order = satisfaction.clone();
+    order.sort();
+    let mut memo = Map.new();
+    a3_most(order, 0, 1, mut memo) as i32
+}
+
+// ---- max_satisfaction_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_max_satisfaction(satisfaction: own Vec[i32]) -> i32 {
+        let mut satisfaction = satisfaction;
+        satisfaction.sort_by(|a, b| b.cmp(a));
+        let mut (sum, res) = (0i32, 0i32);
+        for s in satisfaction {
+            sum += s;
+            if sum <= 0 {
+                break;
+            }
+            res += sum;
+        }
+        res
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n satisfactions from lo to hi
+fn drawn(n: i64, lo: i64, hi: i64, seed: mut ref i64) -> Vec[i32] {
+    (0..n).map(|_| (lo + next_random(mut seed) % (hi - lo + 1)) as i32).collect()
+}
+
+// the statement read literally: the chef cooks the dishes left in any
+// order, each taking one unit of time, and may stop at any point; every
+// order of every choice is tried, the dish cooked at time t adding t
+// times its satisfaction
+fn literal(dishes: Vec[i32], used: mut ref Vec[bool], t: i64) -> i64 {
+    let mut best = 0;
+    for i in 0..dishes.len() {
+        if not used[i] {
+            used[i] = true;
+            best = best.max(t * dishes[i] + literal(dishes, mut used, t + 1));
+            used[i] = false;
+        }
+    }
+    best
+}
+
+// the dishes worth more than nothing, cooked in rising order: a choice
+// the answer is at least as good as
+fn positives(dishes: Vec[i32]) -> i64 {
+    let mut kept: Vec[i32] = dishes.iter().filter(|s| s > 0).collect();
+    kept.sort();
+    kept.iter().enumerate().map(|(i, s)| (i + 1) * s).sum()
+}
+
+fn arm(i: i64, dishes: Vec[i32]) -> i64 {
+    let dishes = dishes.clone();
+    match i {
+        0 => a0_max_satisfaction(dishes),
+        1 => a1_max_satisfaction(dishes),
+        2 => a2_max_satisfaction(dishes),
+        3 => a3_max_satisfaction(dishes),
+        _ => A4Solution.a4_max_satisfaction(dishes),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, dishes: Vec[i32], extra: i32) {
+    t.cases += 1;
+    let star = arm(0, dishes);
+    t.check = (t.check * 131 + star) % 1000000007;
+    t.check = (t.check * 131 + dishes.len()) % 1000000007;
+    let small = dishes.len() <= 7;
+    let mut used = Vec.filled(dishes.len(), false);
+    let want = if small { literal(dishes, mut used, 1) } else { -1 };
+    let floor = positives(dishes);
+    let reversed: Vec[i32] = dishes.iter().rev().collect();
+    let mut more = dishes.clone();
+    more.push(extra);
+    let halvable = dishes.iter().all(|s| s.abs() <= 500);
+    let doubled: Vec[i32] = dishes.iter().map(|s| s * 2).collect();
+    for i in 0..5 {
+        let got = arm(i, dishes);
+        let what = f"arm {i} on {dishes}";
+        // P1: the statement read literally, on up to 7 dishes
+        if small {
+            expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        }
+        // P2: never below cooking nothing, nor below the dishes worth more
+        // than nothing in rising order
+        expect(mut t, 2, got >= 0 and got >= floor, f"P2 {what}: {got} below {floor}");
+        // P3: the order the dishes come in does not matter
+        let back = arm(i, reversed);
+        expect(mut t, 3, back == got, f"P3 {what}: {back} reversed");
+        // P4: one more dish never lowers it, since it may be discarded
+        let with = arm(i, more);
+        expect(mut t, 4, with >= got, f"P4 {what}: {with} with {extra} more");
+        // P5: every satisfaction doubled doubles it
+        if halvable {
+            let twice = arm(i, doubled);
+            expect(mut t, 5, twice == 2 * got, f"P5 {what}: {twice} doubled");
+        }
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: one dish of each sign and 0, the
+    // extremes, all equal. Every case is drawn before any arm answers.
+    let mut cases: Vec[Vec[i32]] = Vec.new();
+    cases.push([-1, -8, 0, 5, -9]);
+    cases.push([4, 3, 2]);
+    cases.push([-1, -4, -5]);
+    cases.push([0]);
+    cases.push([7]);
+    cases.push([-7]);
+    cases.push([1000, -1000]);
+    cases.push([-1000, -1000, -1000, 1000, 1000]);
+    cases.push([0, 0, 0, 0]);
+    cases.push([-1, -1, -1, -1, 3]);
+    // 1993 random cases: 1 to 7 dishes two times in three, else 8 to 40,
+    // from -1000 to 1000, leaning negative to 100, or small, -5 to 5
+    let mut seed = 14021;
+    for i in 0..1993 {
+        let n = if i % 3 == 2 { 8 + next_random(mut seed) % 33 } else { 1 + next_random(mut seed) % 7 };
+        let (lo, hi) = if i % 4 == 0 { (-1000, 1000) } else if i % 4 == 1 { (-1000, 100) } else if i % 4 == 2 { (-5, 5) } else { (-30, 10) };
+        cases.push(drawn(n, lo, hi, mut seed));
+    }
+    let extras = drawn(cases.len(), -1000, 1000, mut seed);
+    for (k, dishes) in cases.iter().enumerate() {
+        check_case(mut t, dishes, extras[k]);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
