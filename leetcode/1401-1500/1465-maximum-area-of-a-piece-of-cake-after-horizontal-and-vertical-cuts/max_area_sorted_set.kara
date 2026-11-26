@@ -1,0 +1,69 @@
+// LeetCode #1465: Maximum Area of a Piece of Cake After Horizontal and
+// Vertical Cuts -- each way's cuts and edges in a `SortedSet`, walked in
+// order
+
+fn widest(size: i32, cuts: Vec[i32]) -> i32 {
+    let mut points: SortedSet[i32] = cuts.iter().collect();
+    points.insert(0);
+    points.insert(size);
+    let mut best: i32 = 0;
+    let mut last: i32 = 0;
+    for p in points.iter() {
+        best = best.max(p - last);
+        last = p;
+    }
+    best
+}
+
+fn max_area(h: i32, w: i32, horizontal_cuts: Vec[i32], vertical_cuts: Vec[i32]) -> i32 {
+    let area = widest(h, horizontal_cuts) as i64 * widest(w, vertical_cuts);
+    (area % 1000000007) as i32
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// up to k different cuts from 1 to size - 1, in a random order
+fn cuts(seed: mut ref i64, k: i64, size: i64) -> Vec[i32] {
+    let mut out: Vec[i32] = (0..k).map(|_| (1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % (size - 1)) as i32).collect();
+    out.sort();
+    out.dedup();
+    for i in (1..out.len()).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        out.swap(i, j);
+    }
+    out
+}
+
+fn main() {
+    // LeetCode's three examples, and three more: the largest cake cut
+    // once each way near an edge, a cake of 2 by 2 cut in its middle, and
+    // a cake cut at every place but one
+    let e1 = max_area(5, 4, [1, 2, 4].to_vec(), [1, 3].to_vec());
+    let e2 = max_area(5, 4, [3, 1].to_vec(), [1].to_vec());
+    let e3 = max_area(5, 4, [3].to_vec(), [3].to_vec());
+    let e4 = max_area(1000000000, 1000000000, [1].to_vec(), [999999999].to_vec());
+    let e5 = max_area(2, 2, [1].to_vec(), [1].to_vec());
+    let most: Vec[i32] = (1..=100000).filter(|c| c != 50000).collect();
+    let e6 = max_area(100001, 100001, most.clone(), most);
+    println(f"{e1} {e2} {e3} {e4} {e5} {e6}");
+    // the constraints' most, 100000 cuts each way on the largest cake
+    let mut seed = 1465;
+    let across = cuts(mut seed, 100000, 1000000000);
+    let down = cuts(mut seed, 100000, 1000000000);
+    println(f"100000 cuts: {max_area(1000000000, 1000000000, across, down)}");
+    // 2000 random cakes of 2 to 10^9 each way, with 1 to 50 cuts each way
+    let mut check = 0;
+    for _ in 0..2000 {
+        let h = 2 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 999999999;
+        let w = 2 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 999999999;
+        let a = cuts(mut seed, 1 + next_random(mut seed) % 50, h);
+        let b = cuts(mut seed, 1 + next_random(mut seed) % 50, w);
+        check = (check * 31 + max_area(h as i32, w as i32, a, b)) % 1000000007;
+    }
+    println(f"2000 random cakes: checksum {check}");
+}

@@ -1,0 +1,45 @@
+// LeetCode #1465 bench in Rust: the ★ arm (each way's cuts sorted and its
+// widest gap taken) on the same 100 cakes of 5000 cuts each way and 20
+// passes.
+
+fn widest(size: i32, cuts: &[i32]) -> i64 {
+    let mut sorted = cuts.to_vec();
+    sorted.sort();
+    let mut best = sorted[0];
+    for i in 1..sorted.len() {
+        best = best.max(sorted[i] - sorted[i - 1]);
+    }
+    best = best.max(size - sorted[sorted.len() - 1]);
+    best as i64
+}
+
+fn max_area(h: i32, w: i32, horizontal_cuts: &[i32], vertical_cuts: &[i32]) -> i32 {
+    ((widest(h, horizontal_cuts) * widest(w, vertical_cuts)) % 1000000007) as i32
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1465i64;
+    let mut across: Vec<Vec<i32>> = Vec::new();
+    let mut down: Vec<Vec<i32>> = Vec::new();
+    for _ in 0..100 {
+        let a: Vec<i32> = (0..5000).map(|_| (1 + (next_random(&mut seed) * 32768 + next_random(&mut seed)) % 499999999) as i32).collect();
+        let b: Vec<i32> = (0..5000).map(|_| (1 + (next_random(&mut seed) * 32768 + next_random(&mut seed)) % 499999999) as i32).collect();
+        across.push(a);
+        down.push(b);
+    }
+    let mut check: i64 = 0;
+    for pass in 0..20 {
+        for c in 0..100 {
+            let h = (1000000000 - check % 1000) as i32;
+            let w = (1000000000 - check / 1000 % 1000) as i32;
+            let got = max_area(h, w, &across[c], &down[c]);
+            check = (check * 31 + got as i64 + pass) % 1000000007;
+        }
+    }
+    println!("20 passes over 100 cakes of 5000 cuts each way: checksum {check}");
+}

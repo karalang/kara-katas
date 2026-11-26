@@ -1,0 +1,287 @@
+// LeetCode #1465: Maximum Area of a Piece of Cake After Horizontal and
+// Vertical Cuts -- differential test of the five arms against the
+// statement read literally, with five more properties.
+
+// ---- max_area.kara ----
+fn a0_widest(size: i32, cuts: Vec[i32]) -> i64 {
+    let mut sorted = cuts.clone();
+    sorted.sort();
+    let mut best = sorted[0];
+    for i in 1..sorted.len() {
+        best = best.max(sorted[i] - sorted[i - 1]);
+    }
+    best = best.max(size - sorted[sorted.len() - 1]);
+    best
+}
+
+fn a0_max_area(h: i32, w: i32, horizontal_cuts: Vec[i32], vertical_cuts: Vec[i32]) -> i32 {
+    // every piece is a gap one way by a gap the other, so the largest is
+    // the widest gap each way multiplied
+    ((a0_widest(h, horizontal_cuts) * a0_widest(w, vertical_cuts)) % 1000000007) as i32
+}
+
+// ---- max_area_windows.kara ----
+fn a1_widest(size: i32, cuts: Vec[i32]) -> i32 {
+    let mut points = cuts.clone();
+    points.push(0);
+    points.push(size);
+    points.sort();
+    points.windows(2).into_iter().map(|p| p[1] - p[0]).max().unwrap()
+}
+
+fn a1_max_area(h: i32, w: i32, horizontal_cuts: Vec[i32], vertical_cuts: Vec[i32]) -> i32 {
+    let area = a1_widest(h, horizontal_cuts) as i64 * a1_widest(w, vertical_cuts) as i64;
+    (area % 1_000_000_007) as i32
+}
+
+// ---- max_area_sorted_set.kara ----
+fn a2_widest(size: i32, cuts: Vec[i32]) -> i32 {
+    let mut points: SortedSet[i32] = cuts.iter().collect();
+    points.insert(0);
+    points.insert(size);
+    let mut best: i32 = 0;
+    let mut last: i32 = 0;
+    for p in points.iter() {
+        best = best.max(p - last);
+        last = p;
+    }
+    best
+}
+
+fn a2_max_area(h: i32, w: i32, horizontal_cuts: Vec[i32], vertical_cuts: Vec[i32]) -> i32 {
+    let area = a2_widest(h, horizontal_cuts) as i64 * a2_widest(w, vertical_cuts);
+    (area % 1000000007) as i32
+}
+
+// ---- max_area_buckets.kara ----
+fn a3_widest(size: i32, cuts: Vec[i32]) -> i64 {
+    // m points from 0 to size have a gap at least size / (m - 1) wide, so
+    // with buckets that wide or narrower no gap inside a bucket is the
+    // widest: it runs from one bucket's largest point to the next filled
+    // bucket's smallest
+    let m = cuts.len() + 2;
+    let span = size as i64;
+    let width = (span / (m - 1)).max(1);
+    let count = span / width + 1;
+    let mut low: Vec[i64] = Vec.filled(count, -1);
+    let mut high: Vec[i64] = Vec.filled(count, -1);
+    let mut put = |p: i64| {
+        let b = p / width;
+        if low[b] < 0 or p < low[b] {
+            low[b] = p;
+        }
+        if p > high[b] {
+            high[b] = p;
+        }
+    };
+    put(0);
+    put(span);
+    for c in cuts.iter() {
+        put(c);
+    }
+    let mut best = 0;
+    let mut last = high[0];
+    for b in 1..count {
+        if low[b] >= 0 {
+            best = best.max(low[b] - last);
+            last = high[b];
+        }
+    }
+    best
+}
+
+fn a3_max_area(h: i32, w: i32, horizontal_cuts: Vec[i32], vertical_cuts: Vec[i32]) -> i32 {
+    (a3_widest(h, horizontal_cuts) * a3_widest(w, vertical_cuts) % 1000000007) as i32
+}
+
+// ---- max_area_solution.kara ----
+const MOD: i64 = 1_000_000_007;
+
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_max_area(h: i32, w: i32, horizontal_cuts: own Vec[i32], vertical_cuts: own Vec[i32]) -> i32 {
+        let mut horizontal_cuts = horizontal_cuts;
+        let mut vertical_cuts = vertical_cuts;
+        horizontal_cuts.sort();
+        vertical_cuts.sort();
+        let mut max_h = horizontal_cuts[0].max(h - *horizontal_cuts.last().unwrap());
+        for win in horizontal_cuts.windows(2) {
+            max_h = max_h.max(win[1] - win[0]);
+        }
+        let mut max_w = vertical_cuts[0].max(w - *vertical_cuts.last().unwrap());
+        for win in vertical_cuts.windows(2) {
+            max_w = max_w.max(win[1] - win[0]);
+        }
+        ((max_h as i64 * max_w as i64) % MOD) as i32
+    }
+}
+
+fn a4_max_area(h: i32, w: i32, horizontal_cuts: own Vec[i32], vertical_cuts: own Vec[i32]) -> i32 {
+    A4Solution.a4_max_area(h, w, horizontal_cuts, vertical_cuts)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// up to k different cuts from 1 to size - 1, in a random order
+fn cuts(seed: mut ref i64, k: i64, size: i64) -> Vec[i32] {
+    let mut out: Vec[i32] = (0..k).map(|_| (1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % (size - 1)) as i32).collect();
+    out.sort();
+    out.dedup();
+    shuffled(mut seed, out)
+}
+
+// `values` shuffled
+fn shuffled(seed: mut ref i64, values: Vec[i32]) -> Vec[i32] {
+    let mut out = values.clone();
+    for i in (1..out.len()).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        out.swap(i, j);
+    }
+    out
+}
+
+// the stretches one way's cuts leave, from edge to edge
+fn stretches(size: i32, cuts: Vec[i32]) -> Vec[i64] {
+    let mut at: Vec[i64] = Vec.new();
+    at.push(0);
+    for c in cuts.iter() {
+        at.push(c);
+    }
+    at.push(size);
+    at.sort();
+    (1..at.len()).map(|i| at[i] - at[i - 1]).collect()
+}
+
+// the statement read literally: the cake cut into every piece, each
+// piece's area, and the largest of them modulo 10^9 + 7
+fn literal(h: i32, w: i32, across: Vec[i32], down: Vec[i32]) -> i32 {
+    let mut best: i64 = 0;
+    for a in stretches(h, across).iter() {
+        for b in stretches(w, down).iter() {
+            best = best.max(a * b);
+        }
+    }
+    (best % 1000000007) as i32
+}
+
+fn arm(i: i64, h: i32, w: i32, across: Vec[i32], down: Vec[i32]) -> i32 {
+    match i {
+        0 => a0_max_area(h, w, across, down),
+        1 => a1_max_area(h, w, across, down),
+        2 => a2_max_area(h, w, across, down),
+        3 => a3_max_area(h, w, across, down),
+        _ => a4_max_area(h, w, across.clone(), down.clone()),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+#[derive(Clone)]
+struct Cake {
+    h: i32,
+    w: i32,
+    across: Vec[i32],
+    down: Vec[i32],
+}
+
+fn check_case(t: mut ref Tally, seed: mut ref i64, c: Cake) {
+    t.cases += 1;
+    let (h, w) = (c.h, c.w);
+    let star = arm(0, h, w, c.across, c.down);
+    t.check = (t.check * 31 + star) % 1000000007;
+    let n = c.across.len() + c.down.len();
+    let want = if n <= 2000 { Some(literal(h, w, c.across, c.down)) } else { None };
+    let mixed_across = shuffled(mut seed, c.across);
+    let mixed_down = shuffled(mut seed, c.down);
+    let back_across: Vec[i32] = c.across.iter().map(|x| h - x).collect();
+    let back_down: Vec[i32] = c.down.iter().map(|x| w - x).collect();
+    let doubles = h <= 500000000 and w <= 500000000;
+    for i in 0..5 {
+        let what = f"arm {i} on {h} by {w} with {n} cuts";
+        let got = arm(i, h, w, c.across, c.down);
+        // P1: the statement read literally, while there are at most 2000
+        // cuts
+        if let Some(x) = want {
+            expect(mut t, 1, got == x, f"P1 {what}");
+        }
+        // P2: the cake turned, its two sides and their cuts swapped, gives
+        // the same answer
+        expect(mut t, 2, arm(i, w, h, c.down, c.across) == got, f"P2 {what}");
+        // P3: the cuts shuffled give the same answer
+        expect(mut t, 3, arm(i, h, w, mixed_across, mixed_down) == got, f"P3 {what}");
+        // P4: every cut measured from the other edge gives the same answer
+        expect(mut t, 4, arm(i, h, w, back_across, back_down) == got, f"P4 {what}");
+        // P5: the cake and every cut doubled, while that fits, gives four
+        // times the answer
+        if doubles {
+            let twice_across: Vec[i32] = c.across.iter().map(|x| x * 2).collect();
+            let twice_down: Vec[i32] = c.down.iter().map(|x| x * 2).collect();
+            let four = arm(i, h * 2, w * 2, twice_across, twice_down) as i64;
+            expect(mut t, 5, four == got as i64 * 4 % 1000000007, f"P5 {what}");
+        }
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: the largest cake cut once each way
+    // near an edge, a cake of 2 by 2 cut in its middle, a cake cut at
+    // every place each way, and at every place but one, and the
+    // constraints' most. Every case is drawn before any arm answers.
+    let mut cakes: Vec[Cake] = Vec.new();
+    cakes.push(Cake { h: 5, w: 4, across: [1, 2, 4].to_vec(), down: [1, 3].to_vec() });
+    cakes.push(Cake { h: 5, w: 4, across: [3, 1].to_vec(), down: [1].to_vec() });
+    cakes.push(Cake { h: 5, w: 4, across: [3].to_vec(), down: [3].to_vec() });
+    cakes.push(Cake { h: 1000000000, w: 1000000000, across: [1].to_vec(), down: [999999999].to_vec() });
+    cakes.push(Cake { h: 2, w: 2, across: [1].to_vec(), down: [1].to_vec() });
+    cakes.push(Cake { h: 1000, w: 7, across: (1..1000).collect(), down: (1..7).collect() });
+    let most: Vec[i32] = (1..=100000).filter(|c| c != 50000).collect();
+    cakes.push(Cake { h: 100001, w: 100001, across: most.clone(), down: most });
+    let mut seed = 14651;
+    let across = cuts(mut seed, 100000, 1000000000);
+    let down = cuts(mut seed, 100000, 1000000000);
+    cakes.push(Cake { h: 1000000000, w: 1000000000, across: across, down: down });
+    // 1995 random cakes: half of 2 to 30 each way with 1 to 12 cuts each
+    // way, half of 2 to 10^9 with 1 to 50
+    for k in 0..1995 {
+        let (top, most_cuts) = if k % 2 == 0 { (29, 12) } else { (999999999, 50) };
+        let h = 2 + (next_random(mut seed) * 32768 + next_random(mut seed)) % top;
+        let w = 2 + (next_random(mut seed) * 32768 + next_random(mut seed)) % top;
+        let a = cuts(mut seed, 1 + next_random(mut seed) % most_cuts, h);
+        let b = cuts(mut seed, 1 + next_random(mut seed) % most_cuts, w);
+        cakes.push(Cake { h: h as i32, w: w as i32, across: a, down: b });
+    }
+    for j in 0..cakes.len() {
+        let c = cakes[j].clone();
+        check_case(mut t, mut seed, c);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
