@@ -1,0 +1,93 @@
+// LeetCode #1436: Destination City -- a Rust solution as LeetCode's Rust
+// users write it: the starts gathered into a `HashSet<&String>` by
+// `map(|p| &p[0])`, each path's end looked up by `contains(&p[1])`, carried
+// to Kāra by `karac fix`
+
+struct Solution {}
+
+impl Solution {
+    pub fn dest_city(paths: Vec[Vec[String]]) -> String {
+        let starts: Set[ref String] = paths.iter().map(|p| ref p[0]).collect();
+        for p in paths.iter() {
+            if not starts.contains(p[1]) {
+                return p[1].clone();
+            }
+        }
+        String.new()
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a trip through n + 1 different cities, each name 1 to `longest` letters
+// of the first `k` of the alphabet, with its n paths in a drawn order
+fn trip(n: i64, longest: i64, k: i64, seed: mut ref i64) -> Vec[Vec[String]] {
+    let mut cities: Vec[String] = Vec.new();
+    while cities.len() < n + 1 {
+        let length = 1 + next_random(mut seed) % longest;
+        let mut name = String.new();
+        for _ in 0..length {
+            name.push((b'A' + (next_random(mut seed) % k) as u8) as char);
+        }
+        if not cities.contains(name) {
+            cities.push(name);
+        }
+    }
+    let mut paths: Vec[Vec[String]] = (0..n).map(|i| [cities[i].clone(), cities[i + 1].clone()].to_vec()).collect();
+    for i in (1..paths.len()).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        paths.swap(i, j);
+    }
+    paths
+}
+
+// a name folded to a number
+fn folded(name: Str) -> i64 {
+    name.bytes().iter().fold(0, |h, b| (h * 31 + b) % 1000000007)
+}
+
+fn main() {
+    // LeetCode's three examples, and one more
+    let cases: Vec[Vec[Vec[String]]] = [
+        [["London", "New York"], ["New York", "Lima"], ["Lima", "Sao Paulo"]],
+        [["B", "C"], ["D", "B"], ["C", "A"]],
+        [["A", "Z"]],
+        [["pqrs", "pq"], ["p", "pqrs"]],
+    ]
+        .iter()
+        .map(|paths| paths.iter().map(|path| path.iter().map(|c| c.to_string()).collect()).collect())
+        .collect();
+    let firsts: Vec[String] = cases.iter().map(|paths| Solution.dest_city(paths)).collect();
+    println(firsts.join(","));
+    // the constraints' most: 100 paths of names of 10 letters, and of
+    // names of 1 to 10 of two letters
+    let mut seed = 1436;
+    let long = trip(100, 10, 26, mut seed);
+    let two = trip(100, 10, 2, mut seed);
+    println(f"100 paths: {Solution.dest_city(long)} {Solution.dest_city(two)}");
+    // 2000 random trips of 1 to 100 paths, the names of 1 to 10 letters of
+    // the first 2 to 26 of the alphabet
+    let mut check: i64 = 0;
+    let mut letters: i64 = 0;
+    for _ in 0..2000 {
+        let longest = 1 + next_random(mut seed) % 10;
+        let k = 2 + next_random(mut seed) % 25;
+        // no more paths than there are names for cities
+        let mut names = 0;
+        let mut power = 1;
+        for _ in 0..longest {
+            power = (power * k).min(1000);
+            names = (names + power).min(1000);
+        }
+        let n = 1 + next_random(mut seed) % (names - 1).min(100);
+        let got = Solution.dest_city(trip(n, longest, k, mut seed));
+        letters += got.len();
+        check = (check * 131 + folded(got)) % 1000000007;
+    }
+    println(f"2000 random trips: {letters} letters, checksum {check}");
+}
