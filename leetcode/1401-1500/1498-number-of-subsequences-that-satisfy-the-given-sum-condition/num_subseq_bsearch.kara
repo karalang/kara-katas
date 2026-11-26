@@ -1,0 +1,57 @@
+// LeetCode #1498: Number of Subsequences That Satisfy the Given Sum
+// Condition -- the values sorted; for each value as the least, a binary
+// search with `partition_point` for how far the most may reach, and 2 to
+// the power of the values between counts the subsequences. O(n log n)
+
+const MOD: i64 = 1000000007;
+
+fn num_subseq(nums: Vec[i32], target: i32) -> i32 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut pow2: Vec[i64] = [1].to_vec();
+    for i in 1..sorted.len() {
+        pow2.push(pow2[i - 1] * 2 % MOD);
+    }
+    let mut count = 0;
+    for i in 0..sorted.len() {
+        if sorted[i] * 2 > target {
+            break;
+        }
+        let end = sorted.partition_point(|x| x <= target - sorted[i]);
+        count = (count + pow2[end - 1 - i]) % MOD;
+    }
+    count as i32
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{num_subseq([3, 5, 6, 7], 9)} {num_subseq([3, 3, 6, 8], 10)} {num_subseq([2, 3, 3, 4, 6, 7], 12)}");
+    // the edges: one value that fits and one that does not; every value
+    // too big; every value equal; the target exactly twice the least; two
+    // values whose sum is the target
+    println(f"{num_subseq([1], 2)} {num_subseq([2], 3)} {num_subseq([9, 8, 7], 6)} {num_subseq([4, 4, 4, 4], 8)} {num_subseq([5, 7, 9], 10)} {num_subseq([1, 9], 10)}");
+    // the constraints' most: 100000 values of 1 with the target 2, so that
+    // every subsequence counts; and 100000 values up to 1000000 with
+    // targets of 1000000 and 500000
+    let ones: Vec[i32] = Vec.filled(100000, 1);
+    let mut seed = 1498;
+    let big: Vec[i32] = (0..100000).map(|_| (1 + next_random(mut seed) * 31 % 1000000) as i32).collect();
+    println(f"100000 values: {num_subseq(ones, 2)} {num_subseq(big, 1000000)} {num_subseq(big, 500000)}");
+    // 3000 random arrays of 1 to 30 values from 1 to 50, the target from 1
+    // to 100
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let nums: Vec[i32] = (0..n).map(|_| (1 + next_random(mut seed) % 50) as i32).collect();
+        let target = 1 + next_random(mut seed) % 100;
+        check = (check * 31 + num_subseq(nums, target as i32)) % 1000000007;
+    }
+    println(f"3000 random arrays: checksum {check}");
+}
