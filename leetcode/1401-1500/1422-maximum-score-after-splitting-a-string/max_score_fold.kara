@@ -1,0 +1,52 @@
+fn max_score(s: String) -> i32 {
+    // the split moved right one digit at a time in a fold, carrying the
+    // score so far and the best: a 0 crossing to the left scores one more,
+    // a 1 crossing scores one less
+    let ones = s.chars().filter(|c| c == '1').count() as i32;
+    let first = if s.starts_with("0") { ones + 1 } else { ones - 1 };
+    let (_, best) = s.chars().skip(1).take(s.len() - 2).fold((first, first), |(score, best), c| {
+        let score = if c == '0' { score + 1 } else { score - 1 };
+        (score, best.max(score))
+    });
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n digits, a 1 `ones` times in 10
+fn drawn(n: i64, ones: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(if next_random(mut seed) % 10 < ones { '1' } else { '0' });
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's three examples, and five more
+    let firsts: Vec[String] = ["011101", "00111", "1111", "00", "01", "10", "11", "0101"]
+        .iter()
+        .map(|s| f"{max_score(s.to_string())}")
+        .collect();
+    println(firsts.join(" "));
+    // the constraints' most: 500 zeros, 500 ones, and 500 drawn digits
+    let mut seed = 1422;
+    let drawn_most = drawn(500, 5, mut seed);
+    println(f"500 digits: {max_score("0".repeat(500))} {max_score("1".repeat(500))} {max_score(drawn_most)}");
+    // 2000 random strings of 2 to 60 digits, a 1 from 0 to 10 times in 10
+    let mut check: i64 = 0;
+    let mut total: i64 = 0;
+    for _ in 0..2000 {
+        let n = 2 + next_random(mut seed) % 59;
+        let ones = next_random(mut seed) % 11;
+        let got = max_score(drawn(n, ones, mut seed));
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random strings: {total} in all, checksum {check}");
+}

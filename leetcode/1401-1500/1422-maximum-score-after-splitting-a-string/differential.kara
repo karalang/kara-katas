@@ -1,0 +1,232 @@
+// LeetCode #1422: Maximum Score After Splitting a String -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- max_score.kara ----
+fn a0_max_score(s: String) -> i32 {
+    // a split scores the ones in all of s, plus the zeros less the ones
+    // to its left: the best is the most that difference reaches over the
+    // splits, each leaving at least one digit on either side
+    let digits: Vec[u8] = s.bytes().to_vec();
+    let ones = digits.iter().filter(|d| d == b'1').count() as i32;
+    let mut lead: i32 = 0;
+    let mut best = i32.MIN;
+    for d in digits[..digits.len() - 1].iter() {
+        lead += if d == b'0' { 1 } else { -1 };
+        best = best.max(lead);
+    }
+    ones + best
+}
+
+// ---- max_score_splits.kara ----
+fn a1_max_score(s: String) -> i32 {
+    // every split in turn, its zeros on the left and its ones on the right
+    // counted afresh
+    let mut best = 0;
+    for i in 1..s.len() {
+        let left = s[..i].chars().filter(|c| c == '0').count();
+        let right = s[i..].chars().filter(|c| c == '1').count();
+        best = best.max(left + right);
+    }
+    best as i32
+}
+
+// ---- max_score_prefix.kara ----
+fn a2_max_score(s: String) -> i32 {
+    // the zeros in every prefix and the ones in every suffix, each counted
+    // once into a table, and the best split read off the two
+    let digits: Vec[char] = s.chars().collect();
+    let n = digits.len();
+    let mut zeros: Vec[i32] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        zeros[i + 1] = zeros[i] + if digits[i] == '0' { 1 } else { 0 };
+    }
+    let mut ones: Vec[i32] = Vec.filled(n + 1, 0);
+    for i in (0..n).rev() {
+        ones[i] = ones[i + 1] + if digits[i] == '1' { 1 } else { 0 };
+    }
+    (1..n).map(|i| zeros[i] + ones[i]).max().unwrap()
+}
+
+// ---- max_score_fold.kara ----
+fn a3_max_score(s: String) -> i32 {
+    // the split moved right one digit at a time in a fold, carrying the
+    // score so far and the best: a 0 crossing to the left scores one more,
+    // a 1 crossing scores one less
+    let ones = s.chars().filter(|c| c == '1').count() as i32;
+    let first = if s.starts_with("0") { ones + 1 } else { ones - 1 };
+    let (_, best) = s.chars().skip(1).take(s.len() - 2).fold((first, first), |(score, best), c| {
+        let score = if c == '0' { score + 1 } else { score - 1 };
+        (score, best.max(score))
+    });
+    best
+}
+
+// ---- max_score_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_max_score(s: String) -> i32 {
+        let bytes = s.bytes();
+        let mut ones: i32 = bytes.iter().filter(|b| b == b'1').count() as i32;
+        let mut zeros: i32 = 0;
+        let mut best: i32 = 0;
+        for i in 0..bytes.len() - 1 {
+            if bytes[i] == b'0' {
+                zeros += 1;
+            } else {
+                ones -= 1;
+            }
+            best = best.max(zeros + ones);
+        }
+        best
+    }
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n digits, a 1 `ones` times in 10
+fn drawn(n: i64, ones: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(if next_random(mut seed) % 10 < ones { '1' } else { '0' });
+    }
+    s
+}
+
+// the statement read literally: s cut after each digit but the last into
+// a left and a right string, each built up a character at a time, and the
+// zeros of the one and the ones of the other counted, the most kept
+fn literal(s: String) -> i64 {
+    let chars: Vec[char] = s.chars().collect();
+    let mut best = -1;
+    for cut in 1..chars.len() {
+        let mut left = String.new();
+        let mut right = String.new();
+        for i in 0..chars.len() {
+            if i < cut {
+                left.push(chars[i]);
+            } else {
+                right.push(chars[i]);
+            }
+        }
+        let mut score = 0;
+        for c in left.chars() {
+            if c == '0' {
+                score += 1;
+            }
+        }
+        for c in right.chars() {
+            if c == '1' {
+                score += 1;
+            }
+        }
+        if score > best {
+            best = score;
+        }
+    }
+    best
+}
+
+fn arm(i: i64, s: String) -> i64 {
+    let s = s.clone();
+    let got = match i {
+        0 => a0_max_score(s),
+        1 => a1_max_score(s),
+        2 => a2_max_score(s),
+        3 => a3_max_score(s),
+        _ => A4Solution.a4_max_score(s),
+    };
+    got
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, s: String, flip: i64) {
+    t.cases += 1;
+    let star = arm(0, s);
+    t.check = (t.check * 131 + star) % 1000000007;
+    t.check = (t.check * 131 + s.len()) % 1000000007;
+    let want = literal(s);
+    let n = s.len();
+    // s turned round with every digit flipped, and s with one digit flipped
+    let mirrored: String = s.chars().rev().map(|c| if c == '0' { '1' } else { '0' }).collect();
+    let mut flipped: Vec[char] = s.chars().collect();
+    flipped[flip] = if flipped[flip] == '0' { '1' } else { '0' };
+    let flipped: String = flipped.iter().collect();
+    let first = (if s.starts_with("0") { 1 } else { 0 }) + s[1..].chars().filter(|c| c == '1').count();
+    let last = s[..n - 1].chars().filter(|c| c == '0').count() + (if s.ends_with("1") { 1 } else { 0 });
+    for i in 0..5 {
+        let what = f"arm {i} on {s}";
+        let got = arm(i, s);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}: literal {want}, got {got}");
+        // P2: a score from 0 to the length
+        expect(mut t, 2, got >= 0 and got <= n, f"P2 {what}: {got}");
+        // P3: turned round with every digit flipped, the zeros on the left
+        // become the ones on the right, and the score stays
+        expect(mut t, 3, arm(i, mirrored) == got, f"P3 {what} and {mirrored}");
+        // P4: at least what the first split and the last score
+        expect(mut t, 4, got >= first and got >= last, f"P4 {what}: {first}, {last}, got {got}");
+        // P5: one digit flipped moves every split's score by one, so the
+        // best by at most one
+        let other = arm(i, flipped);
+        expect(mut t, 5, other >= got - 1 and other <= got + 1, f"P5 {what}: {flipped} got {other}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: every string of two digits, one
+    // kind only, the best split first or last, and the constraints' most.
+    // Every case is drawn before any arm answers.
+    let mut cases: Vec[String] = ["011101", "00111", "1111", "00", "01", "10", "11", "0000", "100", "001", "1000", "0111"].iter().map(|s| s.to_string()).collect();
+    let mut seed = 14221;
+    cases.push("0".repeat(500));
+    cases.push("1".repeat(500));
+    cases.push(f"{"1".repeat(250)}{"0".repeat(250)}");
+    cases.push(drawn(500, 5, mut seed));
+    // 1987 random strings of 2 to 60 digits two times in three, and up to
+    // 500 otherwise, a 1 from 0 to 10 times in 10
+    for i in 0..1987 {
+        let n = if i % 3 == 2 { 2 + next_random(mut seed) % 499 } else { 2 + next_random(mut seed) % 59 };
+        let ones = next_random(mut seed) % 11;
+        cases.push(drawn(n, ones, mut seed));
+    }
+    let mut flips: Vec[i64] = Vec.new();
+    for s in cases.iter() {
+        flips.push(next_random(mut seed) % s.len());
+    }
+    for k in 0..cases.len() {
+        check_case(mut t, cases[k], flips[k]);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

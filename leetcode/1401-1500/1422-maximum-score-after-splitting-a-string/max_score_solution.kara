@@ -1,0 +1,65 @@
+// LeetCode #1422: Maximum Score After Splitting a String -- a Rust
+// solution as LeetCode's Rust users write it: `s.as_bytes()`, the ones
+// counted by `filter(|&&b| b == b'1').count() as i32`, and the split
+// moved right with the zeros counted up and the ones down, carried to Kāra
+// by `karac fix`
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_score(s: String) -> i32 {
+        let bytes = s.bytes();
+        let mut ones: i32 = bytes.iter().filter(|b| b == b'1').count() as i32;
+        let mut zeros: i32 = 0;
+        let mut best: i32 = 0;
+        for i in 0..bytes.len() - 1 {
+            if bytes[i] == b'0' {
+                zeros += 1;
+            } else {
+                ones -= 1;
+            }
+            best = best.max(zeros + ones);
+        }
+        best
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n digits, a 1 `ones` times in 10
+fn drawn(n: i64, ones: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(if next_random(mut seed) % 10 < ones { '1' } else { '0' });
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's three examples, and five more
+    let firsts: Vec[String] = ["011101", "00111", "1111", "00", "01", "10", "11", "0101"]
+        .iter()
+        .map(|s| f"{Solution.max_score(s.to_string())}")
+        .collect();
+    println(firsts.join(" "));
+    // the constraints' most: 500 zeros, 500 ones, and 500 drawn digits
+    let mut seed = 1422;
+    let drawn_most = drawn(500, 5, mut seed);
+    println(f"500 digits: {Solution.max_score("0".repeat(500))} {Solution.max_score("1".repeat(500))} {Solution.max_score(drawn_most)}");
+    // 2000 random strings of 2 to 60 digits, a 1 from 0 to 10 times in 10
+    let mut check: i64 = 0;
+    let mut total: i64 = 0;
+    for _ in 0..2000 {
+        let n = 2 + next_random(mut seed) % 59;
+        let ones = next_random(mut seed) % 11;
+        let got = Solution.max_score(drawn(n, ones, mut seed));
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random strings: {total} in all, checksum {check}");
+}
