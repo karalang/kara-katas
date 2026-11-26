@@ -1,0 +1,37 @@
+// LeetCode #1758: Minimum Changes To Make Alternating Binary String -- the
+// bench, mirroring the ★ arm: one pass counting the characters that differ
+// from "0101...". 2000 strings of 1 to 20000 characters, built once, and
+// 30000 calls, each on a string chosen from the checksum so far.
+fn min_operations(s: String) -> i32 {
+    let bytes = s.bytes();
+    let mut differ = 0;
+    for (i, b) in bytes.iter().enumerate() {
+        if (b - b'0') as i64 != i % 2 {
+            differ += 1;
+        }
+    }
+    differ.min(bytes.len() - differ) as i32
+}
+
+fn main() {
+    let mut seed = 1758;
+    let mut strings: Vec[String] = Vec.new();
+    for _ in 0..2000 {
+        seed = (seed * 1103515245 + 12345) % 2147483648;
+        let n = 1 + seed / 65536 % 20000;
+        seed = (seed * 1103515245 + 12345) % 2147483648;
+        let chance = seed / 65536 % 101;
+        let mut s = String.new();
+        for _ in 0..n {
+            seed = (seed * 1103515245 + 12345) % 2147483648;
+            s.push(if seed / 65536 % 100 < chance { '1' } else { '0' });
+        }
+        strings.push(s);
+    }
+    let mut check = 0;
+    for call in 0..30000 {
+        let s = ref strings[(check + call * 7919) % 2000];
+        check = (check * 31 + min_operations(s)) % 1000000007;
+    }
+    println(f"30000 calls over 2000 strings: checksum {check}");
+}

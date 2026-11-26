@@ -1,0 +1,58 @@
+// LeetCode #1758: Minimum Changes To Make Alternating Binary String -- both
+// alternating strings built, "0101..." and "1010...", and each compared
+// with the string character by character.
+
+fn changes_to(s: String, first: char) -> i32 {
+    let mut target = String.new();
+    let mut next = first;
+    for _ in 0..s.len() {
+        target.push(next);
+        next = if next == '0' { '1' } else { '0' };
+    }
+    s.chars().zip(target.chars()).filter(|(a, b)| a != b).count() as i32
+}
+
+fn min_operations(s: String) -> i32 {
+    changes_to(s, '0').min(changes_to(s, '1'))
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n characters, each a '1' with chance `ones` in 100
+fn random_bits(seed: mut ref i64, n: i64, ones: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(if next_random(mut seed) % 100 < ones { '1' } else { '0' });
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{min_operations("0100")} {min_operations("10")} {min_operations("1111")}");
+    // the edges: one character either way; two the same; alternating from
+    // either end, odd and even; every character the same, odd and even
+    println(f"{min_operations("0")} {min_operations("1")} {min_operations("00")} {min_operations("0101010")} {min_operations("101010")} {min_operations("000000000")} {min_operations("1111111111")}");
+    // the constraints' most: 10000 characters, all ones, alternating, a few
+    // ones, and evenly mixed
+    let mut seed = 1758;
+    let ones = "1".repeat(10000);
+    let alternating = "10".repeat(5000);
+    let sparse = random_bits(mut seed, 10000, 5);
+    let mixed = random_bits(mut seed, 10000, 50);
+    println(f"10000 characters: {min_operations(ones)} {min_operations(alternating)} {min_operations(sparse)} {min_operations(mixed)}");
+    // 3000 random strings of 1 to 20 characters
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 20;
+        let chance = next_random(mut seed) % 101;
+        let s = random_bits(mut seed, n, chance);
+        check = (check * 31 + min_operations(s)) % 1000000007;
+    }
+    println(f"3000 random strings: checksum {check}");
+}
