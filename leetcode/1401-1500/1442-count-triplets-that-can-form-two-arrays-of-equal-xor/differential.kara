@@ -1,0 +1,250 @@
+// LeetCode #1442: Count Triplets That Can Form Two Arrays of Equal XOR -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- count_triplets.kara ----
+fn a0_count_triplets(arr: Vec[i32]) -> i32 {
+    // a = b exactly when the xor from i to k is 0, that is when the xors
+    // of the prefixes before i and through k are equal, and then every j
+    // between serves: for each prefix xor met, how many times and the sum
+    // of the places it was met at, so each place k adds k - i for every
+    // earlier i at once
+    let mut seen: Map[i32, (i64, i64)] = Map.new();
+    seen.insert(0, (1, 0));
+    let mut x: i32 = 0;
+    let mut count = 0;
+    for (k, a) in arr.iter().enumerate() {
+        x ^= a;
+        let (times, places) = seen.get(x).unwrap_or((0, 0));
+        count += times * k - places;
+        seen.insert(x, (times + 1, places + k + 1));
+    }
+    count as i32
+}
+
+// ---- count_triplets_groups.kara ----
+fn a1_count_triplets(arr: Vec[i32]) -> i32 {
+    // the places of each prefix xor, in a `SortedMap`, and every two places
+    // of the same xor giving a triplet for each j between them
+    let mut places: SortedMap[i32, Vec[i64]] = SortedMap.new();
+    places.entry(0).or_insert(Vec.new()).push(0);
+    let mut x: i32 = 0;
+    for (k, a) in arr.iter().enumerate() {
+        x ^= a;
+        places.entry(x).or_insert(Vec.new()).push(k + 1);
+    }
+    let mut count = 0;
+    for (_, at) in places.iter() {
+        for i in 0..at.len() {
+            for j in i + 1..at.len() {
+                count += at[j] - at[i] - 1;
+            }
+        }
+    }
+    count as i32
+}
+
+// ---- count_triplets_prefix.kara ----
+fn a2_count_triplets(arr: Vec[i32]) -> i32 {
+    // the prefix xors in a list, and every two equal ones a distance d
+    // apart giving d - 1 triplets
+    let mut prefix: Vec[i32] = [0].to_vec();
+    for a in arr.iter() {
+        prefix.push(prefix[prefix.len() - 1] ^ a);
+    }
+    let mut count = 0;
+    for i in 0..prefix.len() {
+        for k in i + 1..prefix.len() {
+            if prefix[i] == prefix[k] {
+                count += k - i - 1;
+            }
+        }
+    }
+    count as i32
+}
+
+// ---- count_triplets_brute.kara ----
+fn a3_count_triplets(arr: Vec[i32]) -> i32 {
+    // every i, j and k, a grown one number at a time as j moves on and b
+    // as k does
+    let n = arr.len();
+    let mut count = 0;
+    for i in 0..n {
+        let mut a = 0;
+        for j in i + 1..n {
+            a ^= arr[j - 1];
+            let mut b = 0;
+            for k in j..n {
+                b ^= arr[k];
+                if a == b {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
+}
+
+// ---- count_triplets_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_count_triplets(arr: Vec[i32]) -> i32 {
+        let n = arr.len();
+        let mut res: i32 = 0;
+        for i in 0..n {
+            let mut x = 0;
+            for k in i..n {
+                x ^= arr[k];
+                if x == 0 {
+                    res += (k - i) as i32;
+                }
+            }
+        }
+        res
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n numbers of 1 to `top`, each made of two draws so `top` can be 10^8
+fn drawn(n: i64, top: i64, seed: mut ref i64) -> Vec[i32] {
+    (0..n).map(|_| (1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % top) as i32).collect()
+}
+
+// the xor of arr[from] up to arr[to - 1]
+fn xor_of(arr: Slice[i32], from: i64, to: i64) -> i32 {
+    let mut x: i32 = 0;
+    for p in from..to {
+        x ^= arr[p];
+    }
+    x
+}
+
+// the statement read literally: every i < j <= k, a the xor from i to
+// j - 1 and b the xor from j to k, each found afresh, and the triplets
+// with a == b counted
+fn literal(arr: Slice[i32]) -> i64 {
+    let n = arr.len();
+    let mut count = 0;
+    for i in 0..n {
+        for j in i + 1..n {
+            for k in j..n {
+                if xor_of(arr, i, j) == xor_of(arr, j, k + 1) {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
+}
+
+fn arm(i: i64, arr: Vec[i32]) -> i64 {
+    let arr = arr.clone();
+    match i {
+        0 => a0_count_triplets(arr),
+        1 => a1_count_triplets(arr),
+        2 => a2_count_triplets(arr),
+        3 => a3_count_triplets(arr),
+        _ => A4Solution.a4_count_triplets(arr),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, arr: Vec[i32], extra: i32) {
+    t.cases += 1;
+    let star = arm(0, arr);
+    t.check = (t.check * 131 + star) % 1000000007;
+    let n = arr.len();
+    let want = if n <= 30 { Some(literal(arr)) } else { None };
+    let reversed: Vec[i32] = arr.iter().rev().cloned().collect();
+    let doubled: Vec[i32] = arr.iter().map(|x| 2 * x).collect();
+    let mut longer = arr.clone();
+    longer.push(extra);
+    let mut paired = arr.clone();
+    paired.push(extra);
+    paired.push(extra);
+    for i in 0..5 {
+        let what = f"arm {i} on {n} numbers";
+        let got = arm(i, arr);
+        // P1: the statement read literally, while there are at most 30
+        // numbers
+        if let Some(w) = want {
+            expect(mut t, 1, got == w, f"P1 {what}");
+        }
+        // P2: the numbers in the other order give the same count
+        expect(mut t, 2, arm(i, reversed) == got, f"P2 {what}");
+        // P3: every number doubled gives the same count
+        expect(mut t, 3, arm(i, doubled) == got, f"P3 {what}");
+        // P4: one more number at the end never gives fewer
+        expect(mut t, 4, arm(i, longer) >= got, f"P4 {what}");
+        // P5: a number twice more at the end gives one more at least
+        expect(mut t, 5, arm(i, paired) >= got + 1, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: one number, two equal numbers,
+    // two different ones, three whose xor is 0, four equal numbers, and
+    // the largest numbers; and the constraints' most three ways. Every
+    // case is drawn before any arm answers.
+    let mut cases: Vec[Vec[i32]] = [
+        [2, 3, 1, 6, 7],
+        [1, 1, 1, 1, 1],
+        [2, 3],
+        [1, 3, 5, 7, 9],
+        [7, 11, 12, 9, 5, 2, 7, 17, 22],
+        [1],
+        [5, 5],
+        [1, 2],
+        [1, 2, 3],
+        [7, 7, 7, 7],
+        [100000000, 100000000, 100000000],
+    ];
+    let mut seed = 14421;
+    cases.push(Vec.filled(300, 1));
+    cases.push(drawn(300, 100000000, mut seed));
+    cases.push(drawn(300, 4, mut seed));
+    // 1989 random cases of 1 to 60 numbers up to 1, 3, 15 or 10^8
+    for _ in 0..1989 {
+        let n = 1 + next_random(mut seed) % 60;
+        let top = [1, 3, 15, 100000000][next_random(mut seed) % 4];
+        cases.push(drawn(n, top, mut seed));
+    }
+    // the number each case has added for P4 and P5
+    let extras = drawn(cases.len(), 100, mut seed);
+    for j in 0..cases.len() {
+        let arr = cases[j].clone();
+        check_case(mut t, arr, extras[j]);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
