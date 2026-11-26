@@ -1,0 +1,129 @@
+// LeetCode #1786: Number of Restricted Paths From First to Last Node -- a
+// Rust solution as LeetCode's Rust users write it, carried to Kāra by
+// `karac fix`
+
+struct Solution {}
+
+impl Solution {
+    pub fn count_restricted_paths(n: i32, edges: Vec[Vec[i32]]) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let n = n as i64;
+        let mut g = Vec.filled(n + 1, Vec.new());
+        for e in ref edges {
+            let (u, v, w) = (e[0] as i64, e[1] as i64, e[2] as i64);
+            g[u].push((v, w));
+            g[v].push((u, w));
+        }
+        let mut dist = Vec.filled(n + 1, i64.MAX);
+        dist[n] = 0;
+        let mut heap = PriorityQueue.new();
+        heap.push((0, n));
+        while let Some((d, u)) = heap.pop() {
+            if d > dist[u] {
+                continue;
+            }
+            for (v, w) in ref g[u] {
+                if d + w < dist[v] {
+                    dist[v] = d + w;
+                    heap.push((dist[v], v));
+                }
+            }
+        }
+        let mut idx: Vec[i64] = (1..=n).collect();
+        idx.sort_by_key(|i| dist[i]);
+        let mut dp = Vec.filled(n + 1, 0);
+        dp[n] = 1;
+        for u in ref idx {
+            for (v, _) in ref g[u] {
+                if dist[v] < dist[u] {
+                    dp[u] = (dp[u] + dp[v]) % MOD;
+                }
+            }
+        }
+        dp[1] as i32
+    }
+}
+
+fn count_restricted_paths(n: i32, edges: Vec[Vec[i32]]) -> i32 {
+    Solution.count_restricted_paths(n, edges)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a connected graph on n nodes: a random tree, each node joined to one
+// before it, then up to `extra` more edges between nodes not yet joined,
+// each weight from 1 to `most_w`
+fn random_graph(seed: mut ref i64, n: i64, extra: i64, most_w: i64) -> Vec[Vec[i32]] {
+    let mut edges: Vec[Vec[i32]] = Vec.new();
+    let mut joined: Set[(i64, i64)] = Set.new();
+    for v in 2..n + 1 {
+        let u = 1 + next_random(mut seed) % (v - 1);
+        let w = 1 + next_random(mut seed) % most_w;
+        joined.insert((u, v));
+        edges.push([u as i32, v as i32, w as i32].to_vec());
+    }
+    for _ in 0..extra {
+        let a = 1 + next_random(mut seed) % n;
+        let b = 1 + next_random(mut seed) % n;
+        let (u, v) = if a < b { (a, b) } else { (b, a) };
+        if u == v or joined.contains((u, v)) {
+            continue;
+        }
+        let w = 1 + next_random(mut seed) % most_w;
+        joined.insert((u, v));
+        // half the edges written from their larger end
+        if next_random(mut seed) % 2 == 0 {
+            edges.push([u as i32, v as i32, w as i32].to_vec());
+        } else {
+            edges.push([v as i32, u as i32, w as i32].to_vec());
+        }
+    }
+    edges
+}
+
+fn main() {
+    // LeetCode's two examples
+    let first: Vec[Vec[i32]] = [[1, 2, 3], [1, 3, 3], [2, 3, 1], [1, 4, 2], [5, 2, 2], [3, 5, 1], [5, 4, 10]].to_vec();
+    let second: Vec[Vec[i32]] = [[1, 3, 1], [4, 1, 2], [7, 3, 4], [2, 5, 3], [5, 6, 1], [6, 7, 2], [7, 5, 3], [2, 6, 4]].to_vec();
+    println(f"{count_restricted_paths(5, first)} {count_restricted_paths(7, second)}");
+    // the edges: one node; two nodes; a triangle whose long edge is a
+    // second path; a square whose two middle nodes are as far from the
+    // end, joined by an edge no restricted path takes
+    let lone: Vec[Vec[i32]] = Vec.new();
+    let triangle: Vec[Vec[i32]] = [[1, 2, 1], [2, 3, 1], [1, 3, 2]].to_vec();
+    let square: Vec[Vec[i32]] = [[1, 2, 1], [1, 3, 1], [2, 4, 1], [3, 4, 1], [2, 3, 5]].to_vec();
+    println(f"{count_restricted_paths(1, lone)} {count_restricted_paths(2, [[1, 2, 7]].to_vec())} {count_restricted_paths(3, triangle)} {count_restricted_paths(4, square)}");
+    // the constraints' most: a line of 20000 nodes, each edge 10^5, whose
+    // distances pass i32; a ladder of two rails of 10000 nodes with unit
+    // weights; and a random graph of 20000 nodes and 40000 edges
+    let mut line: Vec[Vec[i32]] = Vec.new();
+    for v in 1i32..20000 {
+        line.push([v, v + 1, 100000].to_vec());
+    }
+    let mut ladder: Vec[Vec[i32]] = Vec.new();
+    for i in 1i32..10001 {
+        ladder.push([i, i + 10000, 1].to_vec());
+        if i < 10000 {
+            ladder.push([i, i + 1, 1].to_vec());
+            ladder.push([i + 10000, i + 10001, 1].to_vec());
+        }
+    }
+    let mut seed = 1786;
+    let wide = random_graph(mut seed, 20000, 20001, 100000);
+    println(f"the most: {count_restricted_paths(20000, line)} {count_restricted_paths(20000, ladder)} {count_restricted_paths(20000, wide)}");
+    // 2000 random graphs of 1 to 12 nodes and up to 12 more edges, the
+    // weights from 1 to 4 so that distances tie
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 12;
+        let extra = next_random(mut seed) % 13;
+        let edges = random_graph(mut seed, n, extra, 4);
+        check = (check * 31 + count_restricted_paths(n as i32, edges)) % 1000000007;
+    }
+    println(f"2000 random graphs: checksum {check}");
+}
