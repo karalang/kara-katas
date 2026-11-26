@@ -1,0 +1,50 @@
+// LeetCode #1785: Minimum Elements to Add to Form a Given Sum -- the ★ arm:
+// each element added closes the gap by at most the limit, and the last can
+// close whatever is left, so the answer is the gap over the limit, rounded
+// up. The sum of 10^5 numbers up to 10^6 needs an `i64`.
+
+fn min_elements(nums: Vec[i32], limit: i32, goal: i32) -> i32 {
+    let sum: i64 = nums.iter().map(|x| x as i64).sum();
+    let gap = (goal - sum).abs();
+    ((gap + limit - 1) / limit) as i32
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n numbers from -limit to limit
+fn random_nums(seed: mut ref i64, n: i64, limit: i64) -> Vec[i32] {
+    (0..n).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % (2 * limit + 1) - limit).map(|x| x as i32).collect()
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{min_elements([1, -1, 1], 3, -4)} {min_elements([1, -10, 9, 1], 100, 0)}");
+    // the edges: the goal met already; the gap a multiple of the limit; one
+    // more than a multiple; a goal below the sum; a limit of 1 and a far
+    // goal
+    println(f"{min_elements([4, -4], 2, 0)} {min_elements([0], 5, 10)} {min_elements([0], 5, 11)} {min_elements([5], 5, -5)} {min_elements([1], 1, 1000000000)}");
+    // the constraints' most: 100000 numbers at the limit of 10^6 and a
+    // goal of -10^9; 100000 at random under a limit of 1 and a goal of
+    // 10^9; 100000 at random under the largest limit and the least goal
+    let mut seed = 1785;
+    let high: Vec[i32] = Vec.filled(100000, 1000000);
+    let ones = random_nums(mut seed, 100000, 1);
+    let wide = random_nums(mut seed, 100000, 1000000);
+    println(f"the most: {min_elements(high, 1000000, -1000000000)} {min_elements(ones, 1, 1000000000)} {min_elements(wide, 1000000, -1000000000)}");
+    // 3000 random cases of 1 to 20 numbers, a limit of 1 to 10 and a goal
+    // within 100 either side of 0
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 20;
+        let limit = 1 + next_random(mut seed) % 10;
+        let nums = random_nums(mut seed, n, limit);
+        let goal = next_random(mut seed) % 201 - 100;
+        check = (check * 31 + min_elements(nums, limit as i32, goal as i32)) % 1000000007;
+    }
+    println(f"3000 random cases: checksum {check}");
+}

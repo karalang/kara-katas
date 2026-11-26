@@ -1,0 +1,165 @@
+// LeetCode #1785: Minimum Elements to Add to Form a Given Sum --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- min_elements.kara ----
+fn a0_min_elements(nums: Vec[i32], limit: i32, goal: i32) -> i32 {
+    let sum: i64 = nums.iter().map(|x| x as i64).sum();
+    let gap = (goal - sum).abs();
+    ((gap + limit - 1) / limit) as i32
+}
+
+// ---- min_elements_divmod.kara ----
+fn a1_min_elements(nums: Vec[i32], limit: i32, goal: i32) -> i32 {
+    let mut sum: i64 = 0;
+    for x in nums {
+        sum += x;
+    }
+    let gap = (goal - sum).abs();
+    let whole = gap / limit;
+    let extra = if gap % limit > 0 { 1 } else { 0 };
+    (whole + extra) as i32
+}
+
+// ---- min_elements_fold.kara ----
+fn a2_min_elements(nums: Vec[i32], limit: i32, goal: i32) -> i32 {
+    let rest = nums.iter().fold(goal as i64, |left, x| left - x);
+    let gap = rest.abs();
+    if gap == 0 {
+        0
+    } else {
+        ((gap - 1) / limit + 1) as i32
+    }
+}
+
+// ---- min_elements_float.kara ----
+fn a3_min_elements(nums: Vec[i32], limit: i32, goal: i32) -> i32 {
+    let sum: i64 = nums.iter().map(|x| x as i64).sum();
+    let gap = (goal - sum).abs() as f64;
+    (gap / limit as f64).ceil() as i32
+}
+
+// ---- min_elements_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn min_elements(nums: Vec[i32], limit: i32, goal: i32) -> i32 {
+        let sum: i64 = nums.iter().map(|x| x as i64).sum();
+        let diff = (goal - sum).abs();
+        ((diff + limit - 1) / limit) as i32
+    }
+}
+
+fn a4_min_elements(nums: Vec[i32], limit: i32, goal: i32) -> i32 {
+    A4Solution.min_elements(nums, limit, goal)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_nums(seed: mut ref i64, n: i64, limit: i64) -> Vec[i32] {
+    (0..n).map(|_| (next_random(mut seed) % (2 * limit + 1) - limit) as i32).collect()
+}
+
+// the statement read literally: k added elements, each from -limit to
+// limit, can make any sum from -k * limit to k * limit, so the least k
+// whose range reaches what the goal still needs
+fn literal(nums: Vec[i32], limit: i32, goal: i32) -> i32 {
+    let mut need: i64 = goal;
+    for x in nums.iter() {
+        need -= x;
+    }
+    let mut k: i64 = 0;
+    while not (-k * limit <= need and need <= k * limit) {
+        k += 1;
+    }
+    k as i32
+}
+
+fn arm(i: i64, nums: Vec[i32], limit: i32, goal: i32) -> i32 {
+    match i {
+        0 => a0_min_elements(nums, limit, goal),
+        1 => a1_min_elements(nums, limit, goal),
+        2 => a2_min_elements(nums, limit, goal),
+        3 => a3_min_elements(nums, limit, goal),
+        _ => a4_min_elements(nums, limit, goal),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, nums: Vec[i32], limit: i32, goal: i32) {
+    t.cases += 1;
+    let want = literal(nums, limit, goal);
+    t.check = (t.check * 31 + want) % 1000000007;
+    let star = arm(0, nums, limit, goal);
+    let sum: i32 = nums.iter().sum();
+    let gap = (goal - sum).abs();
+    let mut back = nums.clone();
+    back.reverse();
+    let negated: Vec[i32] = nums.iter().map(|x| -x).collect();
+    // the goal moved one limit further from the sum, or above it when met
+    let further = if goal >= sum { goal + limit } else { goal - limit };
+    for i in 0..5 {
+        let what = f"arm {i} on {nums} {limit} {goal}";
+        let got = arm(i, nums, limit, goal);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: 0 exactly when the sum is the goal, and never more elements
+        // than the gap
+        expect(mut t, 2, (got == 0) == (gap == 0) and got <= gap, f"P2 {what}");
+        // P3: the numbers in reverse give the same answer
+        expect(mut t, 3, arm(i, back, limit, goal) == got, f"P3 {what}");
+        // P4: every number and the goal negated give the same answer
+        expect(mut t, 4, arm(i, negated, limit, -goal) == got, f"P4 {what}");
+        // P5: the goal one limit further from the sum needs one more
+        expect(mut t, 5, arm(i, nums, limit, further) == got + 1, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges. Every case is drawn before any arm
+    // answers.
+    let mut cases: Vec[(Vec[i32], i32, i32)] = [([1, -1, 1], 3, -4), ([1, -10, 9, 1], 100, 0), ([4, -4], 2, 0), ([0], 5, 10), ([0], 5, 11), ([5], 5, -5), ([1], 1, 1000), ([-3, -3], 3, 3)];
+    let mut seed = 17851;
+    // 1992 random cases of 1 to 12 numbers, a limit of 1 to 8 and a goal
+    // within 60 either side of 0
+    for _ in 0..1992 {
+        let n = 1 + next_random(mut seed) % 12;
+        let limit = 1 + next_random(mut seed) % 8;
+        let nums = random_nums(mut seed, n, limit);
+        let goal = next_random(mut seed) % 121 - 60;
+        cases.push((nums, limit as i32, goal as i32));
+    }
+    for j in 0..cases.len() {
+        check_case(mut t, cases[j].0, cases[j].1, cases[j].2);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
