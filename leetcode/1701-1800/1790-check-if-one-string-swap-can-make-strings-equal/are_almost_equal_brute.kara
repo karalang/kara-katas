@@ -1,0 +1,81 @@
+// LeetCode #1790: Check if One String Swap Can Make Strings Equal -- every
+// swap tried: the strings equal as they are, or equal once some pair of
+// positions in s1 is swapped. O(n^3)
+
+fn are_almost_equal(s1: String, s2: String) -> bool {
+    if s1 == s2 {
+        return true;
+    }
+    let mut chars: Vec[char] = s1.chars().collect();
+    let target: Vec[char] = s2.chars().collect();
+    for i in 0..chars.len() {
+        for j in i + 1..chars.len() {
+            chars.swap(i, j);
+            if chars == target {
+                return true;
+            }
+            chars.swap(i, j);
+        }
+    }
+    false
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n letters from the first `most`
+fn random_word(seed: mut ref i64, n: i64, most: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push((97 + next_random(mut seed) % most) as u8 as char);
+    }
+    s
+}
+
+// the word with the letters at i and j swapped
+fn swapped(s: String, i: i64, j: i64) -> String {
+    let mut chars: Vec[char] = s.chars().collect();
+    chars.swap(i, j);
+    chars.iter().collect()
+}
+
+fn main() {
+    // LeetCode's four examples
+    println(f"{are_almost_equal("bank", "kanb")} {are_almost_equal("attack", "defend")} {are_almost_equal("kelb", "kelb")} {are_almost_equal("abcd", "dcba")}");
+    // the edges: one letter alike and not; a swap of two letters alike;
+    // two differences that one swap cannot mend; three differences that
+    // a cycle of three would
+    println(f"{are_almost_equal("a", "a")} {are_almost_equal("a", "b")} {are_almost_equal("aa", "aa")} {are_almost_equal("ab", "ac")} {are_almost_equal("abc", "bca")}");
+    // the constraints' most: 100 letters, alike, one swap apart at the
+    // ends, and two swaps apart
+    let mut seed = 1790;
+    let long = random_word(mut seed, 100, 26);
+    let once = swapped(long, 0, 99);
+    let twice = swapped(once, 10, 60);
+    println(f"the most: {are_almost_equal(long, long)} {are_almost_equal(long, once)} {are_almost_equal(long, twice)}");
+    // 3000 random pairs of 1 to 12 letters from the first 1 to 4: a word
+    // and itself with 0 to 2 random swaps, or a word and another
+    let mut check = 0;
+    for c in 0..3000 {
+        let n = 1 + next_random(mut seed) % 12;
+        let most = 1 + next_random(mut seed) % 4;
+        let s1 = random_word(mut seed, n, most);
+        let s2 = if c % 4 == 3 {
+            random_word(mut seed, n, most)
+        } else {
+            let mut t = s1.clone();
+            for _ in 0..c % 4 {
+                let i = next_random(mut seed) % n;
+                let j = next_random(mut seed) % n;
+                t = swapped(t, i, j);
+            }
+            t
+        };
+        check = (check * 3 + if are_almost_equal(s1, s2) { 2 } else { 1 }) % 1000000007;
+    }
+    println(f"3000 random cases: checksum {check}");
+}

@@ -1,0 +1,237 @@
+// LeetCode #1790: Check if One String Swap Can Make Strings Equal --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- are_almost_equal.kara ----
+fn a0_are_almost_equal(s1: String, s2: String) -> bool {
+    let a = s1.bytes();
+    let b = s2.bytes();
+    let mut differ: Vec[i64] = Vec.new();
+    for i in 0..a.len() {
+        if a[i] != b[i] {
+            differ.push(i);
+            if differ.len() > 2 {
+                return false;
+            }
+        }
+    }
+    match differ.len() {
+        0 => true,
+        2 => a[differ[0]] == b[differ[1]] and a[differ[1]] == b[differ[0]],
+        _ => false,
+    }
+}
+
+// ---- are_almost_equal_counts.kara ----
+fn a1_are_almost_equal(s1: String, s2: String) -> bool {
+    let mut count: Vec[i64] = Vec.filled(26, 0);
+    let mut differ = 0;
+    for (x, y) in s1.chars().zip(s2.chars()) {
+        count[(x as i64) - 97] += 1;
+        count[(y as i64) - 97] -= 1;
+        if x != y {
+            differ += 1;
+        }
+    }
+    count.iter().all(|c| c == 0) and (differ == 0 or differ == 2)
+}
+
+// ---- are_almost_equal_brute.kara ----
+fn a2_are_almost_equal(s1: String, s2: String) -> bool {
+    if s1 == s2 {
+        return true;
+    }
+    let mut chars: Vec[char] = s1.chars().collect();
+    let target: Vec[char] = s2.chars().collect();
+    for i in 0..chars.len() {
+        for j in i + 1..chars.len() {
+            chars.swap(i, j);
+            if chars == target {
+                return true;
+            }
+            chars.swap(i, j);
+        }
+    }
+    false
+}
+
+// ---- are_almost_equal_zip.kara ----
+fn a3_are_almost_equal(s1: String, s2: String) -> bool {
+    let pairs: Vec[(char, char)] = s1.chars().zip(s2.chars()).filter(|(x, y)| x != y).collect();
+    match pairs.len() {
+        0 => true,
+        2 => pairs[0].0 == pairs[1].1 and pairs[0].1 == pairs[1].0,
+        _ => false,
+    }
+}
+
+// ---- are_almost_equal_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn are_almost_equal(s1: String, s2: String) -> bool {
+        let (a, b) = (s1.bytes(), s2.bytes());
+        let diff: Vec[i64] = (0..a.len()).filter(|i| a[i] != b[i]).collect();
+        match diff.len() {
+            0 => true,
+            2 => a[diff[0]] == b[diff[1]] and a[diff[1]] == b[diff[0]],
+            _ => false,
+        }
+    }
+}
+
+fn a4_are_almost_equal(s1: String, s2: String) -> bool {
+    A4Solution.are_almost_equal(s1, s2)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(seed: mut ref i64, n: i64, most: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push((97 + next_random(mut seed) % most) as u8 as char);
+    }
+    s
+}
+
+fn swapped(s: String, i: i64, j: i64) -> String {
+    let mut chars: Vec[char] = s.chars().collect();
+    chars.swap(i, j);
+    chars.iter().collect()
+}
+
+// the statement read literally: no swap, or one swap of any two positions
+// in s1, or in s2, after which the strings are equal
+fn literal(s1: String, s2: String) -> bool {
+    if s1 == s2 {
+        return true;
+    }
+    let n = s1.len();
+    for i in 0..n {
+        for j in 0..n {
+            if swapped(s1, i, j) == s2 or swapped(s2, i, j) == s1 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn arm(i: i64, s1: String, s2: String) -> bool {
+    match i {
+        0 => a0_are_almost_equal(s1, s2),
+        1 => a1_are_almost_equal(s1, s2),
+        2 => a2_are_almost_equal(s1, s2),
+        3 => a3_are_almost_equal(s1, s2),
+        _ => a4_are_almost_equal(s1, s2),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+// each letter moved one on in the alphabet, z to a
+fn shifted(s: String) -> String {
+    s.chars().map(|c| (97 + ((c as i64) - 97 + 1) % 26) as u8 as char).collect()
+}
+
+fn check_case(t: mut ref Tally, s1: String, s2: String, tail: char) {
+    t.cases += 1;
+    let star = arm(0, s1, s2);
+    t.check = (t.check * 3 + if star { 2 } else { 1 }) % 1000000007;
+    let want = if s1.len() <= 10 { Some(literal(s1, s2)) } else { None };
+    let mut l1 = s1.clone();
+    l1.push(tail);
+    let mut l2 = s2.clone();
+    l2.push(tail);
+    let r1: String = s1.chars().rev().collect();
+    let r2: String = s2.chars().rev().collect();
+    let (m1, m2) = (shifted(s1), shifted(s2));
+    for i in 0..5 {
+        let what = f"arm {i} on {s1} {s2}";
+        let got = arm(i, s1, s2);
+        // P1: the statement read literally, while there are at most 10
+        // letters
+        if let Some(w) = want {
+            expect(mut t, 1, got == w, f"P1 {what}");
+        }
+        // P2: the strings the other way round give the same answer
+        expect(mut t, 2, arm(i, s2, s1) == got, f"P2 {what}");
+        // P3: one letter more, the same, on both gives the same answer
+        expect(mut t, 3, arm(i, l1, l2) == got, f"P3 {what}");
+        // P4: both strings reversed give the same answer
+        expect(mut t, 4, arm(i, r1, r2) == got, f"P4 {what}");
+        // P5: each letter moved on in the alphabet in both gives the same
+        // answer
+        expect(mut t, 5, arm(i, m1, m2) == got, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples, the edges, and 100 letters alike, one swap
+    // apart at the ends, and two swaps apart. Every case is drawn before
+    // any arm answers.
+    let mut cases: Vec[(String, String)] = Vec.new();
+    for (a, b) in [("bank", "kanb"), ("attack", "defend"), ("kelb", "kelb"), ("abcd", "dcba"), ("a", "a"), ("a", "b"), ("aa", "aa"), ("ab", "ac"), ("abc", "bca"), ("zz", "zy")].iter() {
+        cases.push((a.to_string(), b.to_string()));
+    }
+    let mut seed = 17901;
+    let long = random_word(mut seed, 100, 26);
+    let once = swapped(long, 0, 99);
+    let twice = swapped(once, 10, 60);
+    cases.push((long.clone(), long.clone()));
+    cases.push((long.clone(), once.clone()));
+    cases.push((long, twice));
+    // 1987 random pairs of 1 to 10 letters from the first 1 to 4, and a
+    // few of up to 30 from all 26: a word and itself with 0 to 2 random
+    // swaps, or a word and another
+    for c in 0..1987 {
+        let n = if c % 10 == 9 { 1 + next_random(mut seed) % 30 } else { 1 + next_random(mut seed) % 10 };
+        let most = if c % 10 == 9 { 26 } else { 1 + next_random(mut seed) % 4 };
+        let s1 = random_word(mut seed, n, most);
+        let s2 = if c % 4 == 3 {
+            random_word(mut seed, n, most)
+        } else {
+            let mut w = s1.clone();
+            for _ in 0..c % 4 {
+                let i = next_random(mut seed) % n;
+                let j = next_random(mut seed) % n;
+                w = swapped(w, i, j);
+            }
+            w
+        };
+        cases.push((s1, s2));
+    }
+    for j in 0..cases.len() {
+        let tail = (97 + next_random(mut seed) % 26) as u8 as char;
+        check_case(mut t, cases[j].0, cases[j].1, tail);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
