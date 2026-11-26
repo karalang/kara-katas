@@ -1,0 +1,332 @@
+// LeetCode #1462: Course Schedule IV -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- check_if_prerequisite.kara ----
+fn a0_check_if_prerequisite(num_courses: i32, prerequisites: Vec[Vec[i32]], queries: Vec[Vec[i32]]) -> Vec[bool] {
+    let n = num_courses as i64;
+    // before[u][v]: u must come before v, by the prerequisites directly and
+    // then through each course in turn as a step between (Floyd-Warshall)
+    let mut before = Vec.filled(n, Vec.filled(n, false));
+    for p in prerequisites.iter() {
+        before[p[0]][p[1]] = true;
+    }
+    for k in 0..n {
+        for u in 0..n {
+            if before[u][k] {
+                for v in 0..n {
+                    if before[k][v] {
+                        before[u][v] = true;
+                    }
+                }
+            }
+        }
+    }
+    queries.iter().map(|q| before[q[0]][q[1]]).collect()
+}
+
+// ---- check_if_prerequisite_bfs.kara ----
+fn a1_check_if_prerequisite(num_courses: i32, prerequisites: Vec[Vec[i32]], queries: Vec[Vec[i32]]) -> Vec[bool] {
+    let n = num_courses as i64;
+    let mut next: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for p in prerequisites.iter() {
+        next[p[0]].push(p[1]);
+    }
+    // every course reached from each course by a breadth-first walk
+    let mut reach: Vec[Vec[bool]] = Vec.new();
+    for start in 0..n {
+        let mut seen = Vec.filled(n, false);
+        let mut queue: VecDeque[i64] = VecDeque.new();
+        queue.push_back(start);
+        while let Some(u) = queue.pop_front() {
+            for v in next[u].iter() {
+                if not seen[v] {
+                    seen[v] = true;
+                    queue.push_back(v);
+                }
+            }
+        }
+        reach.push(seen);
+    }
+    queries.iter().map(|q| reach[q[0]][q[1]]).collect()
+}
+
+// ---- check_if_prerequisite_topo.kara ----
+fn a2_check_if_prerequisite(num_courses: i32, prerequisites: Vec[Vec[i32]], queries: Vec[Vec[i32]]) -> Vec[bool] {
+    let n = num_courses as i64;
+    let mut next: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    let mut waiting: Vec[i64] = Vec.filled(n, 0);
+    for p in prerequisites.iter() {
+        next[p[0]].push(p[1]);
+        waiting[p[1]] += 1;
+    }
+    // the courses taken in an order the prerequisites allow (Kahn's), each
+    // handing everything that comes before it, itself too, to the courses
+    // it is a prerequisite of
+    let mut above: Vec[Set[i64]] = Vec.filled(n, Set.new());
+    let mut ready: Vec[i64] = (0..n).filter(|c| waiting[c] == 0).collect();
+    while let Some(u) = ready.pop() {
+        let mut mine = above[u].clone();
+        mine.insert(u);
+        for v in next[u].iter() {
+            above[v] = above[v].union(mine);
+            waiting[v] -= 1;
+            if waiting[v] == 0 {
+                ready.push(v);
+            }
+        }
+    }
+    queries.iter().map(|q| above[q[1]].contains(q[0] as i64)).collect()
+}
+
+// ---- check_if_prerequisite_memo.kara ----
+fn a3_check_if_prerequisite(num_courses: i32, prerequisites: Vec[Vec[i32]], queries: Vec[Vec[i32]]) -> Vec[bool] {
+    let n = num_courses as i64;
+    let mut next: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for p in ref prerequisites {
+        next[p[0]].push(p[1]);
+    }
+    // what each course leads to, worked out by depth-first search the first
+    // time a query needs it and kept
+    let mut known: Vec[Option[Vec[bool]]] = Vec.filled(n, None);
+    let mut out = Vec.new();
+    for q in ref queries {
+        let row = a3_leads_to(q[0], next, mut known);
+        out.push(row[q[1]]);
+    }
+    out
+}
+
+fn a3_leads_to(u: i64, next: ref Vec[Vec[i64]], known: mut ref Vec[Option[Vec[bool]]]) -> Vec[bool] {
+    if let Some(row) = ref known[u] {
+        return row.clone();
+    }
+    let mut row = Vec.filled(next.len(), false);
+    for v in ref next[u] {
+        row[v] = true;
+        let below = a3_leads_to(v, next, mut known);
+        for (w, yes) in below.iter().enumerate() {
+            if yes {
+                row[w] = true;
+            }
+        }
+    }
+    known[u] = Some(row.clone());
+    row
+}
+
+// ---- check_if_prerequisite_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_check_if_prerequisite(num_courses: i32, prerequisites: Vec[Vec[i32]], queries: Vec[Vec[i32]]) -> Vec[bool] {
+        let n = num_courses as i64;
+        let mut reach = Vec.filled(n, Vec.filled(n, false));
+        for p in prerequisites.iter() {
+            reach[p[0]][p[1]] = true;
+        }
+        for k in 0..n {
+            for i in 0..n {
+                for j in 0..n {
+                    reach[i][j] = reach[i][j] or (reach[i][k] and reach[k][j]);
+                }
+            }
+        }
+        queries.iter().map(|q| reach[q[0]][q[1]]).collect()
+    }
+}
+
+fn a4_check_if_prerequisite(num_courses: i32, prerequisites: Vec[Vec[i32]], queries: Vec[Vec[i32]]) -> Vec[bool] {
+    A4Solution.a4_check_if_prerequisite(num_courses, prerequisites, queries)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random order of n courses, and each pair taken earlier-to-later as a
+// prerequisite one time in `odds`
+fn draw(seed: mut ref i64, n: i64, odds: i64) -> Vec[Vec[i32]] {
+    let mut order: Vec[i64] = (0..n).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        order.swap(i, j);
+    }
+    let mut out: Vec[Vec[i32]] = Vec.new();
+    for i in 0..n {
+        for j in i + 1..n {
+            if next_random(mut seed) % odds == 0 {
+                out.push([order[i] as i32, order[j] as i32].to_vec());
+            }
+        }
+    }
+    out
+}
+
+// q queries of two different courses
+fn asks(seed: mut ref i64, n: i64, q: i64) -> Vec[Vec[i32]] {
+    let mut out: Vec[Vec[i32]] = Vec.new();
+    while out.len() < q {
+        let u = next_random(mut seed) % n;
+        let v = next_random(mut seed) % n;
+        if u != v {
+            out.push([u as i32, v as i32].to_vec());
+        }
+    }
+    out
+}
+
+// the statement read literally: a prerequisite of a prerequisite is a
+// prerequisite, added to the direct ones until no pair is new
+fn literal(prerequisites: Vec[Vec[i32]], queries: Vec[Vec[i32]]) -> Vec[bool] {
+    let mut known: Set[(i32, i32)] = Set.new();
+    for p in prerequisites.iter() {
+        known.insert((p[0], p[1]));
+    }
+    let mut grew = true;
+    while grew {
+        grew = false;
+        let pairs: Vec[(i32, i32)] = known.iter().collect();
+        for (a, b) in pairs.iter() {
+            for (c, d) in pairs.iter() {
+                if b == c and known.insert((a, d)) {
+                    grew = true;
+                }
+            }
+        }
+    }
+    queries.iter().map(|q| known.contains((q[0], q[1]))).collect()
+}
+
+fn arm(i: i64, n: i32, prerequisites: Vec[Vec[i32]], queries: Vec[Vec[i32]]) -> Vec[bool] {
+    match i {
+        0 => a0_check_if_prerequisite(n, prerequisites, queries),
+        1 => a1_check_if_prerequisite(n, prerequisites, queries),
+        2 => a2_check_if_prerequisite(n, prerequisites, queries),
+        3 => a3_check_if_prerequisite(n, prerequisites, queries),
+        _ => a4_check_if_prerequisite(n, prerequisites, queries),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn swapped(pairs: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+    pairs.iter().map(|p| [p[1], p[0]].to_vec()).collect()
+}
+
+fn check_case(t: mut ref Tally, seed: mut ref i64, n: i32, pre: Vec[Vec[i32]], qs: Vec[Vec[i32]]) {
+    t.cases += 1;
+    let star = arm(0, n, pre, qs);
+    for a in star.iter() {
+        t.check = (t.check * 3 + if a { 2 } else { 1 }) % 1000000007;
+    }
+    let want = if n <= 12 { Some(literal(pre, qs)) } else { None };
+    let back_pre = swapped(pre);
+    let back_qs = swapped(qs);
+    let renamed_pre: Vec[Vec[i32]] = pre.iter().map(|p| [(p[0] + 1) % n, (p[1] + 1) % n].to_vec()).collect();
+    let renamed_qs: Vec[Vec[i32]] = qs.iter().map(|q| [(q[0] + 1) % n, (q[1] + 1) % n].to_vec()).collect();
+    let mut mixed = pre.clone();
+    for i in (1..mixed.len()).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        mixed.swap(i, j);
+    }
+    for i in 0..5 {
+        let what = f"arm {i} on {n} courses, {pre.len()} prerequisites";
+        let got = arm(i, n, pre, qs);
+        // P1: the statement read literally, while there are at most 12
+        // courses
+        if let Some(ref w) = want {
+            expect(mut t, 1, got == w, f"P1 {what}");
+        }
+        // P2: every prerequisite and every query turned round gives the
+        // same answers
+        expect(mut t, 2, arm(i, n, back_pre, back_qs) == got, f"P2 {what}");
+        // P3: the courses renamed, c to (c + 1) % n, give the same answers
+        expect(mut t, 3, arm(i, n, renamed_pre, renamed_qs) == got, f"P3 {what}");
+        // P4: the prerequisites in another order give the same answers
+        expect(mut t, 4, arm(i, n, mixed, qs) == got, f"P4 {what}");
+        // P5: no query is true both ways, and the true ones added as
+        // prerequisites change nothing
+        let mut more = pre.clone();
+        let mut one_way = true;
+        let back = arm(i, n, pre, back_qs);
+        for k in 0..qs.len() {
+            if got[k] {
+                more.push(qs[k].clone());
+                if back[k] {
+                    one_way = false;
+                }
+            }
+        }
+        expect(mut t, 5, one_way and arm(i, n, more, qs) == got, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: two courses each way, a chain of
+    // 100 asked both ways along it, 100 courses with no prerequisites, every
+    // pair of 30 courses a prerequisite, and the constraints' most. Every
+    // case is drawn before any arm answers.
+    let mut cases: Vec[(i32, Vec[Vec[i32]], Vec[Vec[i32]])] = Vec.new();
+    let one_before: Vec[Vec[i32]] = [[1, 0].to_vec()].to_vec();
+    let both_ways: Vec[Vec[i32]] = [[0, 1].to_vec(), [1, 0].to_vec()].to_vec();
+    let three: Vec[Vec[i32]] = [[1, 2].to_vec(), [1, 0].to_vec(), [2, 0].to_vec()].to_vec();
+    let three_qs: Vec[Vec[i32]] = [[1, 0].to_vec(), [1, 2].to_vec()].to_vec();
+    let zero_before: Vec[Vec[i32]] = [[0, 1].to_vec()].to_vec();
+    cases.push((2, one_before, both_ways.clone()));
+    cases.push((2, Vec.new(), both_ways.clone()));
+    cases.push((3, three, three_qs));
+    cases.push((2, zero_before, both_ways));
+    let chain: Vec[Vec[i32]] = (0i32..99).map(|i| [i, i + 1].to_vec()).collect();
+    let along: Vec[Vec[i32]] = (0i32..99).map(|i| [0, i + 1].to_vec()).chain((0i32..99).map(|i| [i + 1, 0].to_vec())).collect();
+    cases.push((100, chain, along.clone()));
+    cases.push((100, Vec.new(), along));
+    let mut seed = 14621;
+    let full = draw(mut seed, 30, 1);
+    let full_qs = asks(mut seed, 30, 200);
+    cases.push((30, full, full_qs));
+    let big = draw(mut seed, 100, 20);
+    let big_qs = asks(mut seed, 100, 10000);
+    cases.push((100, big, big_qs));
+    // 1995 random cases: half of 2 to 12 courses and half of 2 to 30, each
+    // pair a prerequisite one time in 1 to 10, and 1 to 50 queries
+    for c in 0..1995 {
+        let most = if c % 2 == 0 { 11 } else { 29 };
+        let n = 2 + next_random(mut seed) % most;
+        let odds = 1 + next_random(mut seed) % 10;
+        let pre = draw(mut seed, n, odds);
+        let q = 1 + next_random(mut seed) % 50;
+        cases.push((n as i32, pre, asks(mut seed, n, q)));
+    }
+    for j in 0..cases.len() {
+        let (n, pre, qs) = cases[j].clone();
+        check_case(mut t, mut seed, n, pre, qs);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

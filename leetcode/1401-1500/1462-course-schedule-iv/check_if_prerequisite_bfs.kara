@@ -1,0 +1,116 @@
+fn check_if_prerequisite(num_courses: i32, prerequisites: Vec[Vec[i32]], queries: Vec[Vec[i32]]) -> Vec[bool] {
+    let n = num_courses as i64;
+    let mut next: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for p in prerequisites.iter() {
+        next[p[0]].push(p[1]);
+    }
+    // every course reached from each course by a breadth-first walk
+    let mut reach: Vec[Vec[bool]] = Vec.new();
+    for start in 0..n {
+        let mut seen = Vec.filled(n, false);
+        let mut queue: VecDeque[i64] = VecDeque.new();
+        queue.push_back(start);
+        while let Some(u) = queue.pop_front() {
+            for v in next[u].iter() {
+                if not seen[v] {
+                    seen[v] = true;
+                    queue.push_back(v);
+                }
+            }
+        }
+        reach.push(seen);
+    }
+    queries.iter().map(|q| reach[q[0]][q[1]]).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random order of n courses, and each pair taken earlier-to-later as a
+// prerequisite one time in `odds`
+fn draw(seed: mut ref i64, n: i64, odds: i64) -> Vec[Vec[i32]] {
+    let mut order: Vec[i64] = (0..n).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        order.swap(i, j);
+    }
+    let mut out: Vec[Vec[i32]] = Vec.new();
+    for i in 0..n {
+        for j in i + 1..n {
+            if next_random(mut seed) % odds == 0 {
+                out.push([order[i] as i32, order[j] as i32].to_vec());
+            }
+        }
+    }
+    out
+}
+
+// q queries of two different courses
+fn asks(seed: mut ref i64, n: i64, q: i64) -> Vec[Vec[i32]] {
+    let mut out: Vec[Vec[i32]] = Vec.new();
+    while out.len() < q {
+        let u = next_random(mut seed) % n;
+        let v = next_random(mut seed) % n;
+        if u != v {
+            out.push([u as i32, v as i32].to_vec());
+        }
+    }
+    out
+}
+
+fn show(answers: Vec[bool]) -> String {
+    let words: Vec[String] = answers.iter().map(|a| a.to_string()).collect();
+    "[" + words.join(",") + "]"
+}
+
+// how many are true, and a checksum of all of them in order
+fn fold(answers: Vec[bool]) -> (i64, i64) {
+    let mut yes = 0;
+    let mut check = 0;
+    for a in answers.iter() {
+        if a {
+            yes += 1;
+        }
+        check = (check * 3 + if a { 2 } else { 1 }) % 1000000007;
+    }
+    (yes, check)
+}
+
+fn main() {
+    // LeetCode's three examples, and two more: a chain of 100 courses
+    // asked both ways along it, and 100 courses with no prerequisites
+    let e1 = check_if_prerequisite(2, [[1, 0].to_vec()].to_vec(), [[0, 1].to_vec(), [1, 0].to_vec()].to_vec());
+    let e2 = check_if_prerequisite(2, Vec.new(), [[1, 0].to_vec(), [0, 1].to_vec()].to_vec());
+    let e3 = check_if_prerequisite(3, [[1, 2].to_vec(), [1, 0].to_vec(), [2, 0].to_vec()].to_vec(), [[1, 0].to_vec(), [1, 2].to_vec()].to_vec());
+    println(f"{show(e1)} {show(e2)} {show(e3)}");
+    let chain: Vec[Vec[i32]] = (0i32..99).map(|i| [i, i + 1].to_vec()).collect();
+    let along: Vec[Vec[i32]] = (0i32..99).map(|i| [0, i + 1].to_vec()).chain((0i32..99).map(|i| [i + 1, 0].to_vec())).collect();
+    let (c1, c2) = fold(check_if_prerequisite(100, chain, along));
+    let (n1, n2) = fold(check_if_prerequisite(100, Vec.new(), along));
+    println(f"chain: {c1} of 198, checksum {c2}; none: {n1} of 198, checksum {n2}");
+    // the constraints' most, 100 courses with every pair a prerequisite one
+    // time in 20, and 10^4 queries
+    let mut seed = 1462;
+    let big = draw(mut seed, 100, 20);
+    let qs = asks(mut seed, 100, 10000);
+    let (b1, b2) = fold(check_if_prerequisite(100, big, qs));
+    println(f"100 courses, {big.len()} prerequisites, 10^4 queries: {b1} true, checksum {b2}");
+    // 1000 random cases of 2 to 30 courses, each pair a prerequisite one
+    // time in 1 to 10, and 1 to 50 queries
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n = 2 + next_random(mut seed) % 29;
+        let odds = 1 + next_random(mut seed) % 10;
+        let pre = draw(mut seed, n, odds);
+        let q = 1 + next_random(mut seed) % 50;
+        let (y, c) = fold(check_if_prerequisite(n as i32, pre, asks(mut seed, n, q)));
+        total += y;
+        check = (check * 131 + c) % 1000000007;
+    }
+    println(f"1000 random cases: {total} true, checksum {check}");
+}
