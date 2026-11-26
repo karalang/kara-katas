@@ -1,0 +1,254 @@
+// LeetCode #1461: Check If a String Contains All Binary Codes of Size K -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- has_all_codes.kara ----
+fn a0_has_all_codes(s: Str, k: i64) -> bool {
+    let need = 1 << k;
+    // the last k digits read as a number, each window marked once
+    let mut seen: Vec[bool] = Vec.filled(need, false);
+    let mut found = 0;
+    let mut window = 0;
+    for (i, b) in s.bytes().iter().enumerate() {
+        window = ((window << 1) | (b - b'0')) & (need - 1);
+        if i + 1 >= k and not seen[window] {
+            seen[window] = true;
+            found += 1;
+            if found == need {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+// ---- has_all_codes_set.kara ----
+fn a1_has_all_codes(s: Str, k: i64) -> bool {
+    // every window of k digits gathered as text: all 2^k codes are there
+    // when the set holds that many
+    let mut codes: Set[Str] = Set.new();
+    if s.len() < k {
+        return false;
+    }
+    for i in 0..=s.len() - k {
+        codes.insert(s[i..i + k]);
+    }
+    codes.len() == 1 << k
+}
+
+// ---- has_all_codes_windows.kara ----
+fn a2_has_all_codes(s: Str, k: i64) -> bool {
+    // too few windows for 2^k codes is an answer before any is read
+    let windows = s.len() - k + 1;
+    if windows < 1 << k {
+        return false;
+    }
+    let digits: Vec[i64] = s.chars().map(|c| if c == '1' { 1 } else { 0 }).collect();
+    let codes: Set[i64] = digits.windows(k).into_iter().map(|w| w.iter().fold(0, |code, d| code * 2 + d)).collect();
+    codes.len() == 1 << k
+}
+
+// ---- has_all_codes_counts.kara ----
+fn a3_has_all_codes(s: Str, k: i64) -> bool {
+    let need = 1 << k;
+    let mask = need - 1;
+    // how many times each code has been seen, and how many codes are still
+    // missing, counted down as each turns up for the first time
+    let mut times: Vec[i32] = Vec.filled(need, 0);
+    let mut missing = need;
+    let mut code = 0;
+    let mut i = 0;
+    for c in s.chars() {
+        code = (code * 2 + c.to_digit(2).unwrap()) & mask;
+        i += 1;
+        if i >= k {
+            if times[code] == 0 {
+                missing -= 1;
+            }
+            times[code] += 1;
+        }
+    }
+    missing == 0
+}
+
+// ---- has_all_codes_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_has_all_codes(s: String, k: i32) -> bool {
+        let k = k as i64;
+        if s.len() < k {
+            return false;
+        }
+        let mut set = Set.new();
+        for i in 0..=s.len() - k {
+            set.insert(s[i..i + k]);
+        }
+        set.len() == 1 << k
+    }
+}
+
+fn a4_has_all_codes(s: Str, k: i64) -> bool {
+    A4Solution.a4_has_all_codes(s.to_string(), k as i32)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n binary digits, a 1 one time in `ones` of 8
+fn draw(seed: mut ref i64, n: i64, ones: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(if next_random(mut seed) % 8 < ones { '1' } else { '0' });
+    }
+    s
+}
+
+// the de Bruijn sequence of order k, every code of k digits once
+fn de_bruijn(k: i64) -> String {
+    let mut seen: Vec[bool] = Vec.filled(1 << k, false);
+    let mut s = "0".repeat(k);
+    seen[0] = true;
+    let mut window = 0;
+    let full = (1 << k) - 1;
+    loop {
+        let one = ((window << 1) | 1) & full;
+        let zero = (window << 1) & full;
+        if not seen[one] {
+            window = one;
+            s.push('1');
+        } else if not seen[zero] {
+            window = zero;
+            s.push('0');
+        } else {
+            break;
+        }
+        seen[window] = true;
+    }
+    s
+}
+
+// the statement read literally: every code of k digits written out, from
+// 0 to 2^k - 1 in binary with its leading zeros, and each looked for in s
+fn literal(s: Str, k: i64) -> bool {
+    for code in 0..(1 << k) {
+        let mut text = String.new();
+        for bit in (0..k).rev() {
+            text.push(if (code >> bit) & 1 == 1 { '1' } else { '0' });
+        }
+        if not s.contains(text) {
+            return false;
+        }
+    }
+    true
+}
+
+fn arm(i: i64, s: Str, k: i64) -> bool {
+    match i {
+        0 => a0_has_all_codes(s, k),
+        1 => a1_has_all_codes(s, k),
+        2 => a2_has_all_codes(s, k),
+        3 => a3_has_all_codes(s, k),
+        _ => a4_has_all_codes(s, k),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, s: Str, k: i64) {
+    t.cases += 1;
+    let star = arm(0, s, k);
+    t.check = (t.check * 3 + if star { 1 } else { 0 }) % 1000000007;
+    let n = s.len();
+    let want = if k <= 8 and n <= 400 { Some(literal(s, k)) } else { None };
+    let back: String = s.chars().rev().collect();
+    let flipped: String = s.chars().map(|c| if c == '0' { '1' } else { '0' }).collect();
+    let wider = "1" + s.to_string() + "0";
+    let few = n - k + 1 < 1 << k;
+    for i in 0..5 {
+        let what = f"arm {i} on {n} digits, k = {k}";
+        let got = arm(i, s, k);
+        // P1: the statement read literally, while k is at most 8 and there
+        // are at most 400 digits
+        if let Some(w) = want {
+            expect(mut t, 1, got == w, f"P1 {what}");
+        }
+        // P2: the digits reversed give the same answer
+        expect(mut t, 2, arm(i, back, k) == got, f"P2 {what}");
+        // P3: every digit flipped gives the same answer
+        expect(mut t, 3, arm(i, flipped, k) == got, f"P3 {what}");
+        // P4: a digit more at each end keeps a true answer
+        expect(mut t, 4, not got or arm(i, wider, k), f"P4 {what}");
+        // P5: true for k + 1 means true for k, and fewer than 2^k windows
+        // means false
+        let up = k < 20 and arm(i, s, k + 1);
+        expect(mut t, 5, (not up or got) and (not few or not got), f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: one digit, a string shorter than
+    // k, all zeros, the de Bruijn sequences of order 10 and 20 whole and with
+    // a digit cut off, and the constraints' most at k = 20 and 15. Every
+    // case is drawn before any arm answers.
+    let mut cases: Vec[(String, i64)] = [
+        ("00110110".to_string(), 2),
+        ("0110".to_string(), 1),
+        ("0110".to_string(), 2),
+        ("0".to_string(), 1),
+        ("1".to_string(), 1),
+        ("01".to_string(), 1),
+        ("01".to_string(), 3),
+        ("0000000000".to_string(), 1),
+    ];
+    for order in [10, 20] {
+        let whole = de_bruijn(order);
+        let cut = whole[1..].to_string();
+        cases.push((whole, order));
+        cases.push((cut, order));
+    }
+    let mut seed = 14611;
+    let long = draw(mut seed, 500000, 4);
+    cases.push((long.clone(), 20));
+    cases.push((long, 15));
+    // 1983 random strings of 1 to 400 digits, k from 1 to 8, the ones from
+    // 1 to 7 in 8
+    for _ in 0..1983 {
+        let n = 1 + next_random(mut seed) % 400;
+        let k = 1 + next_random(mut seed) % 8;
+        let ones = 1 + next_random(mut seed) % 7;
+        cases.push((draw(mut seed, n, ones), k));
+    }
+    for j in 0..cases.len() {
+        let (s, k) = cases[j].clone();
+        check_case(mut t, s, k);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
