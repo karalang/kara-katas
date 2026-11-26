@@ -1,0 +1,99 @@
+// LeetCode #1466: Reorder Routes to Make All Paths Lead to the City Zero --
+// a Rust solution as LeetCode's Rust users write it: an adjacency list of
+// `Vec<Vec<(usize, i32)>>` indexed by `as usize` casts, a `vec![false; n]`
+// for the visited cities and a `VecDeque` from `std::collections`, carried
+// to Kāra by `karac fix`
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_reorder(n: i32, connections: Vec[Vec[i32]]) -> i32 {
+        let n = n as i64;
+        let mut adj: Vec[Vec[(i64, i32)]] = Vec.filled(n, Vec.new());
+        for c in connections.iter() {
+            let (a, b) = (c[0] as i64, c[1] as i64);
+            adj[a].push((b, 1));
+            adj[b].push((a, 0));
+        }
+        let mut visited = Vec.filled(n, false);
+        let mut queue = VecDeque.new();
+        visited[0] = true;
+        queue.push_back(0);
+        let mut ans: i32 = 0;
+        while let Some(u) = queue.pop_front() {
+            for (v, cost) in ref adj[u] {
+                if not visited[v] {
+                    visited[v] = true;
+                    ans += cost;
+                    queue.push_back(v);
+                }
+            }
+        }
+        ans
+    }
+}
+
+fn min_reorder(n: i32, connections: Vec[Vec[i32]]) -> i32 {
+    Solution.min_reorder(n, connections)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random tree on n cities, each road's direction drawn at random and the
+// roads in a random order
+fn tree(seed: mut ref i64, n: i64) -> Vec[Vec[i32]] {
+    let mut label: Vec[i32] = (0..n).map(|c| c as i32).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        label.swap(i, j);
+    }
+    let mut roads: Vec[Vec[i32]] = Vec.new();
+    for i in 1..n {
+        let p = next_random(mut seed) % i;
+        if next_random(mut seed) % 2 == 0 {
+            roads.push([label[i], label[p]].to_vec());
+        } else {
+            roads.push([label[p], label[i]].to_vec());
+        }
+    }
+    for i in (1..roads.len()).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        roads.swap(i, j);
+    }
+    roads
+}
+
+fn main() {
+    // LeetCode's three examples, and four more: one road away from 0 and
+    // one toward it, 50000 cities in a line each road pointing away from
+    // 0, and 50000 roads out of 0
+    let e1 = min_reorder(6, [[0, 1].to_vec(), [1, 3].to_vec(), [2, 3].to_vec(), [4, 0].to_vec(), [4, 5].to_vec()].to_vec());
+    let e2 = min_reorder(5, [[1, 0].to_vec(), [1, 2].to_vec(), [3, 2].to_vec(), [3, 4].to_vec()].to_vec());
+    let e3 = min_reorder(3, [[1, 0].to_vec(), [2, 0].to_vec()].to_vec());
+    let e4 = min_reorder(2, [[0, 1].to_vec()].to_vec());
+    let e5 = min_reorder(2, [[1, 0].to_vec()].to_vec());
+    let line: Vec[Vec[i32]] = (0i32..49999).map(|c| [c, c + 1].to_vec()).collect();
+    let e6 = min_reorder(50000, line);
+    let star: Vec[Vec[i32]] = (1i32..50000).map(|c| [0, c].to_vec()).collect();
+    let e7 = min_reorder(50000, star);
+    println(f"{e1} {e2} {e3} {e4} {e5} {e6} {e7}");
+    // the constraints' most, a random tree of 50000 cities
+    let mut seed = 1466;
+    let most = tree(mut seed, 50000);
+    println(f"50000 cities: {min_reorder(50000, most)}");
+    // 2000 random trees of 2 to 60 cities
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = 2 + next_random(mut seed) % 59;
+        let got = min_reorder(n as i32, tree(mut seed, n));
+        total += got;
+        check = (check * 31 + got) % 1000000007;
+    }
+    println(f"2000 random trees: total {total}, checksum {check}");
+}
