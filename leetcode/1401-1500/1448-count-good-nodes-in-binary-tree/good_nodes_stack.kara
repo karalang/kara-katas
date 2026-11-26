@@ -1,0 +1,124 @@
+fn good_nodes(root: Option[TreeNode]) -> i32 {
+    // the walk without recursion: each node on a stack with the largest
+    // value on the path above it
+    let mut good = 0;
+    let mut stack: Vec[(TreeNode, i32)] = Vec.new();
+    if let Some(r) = root {
+        stack.push((r, r.val));
+    }
+    while let Some((node, high)) = stack.pop() {
+        if node.val >= high {
+            good += 1;
+        }
+        let high = high.max(node.val);
+        if let Some(l) = node.left {
+            stack.push((l, high));
+        }
+        if let Some(r) = node.right {
+            stack.push((r, high));
+        }
+    }
+    good
+}
+
+// ---- test harness ---------------------------------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// LeetCode's level-order list, `None` for a missing child
+fn from_level(values: Vec[Option[i32]]) -> Option[TreeNode] {
+    if values.len() == 0 or values[0].is_none() {
+        return None;
+    }
+    let root = TreeNode { val: values[0].unwrap(), left: None, right: None };
+    let mut queue: VecDeque[TreeNode] = VecDeque.new();
+    queue.push_back(root);
+    let mut i = 1;
+    while i < values.len() {
+        let Some(node) = queue.pop_front() else {
+            break;
+        };
+        if let Some(v) = values[i] {
+            let child = TreeNode { val: v, left: None, right: None };
+            node.left = Some(child);
+            queue.push_back(child);
+        }
+        i += 1;
+        if i < values.len() {
+            if let Some(v) = values[i] {
+                let child = TreeNode { val: v, left: None, right: None };
+                node.right = Some(child);
+                queue.push_back(child);
+            }
+            i += 1;
+        }
+    }
+    Some(root)
+}
+
+// n nodes with values from -top to top, each hung on an empty child place
+// of the tree so far chosen at random
+fn random_tree(seed: mut ref i64, n: i64, top: i64) -> Option[TreeNode] {
+    let root = TreeNode { val: (next_random(mut seed) % (2 * top + 1) - top) as i32, left: None, right: None };
+    let mut places: Vec[(TreeNode, bool)] = [(root, true), (root, false)];
+    for _ in 1..n {
+        let k = next_random(mut seed) % places.len();
+        let (parent, left) = places.swap_remove(k);
+        let node = TreeNode { val: (next_random(mut seed) % (2 * top + 1) - top) as i32, left: None, right: None };
+        if left {
+            parent.left = Some(node);
+        } else {
+            parent.right = Some(node);
+        }
+        places.push((node, true));
+        places.push((node, false));
+    }
+    Some(root)
+}
+
+// a chain of n nodes, each the right child of the one before, the values
+// rising by 2 from the root, or falling by 2
+fn chain(n: i64, rising: bool) -> Option[TreeNode] {
+    let mut tree: Option[TreeNode] = None;
+    for i in (0..n).rev() {
+        let v = (i * 2 % 20001 - 10000) as i32;
+        tree = Some(TreeNode { val: if rising { v } else { -v }, left: None, right: tree });
+    }
+    tree
+}
+
+fn main() {
+    // LeetCode's three examples, and four more: a rising chain and a
+    // falling chain of 10^4 nodes, and a full tree of 2^16 - 1 nodes by
+    // level with values falling and with all one value
+    let e1 = good_nodes(from_level([Some(3), Some(1), Some(4), Some(3), None, Some(1), Some(5)]));
+    let e2 = good_nodes(from_level([Some(3), Some(3), None, Some(4), Some(2)]));
+    let e3 = good_nodes(from_level([Some(1)]));
+    let falling: Vec[Option[i32]] = (0..65535).map(|i| Some((10000 - i % 20001) as i32)).collect();
+    let same: Vec[Option[i32]] = (0..65535).map(|_| Some(-7)).collect();
+    println(f"{e1} {e2} {e3} {good_nodes(chain(10000, true))} {good_nodes(chain(10000, false))} {good_nodes(from_level(falling))} {good_nodes(from_level(same))}");
+    // the constraints' most, 10^5 nodes with values from -10^4 to 10^4
+    let mut seed = 1448;
+    println(f"10^5 nodes: {good_nodes(random_tree(mut seed, 100000, 10000))}");
+    // 2000 random trees of 1 to 300 nodes with values from -top to top, top
+    // from 0 to 100
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 300;
+        let top = next_random(mut seed) % 101;
+        let got = good_nodes(random_tree(mut seed, n, top)) as i64;
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random trees: {total} good nodes, checksum {check}");
+}
