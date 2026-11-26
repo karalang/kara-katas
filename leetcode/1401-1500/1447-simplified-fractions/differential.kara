@@ -1,0 +1,248 @@
+// LeetCode #1447: Simplified Fractions -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- simplified_fractions.kara ----
+fn a0_simplified_fractions(n: i32) -> Vec[String] {
+    // every numerator below every denominator up to n, kept when the two
+    // share no factor
+    let mut fractions: Vec[String] = Vec.new();
+    for d in 2..=n {
+        for a in 1..d {
+            if a0_gcd(a, d) == 1 {
+                fractions.push(f"{a}/{d}");
+            }
+        }
+    }
+    fractions
+}
+
+fn a0_gcd(a: i32, b: i32) -> i32 {
+    if b == 0 { a } else { a0_gcd(b, a % b) }
+}
+
+// ---- simplified_fractions_marks.kara ----
+fn a1_simplified_fractions(n: i32) -> Vec[String] {
+    // a grid of numerator and denominator: each fraction is met first in
+    // its lowest terms, and its multiples are then marked to pass over
+    let n = n as i64;
+    let mut taken: Vec[Vec[bool]] = Vec.filled(n + 1, Vec.filled(n + 1, false));
+    let mut fractions: Vec[String] = Vec.new();
+    for d in 2..=n {
+        for a in 1..d {
+            if not taken[a][d] {
+                fractions.push(f"{a}/{d}");
+                let mut k = 2;
+                while k * d <= n {
+                    taken[k * a][k * d] = true;
+                    k += 1;
+                }
+            }
+        }
+    }
+    fractions
+}
+
+// ---- simplified_fractions_farey.kara ----
+fn a2_simplified_fractions(n: i32) -> Vec[String] {
+    // the Farey sequence of order n from 0/1: each next fraction found
+    // from the two before it, until 1/1
+    let mut fractions: Vec[String] = Vec.new();
+    let mut (a, b, c, d) = (0, 1i32, 1, n);
+    while c < d {
+        fractions.push(f"{c}/{d}");
+        let k = (n + b) / d;
+        a, b, c, d = c, d, k * c - a, k * d - b;
+    }
+    fractions
+}
+
+// ---- simplified_fractions_tree.kara ----
+fn a3_simplified_fractions(n: i32) -> Vec[String] {
+    // the Stern-Brocot tree between 0/1 and 1/1: the mediant of two
+    // neighbours while its denominator is at most n, with the fractions on
+    // either side of it before and after
+    let mut fractions: Vec[String] = Vec.new();
+    a3_between(0, 1, 1, 1, n, mut fractions);
+    fractions
+}
+
+fn a3_between(a: i32, b: i32, c: i32, d: i32, n: i32, fractions: mut ref Vec[String]) {
+    if b + d > n {
+        return;
+    }
+    let (p, q) = (a + c, b + d);
+    a3_between(a, b, p, q, n, mut fractions);
+    fractions.push(f"{p}/{q}");
+    a3_between(p, q, c, d, n, mut fractions);
+}
+
+// ---- simplified_fractions_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_simplified_fractions(n: i32) -> Vec[String] {
+        let mut ans = Vec.new();
+        for d in 2..=n {
+            for m in 1..d {
+                if A4Solution.a4_gcd(m, d) == 1 {
+                    ans.push(f"{m}/{d}");
+                }
+            }
+        }
+        ans
+    }
+
+    fn a4_gcd(a: i32, b: i32) -> i32 {
+        if b == 0 { a } else { A4Solution.a4_gcd(b, a % b) }
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+// the fractions in order
+fn in_order(fractions: Vec[String]) -> Vec[String] {
+    let mut s = fractions.clone();
+    s.sort();
+    s
+}
+
+// a fraction's numerator and denominator, read back from its text
+fn parts(f: String) -> (i64, i64) {
+    let halves: Vec[i64] = f.split("/").map(|p| i64.parse(p).unwrap()).collect();
+    (halves[0], halves[1])
+}
+
+// the statement read literally: every fraction between 0 and 1 with a
+// denominator up to n, kept when no fraction with a smaller denominator is
+// the same number
+fn literal(n: i64) -> Vec[String] {
+    let mut fractions: Vec[String] = Vec.new();
+    for d in 2..=n {
+        for a in 1..d {
+            let mut simplest = true;
+            for e in 1..d {
+                for b in 1..e {
+                    if b * d == a * e {
+                        simplest = false;
+                    }
+                }
+            }
+            if simplest {
+                fractions.push(f"{a}/{d}");
+            }
+        }
+    }
+    in_order(fractions)
+}
+
+// Euler's totient of d, by trial division
+fn totient(d: i64) -> i64 {
+    let mut left = d;
+    let mut phi = d;
+    let mut p = 2;
+    while p * p <= left {
+        if left % p == 0 {
+            while left % p == 0 {
+                left /= p;
+            }
+            phi -= phi / p;
+        }
+        p += 1;
+    }
+    if left > 1 {
+        phi -= phi / left;
+    }
+    phi
+}
+
+fn arm(i: i64, n: i64) -> Vec[String] {
+    let n = n as i32;
+    let got = match i {
+        0 => a0_simplified_fractions(n),
+        1 => a1_simplified_fractions(n),
+        2 => a2_simplified_fractions(n),
+        3 => a3_simplified_fractions(n),
+        _ => A4Solution.a4_simplified_fractions(n),
+    };
+    in_order(got)
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, n: i64) {
+    t.cases += 1;
+    let star = arm(0, n);
+    for f in star.iter() {
+        for b in f.bytes() {
+            t.check = (t.check * 131 + b) % 1000000007;
+        }
+        t.check = (t.check * 131 + 32) % 1000000007;
+    }
+    let want = if n <= 40 { Some(literal(n)) } else { None };
+    let count: i64 = (2..=n).map(|d| totient(d)).sum();
+    for i in 0..5 {
+        let what = f"arm {i} for n = {n}";
+        let got = arm(i, n);
+        // P1: the statement read literally, while n is at most 40
+        if let Some(ref w) = want {
+            expect(mut t, 1, got == w, f"P1 {what}");
+        }
+        // P2: every fraction for n - 1 is there, and the rest have the
+        // denominator n
+        let held: Set[String] = got.iter().cloned().collect();
+        let before = if n > 1 { arm(i, n - 1) } else { Vec.new() };
+        let kept = before.iter().all(|f| held.contains(f));
+        let rest = got.iter().filter(|f| parts(f).1 == n).count();
+        expect(mut t, 2, kept and before.len() + rest == got.len(), f"P2 {what}");
+        // P3: written plainly, each between 0 and 1 with a denominator up
+        // to n, and no two the same number
+        let mut values: Set[i64] = Set.new();
+        let mut plain = true;
+        for f in got.iter() {
+            let (a, d) = parts(f);
+            plain = plain and f"{a}/{d}" == f and 0 < a and a < d and d <= n;
+            values.insert(a * 1000000000 / d);
+        }
+        expect(mut t, 3, plain and values.len() == got.len(), f"P3 {what}");
+        // P4: a/d is there exactly when (d - a)/d is
+        let mirrored = got.iter().all(|f| {
+            let (a, d) = parts(f);
+            held.contains(f"{d - a}/{d}")
+        });
+        expect(mut t, 4, mirrored, f"P4 {what}");
+        // P5: as many as the totients of 2 to n add to
+        expect(mut t, 5, got.len() == count, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // every n the constraints allow, from 1 to 100
+    for n in 1..=100 {
+        check_case(mut t, n);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

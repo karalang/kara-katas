@@ -1,0 +1,58 @@
+fn simplified_fractions(n: i32) -> Vec[String] {
+    // a grid of numerator and denominator: each fraction is met first in
+    // its lowest terms, and its multiples are then marked to pass over
+    let n = n as i64;
+    let mut taken: Vec[Vec[bool]] = Vec.filled(n + 1, Vec.filled(n + 1, false));
+    let mut fractions: Vec[String] = Vec.new();
+    for d in 2..=n {
+        for a in 1..d {
+            if not taken[a][d] {
+                fractions.push(f"{a}/{d}");
+                let mut k = 2;
+                while k * d <= n {
+                    taken[k * a][k * d] = true;
+                    k += 1;
+                }
+            }
+        }
+    }
+    fractions
+}
+
+// ---- test harness ---------------------------------------------------------
+
+// the fractions in order, and how many and a checksum over their letters
+fn sorted(fractions: Vec[String]) -> Vec[String] {
+    let mut s = fractions.clone();
+    s.sort();
+    s
+}
+
+fn fold(fractions: Vec[String], check: mut ref i64) {
+    for f in sorted(fractions).iter() {
+        for b in f.bytes() {
+            *check = (*check * 131 + b) % 1000000007;
+        }
+        *check = (*check * 131 + 32) % 1000000007;
+    }
+}
+
+fn main() {
+    // LeetCode's three examples, and n = 1
+    let firsts: Vec[String] = (1..=4).map(|n| f"[{sorted(simplified_fractions(n)).join(", ")}]").collect();
+    println(firsts.join(" "));
+    // the constraints' most
+    let most = simplified_fractions(100);
+    let mut check: i64 = 0;
+    fold(most, mut check);
+    println(f"n = 100: {most.len()} fractions, checksum {check}");
+    // every n from 1 to 100
+    let mut total = 0;
+    let mut check: i64 = 0;
+    for n in 1..=100 {
+        let fractions = simplified_fractions(n);
+        total += fractions.len();
+        fold(fractions, mut check);
+    }
+    println(f"every n to 100: {total} fractions, checksum {check}");
+}

@@ -1,0 +1,56 @@
+fn simplified_fractions(n: i32) -> Vec[String] {
+    // the Stern-Brocot tree between 0/1 and 1/1: the mediant of two
+    // neighbours while its denominator is at most n, with the fractions on
+    // either side of it before and after
+    let mut fractions: Vec[String] = Vec.new();
+    between(0, 1, 1, 1, n, mut fractions);
+    fractions
+}
+
+fn between(a: i32, b: i32, c: i32, d: i32, n: i32, fractions: mut ref Vec[String]) {
+    if b + d > n {
+        return;
+    }
+    let (p, q) = (a + c, b + d);
+    between(a, b, p, q, n, mut fractions);
+    fractions.push(f"{p}/{q}");
+    between(p, q, c, d, n, mut fractions);
+}
+
+// ---- test harness ---------------------------------------------------------
+
+// the fractions in order, and how many and a checksum over their letters
+fn sorted(fractions: Vec[String]) -> Vec[String] {
+    let mut s = fractions.clone();
+    s.sort();
+    s
+}
+
+fn fold(fractions: Vec[String], check: mut ref i64) {
+    for f in sorted(fractions).iter() {
+        for b in f.bytes() {
+            *check = (*check * 131 + b) % 1000000007;
+        }
+        *check = (*check * 131 + 32) % 1000000007;
+    }
+}
+
+fn main() {
+    // LeetCode's three examples, and n = 1
+    let firsts: Vec[String] = (1..=4).map(|n| f"[{sorted(simplified_fractions(n)).join(", ")}]").collect();
+    println(firsts.join(" "));
+    // the constraints' most
+    let most = simplified_fractions(100);
+    let mut check: i64 = 0;
+    fold(most, mut check);
+    println(f"n = 100: {most.len()} fractions, checksum {check}");
+    // every n from 1 to 100
+    let mut total = 0;
+    let mut check: i64 = 0;
+    for n in 1..=100 {
+        let fractions = simplified_fractions(n);
+        total += fractions.len();
+        fold(fractions, mut check);
+    }
+    println(f"every n to 100: {total} fractions, checksum {check}");
+}

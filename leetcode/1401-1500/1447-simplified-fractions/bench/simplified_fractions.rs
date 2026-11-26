@@ -1,0 +1,33 @@
+// LeetCode #1447 Simplified Fractions: the bench, a mirror of
+// simplified_fractions.kara.
+
+fn simplified_fractions(n: i32) -> Vec<String> {
+    // every numerator below every denominator up to n, kept when the two
+    // share no factor
+    let mut fractions: Vec<String> = Vec::new();
+    for d in 2..=n {
+        for a in 1..d {
+            if gcd(a, d) == 1 {
+                fractions.push(format!("{}/{}", a, d));
+            }
+        }
+    }
+    fractions
+}
+
+fn gcd(a: i32, b: i32) -> i32 {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+fn main() {
+    // every n from 1 to 100, 100 times over, each answer's letters counted
+    // and folded to a checksum
+    let mut check: i64 = 0;
+    for _ in 0..100 {
+        for n in 1..=100 {
+            let letters: i64 = simplified_fractions(n).iter().map(|f| f.len() as i64).sum();
+            check = (check * 131 + letters) % 1000000007;
+        }
+    }
+    println!("10000 answers: checksum {}", check);
+}
