@@ -1,0 +1,287 @@
+// LeetCode #1761: Minimum Degree of a Connected Trio in a Graph --
+// differential test of the five arms against the statement read
+// literally, with five more properties.
+
+// ---- min_trio_degree.kara ----
+fn a0_min_trio_degree(n: i32, edges: Vec[Vec[i32]]) -> i32 {
+    let n = n as i64;
+    let mut joined: Vec[Vec[bool]] = Vec.filled(n + 1, Vec.filled(n + 1, false));
+    let mut degree: Vec[i32] = Vec.filled(n + 1, 0);
+    for e in edges.iter() {
+        let (u, v) = (e[0] as i64, e[1] as i64);
+        joined[u][v] = true;
+        joined[v][u] = true;
+        degree[u] += 1;
+        degree[v] += 1;
+    }
+    let mut best = i32.MAX;
+    for u in 1..n + 1 {
+        for v in u + 1..n + 1 {
+            if not joined[u][v] {
+                continue;
+            }
+            for w in v + 1..n + 1 {
+                if joined[u][w] and joined[v][w] {
+                    best = best.min(degree[u] + degree[v] + degree[w] - 6);
+                }
+            }
+        }
+    }
+    if best == i32.MAX { -1 } else { best }
+}
+
+// ---- min_trio_degree_bitset.kara ----
+fn a1_min_trio_degree(n: i32, edges: Vec[Vec[i32]]) -> i32 {
+    let n = n as i64;
+    let words = n / 64 + 1;
+    let mut bits: Vec[Vec[u64]] = Vec.filled(n + 1, Vec.filled(words, 0u64));
+    let mut degree: Vec[i32] = Vec.filled(n + 1, 0);
+    for e in edges.iter() {
+        let (u, v) = (e[0] as i64, e[1] as i64);
+        bits[u][v / 64] |= 1u64 << (v % 64);
+        bits[v][u / 64] |= 1u64 << (u % 64);
+        degree[u] += 1;
+        degree[v] += 1;
+    }
+    let mut best = i32.MAX;
+    for e in edges.iter() {
+        let (u, v) = (e[0] as i64, e[1] as i64);
+        for k in 0..words {
+            let mut common = bits[u][k] & bits[v][k];
+            while common != 0 {
+                let w = k * 64 + common.trailing_zeros();
+                common &= common - 1;
+                best = best.min(degree[u] + degree[v] + degree[w] - 6);
+            }
+        }
+    }
+    if best == i32.MAX { -1 } else { best }
+}
+
+// ---- min_trio_degree_merge.kara ----
+fn a2_min_trio_degree(n: i32, edges: Vec[Vec[i32]]) -> i32 {
+    let mut adj: Vec[Vec[i32]] = Vec.filled(n as i64 + 1, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push(e[1]);
+        adj[e[1]].push(e[0]);
+    }
+    for list in adj.iter_mut() {
+        list.sort();
+    }
+    let mut best = i32.MAX;
+    for e in edges.iter() {
+        let (a, b) = (ref adj[e[0]], ref adj[e[1]]);
+        let mut (i, j) = (0, 0);
+        while i < a.len() and j < b.len() {
+            if a[i] < b[j] {
+                i += 1;
+            } else if a[i] > b[j] {
+                j += 1;
+            } else {
+                let degree = (a.len() + b.len() + adj[a[i]].len()) as i32 - 6;
+                best = best.min(degree);
+                i += 1;
+                j += 1;
+            }
+        }
+    }
+    if best == i32.MAX { -1 } else { best }
+}
+
+// ---- min_trio_degree_oriented.kara ----
+fn a3_min_trio_degree(n: i32, edges: Vec[Vec[i32]]) -> i32 {
+    let n = n as i64;
+    let mut degree: Vec[i64] = Vec.filled(n + 1, 0);
+    for e in edges.iter() {
+        degree[e[0]] += 1;
+        degree[e[1]] += 1;
+    }
+    let below = |a: i64, b: i64| degree[a] < degree[b] or (degree[a] == degree[b] and a < b);
+    let mut out: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.new());
+    let mut joined: Set[(i64, i64)] = Set.new();
+    for e in edges.iter() {
+        let (u, v) = (e[0] as i64, e[1] as i64);
+        if below(u, v) {
+            out[u].push(v);
+        } else {
+            out[v].push(u);
+        }
+        joined.insert((u.min(v), u.max(v)));
+    }
+    let mut best = i64.MAX;
+    for u in 1..n + 1 {
+        for i in 0..out[u].len() {
+            for j in i + 1..out[u].len() {
+                let (v, w) = (out[u][i], out[u][j]);
+                if joined.contains((v.min(w), v.max(w))) {
+                    best = best.min(degree[u] + degree[v] + degree[w] - 6);
+                }
+            }
+        }
+    }
+    if best == i64.MAX { -1 } else { best as i32 }
+}
+
+// ---- min_trio_degree_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn min_trio_degree(n: i32, edges: Vec[Vec[i32]]) -> i32 {
+        let n = n as i64;
+        let mut g = Vec.filled(n + 1, Vec.filled(n + 1, false));
+        let mut deg = Vec.filled(n + 1, 0i32);
+        for e in edges.iter() {
+            let (u, v) = (e[0] as i64, e[1] as i64);
+            g[u][v] = true;
+            g[v][u] = true;
+            deg[u] += 1;
+            deg[v] += 1;
+        }
+        let mut ans = i32.MAX;
+        for e in edges.iter() {
+            let (u, v) = (e[0] as i64, e[1] as i64);
+            for w in 1..=n {
+                if g[u][w] and g[v][w] {
+                    ans = ans.min(deg[u] + deg[v] + deg[w] - 6);
+                }
+            }
+        }
+        if ans == i32.MAX { -1 } else { ans }
+    }
+}
+
+fn a4_min_trio_degree(n: i32, edges: Vec[Vec[i32]]) -> i32 {
+    A4Solution.min_trio_degree(n, edges)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_graph(seed: mut ref i64, n: i64, density: i64) -> Vec[Vec[i32]] {
+    let mut edges: Vec[Vec[i32]] = Vec.new();
+    for u in 1..n + 1 {
+        for v in u + 1..n + 1 {
+            if next_random(mut seed) % 1000 < density {
+                edges.push([u as i32, v as i32].to_vec());
+            }
+        }
+    }
+    edges
+}
+
+// the statement read literally: every three nodes joined to each other,
+// and for each such trio the edges with exactly one end in it
+fn literal(n: i32, edges: Vec[Vec[i32]]) -> i32 {
+    let has = |a: i32, b: i32| edges.iter().any(|e| (e[0] == a and e[1] == b) or (e[0] == b and e[1] == a));
+    let mut best = -1;
+    for a in 1..n + 1 {
+        for b in a + 1..n + 1 {
+            for c in b + 1..n + 1 {
+                if has(a, b) and has(b, c) and has(a, c) {
+                    let inside = |v: i32| v == a or v == b or v == c;
+                    let degree = edges.iter().filter(|e| inside(e[0]) != inside(e[1])).count() as i32;
+                    if best < 0 or degree < best {
+                        best = degree;
+                    }
+                }
+            }
+        }
+    }
+    best
+}
+
+fn arm(i: i64, n: i32, edges: Vec[Vec[i32]]) -> i32 {
+    match i {
+        0 => a0_min_trio_degree(n, edges),
+        1 => a1_min_trio_degree(n, edges),
+        2 => a2_min_trio_degree(n, edges),
+        3 => a3_min_trio_degree(n, edges),
+        _ => a4_min_trio_degree(n, edges),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, n: i32, edges: Vec[Vec[i32]]) {
+    t.cases += 1;
+    let want = literal(n, edges);
+    t.check = (t.check * 31 + want + 1) % 1000000007;
+    let star = arm(0, n, edges);
+    let renumbered: Vec[Vec[i32]] = edges.iter().map(|e| [n + 1 - e[0], n + 1 - e[1]].to_vec()).collect();
+    // every other edge's ends swapped, so a triangle's edges can run round
+    // it in a cycle
+    let turned: Vec[Vec[i32]] = edges.iter().enumerate().rev().map(|(k, e)| if k % 2 == 1 { [e[1], e[0]].to_vec() } else { e.clone() }).collect();
+    let mut pendant = edges.clone();
+    pendant.push([1, n + 1].to_vec());
+    for i in 0..5 {
+        let what = f"arm {i} on {n} nodes, {edges}";
+        let got = arm(i, n, edges);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: the nodes numbered the other way round give the same
+        expect(mut t, 2, arm(i, n, renumbered) == got, f"P2 {what}");
+        // P3: the edges in reverse order, every other one with its ends
+        // swapped, give the same
+        expect(mut t, 3, arm(i, n, turned) == got, f"P3 {what}");
+        // P4: a node joined to nothing changes nothing
+        expect(mut t, 4, arm(i, n + 1, edges) == got, f"P4 {what}");
+        // P5: a new node hung from node 1 makes no trio and adds at most one
+        // to any trio's degree
+        let hung = arm(i, n + 1, pendant);
+        expect(mut t, 5, if got < 0 { hung == got } else { hung == got or hung == got + 1 }, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges. Every case is drawn before any arm
+    // answers.
+    let mut cases: Vec[(i32, Vec[Vec[i32]])] = [
+        (6, [[1, 2], [1, 3], [3, 2], [4, 1], [5, 2], [3, 6]]),
+        (7, [[1, 3], [4, 1], [4, 3], [2, 5], [5, 6], [6, 7], [7, 5], [2, 6]]),
+        (3, [[1, 2], [2, 3]]),
+        (3, [[1, 2], [2, 3], [1, 3]]),
+        (4, [[1, 2], [2, 3], [3, 4], [4, 1]]),
+        (5, [[1, 2], [1, 3], [1, 4], [1, 5], [2, 3], [2, 4], [2, 5], [3, 4], [3, 5], [4, 5]]),
+        (5, [[1, 2], [2, 3], [1, 3], [3, 4], [4, 5]]),
+    ];
+    let mut seed = 17611;
+    // 1993 random graphs of 2 to 9 nodes, each pair joined with a chance
+    // drawn for the graph
+    for _ in 0..1993 {
+        let n = 2 + next_random(mut seed) % 8;
+        let density = next_random(mut seed) % 1001;
+        cases.push((n as i32, random_graph(mut seed, n, density)));
+    }
+    for j in 0..cases.len() {
+        let (n, edges) = ref cases[j];
+        check_case(mut t, n, edges);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
