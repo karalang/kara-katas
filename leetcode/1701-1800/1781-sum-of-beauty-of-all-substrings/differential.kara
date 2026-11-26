@@ -1,0 +1,257 @@
+// LeetCode #1781: Sum of Beauty of All Substrings -- differential test of
+// the five arms against the statement read literally, with five more
+// properties.
+
+// ---- beauty_sum.kara ----
+fn a0_beauty_sum(s: String) -> i32 {
+    let letters: Vec[char] = s.chars().collect();
+    let n = letters.len();
+    let mut total: i32 = 0;
+    for i in 0..n {
+        let mut counts = [0i32; 26];
+        for j in i..n {
+            counts[letters[j] as u32 - 'a' as u32] += 1;
+            let mut most: i32 = 0;
+            let mut fewest = n;
+            for c in counts {
+                if c > 0 {
+                    most = most.max(c);
+                    fewest = fewest.min(c);
+                }
+            }
+            total += (most - fewest) as i32;
+        }
+    }
+    total
+}
+
+// ---- beauty_sum_iter.kara ----
+fn a1_beauty_sum(s: String) -> i32 {
+    let bytes = s.bytes();
+    let mut total: i32 = 0;
+    for i in 0..bytes.len() {
+        let mut counts: Vec[i32] = Vec.filled(26, 0);
+        for j in i..bytes.len() {
+            counts[bytes[j] - b'a'] += 1;
+            let present: Vec[i32] = counts.iter().filter(|c| *c > 0).cloned().collect();
+            total += present.iter().max().unwrap() - present.iter().min().unwrap();
+        }
+    }
+    total
+}
+
+// ---- beauty_sum_prefix.kara ----
+fn a2_beauty_sum(s: String) -> i32 {
+    let letters: Vec[char] = s.chars().collect();
+    let n = letters.len();
+    // before[c][k]: how many of letter c among the first k letters
+    let mut before: Vec[Vec[i32]] = Vec.new();
+    for c in 0..26 {
+        let mut row: Vec[i32] = [0];
+        for k in 0..n {
+            let here: i32 = if (letters[k] as u32 - 97) as i64 == c { 1 } else { 0 };
+            row.push(row[k] + here);
+        }
+        before.push(row);
+    }
+    let mut total: i32 = 0;
+    for i in 0..n {
+        for j in i + 1..n + 1 {
+            let mut most: i32 = 0;
+            let mut fewest = i32.MAX;
+            for c in 0..26 {
+                let count = before[c][j] - before[c][i];
+                if count > 0 {
+                    most = most.max(count);
+                    fewest = fewest.min(count);
+                }
+            }
+            total += most - fewest;
+        }
+    }
+    total
+}
+
+// ---- beauty_sum_buckets.kara ----
+fn a3_beauty_sum(s: String) -> i32 {
+    let letters: Vec[char] = s.chars().collect();
+    let n = letters.len();
+    let mut total = 0;
+    for i in 0..n {
+        let mut counts: Vec[i64] = Vec.filled(26, 0);
+        // with[f]: how many letters appear exactly f times
+        let mut with: Vec[i64] = Vec.filled(n + 2, 0);
+        let mut most = 0;
+        let mut fewest = 0;
+        for j in i..n {
+            let c = (letters[j] as u32 - 97) as i64;
+            let f = counts[c];
+            counts[c] = f + 1;
+            if f > 0 {
+                with[f] -= 1;
+            }
+            with[f + 1] += 1;
+            most = most.max(f + 1);
+            if f == 0 {
+                fewest = 1;
+            } else if f == fewest and with[f] == 0 {
+                fewest = f + 1;
+            }
+            total += most - fewest;
+        }
+    }
+    total as i32
+}
+
+// ---- beauty_sum_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn beauty_sum(s: String) -> i32 {
+        let s = s.bytes();
+        let n = s.len();
+        let mut ans = 0;
+        for i in 0..n {
+            let mut cnt = [0; 26];
+            for j in i..n {
+                cnt[(s[j] - b'a') as usize] += 1;
+                let mx = *cnt.iter().max().unwrap();
+                let mn = *cnt.iter().filter(|x| x > 0).min().unwrap();
+                ans += mx - mn;
+            }
+        }
+        ans
+    }
+}
+
+fn a4_beauty_sum(s: String) -> i32 {
+    A4Solution.beauty_sum(s)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(seed: mut ref i64, n: i64, letters: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(char.try_from((97 + next_random(mut seed) % letters) as u32).ok().unwrap());
+    }
+    s
+}
+
+// the statement read literally: every substring, each letter in it counted
+// on its own, and the most frequent count less the least, summed
+fn literal(s: String) -> i32 {
+    let letters: Vec[char] = s.chars().collect();
+    let n = letters.len();
+    let mut total: i32 = 0;
+    for i in 0..n {
+        for j in i + 1..n + 1 {
+            let part = letters[i..j];
+            let counts: Vec[i64] = part.iter().map(|c| part.iter().filter(|d| *d == *c).count()).collect();
+            let most = counts.iter().max().unwrap();
+            let least = counts.iter().min().unwrap();
+            total += (most - least) as i32;
+        }
+    }
+    total
+}
+
+// each letter moved one on in the alphabet, z to a
+fn rotated(s: Str) -> String {
+    s.chars().map(|c| char.try_from(97 + (c as u32 - 97 + 1) % 26).ok().unwrap()).collect()
+}
+
+fn reversed(s: Str) -> String {
+    s.chars().rev().collect()
+}
+
+fn arm(i: i64, s: String) -> i32 {
+    match i {
+        0 => a0_beauty_sum(s),
+        1 => a1_beauty_sum(s),
+        2 => a2_beauty_sum(s),
+        3 => a3_beauty_sum(s),
+        _ => a4_beauty_sum(s),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, s: String) {
+    t.cases += 1;
+    let n = s.len();
+    let want = literal(s);
+    t.check = (t.check * 31 + want) % 1000000007;
+    let star = arm(0, s);
+    let first = s.chars().next().unwrap();
+    let one_letter = s.chars().all(|c| c == first);
+    // a substring of length k has a beauty of at most k - 2, or 0 below 3
+    let mut bound = 0;
+    for k in 3..n + 1 {
+        bound += (n - k + 1) * (k - 2);
+    }
+    let back = reversed(s.as_str());
+    let turned = rotated(s.as_str());
+    let longer = f"{s}{first}";
+    for i in 0..5 {
+        let what = f"arm {i} on \"{s}\"";
+        let got = arm(i, s);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: 0 for one letter repeated, and at most the sum of each
+        // substring's length less 2
+        expect(mut t, 2, got >= 0 and got <= bound and (not one_letter or got == 0), f"P2 {what}");
+        // P3: the string reversed gives the same sum
+        expect(mut t, 3, arm(i, back) == got, f"P3 {what}");
+        // P4: the letters rotated give the same sum
+        expect(mut t, 4, arm(i, turned) == got, f"P4 {what}");
+        // P5: one more letter at the end never lowers the sum
+        expect(mut t, 5, arm(i, longer) >= got, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges. Every case is drawn before any arm
+    // answers.
+    let mut cases: Vec[String] = ["aabcb", "aabcbaa", "z", "aaaa", "abcdefghijkl", "abababab", "aaaaab", "zzzzzzzzzzza"].iter().map(|w| w.to_string()).collect();
+    let mut seed = 17811;
+    // 1992 random words of 1 to 12 letters from the first 1 to 5 of the
+    // alphabet
+    for _ in 0..1992 {
+        let n = 1 + next_random(mut seed) % 12;
+        let letters = 1 + next_random(mut seed) % 5;
+        cases.push(random_word(mut seed, n, letters));
+    }
+    for j in 0..cases.len() {
+        check_case(mut t, cases[j]);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

@@ -1,0 +1,73 @@
+// LeetCode #1781: Sum of Beauty of All Substrings -- a table of prefix
+// counts, one row per letter, so that each substring's count of a letter
+// is a difference of two entries.
+
+fn beauty_sum(s: String) -> i32 {
+    let letters: Vec[char] = s.chars().collect();
+    let n = letters.len();
+    // before[c][k]: how many of letter c among the first k letters
+    let mut before: Vec[Vec[i32]] = Vec.new();
+    for c in 0..26 {
+        let mut row: Vec[i32] = [0];
+        for k in 0..n {
+            let here: i32 = if (letters[k] as u32 - 97) as i64 == c { 1 } else { 0 };
+            row.push(row[k] + here);
+        }
+        before.push(row);
+    }
+    let mut total: i32 = 0;
+    for i in 0..n {
+        for j in i + 1..n + 1 {
+            let mut most: i32 = 0;
+            let mut fewest = i32.MAX;
+            for c in 0..26 {
+                let count = before[c][j] - before[c][i];
+                if count > 0 {
+                    most = most.max(count);
+                    fewest = fewest.min(count);
+                }
+            }
+            total += most - fewest;
+        }
+    }
+    total
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n letters from the first `letters` of the alphabet
+fn random_word(seed: mut ref i64, n: i64, letters: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(char.try_from((97 + next_random(mut seed) % letters) as u32).ok().unwrap());
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{beauty_sum("aabcb")} {beauty_sum("aabcbaa")}");
+    // the edges: one letter; one letter repeated; every letter once; two
+    // letters alternating; one letter far more often than another
+    println(f"{beauty_sum("z")} {beauty_sum("aaaa")} {beauty_sum("abcdefghijklmnopqrstuvwxyz")} {beauty_sum("abababab")} {beauty_sum("aaaaab")}");
+    // the constraints' most: 500 letters at random from all 26, 500 from
+    // two, and 500 of one
+    let mut seed = 1781;
+    let wide = random_word(mut seed, 500, 26);
+    let two = random_word(mut seed, 500, 2);
+    let same = "q".repeat(500);
+    println(f"the most: {beauty_sum(wide)} {beauty_sum(two)} {beauty_sum(same)}");
+    // 3000 random cases of 1 to 20 letters from the first 1 to 6
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 20;
+        let letters = 1 + next_random(mut seed) % 6;
+        check = (check * 31 + beauty_sum(random_word(mut seed, n, letters))) % 1000000007;
+    }
+    println(f"3000 random cases: checksum {check}");
+}
