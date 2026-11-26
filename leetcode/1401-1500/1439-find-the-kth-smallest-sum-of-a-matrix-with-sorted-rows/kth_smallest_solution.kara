@@ -1,0 +1,90 @@
+// LeetCode #1439: Find the Kth Smallest Sum of a Matrix With Sorted Rows --
+// a Rust solution as LeetCode's Rust users write it: `let k = k as usize`,
+// the sums so far in `vec![0]`, each row merged in by
+// `Vec::with_capacity`, `for &a in cur.iter()`, `sort_unstable()` and
+// `truncate(k)`, carried to Kāra by `karac fix`
+
+struct Solution {}
+
+impl Solution {
+    pub fn kth_smallest(mat: Vec[Vec[i32]], k: i32) -> i32 {
+        let k = k as i64;
+        let mut cur = [0i32];
+        for row in mat.iter() {
+            let mut next = Vec.with_capacity(cur.len() * row.len());
+            for a in cur.iter() {
+                for b in row.iter() {
+                    next.push(a + b);
+                }
+            }
+            next.sort();
+            next.truncate(k);
+            cur = next;
+        }
+        cur[k - 1]
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// m rows of n numbers of 1 to `top`, each row sorted
+fn drawn(m: i64, n: i64, top: i64, seed: mut ref i64) -> Vec[Vec[i32]] {
+    let mut mat: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..m {
+        let mut row: Vec[i32] = (0..n).map(|_| (1 + next_random(mut seed) % top) as i32).collect();
+        row.sort();
+        mat.push(row);
+    }
+    mat
+}
+
+// how many sums there are, n to the m, as far as 200
+fn sums_up_to_200(m: i64, n: i64) -> i64 {
+    let mut count = 1;
+    for _ in 0..m {
+        count = (count * n).min(200);
+    }
+    count
+}
+
+fn main() {
+    // LeetCode's four examples, and four more
+    let cases: Vec[(Vec[Vec[i32]], i32)] = [
+        ([[1, 3, 11], [2, 4, 6]], 5),
+        ([[1, 3, 11], [2, 4, 6]], 9),
+        ([[1, 10, 10], [1, 4, 5], [2, 3, 6]], 7),
+        ([[1, 1, 10], [2, 2, 9]], 7),
+        ([[5]], 1),
+        ([[1, 2, 3, 4, 5]], 4),
+        ([[1], [2], [3]], 1),
+        ([[1, 5000], [1, 5000], [1, 5000]], 8),
+    ];
+    let firsts: Vec[String] = cases.iter().map(|(mat, k)| f"{Solution.kth_smallest(mat, k)}").collect();
+    println(firsts.join(" "));
+    // the constraints' most: 40 rows of 40 drawn numbers up to 5000 with k
+    // = 1 and 200, and 40 rows of 40 equal numbers with k = 200
+    let mut seed = 1439;
+    let big = drawn(40, 40, 5000, mut seed);
+    let alike: Vec[Vec[i32]] = Vec.filled(40, Vec.filled(40, 5000));
+    println(f"40 rows of 40: {Solution.kth_smallest(big, 1)} {Solution.kth_smallest(big, 200)} {Solution.kth_smallest(alike, 200)}");
+    // 2000 random cases of 1 to 6 rows of 1 to 6 numbers up to 10, 100 or
+    // 5000, k up to how many sums there are, at most 200
+    let mut check: i64 = 0;
+    let mut total: i64 = 0;
+    for _ in 0..2000 {
+        let m = 1 + next_random(mut seed) % 6;
+        let n = 1 + next_random(mut seed) % 6;
+        let top = [10, 100, 5000][next_random(mut seed) % 3];
+        let mat = drawn(m, n, top, mut seed);
+        let k = (1 + next_random(mut seed) % sums_up_to_200(m, n)) as i32;
+        let got = Solution.kth_smallest(mat, k);
+        total += got;
+        check = (check * 131 + got) % 1000000007;
+    }
+    println(f"2000 random cases: {total} in all, checksum {check}");
+}
