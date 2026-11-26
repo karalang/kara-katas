@@ -1,0 +1,199 @@
+// LeetCode #1464: Maximum Product of Two Elements in an Array -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- max_product.kara ----
+fn a0_max_product(nums: Vec[i32]) -> i32 {
+    // the product grows with each factor, so it is the two largest values'
+    // own: `first` the largest so far and `second` the next, a value above
+    // `first` pushing it down
+    let mut first = 0;
+    let mut second = 0;
+    for x in nums.iter() {
+        if x > first {
+            second = first;
+            first = x;
+        } else if x > second {
+            second = x;
+        }
+    }
+    (first - 1) * (second - 1)
+}
+
+// ---- max_product_sort.kara ----
+fn a1_max_product(nums: Vec[i32]) -> i32 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let n = sorted.len();
+    (sorted[n - 1] - 1) * (sorted[n - 2] - 1)
+}
+
+// ---- max_product_pairs.kara ----
+fn a2_max_product(nums: Vec[i32]) -> i32 {
+    // each pair once, the second place after the first, and the largest
+    // product among them
+    (0..nums.len())
+        .flat_map(|i| (i + 1..nums.len()).map(|j| (nums[i] - 1) * (nums[j] - 1)))
+        .max()
+        .unwrap()
+}
+
+// ---- max_product_heap.kara ----
+fn a3_max_product(nums: Vec[i32]) -> i32 {
+    let mut heap: PriorityQueue[i32] = PriorityQueue.max_first_from(nums.iter().collect());
+    let a = heap.pop().unwrap();
+    let b = heap.pop().unwrap();
+    (a - 1) * (b - 1)
+}
+
+// ---- max_product_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_max_product(nums: own Vec[i32]) -> i32 {
+        let mut nums = nums;
+        nums.sort();
+        let n = nums.len();
+        (nums[n - 1] - 1) * (nums[n - 2] - 1)
+    }
+}
+
+fn a4_max_product(nums: own Vec[i32]) -> i32 {
+    A4Solution.a4_max_product(nums)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n values from 1 to top
+fn draw(seed: mut ref i64, n: i64, top: i64) -> Vec[i32] {
+    (0..n).map(|_| (1 + next_random(mut seed) % top) as i32).collect()
+}
+
+// `values` shuffled
+fn shuffled(seed: mut ref i64, values: Vec[i32]) -> Vec[i32] {
+    let mut out = values.clone();
+    for i in (1..out.len()).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        out.swap(i, j);
+    }
+    out
+}
+
+// the statement read literally: every two different indices i and j, in
+// either order, and the largest (nums[i] - 1) * (nums[j] - 1)
+fn literal(nums: Vec[i32]) -> i32 {
+    let mut best = -1;
+    for i in 0..nums.len() {
+        for j in 0..nums.len() {
+            if i != j {
+                let p = (nums[i] - 1) * (nums[j] - 1);
+                if p > best {
+                    best = p;
+                }
+            }
+        }
+    }
+    best
+}
+
+fn arm(i: i64, nums: Vec[i32]) -> i32 {
+    match i {
+        0 => a0_max_product(nums),
+        1 => a1_max_product(nums),
+        2 => a2_max_product(nums),
+        3 => a3_max_product(nums),
+        _ => a4_max_product(nums.clone()),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, seed: mut ref i64, nums: Vec[i32]) {
+    t.cases += 1;
+    let star = arm(0, nums);
+    t.check = (t.check * 31 + star) % 1000000007;
+    let n = nums.len();
+    let want = literal(nums);
+    let back: Vec[i32] = nums.iter().rev().collect();
+    let mixed = shuffled(mut seed, nums);
+    let mut more = nums.clone();
+    more.push(1);
+    let top = nums.iter().max().unwrap();
+    for i in 0..5 {
+        let what = f"arm {i} on {n} values";
+        let got = arm(i, nums);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: `nums` reversed gives the same answer
+        expect(mut t, 2, arm(i, back) == got, f"P2 {what}");
+        // P3: `nums` shuffled gives the same answer
+        expect(mut t, 3, arm(i, mixed) == got, f"P3 {what}");
+        // P4: a 1 more gives the same answer
+        expect(mut t, 4, arm(i, more) == got, f"P4 {what}");
+        // P5: the answer is the largest value less 1 times a number from 0
+        // to that, so at most its square and, past 1, a multiple of it
+        expect(mut t, 5, got >= 0 and got <= (top - 1) * (top - 1) and (top == 1 or got % (top - 1) == 0), f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: two 1s, two of the most, the
+    // largest once among 1s, the two largest first, last and apart, and
+    // 500 values of 1000, and the constraints' most. Every case is drawn
+    // before any arm answers.
+    let mut cases: Vec[Vec[i32]] = [
+        [3, 4, 5, 2].to_vec(),
+        [1, 5, 4, 5].to_vec(),
+        [3, 7].to_vec(),
+        [1, 1].to_vec(),
+        [1000, 1000].to_vec(),
+        [1, 1, 1000, 1, 1].to_vec(),
+        [9, 8, 1, 2, 3].to_vec(),
+        [1, 2, 3, 8, 9].to_vec(),
+        [9, 1, 2, 3, 8].to_vec(),
+    ];
+    cases.push(Vec.filled(500, 1000));
+    let mut seed = 14641;
+    cases.push(draw(mut seed, 500, 1000));
+    // 1992 random arrays: half of 2 to 6 values, half of 2 to 60, from 1 to
+    // top, top from 1 to 1000
+    for c in 0..1992 {
+        let most = if c % 2 == 0 { 5 } else { 59 };
+        let n = 2 + next_random(mut seed) % most;
+        let top = 1 + next_random(mut seed) % 1000;
+        cases.push(draw(mut seed, n, top));
+    }
+    for j in 0..cases.len() {
+        let nums = cases[j].clone();
+        check_case(mut t, mut seed, nums);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
