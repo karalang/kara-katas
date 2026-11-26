@@ -1,0 +1,58 @@
+// LeetCode #1780: Check if Number is a Sum of Powers of Three -- every sum
+// of distinct powers of three up to n listed, each power doubling the list,
+// and n looked for among them.
+
+fn check_powers_of_three(n: i32) -> bool {
+    let mut sums: Vec[i32] = [0];
+    let mut power: i32 = 1;
+    while power <= n {
+        let more: Vec[i32] = sums.iter().map(|s| s + power).collect();
+        sums.extend(more);
+        power *= 3;
+    }
+    sums.contains(n)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a sum of distinct powers of three below 3^15, chosen by 15 random bits,
+// then 0 to 3 added half the time
+fn random_number(seed: mut ref i64) -> i32 {
+    let bits = next_random(mut seed) % 32768;
+    let mut n = 0;
+    let mut power = 1;
+    for k in 0..15 {
+        if (bits >> k) & 1 == 1 {
+            n += power;
+        }
+        power *= 3;
+    }
+    if next_random(mut seed) % 2 == 0 {
+        n += next_random(mut seed) % 4;
+    }
+    n.max(1) as i32
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{check_powers_of_three(12)} {check_powers_of_three(91)} {check_powers_of_three(21)}");
+    // the edges: 1, 2, a power of three, one more than a power, and every
+    // digit 1 in base 3
+    println(f"{check_powers_of_three(1)} {check_powers_of_three(2)} {check_powers_of_three(2187)} {check_powers_of_three(28)} {check_powers_of_three(1093)}");
+    // the constraints' most, 10^7, then the sum of every power of three
+    // below it and one more than that
+    println(f"the most: {check_powers_of_three(10000000)} {check_powers_of_three(7174453)} {check_powers_of_three(7174454)}");
+    // 3000 random numbers, half of them sums of distinct powers
+    let mut seed = 1780;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = random_number(mut seed);
+        check = (check * 31 + if check_powers_of_three(n) { 2 } else { 1 }) % 1000000007;
+    }
+    println(f"3000 random cases: checksum {check}");
+}
