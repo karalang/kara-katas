@@ -1,0 +1,87 @@
+// LeetCode #1477: Find Two Non-overlapping Sub-arrays Each With Target
+// Sum -- two sliding windows, one from the left giving the shortest
+// window of the target sum ending at or before each place, one from the
+// right giving the shortest starting at or after it; the answer the least
+// of the two summed across each cut
+
+// the shortest window of the target sum ending at or before each place
+fn shortest_by_end(arr: Vec[i32], target: i32) -> Vec[i64] {
+    let n = arr.len();
+    let mut out = Vec.filled(n, n + 1);
+    let mut sum = 0;
+    let mut left = 0;
+    for right in 0..n {
+        sum += arr[right];
+        while sum > target {
+            sum -= arr[left];
+            left += 1;
+        }
+        let here = if sum == target { right - left + 1 } else { n + 1 };
+        out[right] = if right == 0 { here } else { here.min(out[right - 1]) };
+    }
+    out
+}
+
+fn min_sum_of_lengths(arr: Vec[i32], target: i32) -> i32 {
+    let n = arr.len();
+    let before = shortest_by_end(arr, target);
+    // the array reversed: a window ending at or before place j of it
+    // starts at or after place n - 1 - j of arr
+    let reversed: Vec[i32] = arr.iter().rev().collect();
+    let after = shortest_by_end(reversed, target);
+    let mut best = 2 * (n + 1);
+    for cut in 0..n - 1 {
+        best = best.min(before[cut] + after[n - 2 - cut]);
+    }
+    if best > n { -1 } else { best as i32 }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn draw(seed: mut ref i64, n: i64, top: i64) -> Vec[i32] {
+    (0..n).map(|_| (1 + next_random(mut seed) % top) as i32).collect()
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{min_sum_of_lengths([3, 2, 2, 4, 3].to_vec(), 3)} {min_sum_of_lengths([7, 3, 4, 7].to_vec(), 7)} {min_sum_of_lengths([4, 3, 2, 6, 2, 3, 4].to_vec(), 6)}");
+    // the edges: one value; two values, each the target; every value 1;
+    // the only two windows overlapping; the target more than the whole
+    // sum; a short window beside a long one, the best pair not the two
+    // shortest
+    let e1 = min_sum_of_lengths([5].to_vec(), 5);
+    let e2 = min_sum_of_lengths([5, 5].to_vec(), 5);
+    let e3 = min_sum_of_lengths(Vec.filled(6, 1), 2);
+    let e4 = min_sum_of_lengths([1, 2, 1].to_vec(), 3);
+    let e5 = min_sum_of_lengths([1, 2, 3].to_vec(), 7);
+    let e6 = min_sum_of_lengths([3, 1, 1, 1, 5, 1, 2, 1].to_vec(), 3);
+    let e7 = min_sum_of_lengths([1, 1, 1, 2, 2, 2, 4, 4].to_vec(), 6);
+    println(f"{e1} {e2} {e3} {e4} {e5} {e6} {e7}");
+    // the constraints' most: 100000 values from 1 to 1000, for the targets
+    // 1000, 5000 and 100000, and 10^8, more than any sum
+    let mut seed = 1477;
+    let big = draw(mut seed, 100000, 1000);
+    let most: Vec[String] = [1000, 5000, 100000, 100000000].iter().map(|t| f"{min_sum_of_lengths(big, t)}").collect();
+    println(f"100000 values: {most.join(" ")}");
+    // 3000 random arrays of 1 to 60 values from 1 to top, top from 1 to
+    // 20, the target from 1 to 40; each answer folded into a checksum
+    let mut check = 0;
+    let mut none = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 60;
+        let top = 1 + next_random(mut seed) % 20;
+        let arr = draw(mut seed, n, top);
+        let target = (1 + next_random(mut seed) % 40) as i32;
+        let got = min_sum_of_lengths(arr, target);
+        if got == -1 {
+            none += 1;
+        }
+        check = (check * 31 + got + 1) % 1000000007;
+    }
+    println(f"3000 random arrays: {none} with no pair, checksum {check}");
+}

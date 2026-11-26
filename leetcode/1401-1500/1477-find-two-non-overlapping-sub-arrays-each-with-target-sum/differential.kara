@@ -1,0 +1,322 @@
+// LeetCode #1477: Find Two Non-overlapping Sub-arrays Each With Target
+// Sum -- differential test of the five arms against the statement read
+// literally, with five more properties.
+
+// ---- min_sum_of_lengths.kara ----
+fn a0_min_sum_of_lengths(arr: Vec[i32], target: i32) -> i32 {
+    let n = arr.len();
+    let none = n + 1;
+    // shortest[i]: the shortest window of the target sum ending at or before i
+    let mut shortest = Vec.filled(n, none);
+    let mut best = 2 * none;
+    let mut sum = 0;
+    let mut left = 0;
+    for right in 0..n {
+        sum += arr[right];
+        while sum > target {
+            sum -= arr[left];
+            left += 1;
+        }
+        let mut here = none;
+        if sum == target {
+            here = right - left + 1;
+            if left > 0 and shortest[left - 1] < none {
+                best = best.min(here + shortest[left - 1]);
+            }
+        }
+        shortest[right] = if right > 0 { shortest[right - 1].min(here) } else { here };
+    }
+    if best >= 2 * none { -1 } else { best as i32 }
+}
+
+// ---- min_sum_of_lengths_two_pass.kara ----
+fn a1_shortest_by_end(arr: Vec[i32], target: i32) -> Vec[i64] {
+    let n = arr.len();
+    let mut out = Vec.filled(n, n + 1);
+    let mut sum = 0;
+    let mut left = 0;
+    for right in 0..n {
+        sum += arr[right];
+        while sum > target {
+            sum -= arr[left];
+            left += 1;
+        }
+        let here = if sum == target { right - left + 1 } else { n + 1 };
+        out[right] = if right == 0 { here } else { here.min(out[right - 1]) };
+    }
+    out
+}
+
+fn a1_min_sum_of_lengths(arr: Vec[i32], target: i32) -> i32 {
+    let n = arr.len();
+    let before = a1_shortest_by_end(arr, target);
+    // the array reversed: a window ending at or before place j of it
+    // starts at or after place n - 1 - j of arr
+    let reversed: Vec[i32] = arr.iter().rev().collect();
+    let after = a1_shortest_by_end(reversed, target);
+    let mut best = 2 * (n + 1);
+    for cut in 0..n - 1 {
+        best = best.min(before[cut] + after[n - 2 - cut]);
+    }
+    if best > n { -1 } else { best as i32 }
+}
+
+// ---- min_sum_of_lengths_prefix.kara ----
+fn a2_min_sum_of_lengths(arr: Vec[i32], target: i32) -> i32 {
+    let n = arr.len();
+    let none = n + 1;
+    // the place just after the values summed: the empty prefix at 0
+    let mut reached: Map[i64, i64] = Map.new();
+    reached.insert(0, 0);
+    let mut shortest: Vec[i64] = Vec.filled(n + 1, none);
+    let mut best = 2 * none;
+    let mut sum = 0;
+    for i in 0..n {
+        sum += arr[i];
+        reached.insert(sum, i + 1);
+        shortest[i + 1] = shortest[i];
+        if let Some(start) = reached.get(sum - target) {
+            let len = i + 1 - start;
+            shortest[i + 1] = shortest[i + 1].min(len);
+            if shortest[start] < none {
+                best = best.min(len + shortest[start]);
+            }
+        }
+    }
+    if best >= 2 * none { -1 } else { best as i32 }
+}
+
+// ---- min_sum_of_lengths_intervals.kara ----
+fn a3_min_sum_of_lengths(arr: Vec[i32], target: i32) -> i32 {
+    let n = arr.len();
+    let mut windows: Vec[(i64, i64)] = Vec.new();
+    let mut sum = 0;
+    let mut left = 0;
+    for right in 0..n {
+        sum += arr[right];
+        while sum > target {
+            sum -= arr[left];
+            left += 1;
+        }
+        if sum == target {
+            windows.push((left, right));
+        }
+    }
+    let m = windows.len();
+    // from[k]: the shortest of windows k and on
+    let mut from = Vec.filled(m + 1, n + 1);
+    for k in (0..m).rev() {
+        from[k] = from[k + 1].min(windows[k].1 - windows[k].0 + 1);
+    }
+    let mut best = 2 * (n + 1);
+    for w in windows.iter() {
+        let next = windows.partition_point(|x| x.0 <= w.1);
+        best = best.min(w.1 - w.0 + 1 + from[next]);
+    }
+    if best > n { -1 } else { best as i32 }
+}
+
+// ---- min_sum_of_lengths_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn min_sum_of_lengths(arr: Vec[i32], target: i32) -> i32 {
+        let n = arr.len();
+        let mut best = Vec.filled(n, i32.MAX);
+        let mut ans = i32.MAX;
+        let mut min_len = i32.MAX;
+        let mut (l, sum) = (0, 0);
+        for r in 0..n {
+            sum += arr[r];
+            while sum > target {
+                sum -= arr[l];
+                l += 1;
+            }
+            if sum == target {
+                let len = (r - l + 1) as i32;
+                if l > 0 and best[l - 1] != i32.MAX {
+                    ans = ans.min(best[l - 1] + len);
+                }
+                min_len = min_len.min(len);
+            }
+            best[r] = min_len;
+        }
+        if ans == i32.MAX { -1 } else { ans }
+    }
+}
+
+fn a4_min_sum_of_lengths(arr: Vec[i32], target: i32) -> i32 {
+    A4Solution.min_sum_of_lengths(arr, target)
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n values from 1 to top
+fn draw(seed: mut ref i64, n: i64, top: i64) -> Vec[i32] {
+    (0..n).map(|_| (1 + next_random(mut seed) % top) as i32).collect()
+}
+
+// every sub-array of the target sum, as (first, last), each sum added up
+// value by value
+fn windows(arr: Vec[i32], target: i32) -> Vec[(i64, i64)] {
+    let n = arr.len();
+    let mut out: Vec[(i64, i64)] = Vec.new();
+    for a in 0..n {
+        for b in a..n {
+            let mut sum = 0;
+            for k in a..=b {
+                sum += arr[k];
+            }
+            if sum == target {
+                out.push((a, b));
+            }
+        }
+    }
+    out
+}
+
+// the statement read literally: of every two sub-arrays of the target sum
+// with no place in common, the least sum of their lengths, or -1
+fn literal(arr: Vec[i32], target: i32) -> i32 {
+    let w = windows(arr, target);
+    let mut best: Option[i64] = None;
+    for x in w.iter() {
+        for y in w.iter() {
+            if x.1 < y.0 {
+                let len = (x.1 - x.0 + 1) + (y.1 - y.0 + 1);
+                best = Some(match best {
+                    Some(b) => b.min(len),
+                    None => len,
+                });
+            }
+        }
+    }
+    match best {
+        Some(b) => b as i32,
+        None => -1,
+    }
+}
+
+// the shortest sub-array of the target sum, or None
+fn shortest(arr: Vec[i32], target: i32) -> Option[i64] {
+    windows(arr, target).iter().map(|w| w.1 - w.0 + 1).min()
+}
+
+fn arm(i: i64, arr: Vec[i32], target: i32) -> i32 {
+    match i {
+        0 => a0_min_sum_of_lengths(arr, target),
+        1 => a1_min_sum_of_lengths(arr, target),
+        2 => a2_min_sum_of_lengths(arr, target),
+        3 => a3_min_sum_of_lengths(arr, target),
+        _ => a4_min_sum_of_lengths(arr, target),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, arr: Vec[i32], target: i32) {
+    t.cases += 1;
+    let n = arr.len();
+    let star = arm(0, arr, target);
+    t.check = (t.check * 31 + star + 1) % 1000000007;
+    let want = literal(arr, target);
+    let reversed: Vec[i32] = arr.iter().rev().collect();
+    let doubled: Vec[i32] = arr.iter().map(|x| 2 * x).collect();
+    // a value more than the target can be in no sub-array of it: the array,
+    // such a wall, and the array again
+    let wall = target + 1;
+    let mut twice: Vec[i32] = arr.clone();
+    twice.push(wall);
+    twice.extend(arr.iter());
+    let twice_want = match shortest(arr, target) {
+        Some(s) => (2 * s) as i32,
+        None => -1,
+    };
+    let mut walled: Vec[i32] = [wall].to_vec();
+    walled.extend(arr.iter());
+    walled.push(wall);
+    for i in 0..5 {
+        let what = f"arm {i} on {n} values, target {target}";
+        let got = arm(i, arr, target);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: the array reversed has the same answer
+        expect(mut t, 2, arm(i, reversed, target) == got, f"P2 {what}");
+        // P3: every value and the target doubled has the same answer
+        expect(mut t, 3, arm(i, doubled, 2 * target) == got, f"P3 {what}");
+        // P4: the array twice, a wall between, pairs the shortest sub-array
+        // with its copy
+        expect(mut t, 4, arm(i, twice, target) == twice_want, f"P4 {what}");
+        // P5: no pair, or from 2 to n; and a wall at each end changes nothing
+        let in_range = got == -1 or (2 <= got and got <= n);
+        expect(mut t, 5, in_range and arm(i, walled, target) == got, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges. Every case is drawn before any arm
+    // answers.
+    let mut cases: Vec[(Vec[i32], i32)] = [
+        ([3, 2, 2, 4, 3].to_vec(), 3),
+        ([7, 3, 4, 7].to_vec(), 7),
+        ([4, 3, 2, 6, 2, 3, 4].to_vec(), 6),
+        ([5].to_vec(), 5),
+        ([5, 5].to_vec(), 5),
+        ([1, 1, 1, 1, 1, 1].to_vec(), 2),
+        ([1, 2, 1].to_vec(), 3),
+        ([1, 2, 3].to_vec(), 7),
+        ([3, 1, 1, 1, 5, 1, 2, 1].to_vec(), 3),
+        ([1, 1, 1, 2, 2, 2, 4, 4].to_vec(), 6),
+    ].to_vec();
+    let mut seed = 14771;
+    // 1990 random arrays: half of 1 to 10 values from 1 to 3, the target
+    // from 1 to 6, so sub-arrays of the target sum crowd and overlap, and
+    // half of 1 to 40 values from 1 to top, top from 1 to 20, the target
+    // from 1 to 40
+    for c in 0..1990 {
+        if c % 2 == 0 {
+            let n = 1 + next_random(mut seed) % 10;
+            let arr = draw(mut seed, n, 3);
+            cases.push((arr, (1 + next_random(mut seed) % 6) as i32));
+        } else {
+            let n = 1 + next_random(mut seed) % 40;
+            let top = 1 + next_random(mut seed) % 20;
+            let arr = draw(mut seed, n, top);
+            cases.push((arr, (1 + next_random(mut seed) % 40) as i32));
+        }
+    }
+    for j in 0..cases.len() {
+        let (arr, target) = cases[j].clone();
+        check_case(mut t, arr, target);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

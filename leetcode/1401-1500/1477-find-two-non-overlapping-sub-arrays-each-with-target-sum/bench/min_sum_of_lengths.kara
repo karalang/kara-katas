@@ -1,0 +1,49 @@
+// LeetCode #1477: Find Two Non-overlapping Sub-arrays Each With Target
+// Sum -- bench. One array of 100000 values from 1 to 1000 made once; then
+// 400 passes, each punching one value and asking for a target, both
+// chosen from the checksum so far.
+
+
+fn min_sum_of_lengths(arr: Vec[i32], target: i32) -> i32 {
+    let n = arr.len();
+    let none = n + 1;
+    // shortest[i]: the shortest window of the target sum ending at or before i
+    let mut shortest = Vec.filled(n, none);
+    let mut best = 2 * none;
+    let mut sum = 0;
+    let mut left = 0;
+    for right in 0..n {
+        sum += arr[right];
+        while sum > target {
+            sum -= arr[left];
+            left += 1;
+        }
+        let mut here = none;
+        if sum == target {
+            here = right - left + 1;
+            if left > 0 and shortest[left - 1] < none {
+                best = best.min(here + shortest[left - 1]);
+            }
+        }
+        shortest[right] = if right > 0 { shortest[right - 1].min(here) } else { here };
+    }
+    if best >= 2 * none { -1 } else { best as i32 }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1477;
+    let mut arr: Vec[i32] = (0..100000).map(|_| (1 + next_random(mut seed) % 1000) as i32).collect();
+    let mut check = 0;
+    for pass in 0..400 {
+        arr[check % 100000] = (1 + (check / 7) % 1000) as i32;
+        let target = (500 + check % 20000) as i32;
+        let got = min_sum_of_lengths(arr, target);
+        check = (check * 31 + got + 1 + pass) % 1000000007;
+    }
+    println(f"400 passes over 100000 values: checksum {check}");
+}
