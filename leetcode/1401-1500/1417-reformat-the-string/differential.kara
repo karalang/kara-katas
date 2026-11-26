@@ -1,0 +1,300 @@
+// LeetCode #1417: Reformat The String -- differential
+// test of the five arms against the statement read literally, with five
+// more properties.
+
+// ---- reformat.kara ----
+fn a0_reformat(s: String) -> String {
+    // the letters and the digits apart, each in its order, and woven
+    // together from the larger group, the letters first on a tie; no
+    // weave exists when one group has two or more over the other
+    let letters: Vec[char] = s.chars().filter(|c| c.is_ascii_lowercase()).collect();
+    let digits: Vec[char] = s.chars().filter(|c| c.is_ascii_digit()).collect();
+    if letters.len().abs_diff(digits.len()) > 1 {
+        return "";
+    }
+    let (first, second) = if digits.len() > letters.len() { (digits, letters) } else { (letters, digits) };
+    let mut out = String.new();
+    for i in 0..first.len() {
+        out.push(first[i]);
+        if i < second.len() {
+            out.push(second[i]);
+        }
+    }
+    out
+}
+
+// ---- reformat_places.kara ----
+fn a1_reformat(s: String) -> String {
+    // the larger group's characters written to the even places and the
+    // other's to the odd ones, each group in its order
+    let n = s.len();
+    let letter_count = s.chars().filter(|c| c.is_alphabetic()).count();
+    let digit_count = n - letter_count;
+    if letter_count > digit_count + 1 or digit_count > letter_count + 1 {
+        return "";
+    }
+    let letters_even = letter_count >= digit_count;
+    let mut out: Vec[char] = Vec.filled(n, ' ');
+    let mut even = 0;
+    let mut odd = 1;
+    for c in s.chars() {
+        if c.is_alphabetic() == letters_even {
+            out[even] = c;
+            even += 2;
+        } else {
+            out[odd] = c;
+            odd += 2;
+        }
+    }
+    out.iter().collect()
+}
+
+// ---- reformat_zip.kara ----
+fn a2_reformat(s: String) -> String {
+    // the two groups zipped pair by pair, the larger first, and its one
+    // left over put at the end
+    let (letters, digits): (Vec[char], Vec[char]) = s.chars().partition(|c| c.is_alphabetic());
+    let (more, fewer) = if letters.len() >= digits.len() { (letters, digits) } else { (digits, letters) };
+    if more.len() > fewer.len() + 1 {
+        return "";
+    }
+    let pairs: Vec[String] = more.iter().zip(fewer.iter()).map(|(a, b)| f"{a}{b}").collect();
+    let mut out = pairs.join("");
+    if more.len() > fewer.len() {
+        out.push(more[more.len() - 1]);
+    }
+    out
+}
+
+// ---- reformat_turns.kara ----
+fn a3_reformat(s: String) -> String {
+    // one pointer into each group, and the turn passed back and forth:
+    // whoever has more starts, and a turn with nothing left ends it
+    let chars: Vec[char] = s.chars().collect();
+    let letters: Vec[i64] = (0..chars.len()).filter(|i| chars[i].is_ascii_alphabetic()).collect();
+    let digits: Vec[i64] = (0..chars.len()).filter(|i| chars[i].is_ascii_digit()).collect();
+    let mut out = String.new();
+    let mut li = 0;
+    let mut di = 0;
+    let mut letter_turn = letters.len() >= digits.len();
+    while out.len() < chars.len() {
+        if letter_turn {
+            if li == letters.len() {
+                return "";
+            }
+            out.push(chars[letters[li]]);
+            li += 1;
+        } else {
+            if di == digits.len() {
+                return "";
+            }
+            out.push(chars[digits[di]]);
+            di += 1;
+        }
+        letter_turn = not letter_turn;
+    }
+    out
+}
+
+// ---- reformat_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn a4_reformat(s: String) -> String {
+        let mut letters: Vec[char] = Vec.new();
+        let mut digits: Vec[char] = Vec.new();
+        for c in s.chars() {
+            if c.is_ascii_digit() {
+                digits.push(c);
+            } else {
+                letters.push(c);
+            }
+        }
+        if (letters.len() as i32 - digits.len() as i32).abs() > 1 {
+            return String.new();
+        }
+        let (a, b) = if letters.len() >= digits.len() { (ref letters, ref digits) } else { (ref digits, ref letters) };
+        let mut res = String.with_capacity(s.len());
+        for i in 0..a.len() {
+            res.push(a[i]);
+            if i < b.len() {
+                res.push(b[i]);
+            }
+        }
+        res
+    }
+}
+
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n characters, a digit one time in `digits` and a letter otherwise
+fn drawn(n: i64, digits: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        let r = next_random(mut seed);
+        if r % digits == 0 {
+            s.push_str(f"{r / 7 % 10}");
+        } else {
+            s.push(['a', 'b', 'c', 'x', 'y', 'z'][r / 7 % 6]);
+        }
+    }
+    s
+}
+
+// the statement read literally: a permutation built a character at a
+// time, each one any not yet used whose kind differs from the one before,
+// tried from a letter first and from a digit first; whether one reaches
+// the full length
+fn literal(s: String) -> bool {
+    let chars: Vec[char] = s.chars().collect();
+    for start_letter in [true, false] {
+        let mut used: Vec[bool] = Vec.filled(chars.len(), false);
+        let mut want_letter = start_letter;
+        let mut placed = 0;
+        let mut stuck = false;
+        while placed < chars.len() and not stuck {
+            stuck = true;
+            for i in 0..chars.len() {
+                if stuck and not used[i] and chars[i].is_alphabetic() == want_letter {
+                    used[i] = true;
+                    placed += 1;
+                    want_letter = not want_letter;
+                    stuck = false;
+                }
+            }
+        }
+        if placed == chars.len() {
+            return true;
+        }
+    }
+    false
+}
+
+fn arm(i: i64, s: String) -> String {
+    let s = s.clone();
+    match i {
+        0 => a0_reformat(s),
+        1 => a1_reformat(s),
+        2 => a2_reformat(s),
+        3 => a3_reformat(s),
+        _ => A4Solution.a4_reformat(s),
+    }
+}
+
+fn sorted(s: String) -> Vec[char] {
+    let mut v: Vec[char] = s.chars().collect();
+    v.sort();
+    v
+}
+
+// the characters of one kind, in order
+fn kind(s: String, letters: bool) -> String {
+    s.chars().filter(|c| c.is_alphabetic() == letters).collect()
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, s: String) {
+    t.cases += 1;
+    let star = arm(0, s);
+    for b in star.bytes().iter() {
+        t.check = (t.check * 131 + b as i64) % 1000000007;
+    }
+    t.check = (t.check * 131 + s.len()) % 1000000007;
+    let possible = literal(s);
+    let letters = kind(s, true);
+    let digits = kind(s, false);
+    for i in 0..5 {
+        let what = f"arm {i} on {s}";
+        let got = arm(i, s);
+        // P1: the statement read literally: an answer exactly when some
+        // permutation alternates
+        expect(mut t, 1, got.is_empty() != possible, f"P1 {what}: possible {possible}, got {got}");
+        if not got.is_empty() {
+            // P2: a permutation of s
+            expect(mut t, 2, sorted(got) == sorted(s), f"P2 {what}: {got}");
+            // P3: no two letters and no two digits side by side
+            let c: Vec[char] = got.chars().collect();
+            expect(mut t, 3, (1..c.len()).all(|j| c[j].is_alphabetic() != c[j - 1].is_alphabetic()), f"P3 {what}: {got}");
+            // P4: each kind in the order s has it
+            expect(mut t, 4, kind(got, true) == letters and kind(got, false) == digits, f"P4 {what}: {got}");
+            // P5: the larger kind first, a letter on a tie
+            let first_letter = c[0].is_alphabetic();
+            expect(mut t, 5, first_letter == (letters.len() >= digits.len()), f"P5 {what}: {got}");
+        }
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}, ★: {star}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples and the edges: one character of each kind, two
+    // of one, a tie, one more of either kind, and the constraints' most.
+    // Every case is drawn before any arm answers.
+    let mut cases: Vec[String] = ["a0b1c2", "leetcode", "1229857369", "covid2019", "a", "7", "ab", "12", "a1", "1a", "ab1", "a12", "abc12"].iter().map(|s| s.to_string()).collect();
+    let pieces: Vec[String] = (0..250).map(|i| f"{i % 10}q").collect();
+    let half = pieces.join("");
+    cases.push(half.clone());
+    cases.push(half[1..].to_string());
+    cases.push(f"{half}7");
+    let mut seed = 14171;
+    // 1987 random strings of 1 to 30 characters: one kind drawn as often
+    // as the other, or with one more or one fewer of either, shuffled
+    for i in 0..1987 {
+        if i % 2 == 0 {
+            let n = 1 + next_random(mut seed) % 30;
+            cases.push(drawn(n, 2 + next_random(mut seed) % 2, mut seed));
+        } else {
+            let pairs = next_random(mut seed) % 15;
+            let extra = next_random(mut seed) % 3;
+            let mut chars: Vec[char] = Vec.new();
+            for p in 0..pairs {
+                chars.push(['a', 'b', 'c', 'x', 'y', 'z'][(p + next_random(mut seed)) % 6]);
+                chars.push(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'][(p + next_random(mut seed)) % 10]);
+            }
+            if extra == 1 {
+                chars.push('m');
+            } else if extra == 2 {
+                chars.push('5');
+            }
+            if chars.is_empty() {
+                chars.push('k');
+            }
+            for j in (1..chars.len()).rev() {
+                chars.swap(j, next_random(mut seed) % (j + 1));
+            }
+            cases.push(chars.iter().collect());
+        }
+    }
+    for s in cases.iter() {
+        check_case(mut t, s);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
