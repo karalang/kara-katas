@@ -1,0 +1,306 @@
+// LeetCode #1792: Maximum Average Pass Ratio --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- max_average_ratio.kara ----
+fn a0_gain(p: i64, t: i64) -> f64 {
+    (p + 1) as f64 / (t + 1) as f64 - p as f64 / t as f64
+}
+
+fn a0_max_average_ratio(classes: Vec[Vec[i32]], extra_students: i32) -> f64 {
+    let n = classes.len();
+    let mut pass: Vec[i64] = classes.iter().map(|c| c[0] as i64).collect();
+    let mut total: Vec[i64] = classes.iter().map(|c| c[1] as i64).collect();
+    let mut queue: PriorityQueue[(F64, i64)] = PriorityQueue.max_first();
+    for i in 0..n {
+        queue.push((F64.from(a0_gain(pass[i], total[i])), i));
+    }
+    for _ in 0..extra_students {
+        let (_, i) = queue.pop().unwrap();
+        pass[i] += 1;
+        total[i] += 1;
+        queue.push((F64.from(a0_gain(pass[i], total[i])), i));
+    }
+    let mut sum = 0.0;
+    for i in 0..n {
+        sum += pass[i] as f64 / total[i] as f64;
+    }
+    sum / n as f64
+}
+
+// ---- max_average_ratio_cross.kara ----
+struct A1Class {
+    pass: i64,
+    total: i64,
+}
+
+impl PartialEq for A1Class {
+    fn eq(self, other: A1Class) -> bool {
+        self.cmp(other) == Ordering.Equal
+    }
+}
+
+impl Eq for A1Class {}
+
+impl PartialOrd for A1Class {
+    fn partial_cmp(self, other: A1Class) -> Option[Ordering] {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for A1Class {
+    // the larger gain is the larger class
+    fn cmp(self, other: A1Class) -> Ordering {
+        let mine = (self.total - self.pass) * other.total * (other.total + 1);
+        let theirs = (other.total - other.pass) * self.total * (self.total + 1);
+        mine.cmp(theirs)
+    }
+}
+
+fn a1_max_average_ratio(classes: Vec[Vec[i32]], extra_students: i32) -> f64 {
+    let mut queue: PriorityQueue[A1Class] = PriorityQueue.max_first();
+    for c in classes.iter() {
+        queue.push(A1Class { pass: c[0], total: c[1] });
+    }
+    for _ in 0..extra_students {
+        let best = queue.pop().unwrap();
+        queue.push(A1Class { pass: best.pass + 1, total: best.total + 1 });
+    }
+    let mut sum = 0.0;
+    while let Some(c) = queue.pop() {
+        sum += c.pass as f64 / c.total as f64;
+    }
+    sum / classes.len() as f64
+}
+
+// ---- max_average_ratio_tree.kara ----
+fn a2_max_average_ratio(classes: Vec[Vec[i32]], extra_students: i32) -> f64 {
+    let n = classes.len();
+    let mut pass: Vec[f64] = classes.iter().map(|c| c[0] as f64).collect();
+    let mut total: Vec[f64] = classes.iter().map(|c| c[1] as f64).collect();
+    let gain = |p: f64, t: f64| (p + 1.0) / (t + 1.0) - p / t;
+    let mut tree: SortedSet[(F64, i64)] = SortedSet.new();
+    for i in 0..n {
+        tree.insert((F64.from(gain(pass[i], total[i])), i));
+    }
+    for _ in 0..extra_students {
+        let (_, i) = tree.pop_last().unwrap();
+        pass[i] += 1.0;
+        total[i] += 1.0;
+        tree.insert((F64.from(gain(pass[i], total[i])), i));
+    }
+    let ratios: Vec[f64] = (0..n).map(|i| pass[i] / total[i]).collect();
+    ratios.iter().sum() / n as f64
+}
+
+// ---- max_average_ratio_closed.kara ----
+fn a3_max_average_ratio(classes: Vec[Vec[i32]], extra_students: i32) -> f64 {
+    let gain = |p: i64, t: i64| (t - p) as f64 / (t * (t + 1)) as f64;
+    let mut queue: PriorityQueue[(F64, i64, i64)] = PriorityQueue.max_first();
+    for c in classes.iter() {
+        let (p, t) = (c[0] as i64, c[1] as i64);
+        queue.push((F64.from(gain(p, t)), p, t));
+    }
+    for _ in 0..extra_students {
+        let (_, p, t) = queue.pop().unwrap();
+        queue.push((F64.from(gain(p + 1, t + 1)), p + 1, t + 1));
+    }
+    let mut sum = 0.0;
+    while let Some((_, p, t)) = queue.pop() {
+        sum += p as f64 / t as f64;
+    }
+    sum / classes.len() as f64
+}
+
+// ---- max_average_ratio_solution.kara ----
+#[derive(PartialEq)]
+struct A4Item { f0: f64, f1: i32, f2: i32 }
+
+impl Eq for A4Item {}
+
+impl PartialOrd for A4Item {
+    fn partial_cmp(self, other: ref Self) -> Option[Ordering] {
+        self.f0.partial_cmp(other.f0)
+    }
+}
+
+impl Ord for A4Item {
+    fn cmp(self, other: ref Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn max_average_ratio(classes: Vec[Vec[i32]], extra_students: i32) -> f64 {
+        let gain = |p: i32, t: i32| (p + 1) as f64 / (t + 1) as f64 - p as f64 / t as f64;
+        let mut heap = PriorityQueue.max_first();
+        for c in ref classes {
+            heap.push(A4Item { f0: gain(c[0], c[1]), f1: c[0], f2: c[1] });
+        }
+        for _ in 0..extra_students {
+            let A4Item { f0: _, f1: p, f2: t } = heap.pop().unwrap();
+            heap.push(A4Item { f0: gain(p + 1, t + 1), f1: p + 1, f2: t + 1 });
+        }
+        let n = classes.len() as f64;
+        heap.into_iter().map(|A4Item { f0: _, f1: p, f2: t }| p as f64 / t as f64).sum() / n
+    }
+}
+
+fn a4_max_average_ratio(classes: Vec[Vec[i32]], extra_students: i32) -> f64 {
+    A4Solution.max_average_ratio(classes, extra_students)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the ratio in hundred-thousandths, rounded half up
+fn fixed(r: f64) -> i64 {
+    (r * 100000.0 + 0.5).floor() as i64
+}
+
+fn random_classes(seed: mut ref i64, n: i64, most: i64) -> Vec[Vec[i32]] {
+    let mut classes: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..n {
+        let t = 1 + next_random(mut seed) % most;
+        let p = 1 + next_random(mut seed) % t;
+        classes.push([p as i32, t as i32].to_vec());
+    }
+    classes
+}
+
+// the statement read literally: every way to share the extra students
+// among the classes tried, and the largest average kept
+fn literal(classes: Vec[Vec[i32]], extra: i32) -> f64 {
+    let n = classes.len();
+    let mut share: Vec[i32] = Vec.filled(n, 0);
+    let mut best = -1.0;
+    try_shares(classes, mut share, 0, extra, mut best);
+    best
+}
+
+fn try_shares(classes: Vec[Vec[i32]], share: mut ref Vec[i32], i: i64, left: i32, best: mut ref f64) {
+    let n = classes.len();
+    if i == n - 1 {
+        share[i] = left;
+        let mut sum = 0.0;
+        for j in 0..n {
+            sum += (classes[j][0] + share[j]) as f64 / (classes[j][1] + share[j]) as f64;
+        }
+        if sum / n as f64 > *best {
+            *best = sum / n as f64;
+        }
+        return;
+    }
+    for k in 0..left + 1 {
+        share[i] = k;
+        try_shares(classes, mut share, i + 1, left - k, mut best);
+    }
+}
+
+fn arm(i: i64, classes: Vec[Vec[i32]], extra: i32) -> f64 {
+    match i {
+        0 => a0_max_average_ratio(classes, extra),
+        1 => a1_max_average_ratio(classes, extra),
+        2 => a2_max_average_ratio(classes, extra),
+        3 => a3_max_average_ratio(classes, extra),
+        _ => a4_max_average_ratio(classes, extra),
+    }
+}
+
+fn near(a: f64, b: f64) -> bool {
+    (a - b).abs() <= 0.000000001
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, classes: Vec[Vec[i32]], extra: i32) {
+    t.cases += 1;
+    let n = classes.len();
+    let star = arm(0, classes, extra);
+    t.check = (t.check * 31 + fixed(star)) % 1000000007;
+    let want = if n <= 4 and extra <= 6 { Some(literal(classes, extra)) } else { None };
+    let mut back = classes.clone();
+    back.reverse();
+    let mut grown = classes.clone();
+    grown.push([7i32, 7].to_vec());
+    let mut twice = classes.clone();
+    twice.extend(classes.clone());
+    for i in 0..5 {
+        let what = f"arm {i} on {classes} with {extra}";
+        let got = arm(i, classes, extra);
+        // P1: the statement read literally, while there are at most 4
+        // classes and 6 more students
+        if let Some(w) = want {
+            expect(mut t, 1, near(got, w), f"P1 {what}");
+        }
+        // P2: the classes in reverse order give the same answer
+        expect(mut t, 2, near(arm(i, back, extra), got), f"P2 {what}");
+        // P3: one more student never lowers the answer
+        expect(mut t, 3, arm(i, classes, extra + 1) >= got - 0.000000001, f"P3 {what}");
+        // P4: a class of 7 all passing, appended, takes no student, and
+        // the average becomes (n * answer + 1) / (n + 1)
+        expect(mut t, 4, near(arm(i, grown, extra), (n as f64 * got + 1.0) / (n + 1) as f64), f"P4 {what}");
+        // P5: every class twice over, and twice the students, give the
+        // same answer
+        expect(mut t, 5, near(arm(i, twice, 2 * extra), got), f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, near(got, star), f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples, the edges, a few hundred classes, and 1990
+    // random cases, mostly small enough to read literally. Every case is
+    // drawn before any arm answers.
+    let mut cases: Vec[(Vec[Vec[i32]], i32)] = Vec.new();
+    cases.push(([[1i32, 2], [3, 5], [2, 2]].to_vec(), 2));
+    cases.push(([[2i32, 4], [3, 9], [4, 5], [2, 10]].to_vec(), 4));
+    cases.push(([[3i32, 3]].to_vec(), 4));
+    cases.push(([[1i32, 2]].to_vec(), 1));
+    cases.push(([[1i32, 3], [1, 3]].to_vec(), 3));
+    cases.push(([[5i32, 5], [1, 5]].to_vec(), 10));
+    let mut seed = 17921;
+    for _ in 0..4 {
+        let classes = random_classes(mut seed, 300, 1000);
+        let extra = 1 + next_random(mut seed) % 1000;
+        cases.push((classes, extra as i32));
+    }
+    for _ in 0..1990 {
+        let n = 1 + next_random(mut seed) % 4;
+        let classes = random_classes(mut seed, n, 8);
+        let extra = 1 + next_random(mut seed) % 6;
+        cases.push((classes, extra as i32));
+    }
+    for j in 0..cases.len() {
+        let (classes, extra) = cases[j].clone();
+        check_case(mut t, classes, extra);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

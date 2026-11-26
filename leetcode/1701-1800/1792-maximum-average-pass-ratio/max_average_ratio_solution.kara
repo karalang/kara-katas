@@ -1,0 +1,98 @@
+// LeetCode #1792: Maximum Average Pass Ratio -- a Rust solution as
+// LeetCode's Rust users write it, carried to Kāra by `karac fix`
+
+#[derive(PartialEq)]
+struct Item { f0: f64, f1: i32, f2: i32 }
+
+impl Eq for Item {}
+
+impl PartialOrd for Item {
+    fn partial_cmp(self, other: ref Self) -> Option[Ordering] {
+        self.f0.partial_cmp(other.f0)
+    }
+}
+
+impl Ord for Item {
+    fn cmp(self, other: ref Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_average_ratio(classes: Vec[Vec[i32]], extra_students: i32) -> f64 {
+        let gain = |p: i32, t: i32| (p + 1) as f64 / (t + 1) as f64 - p as f64 / t as f64;
+        let mut heap = PriorityQueue.max_first();
+        for c in ref classes {
+            heap.push(Item { f0: gain(c[0], c[1]), f1: c[0], f2: c[1] });
+        }
+        for _ in 0..extra_students {
+            let Item { f0: _, f1: p, f2: t } = heap.pop().unwrap();
+            heap.push(Item { f0: gain(p + 1, t + 1), f1: p + 1, f2: t + 1 });
+        }
+        let n = classes.len() as f64;
+        heap.into_iter().map(|Item { f0: _, f1: p, f2: t }| p as f64 / t as f64).sum() / n
+    }
+}
+
+fn max_average_ratio(classes: Vec[Vec[i32]], extra_students: i32) -> f64 {
+    Solution.max_average_ratio(classes, extra_students)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the ratio in hundred-thousandths, rounded half up
+fn fixed(r: f64) -> i64 {
+    (r * 100000.0 + 0.5).floor() as i64
+}
+
+// n classes of 1 to `most` students, each passing 1 to all of them
+fn random_classes(seed: mut ref i64, n: i64, most: i64) -> Vec[Vec[i32]] {
+    let mut classes: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..n {
+        let t = 1 + next_random(mut seed) % most;
+        let p = 1 + next_random(mut seed) % t;
+        classes.push([p as i32, t as i32].to_vec());
+    }
+    classes
+}
+
+fn main() {
+    // LeetCode's two examples
+    let first: Vec[Vec[i32]] = [[1, 2], [3, 5], [2, 2]].to_vec();
+    let second: Vec[Vec[i32]] = [[2, 4], [3, 9], [4, 5], [2, 10]].to_vec();
+    println(f"{max_average_ratio(first, 2):.5} {max_average_ratio(second, 4):.5}");
+    // the edges: one class all passing; one class of two, one passing,
+    // and one student; two classes alike; a full class beside one with a
+    // single student passing
+    let full: Vec[Vec[i32]] = [[3, 3]].to_vec();
+    let half: Vec[Vec[i32]] = [[1, 2]].to_vec();
+    let alike: Vec[Vec[i32]] = [[1, 3], [1, 3]].to_vec();
+    let mixed: Vec[Vec[i32]] = [[5, 5], [1, 5]].to_vec();
+    println(f"{max_average_ratio(full, 4):.5} {max_average_ratio(half, 1):.5} {max_average_ratio(alike, 3):.5} {max_average_ratio(mixed, 10):.5}");
+    // the constraints' most: 100000 classes and 100000 students, every
+    // class of 100000 with one passing; and classes at random
+    let mut seed = 1792;
+    let mut one: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..100000 {
+        one.push([1i32, 100000].to_vec());
+    }
+    let wide = random_classes(mut seed, 100000, 100000);
+    println(f"the most: {max_average_ratio(one, 100000):.5} {max_average_ratio(wide, 100000):.5}");
+    // 2000 random cases of 1 to 12 classes of up to 20 students, and 1 to
+    // 30 more students
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 12;
+        let classes = random_classes(mut seed, n, 20);
+        let extra = 1 + next_random(mut seed) % 30;
+        check = (check * 31 + fixed(max_average_ratio(classes, extra as i32))) % 1000000007;
+    }
+    println(f"2000 random cases: checksum {check}");
+}

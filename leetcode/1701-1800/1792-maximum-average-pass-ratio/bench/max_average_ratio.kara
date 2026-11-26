@@ -1,0 +1,56 @@
+// LeetCode #1792: Maximum Average Pass Ratio -- the bench: the ★ arm, each
+// student to the class its pass raises most, over 200 random lists of 1000
+// classes built once, 4000 calls, each with 1 to 1000 more students drawn
+// from the checksum so far.
+
+fn gain(p: i64, t: i64) -> f64 {
+    (p + 1) as f64 / (t + 1) as f64 - p as f64 / t as f64
+}
+
+fn max_average_ratio(classes: Vec[Vec[i32]], extra_students: i32) -> f64 {
+    let n = classes.len();
+    let mut pass: Vec[i64] = classes.iter().map(|c| c[0] as i64).collect();
+    let mut total: Vec[i64] = classes.iter().map(|c| c[1] as i64).collect();
+    let mut queue: PriorityQueue[(F64, i64)] = PriorityQueue.max_first();
+    for i in 0..n {
+        queue.push((F64.from(gain(pass[i], total[i])), i));
+    }
+    for _ in 0..extra_students {
+        let (_, i) = queue.pop().unwrap();
+        pass[i] += 1;
+        total[i] += 1;
+        queue.push((F64.from(gain(pass[i], total[i])), i));
+    }
+    let mut sum = 0.0;
+    for i in 0..n {
+        sum += pass[i] as f64 / total[i] as f64;
+    }
+    sum / n as f64
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1792;
+    let mut lists: Vec[Vec[Vec[i32]]] = Vec.new();
+    for _ in 0..200 {
+        let mut classes: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..1000 {
+            let t = 1 + next_random(mut seed) % 1000;
+            let p = 1 + next_random(mut seed) % t;
+            classes.push([p as i32, t as i32].to_vec());
+        }
+        lists.push(classes);
+    }
+    let mut check = 0;
+    for call in 0..4000 {
+        let classes = ref lists[(check + call) % 200];
+        let extra = 1 + check % 1000;
+        let r = max_average_ratio(classes, extra as i32);
+        check = (check * 31 + (r * 100000.0 + 0.5).floor() as i64) % 1000000007;
+    }
+    println(f"4000 calls over 200 lists of 1000 classes: checksum {check}");
+}
