@@ -1,0 +1,109 @@
+// LeetCode #1801: Number of Orders in the Backlog -- a Rust solution as
+// LeetCode's Rust users write it, carried to Kāra by `karac fix`
+
+import std.cmp.Reverse;
+
+struct Solution {}
+
+impl Solution {
+    pub fn get_number_of_backlog_orders(orders: Vec[Vec[i32]]) -> i32 {
+        let mut buy: PriorityQueue[(i32, i32)] = PriorityQueue.max_first();
+        let mut sell: PriorityQueue[Reverse[(i32, i32)]] = PriorityQueue.max_first();
+        for o in orders {
+            let mut (price, amount, t) = (o[0], o[1], o[2]);
+            if t == 0 {
+                while amount > 0 and not sell.is_empty() and sell.peek().unwrap().value .0 <= price {
+                    let Reverse { value: (p, a) } = sell.pop().unwrap();
+                    if a > amount {
+                        sell.push(Reverse { value: (p, a - amount) });
+                        amount = 0;
+                    } else {
+                        amount -= a;
+                    }
+                }
+                if amount > 0 {
+                    buy.push((price, amount));
+                }
+            } else {
+                while amount > 0 and not buy.is_empty() and buy.peek().unwrap().0 >= price {
+                    let (p, a) = buy.pop().unwrap();
+                    if a > amount {
+                        buy.push((p, a - amount));
+                        amount = 0;
+                    } else {
+                        amount -= a;
+                    }
+                }
+                if amount > 0 {
+                    sell.push(Reverse { value: (price, amount) });
+                }
+            }
+        }
+        let mut total: i64 = 0;
+        for (_, a) in buy {
+            total += a;
+        }
+        for Reverse { value: (_, a) } in sell {
+            total += a;
+        }
+        (total % 1_000_000_007) as i32
+    }
+}
+
+fn get_number_of_backlog_orders(orders: Vec[Vec[i32]]) -> i32 {
+    Solution.get_number_of_backlog_orders(orders)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn orders_of(rows: Vec[(i32, i32, i32)]) -> Vec[Vec[i32]] {
+    rows.iter().map(|(p, a, t)| [p, a, t].to_vec()).collect()
+}
+
+fn main() {
+    // LeetCode's two examples
+    let first = orders_of([(10, 5, 0), (15, 2, 1), (25, 1, 1), (30, 4, 0)].to_vec());
+    let second = orders_of([(7, 1000000000, 1), (15, 3, 0), (5, 999999995, 0), (5, 1, 1)].to_vec());
+    println(f"{get_number_of_backlog_orders(first)} {get_number_of_backlog_orders(second)}");
+    // the edges: one order; a buy below a sell, which never meet; a buy
+    // and a sell that cancel; a sell met by a buy at its own price; a buy
+    // that clears three sells and rests; two buys of 10^9 that overflow
+    // the modulus
+    let one = orders_of([(5, 3, 1)].to_vec());
+    let apart = orders_of([(4, 2, 0), (6, 3, 1)].to_vec());
+    let cancel = orders_of([(6, 3, 1), (6, 3, 0)].to_vec());
+    let equal = orders_of([(5, 4, 1), (5, 1, 0)].to_vec());
+    let sweep = orders_of([(1, 1, 1), (2, 2, 1), (3, 3, 1), (9, 10, 0)].to_vec());
+    let big = orders_of([(1, 1000000000, 0), (2, 1000000000, 0)].to_vec());
+    println(f"{get_number_of_backlog_orders(one)} {get_number_of_backlog_orders(apart)} {get_number_of_backlog_orders(cancel)} {get_number_of_backlog_orders(equal)} {get_number_of_backlog_orders(sweep)} {get_number_of_backlog_orders(big)}");
+    // the constraints' most: 10^5 buys of 10^9 at prices from 1 to 10^5;
+    // and 10^5 orders at random, prices and amounts of up to 10^9
+    let rests: Vec[Vec[i32]] = (0..100000).map(|i| [(i + 1) as i32, 1000000000, 0].to_vec()).collect();
+    let mut seed = 1801;
+    let wide: Vec[Vec[i32]] = (0..100000).map(|_| {
+        let p = (1 + next_random(mut seed) % 1000000000) as i32;
+        let a = (1 + next_random(mut seed) % 1000000000) as i32;
+        let t = (next_random(mut seed) % 2) as i32;
+        [p, a, t].to_vec()
+    }).collect();
+    println(f"the most: {get_number_of_backlog_orders(rests)} {get_number_of_backlog_orders(wide)}");
+    // 3000 random cases of 1 to 20 orders, prices of 1 to 10 and amounts
+    // of 1 to 10
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 20;
+        let orders: Vec[Vec[i32]] = (0..n).map(|_| {
+            let p = (1 + next_random(mut seed) % 10) as i32;
+            let a = (1 + next_random(mut seed) % 10) as i32;
+            let t = (next_random(mut seed) % 2) as i32;
+            [p, a, t].to_vec()
+        }).collect();
+        check = (check * 31 + get_number_of_backlog_orders(orders)) % 1000000007;
+    }
+    println(f"3000 random cases: checksum {check}");
+}
