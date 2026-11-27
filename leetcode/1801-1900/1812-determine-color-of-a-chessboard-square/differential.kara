@@ -1,0 +1,163 @@
+// LeetCode #1812: Determine Color of a Chessboard Square --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- square_is_white.kara ----
+fn a0_square_is_white(coordinates: String) -> bool {
+    let bytes = coordinates.bytes();
+    let file = (bytes[0] - b'a') as i64;
+    let rank = (bytes[1] - b'1') as i64;
+    (file + rank) % 2 == 1
+}
+
+// ---- square_is_white_board.kara ----
+fn a1_square_is_white(coordinates: String) -> bool {
+    let mut board: Vec[Vec[bool]] = Vec.new();
+    let mut first = false;
+    for _ in 0..8 {
+        let mut rank: Vec[bool] = Vec.new();
+        let mut white = first;
+        for _ in 0..8 {
+            rank.push(white);
+            white = not white;
+        }
+        board.push(rank);
+        first = not first;
+    }
+    let chars: Vec[char] = coordinates.chars().collect();
+    let file = "abcdefgh".find(chars[0].to_string()).unwrap();
+    let rank = chars[1].to_digit(10).unwrap() as i64 - 1;
+    board[rank][file]
+}
+
+// ---- square_is_white_xor.kara ----
+fn a2_square_is_white(coordinates: String) -> bool {
+    let bytes = coordinates.bytes();
+    ((bytes[0] ^ bytes[1]) & 1) == 1
+}
+
+// ---- square_is_white_match.kara ----
+fn a3_square_is_white(coordinates: String) -> bool {
+    let mut chars = coordinates.chars();
+    let file = chars.next().unwrap();
+    let rank = chars.next().unwrap();
+    let even_rank = match rank { '2' | '4' | '6' | '8' => true, _ => false };
+    match file {
+        'a' | 'c' | 'e' | 'g' => even_rank,
+        _ => not even_rank,
+    }
+}
+
+// ---- square_is_white_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn square_is_white(coordinates: String) -> bool {
+        let c = coordinates.bytes();
+        (c[0] - b'a' + c[1] - b'1') % 2 == 1
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+// the statement read literally: a1 is black, and every step to a square
+// beside it, along a rank or a file, changes the colour, so the square is
+// reached from a1 a step at a time and the colour flipped at each step
+fn literal(coordinates: String) -> bool {
+    let target: Vec[char] = coordinates.chars().collect();
+    let mut file = 'a';
+    let mut rank = '1';
+    let mut white = false;
+    while file != target[0] {
+        file = char.try_from(file as u32 + 1).ok().unwrap();
+        white = not white;
+    }
+    while rank != target[1] {
+        rank = char.try_from(rank as u32 + 1).ok().unwrap();
+        white = not white;
+    }
+    white
+}
+
+fn arm(i: i64, name: String) -> bool {
+    match i {
+        0 => a0_square_is_white(name),
+        1 => a1_square_is_white(name),
+        2 => a2_square_is_white(name),
+        3 => a3_square_is_white(name),
+        _ => A4Solution.square_is_white(name),
+    }
+}
+
+fn name_of(file: i64, rank: i64) -> String {
+    let f = char.try_from(97 + file as u32).ok().unwrap();
+    f"{f}{rank + 1}"
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, file: i64, rank: i64) {
+    t.cases += 1;
+    let name = name_of(file, rank);
+    let star = arm(0, name);
+    t.check = (t.check * 31 + if star { 1 } else { 0 }) % 1000000007;
+    let want = literal(name);
+    for i in 0..5 {
+        let what = f"arm {i} on {name}";
+        let got = arm(i, name);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: every square beside it along a rank or a file has the other
+        // colour
+        let steps = [(1, 0), (-1, 0), (0, 1), (0, -1)];
+        let mut ok2 = true;
+        for (df, dr) in steps.iter() {
+            let (f, r) = (file + df, rank + dr);
+            if f >= 0 and f < 8 and r >= 0 and r < 8 and arm(i, name_of(f, r)) == got {
+                ok2 = false;
+            }
+        }
+        expect(mut t, 2, ok2, f"P2 {what}");
+        // P3: the square's mirror across the board, a for h, has the other
+        // colour
+        expect(mut t, 3, arm(i, name_of(7 - file, rank)) != got, f"P3 {what}");
+        // P4: the board turned half round, a1 for h8, keeps the colour
+        expect(mut t, 4, arm(i, name_of(7 - file, 7 - rank)) == got, f"P4 {what}");
+        // P5: the square's rank holds 4 white squares
+        let whites = (0..8).filter(|f| arm(i, name_of(f, rank))).count();
+        expect(mut t, 5, whites == 4, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // every square there is, a1 to h8
+    for file in 0..8 {
+        for rank in 0..8 {
+            check_case(mut t, file, rank);
+        }
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
