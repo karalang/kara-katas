@@ -1,0 +1,68 @@
+// LeetCode #1828: Queries on Number of Points Inside a Circle -- the ★
+// arm: each query against each point, the point counted when its squared
+// distance from the centre is at most the squared radius, so no root is
+// taken and a point on the circle counts.
+// O(n q)
+
+fn count_points(points: Vec[Vec[i64]], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut answer: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let (x, y, r) = (q[0], q[1], q[2]);
+        let mut inside = 0;
+        for p in points.iter() {
+            let (dx, dy) = (p[0] - x, p[1] - y);
+            if dx * dx + dy * dy <= r * r {
+                inside += 1;
+            }
+        }
+        answer.push(inside);
+    }
+    answer
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn grid(rows: Slice[(i64, i64)]) -> Vec[Vec[i64]] {
+    rows.iter().map(|(a, b)| [a, b].to_vec()).collect()
+}
+
+fn circles(rows: Slice[(i64, i64, i64)]) -> Vec[Vec[i64]] {
+    rows.iter().map(|(a, b, c)| [a, b, c].to_vec()).collect()
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{count_points(grid([(1, 3), (3, 3), (5, 3), (2, 2)][..]), circles([(2, 3, 1), (4, 3, 1), (1, 1, 2)][..]))} {count_points(grid([(1, 1), (2, 2), (3, 3), (4, 4), (5, 5)][..]), circles([(1, 2, 2), (2, 2, 2), (4, 3, 2), (4, 3, 3)][..]))}");
+    // the edges: points on the circle, 3-4-5 from the centre, and one just
+    // past it; a point at the centre; a circle reaching past the grid's
+    // corner; one place given three times; no point inside
+    let edge = grid([(3, 4), (0, 5), (5, 0), (4, 4), (0, 0), (500, 500), (500, 500), (500, 500)][..]);
+    println(f"{count_points(edge, circles([(0, 0, 5), (0, 0, 1), (500, 500, 1), (0, 0, 500), (250, 250, 3)][..]))}");
+    // the constraints' most: 500 points and 500 queries of radius 500 all
+    // over the grid, and of radius 1
+    let mut seed = 1828;
+    let many: Vec[(i64, i64)] = (0..500).map(|_| (next_random(mut seed) % 501, next_random(mut seed) % 501)).collect();
+    let wide: Vec[(i64, i64, i64)] = (0..500).map(|_| (next_random(mut seed) % 501, next_random(mut seed) % 501, 500)).collect();
+    let narrow: Vec[(i64, i64, i64)] = (0..500).map(|_| (next_random(mut seed) % 501, next_random(mut seed) % 501, 1)).collect();
+    let all_wide: i64 = count_points(grid(many[..]), circles(wide[..])).iter().sum();
+    let all_narrow: i64 = count_points(grid(many[..]), circles(narrow[..])).iter().sum();
+    println(f"the most: {all_wide} {all_narrow}");
+    // 3000 random cases of 1 to 8 points and 1 to 5 queries, coordinates
+    // from 0 to 10 and radii from 1 to 6
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 8;
+        let points: Vec[(i64, i64)] = (0..n).map(|_| (next_random(mut seed) % 11, next_random(mut seed) % 11)).collect();
+        let m = 1 + next_random(mut seed) % 5;
+        let queries: Vec[(i64, i64, i64)] = (0..m).map(|_| (next_random(mut seed) % 11, next_random(mut seed) % 11, 1 + next_random(mut seed) % 6)).collect();
+        for c in count_points(grid(points[..]), circles(queries[..])).iter() {
+            check = (check * 31 + c) % 1000000007;
+        }
+    }
+    println(f"3000 random cases: checksum {check}");
+}

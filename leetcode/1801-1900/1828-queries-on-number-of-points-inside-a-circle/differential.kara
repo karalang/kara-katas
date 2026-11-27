@@ -1,0 +1,225 @@
+// LeetCode #1828: Queries on Number of Points Inside a Circle --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- count_points.kara ----
+fn a0_count_points(points: Vec[Vec[i64]], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut answer: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let (x, y, r) = (q[0], q[1], q[2]);
+        let mut inside = 0;
+        for p in points.iter() {
+            let (dx, dy) = (p[0] - x, p[1] - y);
+            if dx * dx + dy * dy <= r * r {
+                inside += 1;
+            }
+        }
+        answer.push(inside);
+    }
+    answer
+}
+
+// ---- count_points_sorted.kara ----
+fn a1_count_points(points: Vec[Vec[i64]], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut sorted: Vec[(i64, i64)] = points.iter().map(|p| (p[0], p[1])).collect();
+    sorted.sort();
+    let mut answer: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let (x, y, r) = (q[0], q[1], q[2]);
+        let from = sorted.partition_point(|p| p.0 < x - r);
+        let to = sorted.partition_point(|p| p.0 <= x + r);
+        let inside = sorted[from..to].iter().filter(|p| (p.0 - x) * (p.0 - x) + (p.1 - y) * (p.1 - y) <= r * r).count();
+        answer.push(inside);
+    }
+    answer
+}
+
+// ---- count_points_columns.kara ----
+const A2_SIDE: i64 = 501;
+
+// the largest d with d * d at most n
+fn a2_root(n: i64) -> i64 {
+    let mut d = (n as f64).sqrt() as i64;
+    while d * d > n {
+        d -= 1;
+    }
+    while (d + 1) * (d + 1) <= n {
+        d += 1;
+    }
+    d
+}
+
+fn a2_count_points(points: Vec[Vec[i64]], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    // below[x][y]: the points of column x with a y under y
+    let mut below: Vec[Vec[i64]] = Vec.filled(A2_SIDE, Vec.filled(A2_SIDE + 1, 0));
+    for p in points.iter() {
+        below[p[0]][p[1] + 1] += 1;
+    }
+    for x in 0..A2_SIDE {
+        for y in 1..A2_SIDE + 1 {
+            below[x][y] += below[x][y - 1];
+        }
+    }
+    let mut answer: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let (x, y, r) = (q[0], q[1], q[2]);
+        let mut inside = 0;
+        for column in (x - r).max(0)..(x + r).min(A2_SIDE - 1) + 1 {
+            let dx = column - x;
+            let height = a2_root(r * r - dx * dx);
+            let low = (y - height).max(0);
+            let high = (y + height).min(A2_SIDE - 1);
+            if low <= high {
+                inside += below[column][high + 1] - below[column][low];
+            }
+        }
+        answer.push(inside);
+    }
+    answer
+}
+
+// ---- count_points_distinct.kara ----
+fn a3_count_points(points: Vec[Vec[i64]], queries: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut places: Map[(i64, i64), i64] = Map.new();
+    for p in points.iter() {
+        *places.entry((p[0], p[1])).or_insert(0) += 1;
+    }
+    queries
+        .iter()
+        .map(|q| {
+            places
+                .iter()
+                .filter(|((px, py), _)| (px - q[0]) * (px - q[0]) + (py - q[1]) * (py - q[1]) <= q[2] * q[2])
+                .map(|(_, count)| count)
+                .sum()
+        })
+        .collect()
+}
+
+// ---- count_points_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn count_points(points: Vec[Vec[i32]], queries: Vec[Vec[i32]]) -> Vec[i32] {
+        queries
+            .iter()
+            .map(|q| {
+                let (x, y, r) = (q[0], q[1], q[2]);
+                points
+                    .iter()
+                    .filter(|p| (p[0] - x).pow(2) + (p[1] - y).pow(2) <= r * r)
+                    .count() as i32
+            })
+            .collect()
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+// the statement read literally: each query walks every whole place of the
+// square around its circle, keeps the places inside or on the circle, and
+// counts the points standing at each
+fn literal(points: Slice[(i64, i64)], queries: Slice[(i64, i64, i64)]) -> Vec[i64] {
+    let mut answer: Vec[i64] = Vec.new();
+    for (x, y, r) in queries.iter() {
+        let mut inside = 0;
+        for a in x - r..x + r + 1 {
+            for b in y - r..y + r + 1 {
+                if (a - x) * (a - x) + (b - y) * (b - y) <= r * r {
+                    inside += points.iter().filter(|p| p.0 == a and p.1 == b).count();
+                }
+            }
+        }
+        answer.push(inside);
+    }
+    answer
+}
+
+fn arm(i: i64, points: Slice[(i64, i64)], queries: Slice[(i64, i64, i64)]) -> Vec[i64] {
+    let p: Vec[Vec[i64]] = points.iter().map(|(a, b)| [a, b].to_vec()).collect();
+    let q: Vec[Vec[i64]] = queries.iter().map(|(a, b, c)| [a, b, c].to_vec()).collect();
+    match i {
+        0 => a0_count_points(p, q),
+        1 => a1_count_points(p, q),
+        2 => a2_count_points(p, q),
+        3 => a3_count_points(p, q),
+        _ => {
+            let p32: Vec[Vec[i32]] = points.iter().map(|(a, b)| [a as i32, b as i32].to_vec()).collect();
+            let q32: Vec[Vec[i32]] = queries.iter().map(|(a, b, c)| [a as i32, b as i32, c as i32].to_vec()).collect();
+            A4Solution.count_points(p32, q32).iter().map(|c| c as i64).collect()
+        }
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, points: Slice[(i64, i64)], queries: Slice[(i64, i64, i64)]) {
+    t.cases += 1;
+    let star = arm(0, points, queries);
+    for c in star.iter() {
+        t.check = (t.check * 31 + c) % 1000000007;
+    }
+    let want = literal(points, queries);
+    let moved: Vec[(i64, i64)] = points.iter().map(|(a, b)| (a + 3, b + 5)).collect();
+    let moved_queries: Vec[(i64, i64, i64)] = queries.iter().map(|(a, b, r)| (a + 3, b + 5, r)).collect();
+    let wider: Vec[(i64, i64, i64)] = queries.iter().map(|(a, b, r)| (a, b, r + 1)).collect();
+    let turned: Vec[(i64, i64)] = points.iter().map(|(a, b)| (b, a)).collect();
+    let turned_queries: Vec[(i64, i64, i64)] = queries.iter().map(|(a, b, r)| (b, a, r)).collect();
+    for i in 0..5 {
+        let what = f"arm {i} on {points} {queries}";
+        let got = arm(i, points, queries);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: one count to a query, each from none to every point
+        expect(mut t, 2, got.len() == queries.len() and got.iter().all(|c| c >= 0 and c <= points.len()), f"P2 {what}");
+        // P3: the points and the circles moved together give the same counts
+        expect(mut t, 3, arm(i, moved[..], moved_queries[..]) == got, f"P3 {what}");
+        // P4: a circle made wider never holds fewer points
+        let more = arm(i, points, wider[..]);
+        expect(mut t, 4, more.len() == got.len() and (0..got.len()).all(|j| more[j] >= got[j]), f"P4 {what}");
+        // P5: everything mirrored in the line x = y gives the same counts
+        expect(mut t, 5, arm(i, turned[..], turned_queries[..]) == got, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 random cases of 1 to 8 points and 1 to 5 queries, coordinates
+    // from 0 to 10 and radii from 1 to 6
+    let mut seed = 1828;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 8;
+        let points: Vec[(i64, i64)] = (0..n).map(|_| (next_random(mut seed) % 11, next_random(mut seed) % 11)).collect();
+        let m = 1 + next_random(mut seed) % 5;
+        let queries: Vec[(i64, i64, i64)] = (0..m).map(|_| (next_random(mut seed) % 11, next_random(mut seed) % 11, 1 + next_random(mut seed) % 6)).collect();
+        check_case(mut t, points[..], queries[..]);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
