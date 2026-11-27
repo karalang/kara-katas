@@ -1,0 +1,50 @@
+// LeetCode #1819: Number of Different Subsequences GCDs -- the bench in
+// Kāra: the ★ arm over 100 calls on runs of 50000 to 99999 numbers cut from
+// one list of 10^5 numbers from 1 to 2 * 10^5, built once, each run's
+// length drawn from the checksum so far.
+
+fn gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+fn count_different_subsequence_gcds(nums: Vec[i64]) -> i64 {
+    let top = nums.iter().max().unwrap();
+    let mut present = Vec.filled(top + 1, false);
+    for x in nums.iter() {
+        present[x] = true;
+    }
+    let mut count = 0;
+    for g in 1..top + 1 {
+        let mut d = 0;
+        let mut m = g;
+        while m <= top and d != g {
+            if present[m] {
+                d = gcd(d, m);
+            }
+            m += g;
+        }
+        if d == g {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1819;
+    let mut base: Vec[i64] = Vec.new();
+    for _ in 0..100000 {
+        base.push(1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 200000);
+    }
+    let mut check = 0;
+    for call in 0..100 {
+        let n = 50000 + (check + call) % 50000;
+        check = (check * 31 + count_different_subsequence_gcds(base[..n].to_vec())) % 1000000007;
+    }
+    println(f"100 calls: checksum {check}");
+}

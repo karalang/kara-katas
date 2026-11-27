@@ -1,0 +1,64 @@
+// LeetCode #1819: Number of Different Subsequences GCDs -- from the numbers
+// up: each number's divisors listed by trial up to its square root, and
+// each divisor keeps the gcd of the numbers it divides, so a divisor that
+// ends equal to its own gcd is the gcd of those numbers.
+// O(n sqrt M)
+
+fn gcd(a: i64, b: i64) -> i64 {
+    let mut a = a;
+    let mut b = b;
+    while b != 0 {
+        let r = a % b;
+        a = b;
+        b = r;
+    }
+    a
+}
+
+fn count_different_subsequence_gcds(nums: Vec[i64]) -> i64 {
+    let top = nums.iter().max().unwrap();
+    // of[d] is the gcd of the numbers d divides, 0 while there are none
+    let mut of = Vec.filled(top + 1, 0);
+    for x in nums.iter() {
+        let mut d = 1;
+        while d * d <= x {
+            if x % d == 0 {
+                of[d] = gcd(of[d], x);
+                of[x / d] = gcd(of[x / d], x);
+            }
+            d += 1;
+        }
+    }
+    (1..top + 1).filter(|d| of[d] == d).count()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{count_different_subsequence_gcds([6, 10, 3])} {count_different_subsequence_gcds([5, 15, 40, 5, 6])}");
+    // the edges: one number; one number many times; a number and its
+    // multiples; two coprime numbers, whose pair has gcd 1; the largest
+    // value alone
+    println(f"{count_different_subsequence_gcds([1])} {count_different_subsequence_gcds([7, 7, 7])} {count_different_subsequence_gcds([4, 8, 16])} {count_different_subsequence_gcds([9, 10])} {count_different_subsequence_gcds([200000])}");
+    // the constraints' most: 10^5 numbers, 1 to 10^5, so every number is a
+    // gcd, and 10^5 even numbers up to 2 * 10^5
+    let n = 100000;
+    let all: Vec[i64] = (1..n + 1).collect();
+    let evens: Vec[i64] = (1..n + 1).map(|x| 2 * x).collect();
+    println(f"the most: {count_different_subsequence_gcds(all)} {count_different_subsequence_gcds(evens)}");
+    // 3000 random cases of 1 to 8 numbers from 1 to 60
+    let mut seed = 1819;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let len = 1 + next_random(mut seed) % 8;
+        let nums: Vec[i64] = (0..len).map(|_| 1 + next_random(mut seed) % 60).collect();
+        check = (check * 31 + count_different_subsequence_gcds(nums)) % 1000000007;
+    }
+    println(f"3000 random cases: checksum {check}");
+}

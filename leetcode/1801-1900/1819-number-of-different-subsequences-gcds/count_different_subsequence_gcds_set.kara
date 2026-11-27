@@ -1,0 +1,48 @@
+// LeetCode #1819: Number of Different Subsequences GCDs -- the ★ arm's walk
+// over the multiples of each g, with the numbers kept in a `Set` and asked
+// whether each multiple is there, and the gcd folded over the multiples
+// found.
+// O(M log M) expected
+
+fn gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+fn count_different_subsequence_gcds(nums: Vec[i64]) -> i64 {
+    let seen: Set[i64] = nums.iter().collect();
+    let top = nums.iter().max().unwrap();
+    (1..top + 1)
+        .filter(|g| (g..top + 1).step_by(g).filter(|m| seen.contains(m)).fold(0, |d, m| gcd(d, m)) == g)
+        .count()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{count_different_subsequence_gcds([6, 10, 3])} {count_different_subsequence_gcds([5, 15, 40, 5, 6])}");
+    // the edges: one number; one number many times; a number and its
+    // multiples; two coprime numbers, whose pair has gcd 1; the largest
+    // value alone
+    println(f"{count_different_subsequence_gcds([1])} {count_different_subsequence_gcds([7, 7, 7])} {count_different_subsequence_gcds([4, 8, 16])} {count_different_subsequence_gcds([9, 10])} {count_different_subsequence_gcds([200000])}");
+    // the constraints' most: 10^5 numbers, 1 to 10^5, so every number is a
+    // gcd, and 10^5 even numbers up to 2 * 10^5
+    let n = 100000;
+    let all: Vec[i64] = (1..n + 1).collect();
+    let evens: Vec[i64] = (1..n + 1).map(|x| 2 * x).collect();
+    println(f"the most: {count_different_subsequence_gcds(all)} {count_different_subsequence_gcds(evens)}");
+    // 3000 random cases of 1 to 8 numbers from 1 to 60
+    let mut seed = 1819;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let len = 1 + next_random(mut seed) % 8;
+        let nums: Vec[i64] = (0..len).map(|_| 1 + next_random(mut seed) % 60).collect();
+        check = (check * 31 + count_different_subsequence_gcds(nums)) % 1000000007;
+    }
+    println(f"3000 random cases: checksum {check}");
+}

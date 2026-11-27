@@ -1,0 +1,264 @@
+// LeetCode #1819: Number of Different Subsequences GCDs --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- count_different_subsequence_gcds.kara ----
+fn a0_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { a0_gcd(b, a % b) }
+}
+
+fn a0_count_different_subsequence_gcds(nums: Vec[i64]) -> i64 {
+    let top = nums.iter().max().unwrap();
+    let mut present = Vec.filled(top + 1, false);
+    for x in nums.iter() {
+        present[x] = true;
+    }
+    let mut count = 0;
+    for g in 1..top + 1 {
+        let mut d = 0;
+        let mut m = g;
+        while m <= top and d != g {
+            if present[m] {
+                d = a0_gcd(d, m);
+            }
+            m += g;
+        }
+        if d == g {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- count_different_subsequence_gcds_divisors.kara ----
+fn a1_gcd(a: i64, b: i64) -> i64 {
+    let mut a = a;
+    let mut b = b;
+    while b != 0 {
+        let r = a % b;
+        a = b;
+        b = r;
+    }
+    a
+}
+
+fn a1_count_different_subsequence_gcds(nums: Vec[i64]) -> i64 {
+    let top = nums.iter().max().unwrap();
+    // of[d] is the gcd of the numbers d divides, 0 while there are none
+    let mut of = Vec.filled(top + 1, 0);
+    for x in nums.iter() {
+        let mut d = 1;
+        while d * d <= x {
+            if x % d == 0 {
+                of[d] = a1_gcd(of[d], x);
+                of[x / d] = a1_gcd(of[x / d], x);
+            }
+            d += 1;
+        }
+    }
+    (1..top + 1).filter(|d| of[d] == d).count()
+}
+
+// ---- count_different_subsequence_gcds_set.kara ----
+fn a2_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { a2_gcd(b, a % b) }
+}
+
+fn a2_count_different_subsequence_gcds(nums: Vec[i64]) -> i64 {
+    let seen: Set[i64] = nums.iter().collect();
+    let top = nums.iter().max().unwrap();
+    (1..top + 1)
+        .filter(|g| (g..top + 1).step_by(g).filter(|m| seen.contains(m)).fold(0, |d, m| a2_gcd(d, m)) == g)
+        .count()
+}
+
+// ---- count_different_subsequence_gcds_factor.kara ----
+fn a3_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { a3_gcd(b, a % b) }
+}
+
+fn a3_count_different_subsequence_gcds(nums: Vec[i64]) -> i64 {
+    let top = nums.iter().max().unwrap();
+    // least[v] is the least prime factor of v
+    let mut least = Vec.filled(top + 1, 0);
+    for p in 2..top + 1 {
+        if least[p] == 0 {
+            let mut m = p;
+            while m <= top {
+                if least[m] == 0 {
+                    least[m] = p;
+                }
+                m += p;
+            }
+        }
+    }
+    // of[d] is the gcd of the numbers d divides, 0 while there are none
+    let mut of = Vec.filled(top + 1, 0);
+    let mut done = Vec.filled(top + 1, false);
+    for x in nums.iter() {
+        if done[x] {
+            continue;
+        }
+        done[x] = true;
+        let mut divisors: Vec[i64] = [1];
+        let mut rest = x;
+        while rest > 1 {
+            let p = least[rest];
+            let mut power = 0;
+            while rest % p == 0 {
+                rest /= p;
+                power += 1;
+            }
+            let base = divisors.len();
+            let mut scale = 1;
+            for _ in 0..power {
+                scale *= p;
+                for k in 0..base {
+                    divisors.push(divisors[k] * scale);
+                }
+            }
+        }
+        for d in divisors.iter() {
+            of[d] = a3_gcd(of[d], x);
+        }
+    }
+    (1..top + 1).filter(|d| of[d] == d).count()
+}
+
+// ---- count_different_subsequence_gcds_solution.kara ----
+fn a4_gcd(a: i32, b: i32) -> i32 {
+    if b == 0 { a } else { a4_gcd(b, a % b) }
+}
+
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn count_different_subsequence_gc_ds(nums: Vec[i32]) -> i32 {
+        let max = *nums.iter().max().unwrap() as i64;
+        let mut seen = Vec.filled(max + 1, false);
+        for x in ref nums {
+            seen[x] = true;
+        }
+        let mut ans = 0;
+        for i in 1..=max {
+            let mut g = 0;
+            let mut j = i;
+            while j <= max {
+                if seen[j] {
+                    g = a4_gcd(g, j as i32);
+                    if g == i as i32 {
+                        break;
+                    }
+                }
+                j += i;
+            }
+            if g == i as i32 {
+                ans += 1;
+            }
+        }
+        ans
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+// the statement read literally: every non-empty subsequence, one bit of a
+// mask to a number, its gcd taken and kept in a set, and the set counted
+fn literal(nums: Slice[i64]) -> i64 {
+    let n = nums.len();
+    let mut gcds: Set[i64] = Set.new();
+    for mask in 1..(1 << n) {
+        let mut g = 0;
+        for i in 0..n {
+            if (mask >> i) & 1 == 1 {
+                g = a0_gcd(g, nums[i]);
+            }
+        }
+        gcds.insert(g);
+    }
+    gcds.len()
+}
+
+fn arm(i: i64, nums: Slice[i64]) -> i64 {
+    match i {
+        0 => a0_count_different_subsequence_gcds(nums.to_vec()),
+        1 => a1_count_different_subsequence_gcds(nums.to_vec()),
+        2 => a2_count_different_subsequence_gcds(nums.to_vec()),
+        3 => a3_count_different_subsequence_gcds(nums.to_vec()),
+        _ => {
+            let narrow: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+            A4Solution.count_different_subsequence_gc_ds(narrow)
+        }
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, nums: Slice[i64]) {
+    t.cases += 1;
+    let star = arm(0, nums);
+    t.check = (t.check * 31 + star) % 1000000007;
+    let want = literal(nums);
+    let distinct: Set[i64] = nums.iter().collect();
+    let top = nums.iter().max().unwrap();
+    let back: Vec[i64] = nums.iter().rev().collect();
+    let doubled: Vec[i64] = nums.iter().map(|x| 2 * x).collect();
+    let mut more = nums.to_vec();
+    more.push(nums[nums.len() / 2]);
+    for i in 0..5 {
+        let what = f"arm {i} on {nums}";
+        let got = arm(i, nums);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: every number is a gcd, its own, and no gcd passes the
+        // largest number
+        expect(mut t, 2, got >= distinct.len() and got <= top, f"P2 {what}");
+        // P3: the numbers in reverse order give the same count
+        expect(mut t, 3, arm(i, back[..]) == got, f"P3 {what}");
+        // P4: every number doubled doubles every gcd, so the count stays
+        expect(mut t, 4, arm(i, doubled[..]) == got, f"P4 {what}");
+        // P5: a number given again changes nothing
+        expect(mut t, 5, arm(i, more[..]) == got, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 random cases of 1 to 10 numbers from 1 to 60, all multiplied by
+    // a common factor up to 20 in a quarter of them
+    let mut seed = 1819;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 10;
+        let factor = if next_random(mut seed) % 4 == 0 { 1 + next_random(mut seed) % 20 } else { 1 };
+        let nums: Vec[i64] = (0..n).map(|_| factor * (1 + next_random(mut seed) % 60)).collect();
+        check_case(mut t, nums[..]);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
