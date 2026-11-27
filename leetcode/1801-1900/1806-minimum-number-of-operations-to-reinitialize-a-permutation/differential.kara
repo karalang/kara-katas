@@ -1,0 +1,217 @@
+// LeetCode #1806: Minimum Number of Operations to Reinitialize a
+// Permutation --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- reinitialize_permutation.kara ----
+fn a0_reinitialize_permutation(n: i32) -> i32 {
+    let size = n as i64;
+    let start: Vec[i64] = (0..size).collect();
+    let mut perm = start.clone();
+    let mut ops = 0;
+    loop {
+        let mut arr: Vec[i64] = Vec.filled(size, 0);
+        for i in 0..size {
+            arr[i] = if i % 2 == 0 { perm[i / 2] } else { perm[size / 2 + (i - 1) / 2] };
+        }
+        perm = arr;
+        ops += 1;
+        if perm == start {
+            return ops;
+        }
+    }
+}
+
+// ---- reinitialize_permutation_track.kara ----
+fn a1_reinitialize_permutation(n: i32) -> i32 {
+    let half = n / 2;
+    let mut i = 1;
+    let mut ops = 0;
+    loop {
+        i = if i % 2 == 0 { i / 2 } else { half + (i - 1) / 2 };
+        ops += 1;
+        if i == 1 {
+            return ops;
+        }
+    }
+}
+
+// ---- reinitialize_permutation_cycles.kara ----
+fn a2_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { a2_gcd(b, a % b) }
+}
+
+fn a2_reinitialize_permutation(n: i32) -> i32 {
+    let size = n as i64;
+    let mut seen: Vec[bool] = Vec.filled(size, false);
+    let mut answer: i64 = 1;
+    for start in 0..size {
+        if seen[start] {
+            continue;
+        }
+        let mut length: i64 = 0;
+        let mut i = start;
+        while not seen[i] {
+            seen[i] = true;
+            i = if i % 2 == 0 { i / 2 } else { size / 2 + (i - 1) / 2 };
+            length += 1;
+        }
+        answer = answer / a2_gcd(answer, length) * length;
+    }
+    answer as i32
+}
+
+// ---- reinitialize_permutation_order.kara ----
+fn a3_reinitialize_permutation(n: i32) -> i32 {
+    let m = n - 1;
+    if m == 1 {
+        return 1;
+    }
+    let mut power = 2 % m;
+    let mut k = 1;
+    while power != 1 {
+        power = power * 2 % m;
+        k += 1;
+    }
+    k
+}
+
+// ---- reinitialize_permutation_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn reinitialize_permutation(n: i32) -> i32 {
+        let n = n as i64;
+        let mut perm: Vec[i64] = (0..n).collect();
+        let target = perm.clone();
+        let mut ans = 0;
+        loop {
+            let mut arr = Vec.filled(n, 0);
+            for i in 0..n {
+                arr[i] = if i % 2 == 0 { perm[i / 2] } else { perm[n / 2 + (i - 1) / 2] };
+            }
+            perm = arr;
+            ans += 1;
+            if perm == target {
+                return ans;
+            }
+        }
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+// the statement read literally: `perm` starts as `perm[i] == i`, each
+// operation builds `arr` by its two rules and assigns it to `perm`, and the
+// operations are counted until `perm[i] == i` for every `i` again
+fn literal(n: i32) -> i32 {
+    let size = n as i64;
+    let mut perm: Vec[i64] = (0..size).collect();
+    let mut count = 0;
+    loop {
+        let mut arr: Vec[i64] = Vec.new();
+        for i in 0..size {
+            if i % 2 == 0 {
+                arr.push(perm[i / 2]);
+            } else {
+                arr.push(perm[size / 2 + (i - 1) / 2]);
+            }
+        }
+        perm = arr;
+        count += 1;
+        if perm.iter().enumerate().all(|(i, v)| *v == i) {
+            return count;
+        }
+    }
+}
+
+// Euler's totient by trial division
+fn totient(m: i64) -> i64 {
+    let mut rest = m;
+    let mut phi = m;
+    let mut p = 2;
+    while p * p <= rest {
+        if rest % p == 0 {
+            while rest % p == 0 {
+                rest /= p;
+            }
+            phi = phi / p * (p - 1);
+        }
+        p += 1;
+    }
+    if rest > 1 {
+        phi = phi / rest * (rest - 1);
+    }
+    phi
+}
+
+fn arm(i: i64, n: i32) -> i32 {
+    match i {
+        0 => a0_reinitialize_permutation(n),
+        1 => a1_reinitialize_permutation(n),
+        2 => a2_reinitialize_permutation(n),
+        3 => a3_reinitialize_permutation(n),
+        _ => A4Solution.reinitialize_permutation(n),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, n: i32) {
+    t.cases += 1;
+    let star = arm(0, n);
+    t.check = (t.check * 31 + star) % 1000000007;
+    let want = literal(n);
+    let m = (n - 1) as i64;
+    for i in 0..5 {
+        let what = f"arm {i} on n = {n}";
+        let got = arm(i, n);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: at least 1, and at most n - 2 once n passes 2
+        expect(mut t, 2, got >= 1 and (n == 2 or got <= n - 2), f"P2 {what}");
+        // P3: 2 to the answer is 1 modulo n - 1
+        let mut power = 1 % m;
+        for _ in 0..got {
+            power = power * 2 % m;
+        }
+        expect(mut t, 3, power == 1 % m, f"P3 {what}");
+        // P4: the answer divides Euler's totient of n - 1
+        expect(mut t, 4, got >= 1 and totient(m) % got == 0, f"P4 {what}");
+        // P5: 2 to the answer is past n - 1, as it is 1 more than a
+        // multiple of n - 1, so the answer is at least log2(n)
+        let reach: i64 = if got < 1 { 0 } else if got >= 62 { 1 << 62 } else { 1 << got };
+        expect(mut t, 5, n == 2 or reach >= n, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // every case the constraints allow: each even n from 2 to 1000
+    for half in 1..501 {
+        check_case(mut t, (2 * half) as i32);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

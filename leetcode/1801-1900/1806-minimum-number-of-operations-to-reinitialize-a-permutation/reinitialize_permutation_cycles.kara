@@ -1,0 +1,51 @@
+// LeetCode #1806: Minimum Number of Operations to Reinitialize a
+// Permutation -- the permutation's cycles: each position's cycle walked
+// once, marked as seen, and the answer the least common multiple of the
+// cycles' lengths, taken with `gcd`.
+// O(n log n)
+
+fn gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+fn reinitialize_permutation(n: i32) -> i32 {
+    let size = n as i64;
+    let mut seen: Vec[bool] = Vec.filled(size, false);
+    let mut answer: i64 = 1;
+    for start in 0..size {
+        if seen[start] {
+            continue;
+        }
+        let mut length: i64 = 0;
+        let mut i = start;
+        while not seen[i] {
+            seen[i] = true;
+            i = if i % 2 == 0 { i / 2 } else { size / 2 + (i - 1) / 2 };
+            length += 1;
+        }
+        answer = answer / gcd(answer, length) * length;
+    }
+    answer as i32
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{reinitialize_permutation(2)} {reinitialize_permutation(4)} {reinitialize_permutation(6)}");
+    // the edges: n = 2^k + 2, where the answer is smallest for its size;
+    // n - 1 prime with 2 a primitive root, where it is n - 2; the
+    // constraints' most
+    println(f"{reinitialize_permutation(66)} {reinitialize_permutation(514)} {reinitialize_permutation(12)} {reinitialize_permutation(14)} {reinitialize_permutation(1000)}");
+    // every even n from 2 to 1000
+    let mut check = 0;
+    let mut total = 0;
+    let mut most = 0;
+    for half in 1..501 {
+        let ops = reinitialize_permutation((2 * half) as i32);
+        check = (check * 31 + ops) % 1000000007;
+        total += ops;
+        most = most.max(ops);
+    }
+    println(f"every even n to 1000: checksum {check}, total {total}, most {most}");
+}
