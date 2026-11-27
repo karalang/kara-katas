@@ -1,0 +1,336 @@
+// LeetCode #1830: Minimum Number of Operations to Make String Sorted --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- make_string_sorted.kara ----
+const A0_MOD: i64 = 1000000007;
+
+fn a0_power(base: i64, exp: i64) -> i64 {
+    let mut result = 1;
+    let mut b = base % A0_MOD;
+    let mut e = exp;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % A0_MOD;
+        }
+        b = b * b % A0_MOD;
+        e /= 2;
+    }
+    result
+}
+
+fn a0_make_string_sorted(s: String) -> i64 {
+    let letters = s.bytes();
+    let n = letters.len();
+    let mut fact: Vec[i64] = Vec.filled(n + 1, 1);
+    for i in 1..n + 1 {
+        fact[i] = fact[i - 1] * i % A0_MOD;
+    }
+    let mut inverse: Vec[i64] = Vec.filled(n + 1, 1);
+    inverse[n] = a0_power(fact[n], A0_MOD - 2);
+    for i in (0..n).rev() {
+        inverse[i] = inverse[i + 1] * (i + 1) % A0_MOD;
+    }
+    let mut count = [0; 26];
+    let mut operations = 0;
+    for i in (0..n).rev() {
+        let c = (letters[i] - b'a') as i64;
+        count[c] += 1;
+        let smaller: i64 = count[..c].iter().sum();
+        let mut ways = fact[n - 1 - i] * smaller % A0_MOD;
+        for k in count.iter() {
+            ways = ways * inverse[k] % A0_MOD;
+        }
+        operations = (operations + ways) % A0_MOD;
+    }
+    operations
+}
+
+// ---- make_string_sorted_forward.kara ----
+const A1_MOD: i64 = 1000000007;
+
+fn a1_power(base: i64, exp: i64) -> i64 {
+    let mut result = 1;
+    let mut b = base % A1_MOD;
+    let mut e = exp;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % A1_MOD;
+        }
+        b = b * b % A1_MOD;
+        e /= 2;
+    }
+    result
+}
+
+fn a1_make_string_sorted(s: String) -> i64 {
+    let letters = s.bytes();
+    let n = letters.len();
+    let mut fact: Vec[i64] = Vec.filled(n + 1, 1);
+    for i in 1..n + 1 {
+        fact[i] = fact[i - 1] * i % A1_MOD;
+    }
+    let mut count = [0; 26];
+    for b in letters.iter() {
+        count[b - b'a'] += 1;
+    }
+    // the inverse of the product of the counts' factorials
+    let mut denominator = 1;
+    for k in count.iter() {
+        denominator = denominator * fact[k] % A1_MOD;
+    }
+    let mut inverse = a1_power(denominator, A1_MOD - 2);
+    let mut operations = 0;
+    for i in 0..n {
+        let c = (letters[i] - b'a') as i64;
+        let rest = n - 1 - i;
+        for smaller in 0..c {
+            if count[smaller] > 0 {
+                // the rest's permutations with `smaller` first
+                let ways = fact[rest] * inverse % A1_MOD * count[smaller] % A1_MOD;
+                operations = (operations + ways) % A1_MOD;
+            }
+        }
+        inverse = inverse * count[c] % A1_MOD;
+        count[c] -= 1;
+    }
+    operations
+}
+
+// ---- make_string_sorted_fermat.kara ----
+const A2_MOD: i64 = 1000000007;
+
+fn a2_power(base: i64, exp: i64) -> i64 {
+    if exp == 0 {
+        return 1;
+    }
+    let half = a2_power(base, exp / 2);
+    let square = half * half % A2_MOD;
+    if exp % 2 == 1 { square * (base % A2_MOD) % A2_MOD } else { square }
+}
+
+fn a2_make_string_sorted(s: String) -> i64 {
+    let letters = s.bytes();
+    let n = letters.len();
+    let mut fact: Vec[i64] = Vec.filled(n + 1, 1);
+    for i in 1..n + 1 {
+        fact[i] = fact[i - 1] * i % A2_MOD;
+    }
+    let mut count = [0; 26];
+    let mut operations = 0;
+    for i in (0..n).rev() {
+        let c = (letters[i] - b'a') as i64;
+        count[c] += 1;
+        let smaller: i64 = count[..c].iter().sum();
+        let denominator = count.iter().fold(1, |d, k| d * fact[k] % A2_MOD);
+        let ways = fact[n - 1 - i] * smaller % A2_MOD * a2_power(denominator, A2_MOD - 2) % A2_MOD;
+        operations = (operations + ways) % A2_MOD;
+    }
+    operations
+}
+
+// ---- make_string_sorted_running.kara ----
+const A3_MOD: i64 = 1000000007;
+
+fn a3_make_string_sorted(s: String) -> i64 {
+    let letters = s.bytes();
+    let n = letters.len();
+    let mut inv: Vec[i64] = Vec.filled(n + 2, 1);
+    for i in 2..n + 2 {
+        inv[i] = (A3_MOD - A3_MOD / i) * inv[A3_MOD % i] % A3_MOD;
+    }
+    let mut count = [0; 26];
+    let mut permutations = 1;
+    let mut operations = 0;
+    for i in (0..n).rev() {
+        let c = (letters[i] - b'a') as i64;
+        let m = n - i;
+        count[c] += 1;
+        permutations = permutations * m % A3_MOD * inv[count[c]] % A3_MOD;
+        let smaller: i64 = count[..c].iter().sum();
+        operations = (operations + permutations * smaller % A3_MOD * inv[m]) % A3_MOD;
+    }
+    operations
+}
+
+// ---- make_string_sorted_solution.kara ----
+const A4_MOD: i64 = 1_000_000_007;
+
+fn a4_pow_mod(b: i64, e: i64) -> i64 {
+    let mut b = b;
+    let mut e = e;
+    let mut r = 1;
+    b %= A4_MOD;
+    while e > 0 {
+        if e & 1 == 1 {
+            r = r * b % A4_MOD;
+        }
+        b = b * b % A4_MOD;
+        e >>= 1;
+    }
+    r
+}
+
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn make_string_sorted(s: String) -> i32 {
+        let n = s.len();
+        let mut fact = Vec.filled(n + 1, 1);
+        let mut inv = Vec.filled(n + 1, 1);
+        for i in 1..=n {
+            fact[i] = fact[i - 1] * i % A4_MOD;
+        }
+        inv[n] = a4_pow_mod(fact[n], A4_MOD - 2);
+        for i in (0..n).rev() {
+            inv[i] = inv[i + 1] * (i + 1) % A4_MOD;
+        }
+        let bytes = s.bytes();
+        let mut cnt = [0usize; 26];
+        let mut ans = 0;
+        for i in (0..n).rev() {
+            let c = (bytes[i] - b'a') as usize;
+            cnt[c] += 1;
+            let smaller: usize = cnt[..c].iter().sum();
+            let mut ways = fact[n - i - 1] * smaller as i64 % A4_MOD;
+            for k in cnt.iter() {
+                ways = ways * inv[k] % A4_MOD;
+            }
+            ans = (ans + ways) % A4_MOD;
+        }
+        ans as i32
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+// the statement read literally: the four steps of an operation done on the
+// letters until they are sorted, and the operations counted
+fn literal(s: Str) -> i64 {
+    let mut letters = s.bytes().to_vec();
+    let n = letters.len();
+    let mut operations = 0;
+    loop {
+        // 1: the largest i with s[i] < s[i - 1]
+        let mut i = n;
+        for at in (1..n).rev() {
+            if letters[at] < letters[at - 1] {
+                i = at;
+                break;
+            }
+        }
+        if i == n {
+            return operations;
+        }
+        // 2: the largest j >= i with every letter from i to j below s[i - 1]
+        let mut j = i;
+        while j + 1 < n and letters[j + 1] < letters[i - 1] {
+            j += 1;
+        }
+        // 3: s[i - 1] and s[j] swapped; 4: the suffix from i reversed
+        letters.swap(i - 1, j);
+        letters[i..].reverse();
+        operations += 1;
+    }
+}
+
+// the number of distinct orders of the letters: n! over each count's
+// factorial, exactly, for the short strings here
+fn orders(s: Str) -> i64 {
+    let mut count = [0; 26];
+    for b in s.bytes().iter() {
+        count[b - b'a'] += 1;
+    }
+    let mut result = 1;
+    let mut placed = 0;
+    for k in count.iter() {
+        // the k equal letters' places among placed + k: C(placed + k, k)
+        for t in 1..k + 1 {
+            result = result * (placed + t) / t;
+        }
+        placed += k;
+    }
+    result
+}
+
+fn arm(i: i64, s: Str) -> i64 {
+    match i {
+        0 => a0_make_string_sorted(s.to_string()),
+        1 => a1_make_string_sorted(s.to_string()),
+        2 => a2_make_string_sorted(s.to_string()),
+        3 => a3_make_string_sorted(s.to_string()),
+        _ => A4Solution.make_string_sorted(s.to_string()),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, s: Str) {
+    t.cases += 1;
+    let star = arm(0, s);
+    t.check = (t.check * 31 + star) % 1000000007;
+    let want = literal(s);
+    let letters = s.bytes();
+    let sorted = (1..letters.len()).all(|i| letters[i - 1] <= letters[i]);
+    let all = orders(s);
+    let shifted: String = letters.iter().map(|b| (b + 3) as char).collect();
+    let mut down = letters.to_vec();
+    down.sort();
+    down.reverse();
+    let last: String = down.iter().map(|b| b as char).collect();
+    for i in 0..5 {
+        let what = f"arm {i} on {s}";
+        let got = arm(i, s);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: no operations exactly when the letters are already sorted
+        expect(mut t, 2, (got == 0) == sorted, f"P2 {what}");
+        // P3: fewer operations than the letters have orders
+        expect(mut t, 3, got >= 0 and got < all, f"P3 {what}");
+        // P4: every letter moved three on keeps the count
+        expect(mut t, 4, arm(i, shifted) == got, f"P4 {what}");
+        // P5: the letters in falling order are the last of their orders
+        expect(mut t, 5, arm(i, last) == all - 1, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 random strings of 1 to 7 letters, from a to b in a quarter of
+    // them and from a to e in the rest
+    let mut seed = 1830;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 7;
+        let span = if next_random(mut seed) % 4 == 0 { 2 } else { 5 };
+        let s: String = (0..n).map(|_| (b'a' + (next_random(mut seed) % span) as u8) as char).collect();
+        check_case(mut t, s);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

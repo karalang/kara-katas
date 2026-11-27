@@ -1,0 +1,66 @@
+// LeetCode #1830: Minimum Number of Operations to Make String Sorted -- the
+// bench in Kāra: the ★ arm over 500 calls on runs of 1500 to 2999 letters cut
+// from one string of 4500 random letters, built once, each run's start and
+// length drawn from the checksum so far. Each call makes its run a string of
+// its own.
+
+const MOD: i64 = 1000000007;
+
+fn power(base: i64, exp: i64) -> i64 {
+    let mut result = 1;
+    let mut b = base % MOD;
+    let mut e = exp;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % MOD;
+        }
+        b = b * b % MOD;
+        e /= 2;
+    }
+    result
+}
+
+fn make_string_sorted(s: String) -> i64 {
+    let letters = s.bytes();
+    let n = letters.len();
+    let mut fact: Vec[i64] = Vec.filled(n + 1, 1);
+    for i in 1..n + 1 {
+        fact[i] = fact[i - 1] * i % MOD;
+    }
+    let mut inverse: Vec[i64] = Vec.filled(n + 1, 1);
+    inverse[n] = power(fact[n], MOD - 2);
+    for i in (0..n).rev() {
+        inverse[i] = inverse[i + 1] * (i + 1) % MOD;
+    }
+    let mut count = [0; 26];
+    let mut operations = 0;
+    for i in (0..n).rev() {
+        let c = (letters[i] - b'a') as i64;
+        count[c] += 1;
+        let smaller: i64 = count[..c].iter().sum();
+        let mut ways = fact[n - 1 - i] * smaller % MOD;
+        for k in count.iter() {
+            ways = ways * inverse[k] % MOD;
+        }
+        operations = (operations + ways) % MOD;
+    }
+    operations
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1830;
+    let letters: Vec[u8] = (0..4500).map(|_| b'a' + (next_random(mut seed) % 26) as u8).collect();
+    let mut check = 0;
+    for call in 0..500 {
+        let start = (check + call) % 1500;
+        let len = 1500 + (check * 7 + call) % 1500;
+        let s: String = letters[start..start + len].iter().map(|b| b as char).collect();
+        check = (check * 31 + make_string_sorted(s)) % 1000000007;
+    }
+    println(f"500 calls: checksum {check}");
+}

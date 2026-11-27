@@ -1,0 +1,61 @@
+// LeetCode #1830: Minimum Number of Operations to Make String Sorted -- the
+// number of distinct permutations of the suffix kept as one running value:
+// a letter put in front of a suffix of m - 1 letters multiplies it by m
+// and divides it by the letter's new count, both inverses of numbers up to
+// n read from a table made by inv[i] = -(p / i) inv[p mod i]; the
+// permutations starting below the letter are that value times the
+// smaller letters, over m.
+// O(26 n)
+
+const MOD: i64 = 1000000007;
+
+fn make_string_sorted(s: String) -> i64 {
+    let letters = s.bytes();
+    let n = letters.len();
+    let mut inv: Vec[i64] = Vec.filled(n + 2, 1);
+    for i in 2..n + 2 {
+        inv[i] = (MOD - MOD / i) * inv[MOD % i] % MOD;
+    }
+    let mut count = [0; 26];
+    let mut permutations = 1;
+    let mut operations = 0;
+    for i in (0..n).rev() {
+        let c = (letters[i] - b'a') as i64;
+        let m = n - i;
+        count[c] += 1;
+        permutations = permutations * m % MOD * inv[count[c]] % MOD;
+        let smaller: i64 = count[..c].iter().sum();
+        operations = (operations + permutations * smaller % MOD * inv[m]) % MOD;
+    }
+    operations
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's four examples
+    println(f"{make_string_sorted("cba")} {make_string_sorted("aabaa")} {make_string_sorted("cdbea")} {make_string_sorted("leetcodeleetcodeleetcode")}");
+    // the edges: one letter; a string already sorted; one letter many
+    // times; the last permutation of a b c d, 4! - 1 steps from the first;
+    // z then a, one step
+    println(f"{make_string_sorted("q")} {make_string_sorted("abcz")} {make_string_sorted("mmmm")} {make_string_sorted("dcba")} {make_string_sorted("za")}");
+    // the constraints' most: 3000 letters, the alphabet backwards over and
+    // over, and random letters
+    let mut seed = 1830;
+    let backwards: String = (0..3000).map(|i| (b'z' - (i % 26) as u8) as char).collect();
+    let random: String = (0..3000).map(|_| (b'a' + (next_random(mut seed) % 26) as u8) as char).collect();
+    println(f"the most: {make_string_sorted(backwards)} {make_string_sorted(random)}");
+    // 3000 random strings of 1 to 12 letters from a to e
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 12;
+        let s: String = (0..n).map(|_| (b'a' + (next_random(mut seed) % 5) as u8) as char).collect();
+        check = (check * 31 + make_string_sorted(s)) % 1000000007;
+    }
+    println(f"3000 random strings: checksum {check}");
+}
