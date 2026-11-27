@@ -1,0 +1,227 @@
+// LeetCode #1846: Maximum Element After Decreasing and Rearranging --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- maximum_element.kara ----
+fn a0_maximum_element_after_decrementing_and_rearranging(arr: own Vec[i64]) -> i64 {
+    let mut arr = arr;
+    arr.sort();
+    let mut top = 0;
+    for x in arr.iter() {
+        top = (top + 1).min(x);
+    }
+    top
+}
+
+// ---- maximum_element_count.kara ----
+fn a1_maximum_element_after_decrementing_and_rearranging(arr: own Vec[i64]) -> i64 {
+    let n = arr.len();
+    let mut count: Vec[i64] = Vec.filled(n + 1, 0);
+    for x in arr.iter() {
+        count[x.min(n)] += 1;
+    }
+    let mut top = 0;
+    for v in 1..n + 1 {
+        top = (top + count[v]).min(v);
+    }
+    top
+}
+
+// ---- maximum_element_heap.kara ----
+fn a2_maximum_element_after_decrementing_and_rearranging(arr: own Vec[i64]) -> i64 {
+    let mut queue: PriorityQueue[i64] = arr.into_iter().collect();
+    let mut top = 0;
+    while let Some(x) = queue.pop() {
+        top = (top + 1).min(x);
+    }
+    top
+}
+
+// ---- maximum_element_search.kara ----
+fn a3_reaches(sorted: Slice[i64], h: i64) -> bool {
+    let start = sorted.len() - h;
+    for j in 0..h {
+        if sorted[start + j] < j + 1 {
+            return false;
+        }
+    }
+    true
+}
+
+fn a3_maximum_element_after_decrementing_and_rearranging(arr: own Vec[i64]) -> i64 {
+    let mut sorted = arr;
+    sorted.sort();
+    let mut lo = 1;
+    let mut hi = sorted.len();
+    while lo < hi {
+        let mid = (lo + hi + 1) / 2;
+        if a3_reaches(sorted[..], mid) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+// ---- maximum_element_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn maximum_element_after_decrementing_and_rearranging(arr: own Vec[i32]) -> i32 {
+        let mut arr = arr;
+        arr.sort();
+        let mut prev: i32 = 0;
+        for x in arr.iter() {
+            prev = (prev + 1).min(x);
+        }
+        prev
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+// the statement read literally: every order of the numbers, and in each
+// the values every place can take on some list the rules allow, found
+// forward from a 1 at the first place, each place within 1 of a value the
+// place before it can take, and back from the last place, each within 1 of
+// a value the place after it can take; every value is from 1 to the number
+// at its place, so a number is only ever decreased. A value found both
+// ways is on some list, and the largest of them over every order is the
+// answer.
+fn best_in_order(order: Slice[i64]) -> i64 {
+    let n = order.len();
+    let top = order.iter().max().unwrap();
+    let mut forward: Vec[Vec[bool]] = Vec.filled(n, Vec.filled(top + 2, false));
+    forward[0][1] = true;
+    for i in 1..n {
+        for v in 1..order[i] + 1 {
+            forward[i][v] = forward[i - 1][v - 1] or forward[i - 1][v] or forward[i - 1][v + 1];
+        }
+    }
+    let mut back: Vec[Vec[bool]] = Vec.filled(n, Vec.filled(top + 2, false));
+    for v in 1..order[n - 1] + 1 {
+        back[n - 1][v] = true;
+    }
+    for i in (0..n - 1).rev() {
+        for v in 1..order[i] + 1 {
+            back[i][v] = back[i + 1][v - 1] or back[i + 1][v] or back[i + 1][v + 1];
+        }
+    }
+    let mut best = 0;
+    for i in 0..n {
+        for v in 1..top + 1 {
+            if forward[i][v] and back[i][v] {
+                best = best.max(v);
+            }
+        }
+    }
+    best
+}
+
+fn every_order(arr: mut ref Vec[i64], k: i64, best: mut ref i64) {
+    if k == arr.len() {
+        let here = best_in_order(arr[..]);
+        if here > *best {
+            *best = here;
+        }
+        return;
+    }
+    for i in k..arr.len() {
+        arr.swap(k, i);
+        every_order(mut arr, k + 1, mut best);
+        arr.swap(k, i);
+    }
+}
+
+fn literal(arr: Slice[i64]) -> i64 {
+    let mut order = arr.to_vec();
+    let mut best = 0;
+    every_order(mut order, 0, mut best);
+    best
+}
+
+fn arm(i: i64, arr: Slice[i64]) -> i64 {
+    match i {
+        0 => a0_maximum_element_after_decrementing_and_rearranging(arr.to_vec()),
+        1 => a1_maximum_element_after_decrementing_and_rearranging(arr.to_vec()),
+        2 => a2_maximum_element_after_decrementing_and_rearranging(arr.to_vec()),
+        3 => a3_maximum_element_after_decrementing_and_rearranging(arr.to_vec()),
+        _ => {
+            let narrow: Vec[i32] = arr.iter().map(|x| x as i32).collect();
+            A4Solution.maximum_element_after_decrementing_and_rearranging(narrow)
+        }
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, arr: Slice[i64]) {
+    t.cases += 1;
+    let star = arm(0, arr);
+    t.check = (t.check * 31 + star) % 1000000007;
+    let want = literal(arr);
+    let n = arr.len();
+    let largest = arr.iter().max().unwrap();
+    let reversed: Vec[i64] = arr.iter().rev().collect();
+    let mut longer = arr.to_vec();
+    longer.push(1000000000);
+    let doubled: Vec[i64] = arr.iter().map(|x| 2 * x).collect();
+    for i in 0..5 {
+        let what = f"arm {i} on {arr}";
+        let got = arm(i, arr);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: from 1 to the least of the count and the largest number
+        expect(mut t, 2, got >= 1 and got <= n.min(largest), f"P2 {what}");
+        // P3: the numbers in reverse order give the same answer
+        expect(mut t, 3, arm(i, reversed[..]) == got, f"P3 {what}");
+        // P4: a 10^9 more gives at least as much, and at most one more
+        let more = arm(i, longer[..]);
+        expect(mut t, 4, more >= got and more <= got + 1, f"P4 {what}");
+        // P5: every number doubled never gives less
+        expect(mut t, 5, arm(i, doubled[..]) >= got, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 random lists of 1 to 6 numbers from 1 to 8
+    let mut seed = 1846;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 6;
+        let mut arr: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            arr.push(1 + next_random(mut seed) % 8);
+        }
+        check_case(mut t, arr[..]);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
