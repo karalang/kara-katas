@@ -1,0 +1,62 @@
+// LeetCode #1839: Longest Substring Of All Vowels in Order -- the bench in Kāra: the ★ arm over
+// 1000 calls on 40 words of 10^5 vowels, built once, each vowel the one
+// before it again, the next vowel, an `a`, or any vowel, each call's word
+// drawn from the checksum so far. The arm reads the word's bytes where they
+// are, so no call copies one.
+
+fn longest_beautiful_substring(word: String) -> i64 {
+    let letters = word.bytes();
+    let mut best = 0;
+    let mut length = 1;
+    let mut vowels = 1;
+    for i in 1..letters.len() {
+        if letters[i] < letters[i - 1] {
+            length = 1;
+            vowels = 1;
+        } else {
+            length += 1;
+            if letters[i] > letters[i - 1] {
+                vowels += 1;
+            }
+        }
+        if vowels == 5 {
+            best = best.max(length);
+        }
+    }
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1839;
+    let vowels = ['a', 'e', 'i', 'o', 'u'];
+    let mut words: Vec[String] = Vec.new();
+    for _ in 0..40 {
+        let mut out = String.new();
+        let mut at = 0;
+        for _ in 0..100000 {
+            let roll = next_random(mut seed) % 10;
+            if roll < 4 {
+                // the same vowel again
+            } else if roll < 8 {
+                at = (at + 1).min(4);
+            } else if roll < 9 {
+                at = 0;
+            } else {
+                at = next_random(mut seed) % 5;
+            }
+            out.push(vowels[at]);
+        }
+        words.push(out);
+    }
+    let mut check = 0;
+    for call in 0..1000 {
+        let w = ref words[(check + call) % 40];
+        check = (check * 31 + longest_beautiful_substring(w)) % 1000000007;
+    }
+    println(f"1000 calls: checksum {check}");
+}

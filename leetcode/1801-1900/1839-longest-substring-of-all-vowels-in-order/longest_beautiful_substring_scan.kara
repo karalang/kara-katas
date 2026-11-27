@@ -1,0 +1,82 @@
+// LeetCode #1839: Longest Substring Of All Vowels in Order -- from each `a`
+// that starts a run of `a`s, the word scanned on while its letters are in
+// order, and the stretch kept when its runs, deduplicated, are five
+// letters. Each scan stops where the letters fall back, before the next
+// start, so the word is walked once.
+// O(n)
+
+fn longest_beautiful_substring(word: String) -> i64 {
+    let letters = word.bytes();
+    let n = letters.len();
+    let mut best = 0;
+    let mut start = 0;
+    while start < n {
+        if letters[start] != b'a' {
+            start += 1;
+            continue;
+        }
+        let mut end = start + 1;
+        while end < n and letters[end] >= letters[end - 1] {
+            end += 1;
+        }
+        let mut seen = letters[start..end].to_vec();
+        seen.dedup();
+        if seen.len() == 5 {
+            best = best.max(end - start);
+        }
+        start = end;
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` vowels drawn at random, each the one before it again, the next
+// vowel, an `a`, or any vowel, so runs in order are common
+fn word(seed: mut ref i64, n: i64) -> String {
+    let vowels = ['a', 'e', 'i', 'o', 'u'];
+    let mut out = String.new();
+    let mut at = 0;
+    for _ in 0..n {
+        let roll = next_random(mut seed) % 10;
+        if roll < 4 {
+            // the same vowel again
+        } else if roll < 8 {
+            at = (at + 1).min(4);
+        } else if roll < 9 {
+            at = 0;
+        } else {
+            at = next_random(mut seed) % 5;
+        }
+        out.push(vowels[at]);
+    }
+    out
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{longest_beautiful_substring("aeiaaioaaaaeiiiiouuuooaauuaeiu")} {longest_beautiful_substring("aeeeiiiioooauuuaeiou")} {longest_beautiful_substring("a")}");
+    // the edges: the five vowels once; out of order; one vowel missing; a
+    // run in order that starts past its `a`; two beautiful runs, the second
+    // longer; a run that falls back to an `a` mid-way
+    println(f"{longest_beautiful_substring("aeiou")} {longest_beautiful_substring("uoiea")} {longest_beautiful_substring("aeiiuu")} {longest_beautiful_substring("eiouaeiou")} {longest_beautiful_substring("aeiouaaeeiioouu")} {longest_beautiful_substring("aaeiaeiouu")}");
+    // the constraints' most: 5 * 10^5 vowels drawn at random, and one
+    // beautiful run of 10^5 of each vowel
+    let mut seed = 1839;
+    let drawn = word(mut seed, 500000);
+    let whole: String = f"{"a".repeat(100000)}{"e".repeat(100000)}{"i".repeat(100000)}{"o".repeat(100000)}{"u".repeat(100000)}";
+    println(f"the most: {longest_beautiful_substring(drawn)} {longest_beautiful_substring(whole)}");
+    // 3000 random words of 1 to 30 vowels
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let w = word(mut seed, n);
+        check = (check * 31 + longest_beautiful_substring(w)) % 1000000007;
+    }
+    println(f"3000 random words: checksum {check}");
+}
