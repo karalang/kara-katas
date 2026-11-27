@@ -1,0 +1,55 @@
+// LeetCode #1829: Maximum XOR for Each Query -- the ★ arm: the XOR of the
+// numbers left, XORed with a k below 2^maximumBit, is largest when k flips
+// every one of its low maximumBit bits, so each answer is that XOR against
+// the mask of maximumBit ones; the XOR of all the numbers is taken once,
+// and the last number is XORed out of it after each answer.
+// O(n)
+
+fn get_maximum_xor(nums: Vec[i64], maximum_bit: i64) -> Vec[i64] {
+    let mask = (1 << maximum_bit) - 1;
+    let mut all = 0;
+    for x in nums.iter() {
+        all ^= x;
+    }
+    let mut answer: Vec[i64] = Vec.new();
+    for i in (0..nums.len()).rev() {
+        answer.push(all ^ mask);
+        all ^= nums[i];
+    }
+    answer
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{get_maximum_xor([0, 1, 1, 3], 2)} {get_maximum_xor([2, 3, 4, 7], 3)} {get_maximum_xor([0, 1, 2, 2, 5, 7], 3)}");
+    // the edges: one zero on one bit; one number with every bit set; equal
+    // numbers, whose XOR comes and goes; the most bits
+    println(f"{get_maximum_xor([0], 1)} {get_maximum_xor([7], 3)} {get_maximum_xor([5, 5, 5, 5], 3)} {get_maximum_xor([0, 1, 1048575], 20)}");
+    // the constraints' most: 10^5 sorted numbers below 2^20, the answers
+    // summed, with the first and the last
+    let mut seed = 1829;
+    let mut big: Vec[i64] = (0..100000).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % 1048576).collect();
+    big.sort();
+    let answer = get_maximum_xor(big, 20);
+    let total: i64 = answer.iter().sum();
+    println(f"the most: {total} {answer[0]} {answer[99999]}");
+    // 3000 random cases of 1 to 10 sorted numbers below 2^b, b from 1 to 5
+    let mut check = 0;
+    for _ in 0..3000 {
+        let bits = 1 + next_random(mut seed) % 5;
+        let n = 1 + next_random(mut seed) % 10;
+        let mut nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % (1 << bits)).collect();
+        nums.sort();
+        for k in get_maximum_xor(nums, bits).iter() {
+            check = (check * 31 + k) % 1000000007;
+        }
+    }
+    println(f"3000 random cases: checksum {check}");
+}

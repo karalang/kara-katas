@@ -1,0 +1,191 @@
+// LeetCode #1829: Maximum XOR for Each Query --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- get_maximum_xor.kara ----
+fn a0_get_maximum_xor(nums: Vec[i64], maximum_bit: i64) -> Vec[i64] {
+    let mask = (1 << maximum_bit) - 1;
+    let mut all = 0;
+    for x in nums.iter() {
+        all ^= x;
+    }
+    let mut answer: Vec[i64] = Vec.new();
+    for i in (0..nums.len()).rev() {
+        answer.push(all ^ mask);
+        all ^= nums[i];
+    }
+    answer
+}
+
+// ---- get_maximum_xor_prefix.kara ----
+fn a1_get_maximum_xor(nums: Vec[i64], maximum_bit: i64) -> Vec[i64] {
+    let n = nums.len();
+    let mut prefix: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        prefix[i + 1] = prefix[i] ^ nums[i];
+    }
+    let mask = (1 << maximum_bit) - 1;
+    (0..n).map(|j| prefix[n - j] ^ mask).collect()
+}
+
+// ---- get_maximum_xor_bits.kara ----
+fn a2_best_k(all: i64, maximum_bit: i64) -> i64 {
+    let mut k = 0;
+    for bit in 0..maximum_bit {
+        if all & (1 << bit) == 0 {
+            k |= 1 << bit;
+        }
+    }
+    k
+}
+
+fn a2_get_maximum_xor(nums: Vec[i64], maximum_bit: i64) -> Vec[i64] {
+    let mut all = nums.iter().fold(0, |acc, x| acc ^ x);
+    let mut answer: Vec[i64] = Vec.new();
+    let mut left = nums.len();
+    while left > 0 {
+        answer.push(a2_best_k(all, maximum_bit));
+        left -= 1;
+        all ^= nums[left];
+    }
+    answer
+}
+
+// ---- get_maximum_xor_fold.kara ----
+fn a3_get_maximum_xor(nums: Vec[i64], maximum_bit: i64) -> Vec[i64] {
+    let mask = (1 << maximum_bit) - 1;
+    let mut (_, answer) = nums.iter().fold((0, Vec.new()), |(all, list), x| {
+        let mut grown: Vec[i64] = list;
+        grown.push((all ^ x) ^ mask);
+        (all ^ x, grown)
+    });
+    answer.reverse();
+    answer
+}
+
+// ---- get_maximum_xor_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn get_maximum_xor(nums: Vec[i32], maximum_bit: i32) -> Vec[i32] {
+        let mask: i32 = (1 << maximum_bit) - 1;
+        let mut x = nums.iter().fold(0i32, |acc, n| acc ^ n);
+        let mut ans: Vec[i32] = Vec.with_capacity(nums.len());
+        for n in nums.iter().rev() {
+            ans.push(x ^ mask);
+            x ^= n;
+        }
+        ans
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+// the statement read literally: before each removal of the last number,
+// every k below 2^maximumBit is tried against the XOR of the numbers left,
+// and the first k giving the largest XOR is the answer
+fn literal(nums: Slice[i64], maximum_bit: i64) -> Vec[i64] {
+    let mut answer: Vec[i64] = Vec.new();
+    let mut left = nums.len();
+    while left > 0 {
+        let all = nums[..left].iter().fold(0, |acc, x| acc ^ x);
+        let mut best = 0;
+        for k in 0..1 << maximum_bit {
+            if all ^ k > all ^ best {
+                best = k;
+            }
+        }
+        answer.push(best);
+        left -= 1;
+    }
+    answer
+}
+
+fn arm(i: i64, nums: Slice[i64], maximum_bit: i64) -> Vec[i64] {
+    match i {
+        0 => a0_get_maximum_xor(nums.to_vec(), maximum_bit),
+        1 => a1_get_maximum_xor(nums.to_vec(), maximum_bit),
+        2 => a2_get_maximum_xor(nums.to_vec(), maximum_bit),
+        3 => a3_get_maximum_xor(nums.to_vec(), maximum_bit),
+        _ => {
+            let narrow: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+            A4Solution.get_maximum_xor(narrow, maximum_bit as i32).iter().map(|k| k as i64).collect()
+        }
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, nums: Slice[i64], bits: i64) {
+    t.cases += 1;
+    let star = arm(0, nums, bits);
+    for k in star.iter() {
+        t.check = (t.check * 31 + k) % 1000000007;
+    }
+    let want = literal(nums, bits);
+    let mask = (1 << bits) - 1;
+    let last = nums[nums.len() - 1];
+    let mut longer = nums.to_vec();
+    longer.push(last);
+    longer.push(last);
+    for i in 0..5 {
+        let what = f"arm {i} on {nums} with {bits} bits";
+        let got = arm(i, nums, bits);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: one answer to a number, each below 2^maximumBit
+        expect(mut t, 2, got.len() == nums.len() and got.iter().all(|k| k >= 0 and k <= mask), f"P2 {what}");
+        // P3: each answer XORed with the XOR of the numbers left sets every
+        // one of the maximumBit bits
+        let ones = (0..got.len()).all(|j| nums[..nums.len() - j].iter().fold(got[j], |acc, x| acc ^ x) == mask);
+        expect(mut t, 3, ones, f"P3 {what}");
+        // P4: one more bit allowed, each answer gains that bit
+        let wider = arm(i, nums, bits + 1);
+        expect(mut t, 4, wider.len() == got.len() and (0..got.len()).all(|j| wider[j] == got[j] + (1 << bits)), f"P4 {what}");
+        // P5: the largest number given twice more cancels out: the first
+        // answer is as before, and after the two removals the answers are
+        let more = arm(i, longer[..], bits);
+        expect(mut t, 5, more.len() == got.len() + 2 and more[0] == got[0] and more[2..] == got[..], f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 random cases of 1 to 10 sorted numbers below 2^b, b from 1 to 6
+    let mut seed = 1829;
+    for _ in 0..2000 {
+        let bits = 1 + next_random(mut seed) % 6;
+        let n = 1 + next_random(mut seed) % 10;
+        let mut nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % (1 << bits)).collect();
+        nums.sort();
+        check_case(mut t, nums[..], bits);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
