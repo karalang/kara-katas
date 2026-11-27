@@ -1,0 +1,89 @@
+// LeetCode #1803: Count Pairs With XOR in a Range -- no trie: the numbers
+// sorted once, and the pairs below a limit counted by splitting two runs
+// of the sorted list at each bit with `partition_point`, a run whose high
+// bits agree with the limit's walked on, a run on the 0 side of a limit's
+// 1 counted whole. O(n log n + n * 15 log n)
+
+fn below(nums: Slice[i32], a: i64, b: i64, c: i64, d: i64, bit: i64, limit: i32) -> i64 {
+    // pairs from nums[a..b] and nums[c..d], two runs that agree above
+    // `bit` with each other's XOR equal to the limit's bits above it
+    if a >= b or c >= d {
+        return 0;
+    }
+    if bit < 0 {
+        return 0;
+    }
+    let ma = a + nums[a..b].partition_point(|v| v >> bit & 1 == 0);
+    let mc = c + nums[c..d].partition_point(|v| v >> bit & 1 == 0);
+    if limit >> bit & 1 == 1 {
+        // the pairs whose bits agree here are below the limit
+        let same = (ma - a) * (mc - c) + (b - ma) * (d - mc);
+        same + below(nums, a, ma, mc, d, bit - 1, limit) + below(nums, ma, b, c, mc, bit - 1, limit)
+    } else {
+        below(nums, a, ma, c, mc, bit - 1, limit) + below(nums, ma, b, mc, d, bit - 1, limit)
+    }
+}
+
+// the unordered pairs within nums[a..b], whose numbers agree above `bit`,
+// with a XOR below the limit
+fn within(nums: Slice[i32], a: i64, b: i64, bit: i64, limit: i32) -> i64 {
+    if b - a < 2 or bit < 0 {
+        return 0;
+    }
+    let m = a + nums[a..b].partition_point(|v| v >> bit & 1 == 0);
+    if limit >> bit & 1 == 1 {
+        let pairs = |k: i64| k * (k - 1) / 2;
+        pairs(m - a) + pairs(b - m) + below(nums, a, m, m, b, bit - 1, limit)
+    } else {
+        within(nums, a, m, bit - 1, limit) + within(nums, m, b, bit - 1, limit)
+    }
+}
+
+fn count_pairs(nums: Vec[i32], low: i32, high: i32) -> i32 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let n = sorted.len();
+    let s = sorted.as_slice();
+    (within(s, 0, n, 14, high + 1) - within(s, 0, n, 14, low)) as i32
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples
+    let first: Vec[i32] = [1, 4, 2, 7].to_vec();
+    let second: Vec[i32] = [9, 8, 4, 2, 1].to_vec();
+    println(f"{count_pairs(first, 2, 6)} {count_pairs(second, 5, 14)}");
+    // the edges: one number; two alike, whose XOR is 0, outside a range
+    // from 1; the widest range, past which 20000 takes each other number;
+    // a range of one value; no pair reaching the range
+    let one: Vec[i32] = [5].to_vec();
+    let alike: Vec[i32] = [3, 3].to_vec();
+    let all: Vec[i32] = [1, 2, 3, 20000].to_vec();
+    let exact: Vec[i32] = [6, 3, 5, 1].to_vec();
+    let short: Vec[i32] = [1, 2, 3].to_vec();
+    println(f"{count_pairs(one, 1, 5)} {count_pairs(alike, 1, 4)} {count_pairs(all, 1, 20000)} {count_pairs(exact, 5, 5)} {count_pairs(short, 4, 100)}");
+    // the constraints' most: 2 * 10^4 numbers of 2 * 10^4 at random, the
+    // widest range and a narrow one; and 2 * 10^4 alike
+    let mut seed = 1803;
+    let wide: Vec[i32] = (0..20000).map(|_| (1 + next_random(mut seed) % 20000) as i32).collect();
+    let flat: Vec[i32] = Vec.filled(20000, 20000);
+    println(f"the most: {count_pairs(wide, 1, 20000)} {count_pairs(wide, 4000, 5000)} {count_pairs(flat, 1, 20000)}");
+    // 3000 random cases of 1 to 20 numbers of 1 to 1 + 0 to 63, and a
+    // range inside 1 to 70
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 20;
+        let top = 1 + next_random(mut seed) % 64;
+        let nums: Vec[i32] = (0..n).map(|_| (1 + next_random(mut seed) % top) as i32).collect();
+        let low = 1 + next_random(mut seed) % 70;
+        let high = low + next_random(mut seed) % (71 - low);
+        check = (check * 31 + count_pairs(nums, low as i32, high as i32)) % 1000000007;
+    }
+    println(f"3000 random cases: checksum {check}");
+}

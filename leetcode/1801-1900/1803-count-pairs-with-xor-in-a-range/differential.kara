@@ -1,0 +1,351 @@
+// LeetCode #1803: Count Pairs With XOR in a Range --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- count_pairs.kara ----
+const A0_BITS: i64 = 15;
+
+fn a0_count_below(nums: Vec[i32], limit: i32) -> i64 {
+    // children[2 * node + bit], 0 for none; node 0 is the root
+    let mut children: Vec[i64] = Vec.filled(2, 0);
+    let mut counts: Vec[i64] = Vec.filled(1, 0);
+    let mut pairs: i64 = 0;
+    for x in nums.iter() {
+        // the numbers before x whose XOR with it is below the limit
+        let mut node = 0;
+        for b in (0..A0_BITS).rev() {
+            let xb = (x >> b & 1) as i64;
+            let lb = limit >> b & 1;
+            if lb == 1 {
+                // a XOR with a 0 here is below the limit whatever follows
+                let same = children[2 * node + xb];
+                if same != 0 {
+                    pairs += counts[same];
+                }
+                node = children[2 * node + 1 - xb];
+            } else {
+                node = children[2 * node + xb];
+            }
+            if node == 0 {
+                break;
+            }
+        }
+        // x itself goes in
+        let mut at = 0;
+        counts[0] += 1;
+        for b in (0..A0_BITS).rev() {
+            let xb = (x >> b & 1) as i64;
+            if children[2 * at + xb] == 0 {
+                children[2 * at + xb] = counts.len();
+                counts.push(0);
+                children.push(0);
+                children.push(0);
+            }
+            at = children[2 * at + xb];
+            counts[at] += 1;
+        }
+    }
+    pairs
+}
+
+fn a0_count_pairs(nums: Vec[i32], low: i32, high: i32) -> i32 {
+    (a0_count_below(nums, high + 1) - a0_count_below(nums, low)) as i32
+}
+
+// ---- count_pairs_fwht.kara ----
+fn a1_count_pairs(nums: Vec[i32], low: i32, high: i32) -> i32 {
+    // a power of two past every number and the range
+    let top = nums.iter().max().unwrap().max(high);
+    let mut size = 1;
+    while size <= top {
+        size *= 2;
+    }
+    let mut f: Vec[i64] = Vec.filled(size, 0);
+    for x in nums.iter() {
+        f[x] += 1;
+    }
+    let transform = |f: mut ref Vec[i64]| {
+        let mut half = 1;
+        while half < size {
+            let mut start = 0;
+            while start < size {
+                for i in start..start + half {
+                    let (a, b) = (f[i], f[i + half]);
+                    f[i] = a + b;
+                    f[i + half] = a - b;
+                }
+                start += 2 * half;
+            }
+            half *= 2;
+        }
+    };
+    transform(mut f);
+    for i in 0..size {
+        f[i] = f[i] * f[i];
+    }
+    transform(mut f);
+    // the back transform is the forward one divided by the size; each
+    // unordered pair is counted twice
+    let ordered: i64 = (low..high + 1).map(|x| f[x] / size).sum();
+    (ordered / 2) as i32
+}
+
+// ---- count_pairs_split.kara ----
+fn a2_below(nums: Slice[i32], a: i64, b: i64, c: i64, d: i64, bit: i64, limit: i32) -> i64 {
+    // pairs from nums[a..b] and nums[c..d], two runs that agree above
+    // `bit` with each other's XOR equal to the limit's bits above it
+    if a >= b or c >= d {
+        return 0;
+    }
+    if bit < 0 {
+        return 0;
+    }
+    let ma = a + nums[a..b].partition_point(|v| v >> bit & 1 == 0);
+    let mc = c + nums[c..d].partition_point(|v| v >> bit & 1 == 0);
+    if limit >> bit & 1 == 1 {
+        // the pairs whose bits agree here are below the limit
+        let same = (ma - a) * (mc - c) + (b - ma) * (d - mc);
+        same + a2_below(nums, a, ma, mc, d, bit - 1, limit) + a2_below(nums, ma, b, c, mc, bit - 1, limit)
+    } else {
+        a2_below(nums, a, ma, c, mc, bit - 1, limit) + a2_below(nums, ma, b, mc, d, bit - 1, limit)
+    }
+}
+
+// the unordered pairs within nums[a..b], whose numbers agree above `bit`,
+// with a XOR below the limit
+fn a2_within(nums: Slice[i32], a: i64, b: i64, bit: i64, limit: i32) -> i64 {
+    if b - a < 2 or bit < 0 {
+        return 0;
+    }
+    let m = a + nums[a..b].partition_point(|v| v >> bit & 1 == 0);
+    if limit >> bit & 1 == 1 {
+        let pairs = |k: i64| k * (k - 1) / 2;
+        pairs(m - a) + pairs(b - m) + a2_below(nums, a, m, m, b, bit - 1, limit)
+    } else {
+        a2_within(nums, a, m, bit - 1, limit) + a2_within(nums, m, b, bit - 1, limit)
+    }
+}
+
+fn a2_count_pairs(nums: Vec[i32], low: i32, high: i32) -> i32 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let n = sorted.len();
+    let s = sorted.as_slice();
+    (a2_within(s, 0, n, 14, high + 1) - a2_within(s, 0, n, 14, low)) as i32
+}
+
+// ---- count_pairs_levels.kara ----
+fn a3_count_pairs(nums: Vec[i32], low: i32, high: i32) -> i32 {
+    let below = |limit: i32| {
+        let mut levels: Vec[Vec[i64]] = (0..15).map(|b| Vec.filled(1 << (15 - b), 0)).collect();
+        let mut pairs: i64 = 0;
+        for x in nums.iter() {
+            for b in 0..15 {
+                if limit >> b & 1 == 1 {
+                    pairs += levels[b][(x ^ limit) >> b ^ 1];
+                }
+            }
+            for b in 0..15 {
+                levels[b][x >> b] += 1;
+            }
+        }
+        pairs
+    };
+    (below(high + 1) - below(low)) as i32
+}
+
+// ---- count_pairs_solution.kara ----
+struct A4Solution {}
+
+fn a4_count(nums: ref Vec[i32], lim: i32) -> i32 {
+    let mut ch: Vec[Array[i64, 2]] = [[0, 0]];
+    let mut cnt: Vec[i32] = [0];
+    let mut res: i32 = 0;
+    for x in nums {
+        let mut node = 0;
+        for b in (0..15).rev() {
+            let xb = ((x >> b) & 1) as i64;
+            if (lim >> b) & 1 == 1 {
+                if ch[node][xb] != 0 {
+                    res += cnt[ch[node][xb]];
+                }
+                node = ch[node][xb ^ 1];
+            } else {
+                node = ch[node][xb];
+            }
+            if node == 0 {
+                break;
+            }
+        }
+        let mut node = 0;
+        for b in (0..15).rev() {
+            let xb = ((x >> b) & 1) as i64;
+            if ch[node][xb] == 0 {
+                ch.push([0, 0]);
+                cnt.push(0);
+                let len = ch.len() - 1;
+                ch[node][xb] = len;
+            }
+            node = ch[node][xb];
+            cnt[node] += 1;
+        }
+    }
+    res
+}
+
+impl A4Solution {
+    pub fn count_pairs(nums: Vec[i32], low: i32, high: i32) -> i32 {
+        a4_count(nums, high + 1) - a4_count(nums, low)
+    }
+}
+
+fn a4_count_pairs(nums: Vec[i32], low: i32, high: i32) -> i32 {
+    A4Solution.count_pairs(nums, low, high)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every pair i < j whose XOR lies from low
+// to high
+fn literal(nums: Vec[i32], low: i32, high: i32) -> i32 {
+    let mut count = 0;
+    for i in 0..nums.len() {
+        for j in i + 1..nums.len() {
+            let x = nums[i] ^ nums[j];
+            if low <= x and x <= high {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+fn arm(i: i64, nums: Vec[i32], low: i32, high: i32) -> i32 {
+    match i {
+        0 => a0_count_pairs(nums, low, high),
+        1 => a1_count_pairs(nums, low, high),
+        2 => a2_count_pairs(nums, low, high),
+        3 => a3_count_pairs(nums, low, high),
+        _ => a4_count_pairs(nums, low, high),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, nums: Vec[i32], low: i32, high: i32) {
+    t.cases += 1;
+    let star = arm(0, nums, low, high);
+    t.check = (t.check * 31 + star) % 1000000007;
+    let n = nums.len();
+    let want = if n <= 200 { literal(nums, low, high) } else { 0 };
+    let reversed: Vec[i32] = nums.iter().rev().collect();
+    let top = nums.iter().max().unwrap();
+    let doubled: Vec[i32] = nums.iter().map(|x| 2 * x).collect();
+    // the least 2^k - 1 at or above every number, which every XOR is
+    // at most
+    let mut full = 1;
+    while full < top {
+        full = 2 * full + 1;
+    }
+    let mut alike: SortedMap[i32, i64] = SortedMap.new();
+    for x in nums.iter() {
+        alike[x] = alike.get(x).cloned().unwrap_or(0) + 1;
+    }
+    let same: i64 = alike.values().map(|c| c * (c - 1) / 2).sum();
+    let different = (n * (n - 1) / 2 - same) as i32;
+    for i in 0..5 {
+        let what = f"arm {i} on {nums}, {low} to {high}";
+        let got = arm(i, nums, low, high);
+        // P1: the statement read literally, for at most 200 numbers
+        if n <= 200 {
+            expect(mut t, 1, got == want, f"P1 {what}");
+        }
+        // P2: the numbers in reverse order give the same answer
+        expect(mut t, 2, arm(i, reversed, low, high) == got, f"P2 {what}");
+        // P3: the range cut in two counts the same pairs between its parts
+        if low < high {
+            let mid = low + (high - low) / 2;
+            let parts = arm(i, nums, low, mid) + arm(i, nums, mid + 1, high);
+            expect(mut t, 3, parts == got, f"P3 {what}");
+        }
+        // P4: every number doubled doubles every XOR, so the range from
+        // 2 low to 2 high + 1 gives the same answer, while that stays
+        // inside the constraints
+        if top <= 10000 and high <= 9999 {
+            expect(mut t, 4, arm(i, doubled, 2 * low, 2 * high + 1) == got, f"P4 {what}");
+        }
+        // P5: the range from 1 to the least 2^k - 1 past every number
+        // holds every pair of two different numbers
+        if full <= 20000 {
+            expect(mut t, 5, arm(i, nums, 1, full) == different, f"P5 {what}");
+        }
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples, the edges, 4000 numbers of up to 2 * 10^4 at
+    // random in two ranges and 4000 alike, 300 random
+    // cases of up to 300 numbers of up to 2 * 10^4, and 1690 of 1 to 14
+    // numbers of 1 to 1 + 0 to 63. Every case is drawn before any arm
+    // answers.
+    let mut cases: Vec[(Vec[i32], i32, i32)] = Vec.new();
+    cases.push(([1i32, 4, 2, 7].to_vec(), 2, 6));
+    cases.push(([9i32, 8, 4, 2, 1].to_vec(), 5, 14));
+    cases.push(([5i32].to_vec(), 1, 5));
+    cases.push(([3i32, 3].to_vec(), 1, 4));
+    cases.push(([1i32, 2, 3, 20000].to_vec(), 1, 20000));
+    cases.push(([6i32, 3, 5, 1].to_vec(), 5, 5));
+    cases.push(([1i32, 2, 3].to_vec(), 4, 100));
+    let mut seed = 18031;
+    let wide: Vec[i32] = (0..4000).map(|_| (1 + next_random(mut seed) % 20000) as i32).collect();
+    cases.push((wide.clone(), 1, 20000));
+    cases.push((wide, 4000, 5000));
+    cases.push((Vec.filled(4000, 20000i32), 1, 20000));
+    for _ in 0..300 {
+        let n = 1 + next_random(mut seed) % 300;
+        let nums: Vec[i32] = (0..n).map(|_| (1 + next_random(mut seed) % 20000) as i32).collect();
+        let low = 1 + next_random(mut seed) % 20000;
+        let high = low + next_random(mut seed) % (20001 - low);
+        cases.push((nums, low as i32, high as i32));
+    }
+    for _ in 0..1690 {
+        let n = 1 + next_random(mut seed) % 14;
+        let top = 1 + next_random(mut seed) % 64;
+        let nums: Vec[i32] = (0..n).map(|_| (1 + next_random(mut seed) % top) as i32).collect();
+        let low = 1 + next_random(mut seed) % 70;
+        let high = low + next_random(mut seed) % (71 - low);
+        cases.push((nums, low as i32, high as i32));
+    }
+    for (nums, low, high) in cases.iter() {
+        check_case(mut t, nums, low, high);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

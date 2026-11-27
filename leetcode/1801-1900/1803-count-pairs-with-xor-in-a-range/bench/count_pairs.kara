@@ -1,0 +1,75 @@
+// LeetCode #1803: Count Pairs With XOR in a Range -- the bench: the ★ arm,
+// a binary trie walked against each limit, over 40 random lists of 20000
+// numbers built once, 100 calls with a random range, each list drawn from
+// the checksum so far.
+
+const BITS: i64 = 15;
+
+fn count_below(nums: Vec[i32], limit: i32) -> i64 {
+    // children[2 * node + bit], 0 for none; node 0 is the root
+    let mut children: Vec[i64] = Vec.filled(2, 0);
+    let mut counts: Vec[i64] = Vec.filled(1, 0);
+    let mut pairs: i64 = 0;
+    for x in nums.iter() {
+        // the numbers before x whose XOR with it is below the limit
+        let mut node = 0;
+        for b in (0..BITS).rev() {
+            let xb = (x >> b & 1) as i64;
+            let lb = limit >> b & 1;
+            if lb == 1 {
+                // a XOR with a 0 here is below the limit whatever follows
+                let same = children[2 * node + xb];
+                if same != 0 {
+                    pairs += counts[same];
+                }
+                node = children[2 * node + 1 - xb];
+            } else {
+                node = children[2 * node + xb];
+            }
+            if node == 0 {
+                break;
+            }
+        }
+        // x itself goes in
+        let mut at = 0;
+        counts[0] += 1;
+        for b in (0..BITS).rev() {
+            let xb = (x >> b & 1) as i64;
+            if children[2 * at + xb] == 0 {
+                children[2 * at + xb] = counts.len();
+                counts.push(0);
+                children.push(0);
+                children.push(0);
+            }
+            at = children[2 * at + xb];
+            counts[at] += 1;
+        }
+    }
+    pairs
+}
+
+fn count_pairs(nums: Vec[i32], low: i32, high: i32) -> i32 {
+    (count_below(nums, high + 1) - count_below(nums, low)) as i32
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1803;
+    let mut lists: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..40 {
+        let nums: Vec[i32] = (0..20000).map(|_| (1 + next_random(mut seed) % 20000) as i32).collect();
+        lists.push(nums);
+    }
+    let mut check = 0;
+    for call in 0..100 {
+        let low = 1 + next_random(mut seed) % 20000;
+        let high = low + next_random(mut seed) % (20001 - low);
+        let nums = ref lists[(check + call) % 40];
+        check = (check * 31 + count_pairs(nums, low as i32, high as i32)) % 1000000007;
+    }
+    println(f"100 calls over 40 lists of 20000 numbers: checksum {check}");
+}
