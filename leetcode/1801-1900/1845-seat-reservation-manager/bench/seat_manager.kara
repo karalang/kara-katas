@@ -1,0 +1,56 @@
+// LeetCode #1845: Seat Reservation Manager -- the bench in Kāra: the ★ arm,
+// every unreserved seat in a `PriorityQueue`, over 50 runs of 10^5 calls on
+// 50000 to 99999 seats, each run's size and its place in one list of 10^6
+// draws, built once, taken from the checksum so far. A draw reserves a seat
+// two times in three, and otherwise gives back a held seat it picks; every
+// seat reserved goes into the checksum.
+
+struct SeatManager {
+    free: PriorityQueue[i64],
+}
+
+impl SeatManager {
+    fn new(n: i64) -> SeatManager {
+        SeatManager { free: (1..n + 1).collect() }
+    }
+
+    fn reserve(mut ref self) -> i64 {
+        self.free.pop().unwrap()
+    }
+
+    fn unreserve(mut ref self, seat_number: i64) {
+        self.free.push(seat_number);
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1845;
+    let mut draws: Vec[i64] = Vec.new();
+    for _ in 0..1000000 {
+        draws.push(next_random(mut seed));
+    }
+    let mut check = 0;
+    for _ in 0..50 {
+        let n = 50000 + check % 50000;
+        let start = check % 500000;
+        let mut seats = SeatManager.new(n);
+        let mut held: Vec[i64] = Vec.new();
+        for k in 0..100000 {
+            let d = draws[start + k];
+            if held.is_empty() or (d % 3 != 0 and held.len() < n) {
+                let seat = seats.reserve();
+                check = (check * 31 + seat) % 1000000007;
+                held.push(seat);
+            } else {
+                let seat = held.swap_remove(d % held.len());
+                seats.unreserve(seat);
+            }
+        }
+    }
+    println(f"50 runs: checksum {check}");
+}

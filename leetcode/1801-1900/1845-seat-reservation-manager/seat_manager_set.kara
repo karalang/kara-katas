@@ -1,0 +1,101 @@
+// LeetCode #1845: Seat Reservation Manager -- the unreserved seats in a
+// `SortedSet`, the lowest its `min`, removed on a reservation and put back
+// on a return.
+// O(n log n) to build, O(log n) a call
+
+struct SeatManager {
+    free: SortedSet[i64],
+}
+
+impl SeatManager {
+    fn new(n: i64) -> SeatManager {
+        SeatManager { free: (1..n + 1).collect() }
+    }
+
+    fn reserve(mut ref self) -> i64 {
+        let seat = *self.free.min().unwrap();
+        self.free.remove(seat);
+        seat
+    }
+
+    fn unreserve(mut ref self, seat_number: i64) {
+        self.free.insert(seat_number);
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// runs `ops` on a fresh SeatManager(n): a 0 reserves, and the reserved
+// seat is gathered; a seat number gives that seat back
+fn run(n: i64, ops: Slice[i64]) -> Vec[i64] {
+    let mut seats = SeatManager.new(n);
+    let mut out: Vec[i64] = Vec.new();
+    for op in ops.iter() {
+        if op == 0 {
+            out.push(seats.reserve());
+        } else {
+            seats.unreserve(op);
+        }
+    }
+    out
+}
+
+// `len` calls on a fresh SeatManager(n) drawn as they go: a reservation
+// when no seat is reserved or by a draw, while a seat is free, and
+// otherwise a reserved seat drawn at random given back; the reserved seats
+// are gathered
+fn run_drawn(seed: mut ref i64, n: i64, len: i64) -> Vec[i64] {
+    let mut seats = SeatManager.new(n);
+    let mut held: Vec[i64] = Vec.new();
+    let mut out: Vec[i64] = Vec.new();
+    for _ in 0..len {
+        if held.len() < n and (held.is_empty() or next_random(mut seed) % 5 < 3) {
+            let seat = seats.reserve();
+            held.push(seat);
+            out.push(seat);
+        } else {
+            let at = next_random(mut seed) % held.len();
+            let seat = held.swap_remove(at);
+            seats.unreserve(seat);
+        }
+    }
+    out
+}
+
+fn main() {
+    // LeetCode's example
+    println(run(5, [0, 0, 2, 0, 0, 0, 0, 5][..]));
+    // the edges: one seat taken and given back twice over; every seat
+    // taken; the lowest given back first, and then a higher one
+    println(f"{run(1, [0, 1, 0, 1, 0][..])} {run(4, [0, 0, 0, 0][..])} {run(5, [0, 0, 0, 3, 1, 0, 0][..])}");
+    // the constraints' most: 10^5 seats and 10^5 calls drawn at random,
+    // and 10^5 reservations, each folded to one number
+    let mut seed = 1845;
+    let mut drawn = 0;
+    for x in run_drawn(mut seed, 100000, 100000) {
+        drawn = (drawn * 31 + x) % 1000000007;
+    }
+    let every: Vec[i64] = Vec.filled(100000, 0);
+    let mut full = 0;
+    for x in run(100000, every[..]) {
+        full = (full * 31 + x) % 1000000007;
+    }
+    println(f"the most: {drawn} {full}");
+    // 300 random runs of 1 to 60 operations on 1 to 12 seats
+    let mut check = 0;
+    let mut reserved = 0;
+    for _ in 0..300 {
+        let n = 1 + next_random(mut seed) % 12;
+        let len = 1 + next_random(mut seed) % 60;
+        for x in run_drawn(mut seed, n, len) {
+            reserved += 1;
+            check = (check * 31 + x) % 1000000007;
+        }
+    }
+    println(f"300 random runs: {reserved} reservations, checksum {check}");
+}
