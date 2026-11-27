@@ -1,0 +1,51 @@
+// LeetCode #1832: Check if the Sentence Is Pangram -- a Rust solution as
+// LeetCode's Rust users write it, carried to Kāra by `karac fix`
+
+struct Solution {}
+
+impl Solution {
+    pub fn check_if_pangram(sentence: String) -> bool {
+        Set[char].from_iter(sentence.chars()).len() == 26
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a sentence of n letters drawn from the first `span` of the alphabet
+fn sentence(seed: mut ref i64, n: i64, span: i64) -> String {
+    (0..n).map(|_| (b'a' + (next_random(mut seed) % span) as u8) as char).collect()
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{Solution.check_if_pangram("thequickbrownfoxjumpsoverthelazydog")} {Solution.check_if_pangram("leetcode")}");
+    // the edges: the alphabet once; the alphabet with no z; one letter; a
+    // to y forty times over and a z at the very end
+    let late: String = f"{"abcdefghijklmnopqrstuvwxy".repeat(39)}z";
+    println(f"{Solution.check_if_pangram("abcdefghijklmnopqrstuvwxyz")} {Solution.check_if_pangram("abcdefghijklmnopqrstuvwxy")} {Solution.check_if_pangram("q")} {Solution.check_if_pangram(late)}");
+    // the constraints' most: 1000 letters from the whole alphabet, from all
+    // but z, and one letter 1000 times
+    let mut seed = 1832;
+    let whole = sentence(mut seed, 1000, 26);
+    let short = sentence(mut seed, 1000, 25);
+    println(f"the most: {Solution.check_if_pangram(whole)} {Solution.check_if_pangram(short)} {Solution.check_if_pangram("e".repeat(1000))}");
+    // 3000 random sentences of 20 to 100 letters from the first 24 to 26
+    let mut pangrams = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 20 + next_random(mut seed) % 81;
+        let span = 24 + next_random(mut seed) % 3;
+        let s = sentence(mut seed, n, span);
+        let yes = Solution.check_if_pangram(s);
+        if yes {
+            pangrams += 1;
+        }
+        check = (check * 31 + if yes { 2 } else { 1 }) % 1000000007;
+    }
+    println(f"3000 random sentences: {pangrams} pangrams, checksum {check}");
+}
