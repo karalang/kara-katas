@@ -1,0 +1,76 @@
+// LeetCode #1805: Number of Different Integers in a String -- every run
+// of digits gathered, leading zeros dropped, into a `Vec`, which is sorted
+// so that equal numbers sit side by side and counted where a number differs
+// from the one before it.
+// O(n log n)
+
+fn num_different_integers(word: String) -> i32 {
+    let mut runs: Vec[String] = Vec.new();
+    let mut run = String.new();
+    let mut in_run = false;
+    for c in word.chars() {
+        if c.is_ascii_digit() {
+            in_run = true;
+            if not (run.is_empty() and c == '0') {
+                run.push(c);
+            }
+        } else if in_run {
+            runs.push(run);
+            run = String.new();
+            in_run = false;
+        }
+    }
+    if in_run {
+        runs.push(run);
+    }
+    runs.sort();
+    let mut count = 0;
+    for i in 0..runs.len() {
+        if i == 0 or runs[i] != runs[i - 1] {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{num_different_integers("a123bc34d8ef34")} {num_different_integers("leet1234code234")} {num_different_integers("a1b01c001")}");
+    // the edges: no digits; one 0; zeros alone, which are all 0; a long
+    // run past any machine integer; the same number with and without its
+    // zeros, among other numbers
+    let long = "9".repeat(400) + "x" + "0".repeat(5) + "9".repeat(400);
+    println(f"{num_different_integers("abc")} {num_different_integers("0")} {num_different_integers("0a00b000")} {num_different_integers(long)} {num_different_integers("x10y010z100")}");
+    // the constraints' most: 1000 digits; 1000 letters; 500 pairs of a
+    // digit and a letter
+    let digits = "1".repeat(1000);
+    let letters = "q".repeat(1000);
+    let pairs = "7z".repeat(500);
+    println(f"the most: {num_different_integers(digits)} {num_different_integers(letters)} {num_different_integers(pairs)}");
+    // 3000 random words of 1 to 30 characters, each a digit with a chance
+    // of 0 to 3 in 4, digits mostly 0 and 1 so that numbers repeat
+    let mut seed = 1805;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let chance = next_random(mut seed) % 4;
+        let mut word = String.new();
+        for _ in 0..n {
+            if next_random(mut seed) % 4 < chance {
+                let d = next_random(mut seed) % 3;
+                word.push(char.from_digit(d as u32, 10).unwrap());
+            } else {
+                word.push(char.try_from(97 + (next_random(mut seed) % 3) as u32).ok().unwrap());
+            }
+        }
+        check = (check * 31 + num_different_integers(word)) % 1000000007;
+    }
+    println(f"3000 random words: checksum {check}");
+}

@@ -1,0 +1,257 @@
+// LeetCode #1805: Number of Different Integers in a String --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- num_different_integers.kara ----
+fn a0_num_different_integers(word: String) -> i32 {
+    let mut seen: Set[String] = Set.new();
+    let mut run = String.new();
+    let mut in_run = false;
+    for c in word.chars() {
+        if c.is_ascii_digit() {
+            in_run = true;
+            if not (run.is_empty() and c == '0') {
+                run.push(c);
+            }
+        } else if in_run {
+            seen.insert(run.clone());
+            run = String.new();
+            in_run = false;
+        }
+    }
+    if in_run {
+        seen.insert(run);
+    }
+    seen.len() as i32
+}
+
+// ---- num_different_integers_split.kara ----
+fn a1_num_different_integers(word: String) -> i32 {
+    let chars: Vec[char] = word.chars().collect();
+    let mut seen: Set[String] = Set.new();
+    for run in chars.split(|c| c.is_ascii_lowercase()) {
+        if run.is_empty() {
+            continue;
+        }
+        let digits: String = run.iter().skip_while(|c| *c == '0').collect();
+        seen.insert(digits);
+    }
+    seen.len() as i32
+}
+
+// ---- num_different_integers_sorted.kara ----
+fn a2_num_different_integers(word: String) -> i32 {
+    let mut runs: Vec[String] = Vec.new();
+    let mut run = String.new();
+    let mut in_run = false;
+    for c in word.chars() {
+        if c.is_ascii_digit() {
+            in_run = true;
+            if not (run.is_empty() and c == '0') {
+                run.push(c);
+            }
+        } else if in_run {
+            runs.push(run);
+            run = String.new();
+            in_run = false;
+        }
+    }
+    if in_run {
+        runs.push(run);
+    }
+    runs.sort();
+    let mut count = 0;
+    for i in 0..runs.len() {
+        if i == 0 or runs[i] != runs[i - 1] {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- num_different_integers_views.kara ----
+fn a3_num_different_integers(word: String) -> i32 {
+    let bytes = word.bytes();
+    let n = bytes.len();
+    let mut seen: Set[Str] = Set.new();
+    let mut i = 0;
+    while i < n {
+        if bytes[i].is_ascii_digit() {
+            while i < n and bytes[i] == b'0' {
+                i += 1;
+            }
+            let start = i;
+            while i < n and bytes[i].is_ascii_digit() {
+                i += 1;
+            }
+            seen.insert(word[start..i]);
+        } else {
+            i += 1;
+        }
+    }
+    seen.len() as i32
+}
+
+// ---- num_different_integers_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn num_different_integers(word: String) -> i32 {
+        let mut set = Set.new();
+        let chars: Vec[char] = word.chars().collect();
+        for s in chars.split(|c: char| c.is_ascii_alphabetic()) {
+            if not s.is_empty() {
+                let digits: String = s.iter().skip_while(|c| *c == '0').collect();
+                set.insert(digits);
+            }
+        }
+        set.len() as i32
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every letter replaced with a space, the
+// integers left between the spaces, each written without its leading
+// zeros, and an integer counted when no integer before it is the same
+fn literal(word: String) -> i32 {
+    let spaced: String = word.chars().map(|c| if c.is_ascii_digit() { c } else { ' ' }).collect();
+    let mut integers: Vec[String] = Vec.new();
+    for part in spaced.split_whitespace() {
+        let mut digits = part;
+        while digits.starts_with("0") {
+            digits = digits.strip_prefix("0").unwrap();
+        }
+        integers.push(digits.to_string());
+    }
+    let mut count = 0;
+    for i in 0..integers.len() {
+        if (0..i).all(|j| integers[j] != integers[i]) {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn arm(i: i64, word: String) -> i32 {
+    match i {
+        0 => a0_num_different_integers(word),
+        1 => a1_num_different_integers(word),
+        2 => a2_num_different_integers(word),
+        3 => a3_num_different_integers(word),
+        _ => A4Solution.num_different_integers(word),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, word: String) {
+    t.cases += 1;
+    let star = arm(0, word);
+    t.check = (t.check * 31 + star) % 1000000007;
+    let want = literal(word);
+    // a zero written before every run of digits
+    let mut padded = String.new();
+    let mut prev_digit = false;
+    for c in word.chars() {
+        if c.is_ascii_digit() and not prev_digit {
+            padded.push('0');
+        }
+        padded.push(c);
+        prev_digit = c.is_ascii_digit();
+    }
+    let lettered = "q" + word + "q";
+    let doubled = word + "z" + word;
+    let renamed: String = word.chars().map(|c| if c.is_ascii_digit() { c } else { 'z' }).collect();
+    let runs = literal_runs(word);
+    let digit_count = word.chars().filter(|c| c.is_ascii_digit()).count() as i32;
+    for i in 0..5 {
+        let what = f"arm {i} on {word}";
+        let got = arm(i, word);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: a letter at each end, or every letter changed to another
+        // letter, gives the same answer
+        expect(mut t, 2, arm(i, lettered) == got and arm(i, renamed) == got, f"P2 {what}");
+        // P3: a zero written before every run of digits gives the same answer
+        expect(mut t, 3, arm(i, padded) == got, f"P3 {what}");
+        // P4: the word written twice, with a letter between, gives the
+        // same answer
+        expect(mut t, 4, arm(i, doubled) == got, f"P4 {what}");
+        // P5: the answer is at most the number of runs of digits, and at
+        // most the number of digits
+        expect(mut t, 5, got >= 0 and got <= runs and got <= digit_count, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+// the runs of digits, counted where a digit follows a letter or the start
+fn literal_runs(word: String) -> i32 {
+    let mut runs = 0;
+    let mut prev_digit = false;
+    for c in word.chars() {
+        if c.is_ascii_digit() and not prev_digit {
+            runs += 1;
+        }
+        prev_digit = c.is_ascii_digit();
+    }
+    runs
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples, the edges, the constraints' most, and 1988
+    // random words of 1 to 30 characters. Every case is drawn before any
+    // arm answers.
+    let mut cases: Vec[String] = ["a123bc34d8ef34".to_string(), "leet1234code234".to_string(), "a1b01c001".to_string(), "abc".to_string(), "0".to_string(), "0a00b000".to_string(), "x10y010z100".to_string(), "007".to_string()].to_vec();
+    let mut seed = 18051;
+    cases.push("1".repeat(1000));
+    cases.push("q".repeat(1000));
+    cases.push("7z".repeat(500));
+    cases.push("9".repeat(400) + "x" + "0".repeat(5) + "9".repeat(400));
+    for _ in 0..1988 {
+        let n = 1 + next_random(mut seed) % 30;
+        let chance = next_random(mut seed) % 4;
+        let top = 1 + next_random(mut seed) % 10;
+        let mut word = String.new();
+        for _ in 0..n {
+            if next_random(mut seed) % 4 < chance {
+                let d = next_random(mut seed) % top;
+                word.push(char.from_digit(d as u32, 10).unwrap());
+            } else {
+                word.push(char.try_from(97 + (next_random(mut seed) % 26) as u32).ok().unwrap());
+            }
+        }
+        cases.push(word);
+    }
+    for j in 0..cases.len() {
+        check_case(mut t, cases[j].clone());
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
