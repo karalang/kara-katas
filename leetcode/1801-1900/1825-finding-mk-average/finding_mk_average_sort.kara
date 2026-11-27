@@ -1,0 +1,94 @@
+// LeetCode #1825: Finding MK Average -- no structure kept but the window:
+// each average sorts a copy of it and sums all but its k smallest and k
+// largest.
+// O(1) to add, O(m log m) to average
+
+struct MkAverage {
+    m: i64,
+    k: i64,
+    window: VecDeque[i64],
+}
+
+impl MkAverage {
+    fn new(m: i64, k: i64) -> MkAverage {
+        MkAverage { m, k, window: VecDeque.new() }
+    }
+
+    fn add_element(mut ref self, num: i64) {
+        self.window.push_back(num);
+        if self.window.len() > self.m {
+            self.window.pop_front();
+        }
+    }
+
+    fn calculate_mk_average(self) -> i64 {
+        if self.window.len() < self.m {
+            return -1;
+        }
+        let mut sorted: Vec[i64] = self.window.iter().collect();
+        sorted.sort();
+        let kept: i64 = sorted[self.k..self.m - self.k].iter().sum();
+        kept / (self.m - 2 * self.k)
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// runs `ops` on a fresh MKAverage(m, k): a number adds it, and -1 asks for
+// the average, which is gathered
+fn run(m: i64, k: i64, ops: Slice[i64]) -> Vec[i64] {
+    let mut avg = MkAverage.new(m, k);
+    let mut out: Vec[i64] = Vec.new();
+    for op in ops.iter() {
+        if op < 0 {
+            out.push(avg.calculate_mk_average());
+        } else {
+            avg.add_element(op);
+        }
+    }
+    out
+}
+
+fn main() {
+    // LeetCode's example
+    println(run(3, 1, [3, 1, -1, 10, -1, 5, 5, 5, -1][..]));
+    // the edges: a window of equal numbers; the oldest numbers leaving the
+    // window, the largest among them; the largest values; the most cut, k
+    // as large as m allows
+    println(f"{run(3, 1, [7, 7, 7, -1][..])} {run(4, 1, [100, 90, 1, 2, -1, 3, -1, 4, -1, 5, -1][..])} {run(3, 1, [100000, 100000, 1, -1][..])} {run(7, 3, [5, 1, 9, 2, 8, 3, 7, -1, 4, -1][..])}");
+    // the constraints' most: 10^5 calls, 99990 numbers of 1 to 10^5 and 10
+    // averages asked for, on a window of 50000 numbers cutting 10000 from
+    // each end, and on one of 99000 cutting 1
+    let mut seed = 1825;
+    let mut ops: Vec[i64] = Vec.new();
+    for i in 0..99990 {
+        ops.push(1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000);
+        if i % 9999 == 9998 {
+            ops.push(-1);
+        }
+    }
+    let big = run(50000, 10000, ops[..]);
+    println(f"the most: {big}");
+    let small = run(99000, 1, ops[..]);
+    println(f"the most again: {small}");
+    // 300 random runs of 1 to 60 operations on windows of 3 to 10 numbers
+    // from 1 to 20, about a third of them asking for the average
+    let mut check = 0;
+    let mut asked = 0;
+    for _ in 0..300 {
+        let m = 3 + next_random(mut seed) % 8;
+        let k = 1 + next_random(mut seed) % ((m - 1) / 2);
+        let len = 1 + next_random(mut seed) % 60;
+        let ops: Vec[i64] = (0..len).map(|_| if next_random(mut seed) % 3 == 0 { -1 } else { 1 + next_random(mut seed) % 20 }).collect();
+        for x in run(m, k, ops[..]) {
+            asked += 1;
+            check = (check * 31 + x + 2) % 1000000007;
+        }
+    }
+    println(f"300 random runs: {asked} averages, checksum {check}");
+}
