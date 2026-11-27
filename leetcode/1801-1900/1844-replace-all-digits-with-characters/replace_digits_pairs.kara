@@ -1,0 +1,63 @@
+// LeetCode #1844: Replace All Digits with Characters -- the string cut
+// into pairs of a letter and a digit by `chunks(2)`, each pair written as
+// its letter and the letter shifted, and a last letter with no digit
+// written alone.
+// O(n)
+
+fn replace_digits(s: String) -> String {
+    let mut out = String.new();
+    for pair in s.bytes().chunks(2) {
+        out.push(pair[0] as char);
+        if pair.len() == 2 {
+            out.push((pair[0] + pair[1] - b'0') as char);
+        }
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` places, a letter at each even one and at each odd one a digit that
+// keeps the shift at or before `z`
+fn case(seed: mut ref i64, n: i64) -> String {
+    let mut out = String.new();
+    let mut letter = 0;
+    for i in 0..n {
+        if i % 2 == 0 {
+            letter = next_random(mut seed) % 26;
+            out.push((b'a' + letter as u8) as char);
+        } else {
+            let most = (25 - letter).min(9);
+            out.push((b'0' + (next_random(mut seed) % (most + 1)) as u8) as char);
+        }
+    }
+    out
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{replace_digits("a1c1e1")} {replace_digits("a1b2c3d4e")}");
+    // the edges: one letter; a shift of 0; a shift to `z`; the largest
+    // shift; a last letter with no digit
+    println(f"{replace_digits("q")} {replace_digits("m0")} {replace_digits("q9")} {replace_digits("a9")} {replace_digits("z0y1x2w")}");
+    // the constraints' most: 100 places drawn at random, and 100 places of
+    // `a9`
+    let mut seed = 1844;
+    let drawn = case(mut seed, 100);
+    println(f"the most: {replace_digits(drawn)} {replace_digits("a9".repeat(50))}");
+    // 3000 random cases of 1 to 20 places, each folded to one number
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 20;
+        let out = replace_digits(case(mut seed, n));
+        for b in out.bytes().iter() {
+            check = (check * 31 + b) % 1000000007;
+        }
+    }
+    println(f"3000 random cases: checksum {check}");
+}

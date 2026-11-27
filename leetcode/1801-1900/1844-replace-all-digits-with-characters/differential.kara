@@ -1,0 +1,202 @@
+// LeetCode #1844: Replace All Digits with Characters --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- replace_digits.kara ----
+fn a0_replace_digits(s: String) -> String {
+    let letters = s.bytes();
+    let mut out = String.new();
+    for i in 0..letters.len() {
+        if i % 2 == 0 {
+            out.push(letters[i] as char);
+        } else {
+            out.push((letters[i - 1] + letters[i] - b'0') as char);
+        }
+    }
+    out
+}
+
+// ---- replace_digits_chars.kara ----
+fn a1_replace_digits(s: String) -> String {
+    let mut chars: Vec[char] = s.chars().collect();
+    let mut i = 1;
+    while i < chars.len() {
+        let shift = chars[i].to_digit(10).unwrap();
+        chars[i] = char.try_from(chars[i - 1] as u32 + shift).unwrap();
+        i += 2;
+    }
+    chars.iter().collect()
+}
+
+// ---- replace_digits_map.kara ----
+fn a2_replace_digits(s: String) -> String {
+    let b = s.bytes();
+    let out: Vec[u8] = (0..b.len()).map(|i| if i % 2 == 0 { b[i] } else { b[i - 1] + b[i] - b'0' }).collect();
+    String.from_utf8(out).unwrap()
+}
+
+// ---- replace_digits_pairs.kara ----
+fn a3_replace_digits(s: String) -> String {
+    let mut out = String.new();
+    for pair in s.bytes().chunks(2) {
+        out.push(pair[0] as char);
+        if pair.len() == 2 {
+            out.push((pair[0] + pair[1] - b'0') as char);
+        }
+    }
+    out
+}
+
+// ---- replace_digits_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn replace_digits(s: String) -> String {
+        let mut b = s.bytes().to_vec();
+        for i in (1..b.len()).step_by(2) {
+            b[i] = b[i - 1] + (b[i] - b'0');
+        }
+        String.from_utf8(b).unwrap()
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+// the statement read literally: `shift(c, x)`, the `x`th character after
+// `c`, found by counting `x` places on from `c` in the alphabet, and each
+// digit at an odd place replaced by `shift` of the letter before it
+fn literal(s: String) -> String {
+    let alphabet: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    let chars: Vec[char] = s.chars().collect();
+    let mut out = String.new();
+    for i in 0..chars.len() {
+        if i % 2 == 0 {
+            out.push(chars[i]);
+        } else {
+            let mut at = alphabet.iter().position(|a| a == chars[i - 1]).unwrap();
+            let digits: Vec[char] = "0123456789".chars().collect();
+            let x = digits.iter().position(|d| d == chars[i]).unwrap();
+            for _ in 0..x {
+                at += 1;
+            }
+            out.push(alphabet[at]);
+        }
+    }
+    out
+}
+
+fn arm(i: i64, s: String) -> String {
+    match i {
+        0 => a0_replace_digits(s),
+        1 => a1_replace_digits(s),
+        2 => a2_replace_digits(s),
+        3 => a3_replace_digits(s),
+        _ => A4Solution.replace_digits(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` places, a letter at each even one and at each odd one a digit that
+// keeps the shift at or before `z`
+fn case(seed: mut ref i64, n: i64) -> String {
+    let mut out = String.new();
+    let mut letter = 0;
+    for i in 0..n {
+        if i % 2 == 0 {
+            letter = next_random(mut seed) % 26;
+            out.push((b'a' + letter as u8) as char);
+        } else {
+            let most = (25 - letter).min(9);
+            out.push((b'0' + (next_random(mut seed) % (most + 1)) as u8) as char);
+        }
+    }
+    out
+}
+
+// the string's pairs in reverse order, for a string of whole pairs
+fn pairs_reversed(s: String) -> String {
+    let b = s.bytes();
+    let mut out = String.new();
+    for pair in (0..b.len() / 2).rev() {
+        out.push(b[2 * pair] as char);
+        out.push(b[2 * pair + 1] as char);
+    }
+    out
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, s: String) {
+    t.cases += 1;
+    let star = arm(0, s);
+    for b in star.bytes().iter() {
+        t.check = (t.check * 31 + b) % 1000000007;
+    }
+    let want = literal(s);
+    let n = s.len();
+    let cut = 2 * (n / 4);
+    let (front, back) = (s.substring(0, cut), s.substring(cut));
+    let zeroed: String = s.chars().enumerate().map(|(i, c)| if i % 2 == 1 { '0' } else { c }).collect();
+    let pieces: Vec[String] = s.chars().enumerate().filter(|(i, _)| i % 2 == 0).map(|(_, c)| f"{c}{c}").collect();
+    let doubled = pieces.join("");
+    for i in 0..5 {
+        let what = f"arm {i} on {s}";
+        let got = arm(i, s);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: as long as `s`, its letters where they were, and every place a
+        // lowercase letter
+        let kept = got.bytes().iter().enumerate().all(|(at, b)| b >= b'a' and b <= b'z' and (at % 2 == 1 or b == s.bytes()[at]));
+        expect(mut t, 2, got.len() == n and kept, f"P2 {what}");
+        // P3: `s` cut between two pairs gives the two outputs joined
+        expect(mut t, 3, got == f"{arm(i, front)}{arm(i, back)}", f"P3 {what}");
+        // P4: every digit a 0 writes each letter twice, a last one with no
+        // digit once
+        let mut twice = doubled.clone();
+        if n % 2 == 1 {
+            twice.truncate(twice.len() - 1);
+        }
+        expect(mut t, 4, arm(i, zeroed) == twice, f"P4 {what}");
+        // P5: a string of whole pairs, its pairs reversed, gives its output's
+        // pairs reversed
+        expect(mut t, 5, n % 2 == 1 or arm(i, pairs_reversed(s)) == pairs_reversed(got), f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 random cases of 1 to 20 places
+    let mut seed = 1844;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 20;
+        let s = case(mut seed, n);
+        check_case(mut t, s);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
