@@ -136,5 +136,5 @@ checksum 291793240`.
 BENCHTAB
 
 Measured by hand, best of three on a machine shared with a test run,
-Kāra is ahead of Rust here at 2.0 s against Rust's 2.0 s (2.0 s with
+Kāra takes 2.0 s against Rust's 2.0 s (2.0 s with
 overflow checks on), C's 0.75 s and Go's 1.9 s; Python takes 10.7 s.

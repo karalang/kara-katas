@@ -109,5 +109,5 @@ written. Every implementation prints `200000 calls: checksum 399631271`.
 BENCHTAB
 
 Measured by hand, best of three on a machine shared with a test run,
-Kāra is ahead of Rust here at 0.43 s against Rust's 0.43 s (0.43 s with
+Kāra takes 0.43 s against Rust's 0.43 s (0.43 s with
 overflow checks on), C's 0.43 s and Go's 0.59 s; Python takes 2.5 s.

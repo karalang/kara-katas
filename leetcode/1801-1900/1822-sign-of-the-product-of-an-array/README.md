@@ -102,5 +102,5 @@ all of it. It checks clean as first written. Every implementation prints
 BENCHTAB
 
 Measured by hand, best of three on a machine shared with a test run,
-Kāra is ahead of Rust here at 0.26 s against Rust's 0.26 s (0.26 s with
+Kāra takes 0.26 s against Rust's 0.26 s (0.26 s with
 overflow checks on), C's 0.26 s and Go's 0.74 s; Python takes 9.4 s.
