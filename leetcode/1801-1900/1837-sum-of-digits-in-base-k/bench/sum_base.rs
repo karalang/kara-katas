@@ -1,0 +1,23 @@
+// LeetCode #1837: Sum of Digits in Base K -- the bench in Rust: the ★ arm over
+// 2 * 10^7 calls, each `n` from 1 to 100 and base from 2 to 10 drawn from the
+// checksum so far.
+
+fn sum_base(n: i64, k: i64) -> i64 {
+    let mut left = n;
+    let mut sum = 0;
+    while left > 0 {
+        sum += left % k;
+        left /= k;
+    }
+    sum
+}
+
+fn main() {
+    let mut check: i64 = 0;
+    for call in 0..20000000i64 {
+        let n = 1 + (check + call) % 100;
+        let k = 2 + (check / 100 + call) % 9;
+        check = (check * 31 + sum_base(n, k)) % 1000000007;
+    }
+    println!("20000000 calls: checksum {}", check);
+}
