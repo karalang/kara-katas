@@ -1,0 +1,354 @@
+// LeetCode #1815: Maximum Number of Groups Getting Fresh Donuts --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- max_happy_groups.kara ----
+fn a0_best(b: i64, count: mut ref Vec[i64], left: i64, memo: mut ref Map[i64, i64]) -> i64 {
+    let mut key = 0;
+    for r in (1..b).rev() {
+        key = key * 31 + count[r];
+    }
+    if let Some(known) = memo.get(key) {
+        return known;
+    }
+    let mut top = 0;
+    let mut any = false;
+    for r in 1..b {
+        if count[r] > 0 {
+            any = true;
+            count[r] -= 1;
+            top = top.max(a0_best(b, mut count, (left + r) % b, mut memo));
+            count[r] += 1;
+        }
+    }
+    if any and left == 0 {
+        top += 1;
+    }
+    memo.insert(key, top);
+    top
+}
+
+fn a0_max_happy_groups(batch_size: i64, groups: Vec[i64]) -> i64 {
+    let b = batch_size;
+    let mut count: Vec[i64] = Vec.filled(b, 0);
+    for g in groups.iter() {
+        count[g % b] += 1;
+    }
+    let mut happy = count[0];
+    count[0] = 0;
+    for r in 1..b {
+        let s = b - r;
+        if r < s {
+            let k = count[r].min(count[s]);
+            happy += k;
+            count[r] -= k;
+            count[s] -= k;
+        } else if r == s {
+            happy += count[r] / 2;
+            count[r] %= 2;
+        }
+    }
+    let mut memo: Map[i64, i64] = Map.new();
+    happy + a0_best(b, mut count, 0, mut memo)
+}
+
+// ---- max_happy_groups_plain.kara ----
+fn a1_search(b: i64, total: i64, count: mut ref Vec[i64], memo: mut ref Map[Vec[i64], i64]) -> i64 {
+    if let Some(known) = memo.get(count) {
+        return known;
+    }
+    let mut rest = 0;
+    for r in 1..b {
+        rest += r * count[r];
+    }
+    let mut top = 0;
+    let mut any = false;
+    for r in 1..b {
+        if count[r] > 0 {
+            any = true;
+            count[r] -= 1;
+            top = top.max(a1_search(b, total, mut count, mut memo));
+            count[r] += 1;
+        }
+    }
+    // the groups served so far are those not left, so the next one is happy
+    // exactly when what is left sums to the whole, modulo the batch
+    if any and rest % b == total {
+        top += 1;
+    }
+    memo.insert(count.clone(), top);
+    top
+}
+
+fn a1_max_happy_groups(batch_size: i64, groups: Vec[i64]) -> i64 {
+    let b = batch_size;
+    let mut count: Vec[i64] = Vec.filled(b, 0);
+    for g in groups.iter() {
+        count[g % b] += 1;
+    }
+    let happy = count[0];
+    count[0] = 0;
+    let mut total = 0;
+    for r in 1..b {
+        total += r * count[r];
+    }
+    let mut memo: Map[Vec[i64], i64] = Map.new();
+    happy + a1_search(b, total % b, mut count, mut memo)
+}
+
+// ---- max_happy_groups_table.kara ----
+fn a2_max_happy_groups(batch_size: i64, groups: Vec[i64]) -> i64 {
+    let b = batch_size;
+    let mut count: Vec[i64] = Vec.filled(b, 0);
+    for g in groups.iter() {
+        count[g % b] += 1;
+    }
+    let mut place: Vec[i64] = Vec.filled(b, 0);
+    let mut size = 1;
+    for r in 1..b {
+        place[r] = size;
+        size *= count[r] + 1;
+    }
+    let mut best: Vec[i64] = Vec.filled(size, -1);
+    best[0] = 0;
+    for s in 0..size {
+        if best[s] < 0 {
+            continue;
+        }
+        let mut served = 0;
+        for r in 1..b {
+            served += r * (s / place[r] % (count[r] + 1));
+        }
+        let gain = if served % b == 0 { 1 } else { 0 };
+        for r in 1..b {
+            if s / place[r] % (count[r] + 1) < count[r] {
+                let next = s + place[r];
+                best[next] = best[next].max(best[s] + gain);
+            }
+        }
+    }
+    count[0] + best[size - 1]
+}
+
+// ---- max_happy_groups_dense.kara ----
+fn a3_best(b: i64, count: mut ref Vec[i64], radix: Slice[i64], left: i64, memo: mut ref Vec[i64]) -> i64 {
+    let mut at = 0;
+    for r in (1..b).rev() {
+        at = at * radix[r] + count[r];
+    }
+    if memo[at] >= 0 {
+        return memo[at];
+    }
+    let mut top = 0;
+    let mut any = false;
+    for r in 1..b {
+        if count[r] > 0 {
+            any = true;
+            count[r] -= 1;
+            top = top.max(a3_best(b, mut count, radix, (left + r) % b, mut memo));
+            count[r] += 1;
+        }
+    }
+    if any and left == 0 {
+        top += 1;
+    }
+    memo[at] = top;
+    top
+}
+
+fn a3_max_happy_groups(batch_size: i64, groups: Vec[i64]) -> i64 {
+    let b = batch_size;
+    let mut count: Vec[i64] = Vec.filled(b, 0);
+    for g in groups.iter() {
+        count[g % b] += 1;
+    }
+    let mut happy = count[0];
+    count[0] = 0;
+    for r in 1..b {
+        let s = b - r;
+        if r < s {
+            let k = count[r].min(count[s]);
+            happy += k;
+            count[r] -= k;
+            count[s] -= k;
+        } else if r == s {
+            happy += count[r] / 2;
+            count[r] %= 2;
+        }
+    }
+    let radix: Vec[i64] = count.iter().map(|c| c + 1).collect();
+    let size = radix[1..].iter().product();
+    let mut memo: Vec[i64] = Vec.filled(size, -1);
+    happy + a3_best(b, mut count, radix[..], 0, mut memo)
+}
+
+// ---- max_happy_groups_solution.kara ----
+fn a4_dfs(cnt: mut ref Vec[i64], left: i64, b: i64, memo: mut ref Map[Vec[i64], i32]) -> i32 {
+    if let Some(v) = memo.get(cnt).cloned() {
+        return v;
+    }
+    let mut res: i32 = 0;
+    for i in 1..b {
+        if cnt[i] > 0 {
+            cnt[i] -= 1;
+            let next = a4_dfs(mut cnt, (left + i) % b, b, mut memo);
+            res = res.max(next + if left == 0 { 1 } else { 0 });
+            cnt[i] += 1;
+        }
+    }
+    memo.insert(cnt.clone(), res);
+    res
+}
+
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn max_happy_groups(batch_size: i32, groups: Vec[i32]) -> i32 {
+        let b = batch_size as i64;
+        let mut cnt = Vec.filled(b, 0);
+        for g in groups {
+            cnt[g % b] += 1;
+        }
+        let mut memo = Map.new();
+        cnt[0] as i32 + a4_dfs(mut cnt, 0, b, mut memo)
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+// the statement read literally, for at most 7 groups: every order of the
+// groups served, the donuts left from the last batch carried from group
+// to group, and a group counted happy when none are left as it arrives
+fn served_happy(batch_size: i64, groups: Slice[i64], order: Slice[i64]) -> i64 {
+    let mut left = 0;
+    let mut happy = 0;
+    for k in order.iter() {
+        if left == 0 {
+            happy += 1;
+        }
+        let g = groups[k];
+        left = (left + batch_size - g % batch_size) % batch_size;
+    }
+    happy
+}
+
+fn next_order(order: mut ref Vec[i64]) -> bool {
+    let n = order.len();
+    if n < 2 {
+        return false;
+    }
+    let mut i = n - 2;
+    while order[i] >= order[i + 1] {
+        if i == 0 {
+            return false;
+        }
+        i -= 1;
+    }
+    let mut j = n - 1;
+    while order[j] <= order[i] {
+        j -= 1;
+    }
+    order.swap(i, j);
+    order[i + 1..].reverse();
+    true
+}
+
+fn literal(batch_size: i64, groups: Slice[i64]) -> i64 {
+    let mut order: Vec[i64] = (0..groups.len()).collect();
+    let mut most = 0;
+    loop {
+        most = most.max(served_happy(batch_size, groups, order[..]));
+        if not next_order(mut order) {
+            break;
+        }
+    }
+    most
+}
+
+fn arm(i: i64, batch_size: i64, groups: Slice[i64]) -> i64 {
+    let v: Vec[i64] = groups.to_vec();
+    match i {
+        0 => a0_max_happy_groups(batch_size, v),
+        1 => a1_max_happy_groups(batch_size, v),
+        2 => a2_max_happy_groups(batch_size, v),
+        3 => a3_max_happy_groups(batch_size, v),
+        _ => {
+            let narrow: Vec[i32] = v.iter().map(|g| g as i32).collect();
+            A4Solution.max_happy_groups(batch_size as i32, narrow)
+        }
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, b: i64, groups: Slice[i64]) {
+    t.cases += 1;
+    let n = groups.len();
+    let star = arm(0, b, groups);
+    t.check = (t.check * 31 + star) % 1000000007;
+    let want = if n <= 7 { literal(b, groups) } else { -1 };
+    let back: Vec[i64] = groups.iter().rev().collect();
+    let mut more: Vec[i64] = groups.to_vec();
+    more.push(b);
+    let bigger: Vec[i64] = groups.iter().map(|g| g + b).collect();
+    let whole = groups.iter().filter(|g| g % b == 0).count();
+    let least = whole + if whole < n { 1 } else { 0 };
+    for i in 0..5 {
+        let what = f"arm {i} on batch {b}, {groups}";
+        let got = arm(i, b, groups);
+        // P1: the statement read literally, for at most 7 groups
+        if n <= 7 {
+            expect(mut t, 1, got == want, f"P1 {what}");
+        }
+        // P2: the groups listed backwards give the same answer
+        expect(mut t, 2, arm(i, b, back) == got, f"P2 {what}");
+        // P3: one more group of a whole batch adds one happy group
+        expect(mut t, 3, arm(i, b, more) == got + 1, f"P3 {what}");
+        // P4: every group of whole batches is happy, and so is the first
+        // of the rest, and no more groups are happy than there are
+        expect(mut t, 4, got >= least and got <= n, f"P4 {what}");
+        // P5: a whole batch more in every group changes nothing
+        expect(mut t, 5, arm(i, b, bigger) == got, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 1500 cases of 1 to 7 groups, sizes 1 to 20, and 300 of 8 to 30
+    // groups up to 10^9, each at a batch of 1 to 9
+    let mut seed = 1815;
+    for c in 0..1800 {
+        let b = 1 + next_random(mut seed) % 9;
+        let (n, top) = if c < 1500 { (1 + next_random(mut seed) % 7, 20) } else { (8 + next_random(mut seed) % 23, 1000000000) };
+        let groups: Vec[i64] = (0..n).map(|_| 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % top).collect();
+        check_case(mut t, b, groups[..]);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

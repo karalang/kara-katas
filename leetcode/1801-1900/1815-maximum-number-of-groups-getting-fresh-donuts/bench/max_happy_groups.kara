@@ -1,0 +1,73 @@
+// LeetCode #1815: Maximum Number of Groups Getting Fresh Donuts -- the
+// bench in Kāra: the ★ arm over 3000 cases of 30 groups at a batch of 7
+// to 9, each group's remainder drawn from the batch's lower half, so that
+// no two groups pair off and the search meets the most states.
+
+fn best(b: i64, count: mut ref Vec[i64], left: i64, memo: mut ref Map[i64, i64]) -> i64 {
+    let mut key = 0;
+    for r in (1..b).rev() {
+        key = key * 31 + count[r];
+    }
+    if let Some(known) = memo.get(key) {
+        return known;
+    }
+    let mut top = 0;
+    let mut any = false;
+    for r in 1..b {
+        if count[r] > 0 {
+            any = true;
+            count[r] -= 1;
+            top = top.max(best(b, mut count, (left + r) % b, mut memo));
+            count[r] += 1;
+        }
+    }
+    if any and left == 0 {
+        top += 1;
+    }
+    memo.insert(key, top);
+    top
+}
+
+fn max_happy_groups(batch_size: i64, groups: Vec[i64]) -> i64 {
+    let b = batch_size;
+    let mut count: Vec[i64] = Vec.filled(b, 0);
+    for g in groups.iter() {
+        count[g % b] += 1;
+    }
+    let mut happy = count[0];
+    count[0] = 0;
+    for r in 1..b {
+        let s = b - r;
+        if r < s {
+            let k = count[r].min(count[s]);
+            happy += k;
+            count[r] -= k;
+            count[s] -= k;
+        } else if r == s {
+            happy += count[r] / 2;
+            count[r] %= 2;
+        }
+    }
+    let mut memo: Map[i64, i64] = Map.new();
+    happy + best(b, mut count, 0, mut memo)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1815;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let b = 7 + next_random(mut seed) % 3;
+        let mut groups: Vec[i64] = Vec.new();
+        for _ in 0..30 {
+            let whole = next_random(mut seed) * b;
+            groups.push(whole + 1 + next_random(mut seed) % ((b - 1) / 2));
+        }
+        check = (check * 31 + max_happy_groups(b, groups)) % 1000000007;
+    }
+    println(f"3000 cases: checksum {check}");
+}

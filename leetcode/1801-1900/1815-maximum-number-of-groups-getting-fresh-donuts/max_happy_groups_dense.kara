@@ -1,0 +1,85 @@
+// LeetCode #1815: Maximum Number of Groups Getting Fresh Donuts -- the ★
+// arm's pairing first, then its search memoized in a dense `Vec` indexed
+// by the remainder counts as a mixed-radix number, -1 for a state not yet
+// reached, in place of a `Map`.
+// O(b * product of (count + 1))
+
+fn best(b: i64, count: mut ref Vec[i64], radix: Slice[i64], left: i64, memo: mut ref Vec[i64]) -> i64 {
+    let mut at = 0;
+    for r in (1..b).rev() {
+        at = at * radix[r] + count[r];
+    }
+    if memo[at] >= 0 {
+        return memo[at];
+    }
+    let mut top = 0;
+    let mut any = false;
+    for r in 1..b {
+        if count[r] > 0 {
+            any = true;
+            count[r] -= 1;
+            top = top.max(best(b, mut count, radix, (left + r) % b, mut memo));
+            count[r] += 1;
+        }
+    }
+    if any and left == 0 {
+        top += 1;
+    }
+    memo[at] = top;
+    top
+}
+
+fn max_happy_groups(batch_size: i64, groups: Vec[i64]) -> i64 {
+    let b = batch_size;
+    let mut count: Vec[i64] = Vec.filled(b, 0);
+    for g in groups.iter() {
+        count[g % b] += 1;
+    }
+    let mut happy = count[0];
+    count[0] = 0;
+    for r in 1..b {
+        let s = b - r;
+        if r < s {
+            let k = count[r].min(count[s]);
+            happy += k;
+            count[r] -= k;
+            count[s] -= k;
+        } else if r == s {
+            happy += count[r] / 2;
+            count[r] %= 2;
+        }
+    }
+    let radix: Vec[i64] = count.iter().map(|c| c + 1).collect();
+    let size = radix[1..].iter().product();
+    let mut memo: Vec[i64] = Vec.filled(size, -1);
+    happy + best(b, mut count, radix[..], 0, mut memo)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{max_happy_groups(3, [1, 2, 3, 4, 5, 6])} {max_happy_groups(4, [1, 3, 2, 5, 2, 2, 1, 6])}");
+    // the edges: a batch of one; one group; every group a whole batch; no
+    // pair to make; the largest groups
+    println(f"{max_happy_groups(1, [7, 8, 9])} {max_happy_groups(5, [3])} {max_happy_groups(4, [8, 4, 12])} {max_happy_groups(9, [1, 1, 1, 1, 1, 1, 1, 1, 1, 1])} {max_happy_groups(7, [1000000000, 999999999, 999999998])}");
+    // the constraints' most: 30 groups at a batch of 9, every remainder
+    let spread: Vec[i64] = (0..30).map(|k| k * 7 + 1).collect();
+    let cycle: Vec[i64] = (0..30).map(|k| k % 7 + 1).collect();
+    println(f"the most: {max_happy_groups(9, spread)} {max_happy_groups(8, cycle)}");
+    // 300 random cases: a batch of 1 to 9 and 1 to 30 groups
+    let mut seed = 1815;
+    let mut check = 0;
+    for _ in 0..300 {
+        let b = 1 + next_random(mut seed) % 9;
+        let n = 1 + next_random(mut seed) % 30;
+        let groups: Vec[i64] = (0..n).map(|_| 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000).collect();
+        check = (check * 31 + max_happy_groups(b, groups)) % 1000000007;
+    }
+    println(f"300 random cases: checksum {check}");
+}
