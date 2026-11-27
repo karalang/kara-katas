@@ -1,0 +1,57 @@
+// LeetCode #1817: Finding the Users Active Minutes -- the ★ arm: each
+// user's distinct minutes gathered in a `Set` under the user's id in a
+// `Map`, and the answer's entry for j counts the users with j distinct
+// minutes.
+// O(n) expected
+
+fn finding_users_active_minutes(logs: Vec[Vec[i64]], k: i64) -> Vec[i64] {
+    let mut minutes: Map[i64, Set[i64]] = Map.new();
+    for log in logs.iter() {
+        minutes.entry(log[0]).or_insert(Set.new()).insert(log[1]);
+    }
+    let mut answer: Vec[i64] = Vec.filled(k, 0);
+    for (_, seen) in minutes.iter() {
+        answer[seen.len() - 1] += 1;
+    }
+    answer
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{finding_users_active_minutes([[0, 5], [1, 2], [0, 2], [0, 5], [1, 3]], 5)} {finding_users_active_minutes([[1, 1], [2, 2], [2, 3]], 4)}");
+    // the edges: one log; one user many times in one minute; ids and
+    // minutes at their largest; a k past every user's minutes
+    println(f"{finding_users_active_minutes([[7, 7]], 1)} {finding_users_active_minutes([[3, 9], [3, 9], [3, 9]], 2)} {finding_users_active_minutes([[1000000000, 100000], [0, 1], [1000000000, 1]], 3)} {finding_users_active_minutes([[1, 1], [1, 2], [2, 1]], 6)}");
+    // the constraints' most: 10^4 logs, one user over 10^4 minutes, and
+    // 10^4 users with a minute each
+    let one: Vec[Vec[i64]] = (0..10000).map(|m| [5, m]).collect();
+    let many: Vec[Vec[i64]] = (0..10000).map(|u| [u, 1]).collect();
+    let a = finding_users_active_minutes(one, 10000);
+    let b = finding_users_active_minutes(many, 3);
+    println(f"the most: {a[9999]} {a.iter().sum()} {b}");
+    // 3000 random cases of 1 to 40 logs over 1 to 6 users and 1 to 9 minutes
+    let mut seed = 1817;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 40;
+        let users = 1 + next_random(mut seed) % 6;
+        let span = 1 + next_random(mut seed) % 9;
+        let mut logs: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..n {
+            let user = next_random(mut seed) % users;
+            logs.push([user, next_random(mut seed) % span]);
+        }
+        let k = span + next_random(mut seed) % 3;
+        for x in finding_users_active_minutes(logs, k) {
+            check = (check * 31 + x) % 1000000007;
+        }
+    }
+    println(f"3000 random cases: checksum {check}");
+}

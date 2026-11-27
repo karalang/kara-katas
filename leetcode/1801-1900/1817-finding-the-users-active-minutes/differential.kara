@@ -1,0 +1,209 @@
+// LeetCode #1817: Finding the Users Active Minutes --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- finding_users_active_minutes.kara ----
+fn a0_finding_users_active_minutes(logs: Vec[Vec[i64]], k: i64) -> Vec[i64] {
+    let mut minutes: Map[i64, Set[i64]] = Map.new();
+    for log in logs.iter() {
+        minutes.entry(log[0]).or_insert(Set.new()).insert(log[1]);
+    }
+    let mut answer: Vec[i64] = Vec.filled(k, 0);
+    for (_, seen) in minutes.iter() {
+        answer[seen.len() - 1] += 1;
+    }
+    answer
+}
+
+// ---- finding_users_active_minutes_sorted.kara ----
+fn a1_finding_users_active_minutes(logs: Vec[Vec[i64]], k: i64) -> Vec[i64] {
+    let mut pairs: Vec[(i64, i64)] = logs.iter().map(|log| (log[0], log[1])).collect();
+    pairs.sort();
+    let mut answer: Vec[i64] = Vec.filled(k, 0);
+    let mut i = 0;
+    while i < pairs.len() {
+        let user = pairs[i].0;
+        let mut distinct = 0;
+        let mut j = i;
+        while j < pairs.len() and pairs[j].0 == user {
+            if j == i or pairs[j].1 != pairs[j - 1].1 {
+                distinct += 1;
+            }
+            j += 1;
+        }
+        answer[distinct - 1] += 1;
+        i = j;
+    }
+    answer
+}
+
+// ---- finding_users_active_minutes_pairs.kara ----
+fn a2_finding_users_active_minutes(logs: Vec[Vec[i64]], k: i64) -> Vec[i64] {
+    let mut seen: Set[(i64, i64)] = Set.new();
+    for log in logs.iter() {
+        seen.insert((log[0], log[1]));
+    }
+    let mut active: Map[i64, i64] = Map.new();
+    for (user, _) in seen.iter() {
+        active[user] = active.get(user).unwrap_or(0) + 1;
+    }
+    let mut answer: Vec[i64] = Vec.filled(k, 0);
+    for (_, uam) in active.iter() {
+        answer[uam - 1] += 1;
+    }
+    answer
+}
+
+// ---- finding_users_active_minutes_ordered.kara ----
+fn a3_finding_users_active_minutes(logs: Vec[Vec[i64]], k: i64) -> Vec[i64] {
+    let mut minutes: SortedMap[i64, SortedSet[i64]] = SortedMap.new();
+    for log in logs.iter() {
+        if not minutes.contains_key(log[0]) {
+            minutes.insert(log[0], SortedSet.new());
+        }
+        minutes.get_mut(log[0]).unwrap().insert(log[1]);
+    }
+    let mut answer: Vec[i64] = Vec.filled(k, 0);
+    for (_, seen) in minutes.iter() {
+        answer[seen.len() - 1] += 1;
+    }
+    answer
+}
+
+// ---- finding_users_active_minutes_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn finding_users_active_minutes(logs: Vec[Vec[i32]], k: i32) -> Vec[i32] {
+        let mut map: Map[i32, Set[i32]] = Map.new();
+        for log in logs {
+            map.entry(log[0]).or_insert(Set.new()).insert(log[1]);
+        }
+        let mut ans = Vec.filled(k, 0);
+        for set in map.values() {
+            ans[set.len() - 1] += 1;
+        }
+        ans
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+// the statement read literally: for each user, in the order first seen,
+// its logs looked over one by one, a minute counted when no earlier log
+// of that user has it, and the user's count tallied
+fn literal(logs: Slice[(i64, i64)], k: i64) -> Vec[i64] {
+    let mut answer: Vec[i64] = Vec.filled(k, 0);
+    for i in 0..logs.len() {
+        let user = logs[i].0;
+        if (0..i).any(|j| logs[j].0 == user) {
+            continue;
+        }
+        let mut uam = 0;
+        for j in i..logs.len() {
+            if logs[j].0 == user and not (i..j).any(|q| logs[q] == logs[j]) {
+                uam += 1;
+            }
+        }
+        answer[uam - 1] += 1;
+    }
+    answer
+}
+
+fn arm(i: i64, logs: Slice[(i64, i64)], k: i64) -> Vec[i64] {
+    let v: Vec[Vec[i64]] = logs.iter().map(|(u, m)| [u, m]).collect();
+    match i {
+        0 => a0_finding_users_active_minutes(v, k),
+        1 => a1_finding_users_active_minutes(v, k),
+        2 => a2_finding_users_active_minutes(v, k),
+        3 => a3_finding_users_active_minutes(v, k),
+        _ => {
+            let narrow: Vec[Vec[i32]] = logs.iter().map(|(u, m)| [u as i32, m as i32]).collect();
+            A4Solution.finding_users_active_minutes(narrow, k as i32).iter().map(|x| x as i64).collect()
+        }
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, logs: Slice[(i64, i64)], k: i64) {
+    t.cases += 1;
+    let star = arm(0, logs, k);
+    for x in star.iter() {
+        t.check = (t.check * 31 + x) % 1000000007;
+    }
+    let want = literal(logs, k);
+    let users = (0..logs.len()).filter(|i| not (0..i).any(|j| logs[j].0 == logs[i].0)).count();
+    let pairs = (0..logs.len()).filter(|i| not (0..i).any(|j| logs[j] == logs[i])).count();
+    let back: Vec[(i64, i64)] = logs.iter().rev().collect();
+    let mut twice: Vec[(i64, i64)] = logs.to_vec();
+    twice.extend_from_slice(logs);
+    for i in 0..5 {
+        let what = f"arm {i} on {logs} and {k}";
+        let got = arm(i, logs, k);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: every user is counted once
+        expect(mut t, 2, got.iter().sum() == users, f"P2 {what}");
+        // P3: the logs in reverse order give the same answer
+        expect(mut t, 3, arm(i, back[..], k) == got, f"P3 {what}");
+        // P4: every log twice gives the same answer
+        expect(mut t, 4, arm(i, twice[..], k) == got, f"P4 {what}");
+        // P5: the users' minutes add up to the distinct (user, minute) pairs
+        let weighted: i64 = (0..k).map(|j| (j + 1) * got[j]).sum();
+        expect(mut t, 5, weighted == pairs, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 random cases of 1 to 30 logs over 1 to 6 users and 1 to 9
+    // minutes, with ids and minutes up to their largest now and then
+    let mut seed = 1817;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let users = 1 + next_random(mut seed) % 6;
+        let span = 1 + next_random(mut seed) % 9;
+        let wide = next_random(mut seed) % 4 == 0;
+        let mut logs: Vec[(i64, i64)] = Vec.new();
+        for _ in 0..n {
+            let user = next_random(mut seed) % users;
+            let minute = next_random(mut seed) % span;
+            if wide {
+                logs.push((1000000000 - user, 100000 - minute));
+            } else {
+                logs.push((user, minute));
+            }
+        }
+        let k = span + next_random(mut seed) % 3;
+        check_case(mut t, logs[..], k);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
