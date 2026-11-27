@@ -1,0 +1,122 @@
+// LeetCode #1807: Evaluate the Bracket Pairs of a String -- no `Map`: the
+// knowledge sorted by key, and each bracketed key looked up by binary
+// search over the sorted pairs.
+// O(n log k + k log k)
+
+fn evaluate(s: String, knowledge: Vec[Vec[String]]) -> String {
+    let mut sorted: Vec[Vec[String]] = knowledge.clone();
+    sorted.sort_by(|a, b| a[0].cmp(b[0]));
+    let mut out = String.new();
+    let mut key = String.new();
+    let mut inside = false;
+    for c in s.chars() {
+        if c == '(' {
+            inside = true;
+        } else if c == ')' {
+            {
+                let at = sorted.partition_point(|pair| pair[0].cmp(key) != Ordering.Greater);
+                if sorted.partition_point(|pair| pair[0].cmp(key) == Ordering.Less) < at {
+                    let at = at - 1;
+                    out.push_str(sorted[at][1])
+                } else {
+                    out.push('?')
+                }
+            }
+            key = String.new();
+            inside = false;
+        } else if inside {
+            key.push(c);
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn pairs(list: Vec[(Str, Str)]) -> Vec[Vec[String]] {
+    list.iter().map(|(k, v)| [k.to_string(), v.to_string()].to_vec()).collect()
+}
+
+// a word of 1 to `most` letters from the first `letters` of the alphabet
+fn word(seed: mut ref i64, most: i64, letters: i64) -> String {
+    let n = 1 + next_random(mut seed) % most;
+    let mut w = String.new();
+    for _ in 0..n {
+        w.push(char.try_from(97 + (next_random(mut seed) % letters) as u32).ok().unwrap());
+    }
+    w
+}
+
+fn fold(text: String) -> i64 {
+    let mut h = 0;
+    for b in text.bytes() {
+        h = (h * 131 + b) % 1000000007;
+    }
+    h
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(evaluate("(name)is(age)yearsold".to_string(), pairs([("name", "bob"), ("age", "two")].to_vec())));
+    println(evaluate("hi(name)".to_string(), pairs([("a", "b")].to_vec())));
+    println(evaluate("(a)(a)(a)aaa".to_string(), pairs([("a", "yes")].to_vec())));
+    // the edges: no brackets; no knowledge; a key that is another's value;
+    // brackets side by side, at both ends; a value longer than its key
+    let none: Vec[Vec[String]] = Vec.new();
+    println(f"{evaluate("plain".to_string(), pairs([("plain", "x")].to_vec()))} {evaluate("(a)b(c)".to_string(), none)} {evaluate("(x)(y)".to_string(), pairs([("x", "y"), ("y", "x")].to_vec()))} {evaluate("(k)".to_string(), pairs([("k", "abcdefghij")].to_vec()))}");
+    // the constraints' most: 10^5 characters of `(key)` pairs and letters,
+    // and 10^5 knowledge pairs of keys of up to 10 letters
+    let mut seed = 1807;
+    let mut knowledge: Vec[Vec[String]] = Vec.new();
+    let mut seen: Set[String] = Set.new();
+    while knowledge.len() < 100000 {
+        let k = word(mut seed, 10, 4);
+        if seen.insert(k.clone()) {
+            knowledge.push([k, word(mut seed, 10, 26)].to_vec());
+        }
+    }
+    let mut s = String.new();
+    while s.len() < 99980 {
+        if next_random(mut seed) % 2 == 0 {
+            s.push_str(word(mut seed, 3, 26));
+        } else {
+            s.push('(');
+            s.push_str(word(mut seed, 10, 4));
+            s.push(')');
+        }
+    }
+    let big = evaluate(s, knowledge);
+    println(f"the most: {s.len()} characters to {big.len()}, fold {fold(big)}");
+    // 3000 random cases: up to 8 keys of 1 to 3 letters from a to c, and a
+    // string of up to 12 pieces, each letters or a bracketed key
+    let mut check = 0;
+    for _ in 0..3000 {
+        let mut know: Vec[Vec[String]] = Vec.new();
+        let mut keys: Set[String] = Set.new();
+        for _ in 0..next_random(mut seed) % 9 {
+            let k = word(mut seed, 3, 3);
+            if keys.insert(k.clone()) {
+                know.push([k, word(mut seed, 4, 26)].to_vec());
+            }
+        }
+        let mut text = String.new();
+        for _ in 0..1 + next_random(mut seed) % 12 {
+            if next_random(mut seed) % 2 == 0 {
+                text.push_str(word(mut seed, 3, 26));
+            } else {
+                text.push('(');
+                text.push_str(word(mut seed, 3, 3));
+                text.push(')');
+            }
+        }
+        check = (check * 31 + fold(evaluate(text, know))) % 1000000007;
+    }
+    println(f"3000 random cases: checksum {check}");
+}

@@ -1,0 +1,81 @@
+// LeetCode #1807: Evaluate the Bracket Pairs of a String -- the bench in
+// Kāra: the ★ arm over 40 strings of 10^5 characters and 40 knowledge
+// lists of 2 * 10^4 pairs built once, 200 calls.
+
+fn evaluate(s: String, knowledge: Vec[Vec[String]]) -> String {
+    let mut values: Map[String, String] = Map.new();
+    for pair in knowledge.iter() {
+        values.insert(pair[0].clone(), pair[1].clone());
+    }
+    let mut out = String.new();
+    let mut key = String.new();
+    let mut inside = false;
+    for c in s.chars() {
+        if c == '(' {
+            inside = true;
+        } else if c == ')' {
+            match values.get(key) {
+                Some(v) => out.push_str(v),
+                None => out.push('?'),
+            }
+            key = String.new();
+            inside = false;
+        } else if inside {
+            key.push(c);
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a word of 1 to `most` letters from the first `letters` of the alphabet
+fn word(seed: mut ref i64, most: i64, letters: i64) -> String {
+    let n = 1 + next_random(mut seed) % most;
+    let mut w = String.new();
+    for _ in 0..n {
+        w.push(char.try_from(97 + (next_random(mut seed) % letters) as u32).ok().unwrap());
+    }
+    w
+}
+
+fn main() {
+    let mut seed = 1807;
+    let mut texts: Vec[String] = Vec.new();
+    let mut lists: Vec[Vec[Vec[String]]] = Vec.new();
+    for _ in 0..40 {
+        let mut s = String.new();
+        while s.len() < 99980 {
+            if next_random(mut seed) % 2 == 0 {
+                s.push_str(word(mut seed, 3, 26));
+            } else {
+                s.push('(');
+                s.push_str(word(mut seed, 8, 4));
+                s.push(')');
+            }
+        }
+        texts.push(s);
+        let mut knowledge: Vec[Vec[String]] = Vec.new();
+        let mut seen: Set[String] = Set.new();
+        while knowledge.len() < 20000 {
+            let k = word(mut seed, 8, 4);
+            if seen.insert(k.clone()) {
+                knowledge.push([k, word(mut seed, 10, 26)].to_vec());
+            }
+        }
+        lists.push(knowledge);
+    }
+    let mut check = 0;
+    for call in 0..200 {
+        let s = ref texts[(check + call) % 40];
+        let knowledge = ref lists[(check * 7 + call) % 40];
+        let out = evaluate(s, knowledge);
+        check = (check * 31 + out.len() + out.bytes()[out.len() / 2]) % 1000000007;
+    }
+    println(f"200 calls over 40 strings of 10^5 characters: checksum {check}");
+}

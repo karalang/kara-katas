@@ -1,0 +1,315 @@
+// LeetCode #1807: Evaluate the Bracket Pairs of a String --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- evaluate.kara ----
+fn a0_evaluate(s: String, knowledge: Vec[Vec[String]]) -> String {
+    let mut values: Map[String, String] = Map.new();
+    for pair in knowledge.iter() {
+        values.insert(pair[0].clone(), pair[1].clone());
+    }
+    let mut out = String.new();
+    let mut key = String.new();
+    let mut inside = false;
+    for c in s.chars() {
+        if c == '(' {
+            inside = true;
+        } else if c == ')' {
+            match values.get(key) {
+                Some(v) => out.push_str(v),
+                None => out.push('?'),
+            }
+            key = String.new();
+            inside = false;
+        } else if inside {
+            key.push(c);
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+// ---- evaluate_split.kara ----
+fn a1_evaluate(s: String, knowledge: Vec[Vec[String]]) -> String {
+    let mut values: Map[String, String] = Map.new();
+    for pair in knowledge.iter() {
+        values.insert(pair[0].clone(), pair[1].clone());
+    }
+    let mut pieces = s.split("(");
+    let mut out = pieces.next().unwrap().to_string();
+    for piece in pieces {
+        let (key, rest) = piece.split_once(")").unwrap();
+        match values.get(key) {
+            Some(v) => out.push_str(v),
+            None => out.push_str("?"),
+        }
+        out.push_str(rest);
+    }
+    out
+}
+
+// ---- evaluate_sorted.kara ----
+fn a2_evaluate(s: String, knowledge: Vec[Vec[String]]) -> String {
+    let mut sorted: Vec[Vec[String]] = knowledge.clone();
+    sorted.sort_by(|a, b| a[0].cmp(b[0]));
+    let mut out = String.new();
+    let mut key = String.new();
+    let mut inside = false;
+    for c in s.chars() {
+        if c == '(' {
+            inside = true;
+        } else if c == ')' {
+            {
+                let at = sorted.partition_point(|pair| pair[0].cmp(key) != Ordering.Greater);
+                if sorted.partition_point(|pair| pair[0].cmp(key) == Ordering.Less) < at {
+                    let at = at - 1;
+                    out.push_str(sorted[at][1])
+                } else {
+                    out.push('?')
+                }
+            }
+            key = String.new();
+            inside = false;
+        } else if inside {
+            key.push(c);
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+// ---- evaluate_views.kara ----
+fn a3_evaluate(s: String, knowledge: Vec[Vec[String]]) -> String {
+    let mut values: Map[Str, Str] = Map.new();
+    for pair in knowledge.iter() {
+        values.insert(pair[0].as_str(), pair[1].as_str());
+    }
+    let bytes = s.bytes();
+    let mut out = String.new();
+    let mut i = 0;
+    while i < s.len() {
+        if bytes[i] == b'(' {
+            let start = i + 1;
+            let mut end = start;
+            while bytes[end] != b')' {
+                end += 1;
+            }
+            match values.get(s[start..end]) {
+                Some(v) => out.push_str(v),
+                None => out.push('?'),
+            }
+            i = end + 1;
+        } else {
+            let start = i;
+            while i < s.len() and bytes[i] != b'(' {
+                i += 1;
+            }
+            out.push_str(s[start..i]);
+        }
+    }
+    out
+}
+
+// ---- evaluate_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn evaluate(s: String, knowledge: Vec[Vec[String]]) -> String {
+        let map: Map[Str, Str] = knowledge.iter().map(|k| (k[0].as_str(), k[1].as_str())).collect();
+        let mut res = String.new();
+        let mut key = String.new();
+        let mut in_bracket = false;
+        for c in s.chars() {
+            match c {
+                '(' => in_bracket = true,
+                ')' => {
+                    res.push_str(map.get(key.as_str()).unwrap_or("?"));
+                    key.clear();
+                    in_bracket = false;
+                }
+                _ if in_bracket => key.push(c),
+                _ => res.push(c),
+            }
+        }
+        res
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a word of 1 to `most` letters from the first `letters` of the alphabet
+fn word(seed: mut ref i64, most: i64, letters: i64) -> String {
+    let n = 1 + next_random(mut seed) % most;
+    let mut w = String.new();
+    for _ in 0..n {
+        w.push(char.try_from(97 + (next_random(mut seed) % letters) as u32).ok().unwrap());
+    }
+    w
+}
+
+fn fold(text: String) -> i64 {
+    let mut h = 0;
+    for b in text.bytes() {
+        h = (h * 131 + b) % 1000000007;
+    }
+    h
+}
+
+// the statement read literally: each bracket pair found in turn, its key
+// looked for pair by pair through the knowledge, and the pair replaced by
+// the value found or by `?`
+fn literal(s: String, knowledge: Vec[Vec[String]]) -> String {
+    let mut out = s.clone();
+    loop {
+        let Some(open) = out.find("(") else {
+            return out;
+        };
+        let close = open + out[open..].find(")").unwrap();
+        let key = out[open + 1..close].to_string();
+        let mut value = "?".to_string();
+        for pair in knowledge.iter() {
+            if pair[0] == key {
+                value = pair[1].clone();
+            }
+        }
+        out = out[..open].to_string() + value + out[close + 1..].to_string();
+    }
+}
+
+fn arm(i: i64, s: String, knowledge: Vec[Vec[String]]) -> String {
+    match i {
+        0 => a0_evaluate(s, knowledge),
+        1 => a1_evaluate(s, knowledge),
+        2 => a2_evaluate(s, knowledge),
+        3 => a3_evaluate(s, knowledge),
+        _ => A4Solution.evaluate(s, knowledge),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, s: String, knowledge: Vec[Vec[String]]) {
+    t.cases += 1;
+    let star = arm(0, s, knowledge);
+    t.check = (t.check * 31 + fold(star)) % 1000000007;
+    // the literal reading scans the knowledge for every pair, so it runs
+    // on the cases of at most 1000 characters
+    let small = s.len() <= 1000;
+    let want = if small { literal(s, knowledge) } else { String.new() };
+    let reversed: Vec[Vec[String]] = knowledge.iter().rev().cloned().collect();
+    let mut padded = knowledge.clone();
+    padded.push(["zzzzzzzzzz".to_string(), "unused".to_string()].to_vec());
+    let none: Vec[Vec[String]] = Vec.new();
+    let opens = s.chars().filter(|c| c == '(').count();
+    let twice = s + s;
+    for i in 0..5 {
+        let what = if small { f"arm {i} on {s} with {knowledge}" } else { f"arm {i} on the large case" };
+        let got = arm(i, s, knowledge);
+        // P1: the statement read literally
+        expect(mut t, 1, not small or got == want, f"P1 {what}");
+        // P2: the knowledge in reverse order gives the same answer
+        expect(mut t, 2, arm(i, s, reversed) == got, f"P2 {what}");
+        // P3: a pair for a key that is not in `s` changes nothing
+        expect(mut t, 3, arm(i, s, padded) == got, f"P3 {what}");
+        // P4: no answer holds a bracket, and with no knowledge each pair
+        // becomes one `?`
+        let blank = arm(i, s, none);
+        let marks = blank.chars().filter(|c| c == '?').count();
+        expect(mut t, 4, not got.contains("(") and not got.contains(")") and marks == opens, f"P4 {what}");
+        // P5: `s` written twice gives the answer twice
+        expect(mut t, 5, arm(i, twice, knowledge) == got + got, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn pairs(list: Vec[(Str, Str)]) -> Vec[Vec[String]] {
+    list.iter().map(|(k, v)| [k.to_string(), v.to_string()].to_vec()).collect()
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples, the edges, the constraints' most, and 1992
+    // random cases. Every case is drawn before any arm answers.
+    let mut cases: Vec[(String, Vec[Vec[String]])] = Vec.new();
+    cases.push(("(name)is(age)yearsold".to_string(), pairs([("name", "bob"), ("age", "two")].to_vec())));
+    cases.push(("hi(name)".to_string(), pairs([("a", "b")].to_vec())));
+    cases.push(("(a)(a)(a)aaa".to_string(), pairs([("a", "yes")].to_vec())));
+    cases.push(("plain".to_string(), pairs([("plain", "x")].to_vec())));
+    cases.push(("(a)b(c)".to_string(), Vec.new()));
+    cases.push(("(x)(y)".to_string(), pairs([("x", "y"), ("y", "x")].to_vec())));
+    cases.push(("(k)".to_string(), pairs([("k", "abcdefghij")].to_vec())));
+    let mut seed = 18071;
+    let mut knowledge: Vec[Vec[String]] = Vec.new();
+    let mut seen: Set[String] = Set.new();
+    while knowledge.len() < 100000 {
+        let k = word(mut seed, 10, 4);
+        if seen.insert(k.clone()) {
+            knowledge.push([k, word(mut seed, 10, 26)].to_vec());
+        }
+    }
+    let mut s = String.new();
+    while s.len() < 99980 {
+        if next_random(mut seed) % 2 == 0 {
+            s.push_str(word(mut seed, 3, 26));
+        } else {
+            s.push('(');
+            s.push_str(word(mut seed, 10, 4));
+            s.push(')');
+        }
+    }
+    cases.push((s, knowledge));
+    for _ in 0..1992 {
+        let mut know: Vec[Vec[String]] = Vec.new();
+        let mut keys: Set[String] = Set.new();
+        for _ in 0..next_random(mut seed) % 9 {
+            let k = word(mut seed, 3, 3);
+            if keys.insert(k.clone()) {
+                know.push([k, word(mut seed, 4, 26)].to_vec());
+            }
+        }
+        let mut text = String.new();
+        for _ in 0..1 + next_random(mut seed) % 12 {
+            if next_random(mut seed) % 2 == 0 {
+                text.push_str(word(mut seed, 3, 26));
+            } else {
+                text.push('(');
+                text.push_str(word(mut seed, 3, 3));
+                text.push(')');
+            }
+        }
+        cases.push((text, know));
+    }
+    for j in 0..cases.len() {
+        let (s, knowledge) = cases[j].clone();
+        check_case(mut t, s, knowledge);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
