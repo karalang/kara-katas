@@ -1,0 +1,50 @@
+// LeetCode #1802: Maximum Value at a Given Index in a Bounded Array -- the
+// pyramid grown one layer at a time from all ones: raising the top from v
+// to v + 1 costs the places within v - 1 of `index`, and once the slope
+// reaches both ends every layer costs n, so the rest is one division.
+// O(sqrt(maxSum))
+
+fn max_value(n: i32, index: i32, max_sum: i32) -> i32 {
+    let left = index as i64;
+    let right = (n - 1 - index) as i64;
+    let mut spare = (max_sum - n) as i64;
+    let mut top: i64 = 1;
+    while top - 1 < left.max(right) {
+        let layer = 1 + left.min(top - 1) + right.min(top - 1);
+        if layer > spare {
+            return top as i32;
+        }
+        spare -= layer;
+        top += 1;
+    }
+    (top + spare / n) as i32
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{max_value(4, 2, 6)} {max_value(6, 1, 10)}");
+    // the edges: one place; every place a 1; one to spare; the index at
+    // either end; a pyramid that fits just
+    println(f"{max_value(1, 0, 7)} {max_value(5, 2, 5)} {max_value(5, 2, 6)} {max_value(5, 0, 15)} {max_value(5, 4, 15)} {max_value(5, 2, 9)}");
+    // the constraints' most: one place and 10^9; 10^9 places and 10^9; the
+    // middle of 10^5 places and 10^9
+    println(f"the most: {max_value(1, 0, 1000000000)} {max_value(1000000000, 0, 1000000000)} {max_value(100000, 50000, 1000000000)}");
+    // 3000 random cases of 1 to 30 places, any index and a sum of up to
+    // 400
+    let mut seed = 1802;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 30;
+        let index = next_random(mut seed) % n;
+        let max_sum = n + next_random(mut seed) % 400;
+        check = (check * 31 + max_value(n as i32, index as i32, max_sum as i32)) % 1000000007;
+    }
+    println(f"3000 random cases: checksum {check}");
+}

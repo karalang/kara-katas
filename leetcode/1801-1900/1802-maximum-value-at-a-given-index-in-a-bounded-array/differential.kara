@@ -1,0 +1,265 @@
+// LeetCode #1802: Maximum Value at a Given Index in a Bounded Array --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- max_value.kara ----
+fn a0_side(v: i64, k: i64) -> i64 {
+    if k <= v - 1 {
+        (v - 1 + v - k) * k / 2
+    } else {
+        (v - 1) * v / 2 + (k - (v - 1))
+    }
+}
+
+fn a0_max_value(n: i32, index: i32, max_sum: i32) -> i32 {
+    let (n, index, max_sum) = (n as i64, index as i64, max_sum as i64);
+    let mut lo = 1;
+    let mut hi = max_sum;
+    while lo < hi {
+        let mid = (lo + hi + 1) / 2;
+        if mid + a0_side(mid, index) + a0_side(mid, n - 1 - index) <= max_sum {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo as i32
+}
+
+// ---- max_value_layers.kara ----
+fn a1_max_value(n: i32, index: i32, max_sum: i32) -> i32 {
+    let left = index as i64;
+    let right = (n - 1 - index) as i64;
+    let mut spare = (max_sum - n) as i64;
+    let mut top: i64 = 1;
+    while top - 1 < left.max(right) {
+        let layer = 1 + left.min(top - 1) + right.min(top - 1);
+        if layer > spare {
+            return top as i32;
+        }
+        spare -= layer;
+        top += 1;
+    }
+    (top + spare / n) as i32
+}
+
+// ---- max_value_bits.kara ----
+fn a2_slope(v: i64, k: i64) -> i64 {
+    let full = v - 1;
+    let tri = full * (full + 1) / 2;
+    if k >= full {
+        tri + (k - full)
+    } else {
+        let cut = full - k;
+        tri - cut * (cut + 1) / 2
+    }
+}
+
+fn a2_max_value(n: i32, index: i32, max_sum: i32) -> i32 {
+    let fits = |v: i64| v + a2_slope(v, index) + a2_slope(v, n - 1 - index) <= max_sum;
+    let mut v: i64 = 0;
+    for bit in (0..31).rev() {
+        let next = v | 1 << bit;
+        if fits(next) {
+            v = next;
+        }
+    }
+    v as i32
+}
+
+// ---- max_value_gallop.kara ----
+fn a3_tri(m: i64) -> i64 {
+    if m <= 0 { 0 } else { m * (m + 1) / 2 }
+}
+
+fn a3_max_value(n: i32, index: i32, max_sum: i32) -> i32 {
+    let left = index as i64;
+    let right = (n - 1 - index) as i64;
+    let spare = (max_sum - n) as i64;
+    // what a top of v costs above the ones: v - 1 at the index, and on each
+    // side the steps from v - 2 down, cut at that side's end
+    let extra = |v: i64| v - 1 + a3_tri(v - 2) - a3_tri(v - 2 - left) + a3_tri(v - 2) - a3_tri(v - 2 - right);
+    let mut good: i64 = 1;
+    let mut bad: i64 = 2;
+    while extra(bad) <= spare {
+        good = bad;
+        bad *= 2;
+    }
+    while bad - good > 1 {
+        let mid = good + (bad - good) / 2;
+        if extra(mid) <= spare {
+            good = mid;
+        } else {
+            bad = mid;
+        }
+    }
+    good as i32
+}
+
+// ---- max_value_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn max_value(n: i32, index: i32, max_sum: i32) -> i32 {
+        let (n, index, max_sum) = (n as i64, index as i64, max_sum as i64);
+        let sum = |x: i64, cnt: i64| {
+            if x >= cnt {
+                (x + x - cnt + 1) * cnt / 2
+            } else {
+                (x + 1) * x / 2 + cnt - x
+            }
+        };
+        let mut (lo, hi) = (1, max_sum);
+        while lo < hi {
+            let mid = (lo + hi + 1) / 2;
+            if sum(mid - 1, index) + sum(mid, n - index) <= max_sum {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        lo as i32
+    }
+}
+
+fn a4_max_value(n: i32, index: i32, max_sum: i32) -> i32 {
+    A4Solution.max_value(n, index, max_sum)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: every array of n positive numbers, each
+// within 1 of the one before, whose sum is at most maxSum, built a place
+// at a time, and the largest number any of them has at `index`
+fn grow(nums: mut ref Vec[i64], n: i64, index: i64, left: i64, best: mut ref i64) {
+    if nums.len() == n {
+        *best = (*best).max(nums[index]);
+        return;
+    }
+    let low = if nums.len() == 0 { 1 } else { (nums[nums.len() - 1] - 1).max(1) };
+    let high = if nums.len() == 0 { left } else { nums[nums.len() - 1] + 1 };
+    // each later place needs at least a 1
+    let room = left - (n - nums.len() - 1);
+    for v in low..high.min(room) + 1 {
+        nums.push(v);
+        grow(mut nums, n, index, left - v, mut best);
+        nums.pop();
+    }
+}
+
+fn literal(n: i32, index: i32, max_sum: i32) -> i32 {
+    let mut best: i64 = 0;
+    let mut nums: Vec[i64] = Vec.new();
+    grow(mut nums, n, index, max_sum, mut best);
+    best as i32
+}
+
+// the sum of the pyramid with `top` at `index`, place by place
+fn pyramid(n: i64, index: i64, top: i64) -> i64 {
+    let mut sum: i64 = 0;
+    for i in 0..n {
+        sum += (top - (i - index).abs()).max(1);
+    }
+    sum
+}
+
+fn arm(i: i64, n: i32, index: i32, max_sum: i32) -> i32 {
+    match i {
+        0 => a0_max_value(n, index, max_sum),
+        1 => a1_max_value(n, index, max_sum),
+        2 => a2_max_value(n, index, max_sum),
+        3 => a3_max_value(n, index, max_sum),
+        _ => a4_max_value(n, index, max_sum),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, n: i32, index: i32, max_sum: i32) {
+    t.cases += 1;
+    let star = arm(0, n, index, max_sum);
+    t.check = (t.check * 31 + star) % 1000000007;
+    let small = n <= 6 and max_sum <= 24;
+    let want = if small { literal(n, index, max_sum) } else { 0 };
+    for i in 0..5 {
+        let what = f"arm {i} on n {n}, index {index}, maxSum {max_sum}";
+        let got = arm(i, n, index, max_sum);
+        // P1: the statement read literally, for at most 6 places and a sum
+        // of at most 24
+        if small {
+            expect(mut t, 1, got == want, f"P1 {what}");
+        }
+        // P2: the index counted from the other end gives the same answer
+        expect(mut t, 2, arm(i, n, n - 1 - index, max_sum) == got, f"P2 {what}");
+        // P3: a sum one larger gives the same answer or one more
+        if max_sum < 1000000000 {
+            let up = arm(i, n, index, max_sum + 1) - got;
+            expect(mut t, 3, up == 0 or up == 1, f"P3 {what}");
+        }
+        // P4: the answer's pyramid, summed place by place, fits, and the
+        // one a step higher does not, for at most 10^5 places
+        if n <= 100000 {
+            let g = got as i64;
+            let ok = pyramid(n, index, g) <= max_sum
+                and pyramid(n, index, g + 1) > max_sum;
+            expect(mut t, 4, ok, f"P4 {what}");
+        }
+        // P5: the answer is no more than what is left after a 1 at every
+        // other place, and no less than an even spread of the sum gives
+        let flat = (max_sum - n) / n + 1;
+        expect(mut t, 5, got >= flat and got <= max_sum - n + 1, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples, the edges, the constraints' most, 500 random
+    // cases of up to 1000 places and a sum of up to 10^6, and 1489 of up
+    // to 6 places and a sum of up to 24. Every case is drawn before any
+    // arm answers.
+    let mut cases: Vec[(i32, i32, i32)] = [(4, 2, 6), (6, 1, 10), (1, 0, 7), (5, 2, 5), (5, 2, 6), (5, 0, 15), (5, 4, 15), (5, 2, 9), (1, 0, 1000000000), (1000000000, 0, 1000000000), (100000, 50000, 1000000000)].to_vec();
+    let mut seed = 18021;
+    for _ in 0..500 {
+        let n = 1 + next_random(mut seed) % 1000;
+        let index = next_random(mut seed) % n;
+        let max_sum = n + next_random(mut seed) % 1000000;
+        cases.push((n as i32, index as i32, max_sum as i32));
+    }
+    for _ in 0..1489 {
+        let n = 1 + next_random(mut seed) % 6;
+        let index = next_random(mut seed) % n;
+        let max_sum = n + next_random(mut seed) % (25 - n);
+        cases.push((n as i32, index as i32, max_sum as i32));
+    }
+    for (n, index, max_sum) in cases.iter() {
+        check_case(mut t, n, index, max_sum);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

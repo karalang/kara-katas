@@ -1,0 +1,52 @@
+// LeetCode #1802: Maximum Value at a Given Index in a Bounded Array -- the
+// bench: the ★ arm, a binary search on the value at the index, over 4000
+// random cases built once, 1000000 calls, each case drawn from the checksum
+// so far.
+
+// the least sum of `k` numbers next to a number `v`, each one less than
+// the one before it and none below 1
+fn side(v: i64, k: i64) -> i64 {
+    if k <= v - 1 {
+        (v - 1 + v - k) * k / 2
+    } else {
+        (v - 1) * v / 2 + (k - (v - 1))
+    }
+}
+
+fn max_value(n: i32, index: i32, max_sum: i32) -> i32 {
+    let (n, index, max_sum) = (n as i64, index as i64, max_sum as i64);
+    let mut lo = 1;
+    let mut hi = max_sum;
+    while lo < hi {
+        let mid = (lo + hi + 1) / 2;
+        if mid + side(mid, index) + side(mid, n - 1 - index) <= max_sum {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo as i32
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1802;
+    let mut cases: Vec[(i32, i32, i32)] = Vec.new();
+    for _ in 0..4000 {
+        let n = 1 + next_random(mut seed) % 1000000;
+        let index = next_random(mut seed) % n;
+        let wide = next_random(mut seed) * 32768 + next_random(mut seed);
+        let max_sum = n + wide % (1000000001 - n);
+        cases.push((n as i32, index as i32, max_sum as i32));
+    }
+    let mut check = 0;
+    for call in 0..1000000 {
+        let (n, index, max_sum) = cases[(check + call) % 4000];
+        check = (check * 31 + max_value(n, index, max_sum)) % 1000000007;
+    }
+    println(f"1000000 calls over 4000 cases: checksum {check}");
+}
