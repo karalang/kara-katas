@@ -1,0 +1,156 @@
+// LeetCode #1822: Sign of the Product of an Array --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- array_sign.kara ----
+fn a0_array_sign(nums: Vec[i64]) -> i64 {
+    let mut sign = 1;
+    for x in nums.iter() {
+        if x == 0 {
+            return 0;
+        }
+        if x < 0 {
+            sign = -sign;
+        }
+    }
+    sign
+}
+
+// ---- array_sign_fold.kara ----
+fn a1_array_sign(nums: Vec[i64]) -> i64 {
+    nums.iter().fold(1, |sign, x| sign * x.signum())
+}
+
+// ---- array_sign_count.kara ----
+fn a2_array_sign(nums: Vec[i64]) -> i64 {
+    if nums.contains(0) {
+        return 0;
+    }
+    let negatives = nums.iter().filter(|x| x < 0).count();
+    if negatives % 2 == 0 { 1 } else { -1 }
+}
+
+// ---- array_sign_match.kara ----
+fn a3_array_sign(nums: Vec[i64]) -> i64 {
+    let mut negative = false;
+    for x in nums.iter() {
+        match x.cmp(0) {
+            Ordering.Less => negative = not negative,
+            Ordering.Equal => return 0,
+            Ordering.Greater => {}
+        }
+    }
+    if negative { -1 } else { 1 }
+}
+
+// ---- array_sign_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn array_sign(nums: Vec[i32]) -> i32 {
+        nums.iter().map(|x| x.signum()).product()
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+// the statement read literally: the product formed, in an `i128`, which
+// holds 10 numbers of at most 100, and signFunc of it
+fn literal(nums: Slice[i64]) -> i64 {
+    let mut product: i128 = 1;
+    for x in nums.iter() {
+        product *= x;
+    }
+    if product > 0 {
+        1
+    } else if product < 0 {
+        -1
+    } else {
+        0
+    }
+}
+
+fn arm(i: i64, nums: Slice[i64]) -> i64 {
+    match i {
+        0 => a0_array_sign(nums.to_vec()),
+        1 => a1_array_sign(nums.to_vec()),
+        2 => a2_array_sign(nums.to_vec()),
+        3 => a3_array_sign(nums.to_vec()),
+        _ => {
+            let narrow: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+            A4Solution.array_sign(narrow)
+        }
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, nums: Slice[i64]) {
+    t.cases += 1;
+    let star = arm(0, nums);
+    t.check = (t.check * 3 + star + 1) % 1000000007;
+    let want = literal(nums);
+    let back: Vec[i64] = nums.iter().rev().collect();
+    let negated: Vec[i64] = nums.iter().map(|x| -x).collect();
+    let flip = if nums.len() % 2 == 0 { 1 } else { -1 };
+    let mut more = nums.to_vec();
+    more.push(-1);
+    for i in 0..5 {
+        let what = f"arm {i} on {nums}";
+        let got = arm(i, nums);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: the answer is -1, 0 or 1
+        expect(mut t, 2, got >= -1 and got <= 1, f"P2 {what}");
+        // P3: the numbers in reverse order give the same sign
+        expect(mut t, 3, arm(i, back[..]) == got, f"P3 {what}");
+        // P4: every number negated flips the sign once for each number
+        expect(mut t, 4, arm(i, negated[..]) == got * flip, f"P4 {what}");
+        // P5: a -1 more flips the sign
+        expect(mut t, 5, arm(i, more[..]) == -got, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 random cases of 1 to 10 numbers from -100 to 100, one in 20 of
+    // them made a zero
+    let mut seed = 1822;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 10;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            let x = next_random(mut seed) % 201 - 100;
+            nums.push(if next_random(mut seed) % 20 == 0 { 0 } else { x });
+        }
+        check_case(mut t, nums[..]);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
