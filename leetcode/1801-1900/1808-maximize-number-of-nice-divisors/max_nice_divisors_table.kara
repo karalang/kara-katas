@@ -1,0 +1,57 @@
+// LeetCode #1808: Maximize Number of Nice Divisors -- the same largest
+// product, the power of 3 read off a table of 3^(2^k) for k from 0 to 30,
+// built by squaring, one entry multiplied in for each set bit of the
+// exponent.
+// O(log n)
+
+const MOD: i64 = 1000000007;
+
+fn max_nice_divisors(prime_factors: i32) -> i32 {
+    let n = prime_factors as i64;
+    if n <= 3 {
+        return prime_factors;
+    }
+    let mut squares: Vec[i64] = [3].to_vec();
+    for k in 1..31 {
+        let last = squares[k - 1];
+        squares.push(last * last % MOD);
+    }
+    let rest = [1, 4, 2][n % 3];
+    let threes = if n % 3 == 1 { n / 3 - 1 } else { n / 3 };
+    let mut result = rest;
+    for k in 0..31 {
+        if threes & (1 << k) != 0 {
+            result = result * squares[k] % MOD;
+        }
+    }
+    result as i32
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{max_nice_divisors(5)} {max_nice_divisors(8)}");
+    // the edges: 1 to 7, each remainder modulo 3 and the parts too small
+    // to split; the constraints' most
+    let small: Vec[String] = (1..8).map(|n| max_nice_divisors(n as i32).to_string()).collect();
+    println(f"{small.join(" ")} {max_nice_divisors(1000000000)} {max_nice_divisors(999999999)} {max_nice_divisors(999999998)}");
+    // 1 to 2000 in turn, and 3000 at random to 10^9
+    let mut check = 0;
+    for n in 1..2001 {
+        check = (check * 31 + max_nice_divisors(n as i32)) % 1000000007;
+    }
+    println(f"1 to 2000: checksum {check}");
+    let mut seed = 1808;
+    check = 0;
+    for _ in 0..3000 {
+        let n = 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000;
+        check = (check * 31 + max_nice_divisors(n as i32)) % 1000000007;
+    }
+    println(f"3000 at random to 10^9: checksum {check}");
+}

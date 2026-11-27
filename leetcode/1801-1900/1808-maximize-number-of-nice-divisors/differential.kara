@@ -1,0 +1,246 @@
+// LeetCode #1808: Maximize Number of Nice Divisors --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- max_nice_divisors.kara ----
+const A0_MOD: i64 = 1000000007;
+
+fn a0_power(base: i64, exp: i64) -> i64 {
+    let mut result = 1;
+    let mut b = base % A0_MOD;
+    let mut e = exp;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % A0_MOD;
+        }
+        b = b * b % A0_MOD;
+        e /= 2;
+    }
+    result
+}
+
+fn a0_max_nice_divisors(prime_factors: i32) -> i32 {
+    let n = prime_factors as i64;
+    if n <= 3 {
+        return prime_factors;
+    }
+    let answer = match n % 3 {
+        0 => a0_power(3, n / 3),
+        1 => a0_power(3, n / 3 - 1) * 4 % A0_MOD,
+        _ => a0_power(3, n / 3) * 2 % A0_MOD,
+    };
+    answer as i32
+}
+
+// ---- max_nice_divisors_recursive.kara ----
+const A1_MOD: i64 = 1000000007;
+
+fn a1_power(base: i64, exp: i64) -> i64 {
+    if exp == 0 {
+        return 1;
+    }
+    let half = a1_power(base * base % A1_MOD, exp / 2);
+    if exp % 2 == 1 { half * base % A1_MOD } else { half }
+}
+
+fn a1_max_nice_divisors(prime_factors: i32) -> i32 {
+    let n = prime_factors as i64;
+    if n <= 3 {
+        return prime_factors;
+    }
+    let (threes, rest) = match n % 3 {
+        0 => (n / 3, 1),
+        1 => (n / 3 - 1, 4),
+        _ => (n / 3, 2),
+    };
+    (a1_power(3, threes) * rest % A1_MOD) as i32
+}
+
+// ---- max_nice_divisors_topdown.kara ----
+const A2_MOD: i64 = 1000000007;
+
+fn a2_max_nice_divisors(prime_factors: i32) -> i32 {
+    let n = prime_factors as i64;
+    if n <= 3 {
+        return prime_factors;
+    }
+    let mut threes = n / 3;
+    let mut rest = 1;
+    if n % 3 == 1 {
+        threes -= 1;
+        rest = 4;
+    } else if n % 3 == 2 {
+        rest = 2;
+    }
+    let mut result: i64 = 1;
+    for bit in (0..31).rev() {
+        result = result * result % A2_MOD;
+        if (threes >> bit) & 1 == 1 {
+            result = result * 3 % A2_MOD;
+        }
+    }
+    (result * rest % A2_MOD) as i32
+}
+
+// ---- max_nice_divisors_table.kara ----
+const A3_MOD: i64 = 1000000007;
+
+fn a3_max_nice_divisors(prime_factors: i32) -> i32 {
+    let n = prime_factors as i64;
+    if n <= 3 {
+        return prime_factors;
+    }
+    let mut squares: Vec[i64] = [3].to_vec();
+    for k in 1..31 {
+        let last = squares[k - 1];
+        squares.push(last * last % A3_MOD);
+    }
+    let rest = [1, 4, 2][n % 3];
+    let threes = if n % 3 == 1 { n / 3 - 1 } else { n / 3 };
+    let mut result = rest;
+    for k in 0..31 {
+        if threes & (1 << k) != 0 {
+            result = result * squares[k] % A3_MOD;
+        }
+    }
+    result as i32
+}
+
+// ---- max_nice_divisors_solution.kara ----
+const A4_MOD: i64 = 1_000_000_007;
+
+fn a4_pow(a: i64, b: i64) -> i64 {
+    let mut a = a;
+    let mut b = b;
+    let mut r = 1;
+    a %= A4_MOD;
+    while b > 0 {
+        if b & 1 == 1 {
+            r = r * a % A4_MOD;
+        }
+        a = a * a % A4_MOD;
+        b >>= 1;
+    }
+    r
+}
+
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn max_nice_divisors(prime_factors: i32) -> i32 {
+        let n = prime_factors as i64;
+        if n <= 3 {
+            return prime_factors;
+        }
+        match n % 3 {
+            0 => a4_pow(3, n / 3) as i32,
+            1 => (a4_pow(3, n / 3 - 1) * 4 % A4_MOD) as i32,
+            _ => (a4_pow(3, n / 3) * 2 % A4_MOD) as i32,
+        }
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the statement read literally: n with prime exponents e1..ek has
+// e1 * .. * ek nice divisors, so the answer is the largest product of
+// parts that sum to `prime_factors`, found by trying every last part, in
+// exact `i64` arithmetic, which holds for up to 100 factors
+fn literal(n: i64) -> i64 {
+    let mut best: Vec[i64] = Vec.filled(n + 1, 0);
+    best[0] = 1;
+    for total in 1..n + 1 {
+        for last in 1..total + 1 {
+            best[total] = best[total].max(best[total - last] * last);
+        }
+    }
+    best[n] % 1000000007
+}
+
+fn arm(i: i64, n: i64) -> i64 {
+    let f = n as i32;
+    match i {
+        0 => a0_max_nice_divisors(f),
+        1 => a1_max_nice_divisors(f),
+        2 => a2_max_nice_divisors(f),
+        3 => a3_max_nice_divisors(f),
+        _ => A4Solution.max_nice_divisors(f),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, n: i64) {
+    let p = 1000000007;
+    t.cases += 1;
+    let star = arm(0, n);
+    t.check = (t.check * 31 + star) % p;
+    let want = if n <= 100 { literal(n) } else { 0 };
+    for i in 0..5 {
+        let what = f"arm {i} on {n}";
+        let got = arm(i, n);
+        // P1: the statement read literally, for up to 100 factors
+        expect(mut t, 1, n > 100 or got == want, f"P1 {what}");
+        // P2: three more factors make one more part of 3
+        expect(mut t, 2, n < 2 or n + 3 > 1000000000 or arm(i, n + 3) == got * 3 % p, f"P2 {what}");
+        // P3: a remainder of 1 turns a 3 into a 4, and a remainder of 2
+        // adds a part of 2
+        let ok3 = if n >= 4 and n % 3 == 1 {
+            got * 3 % p == arm(i, n - 1) * 4 % p
+        } else if n >= 5 and n % 3 == 2 {
+            got == arm(i, n - 2) * 2 % p
+        } else {
+            true
+        };
+        expect(mut t, 3, ok3, f"P3 {what}");
+        // P4: twice a multiple of 3 squares the answer
+        expect(mut t, 4, n % 3 != 0 or 2 * n > 1000000000 or arm(i, 2 * n) == got * got % p, f"P4 {what}");
+        // P5: the answer lies in 1 to p - 1, and is n itself up to 4
+        expect(mut t, 5, got >= 1 and got < p and (n > 4 or got == n), f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 1 to 1000 in turn, the constraints' most and its neighbours, and 997
+    // at random to 10^9. Every case is drawn before any arm answers.
+    let mut cases: Vec[i64] = (1..1001).collect();
+    cases.push(1000000000);
+    cases.push(999999999);
+    cases.push(999999998);
+    let mut seed = 18081;
+    for _ in 0..997 {
+        cases.push(1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000);
+    }
+    for j in 0..cases.len() {
+        check_case(mut t, cases[j]);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
