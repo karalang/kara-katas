@@ -78,16 +78,18 @@ The differential's fixed cases are pushed as tuples into a
 `Vec[(Vec[i32], i32, i32)]`, and check refused each as a `(Vec[i64],
 i32, i32)`, `[1, 4, 2, 7].to_vec()` and `Vec.filled(20000, 20000)`
 taking `i64` before the push's element type reaches them, with no fix;
-that is B-2026-11-26-6 and B-2026-11-26-86, and the first number of each
-list is suffixed by hand, `[1i32, 4, 2, 7].to_vec()` and
-`Vec.filled(4000, 20000i32)`. `karac fix` dropped one `nums.clone()`
-handed to a parameter that only borrows (`redundant_clone`). Its large
-cases were first written with `2 * 10^4` numbers, and the interpreter
-took 8 min 42 s over the differential; with 4000 it takes 6 min 52 s.
-All 56,020 checks pass on every arm: `2000 cases: checksum 754976972,
-56020 checks over 5 arms: 0 failures`, under `karac __mir-run`, `karac
-run`, `karac build` and `karac __mir-llvm-run`. Python, running the ★
-arm's mirror over the same cases, gives the same checksum.
+that is B-2026-11-26-6 and B-2026-11-26-86. The first number of the
+`.to_vec()` list is suffixed by hand, `[1i32, 4, 2, 7].to_vec()`, while
+B-2026-11-26-6 is open; B-2026-11-26-86 is fixed at 95bb5be7d1, and
+`Vec.filled(4000, 20000)` now checks as written, its suffix taken off.
+`karac fix` dropped one `nums.clone()` handed to a parameter that only
+borrows (`redundant_clone`). Its large cases were first written with
+`2 * 10^4` numbers, and the interpreter took 8 min 42 s over the
+differential; with 4000 it takes 6 min 52 s. All 56,020 checks pass on
+every arm: `2000 cases: checksum 754976972, 56020 checks over 5 arms: 0
+failures`, under `karac __mir-run`, `karac run`, `karac build` and
+`karac __mir-llvm-run`. Python, running the ★ arm's mirror over the same
+cases, gives the same checksum.
 
 ## Mutation testing
 
