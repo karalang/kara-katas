@@ -1,0 +1,453 @@
+// LeetCode #1472: Design Browser History -- differential test of
+// the five arms against the statement read literally, with five
+// more properties.
+
+// ---- browser_history.kara ----
+struct A0BrowserHistory {
+    pages: Vec[String],
+    at: i64,
+    end: i64,
+}
+
+impl A0BrowserHistory {
+    fn new(homepage: Str) -> A0BrowserHistory {
+        A0BrowserHistory { pages: [homepage.to_string()].to_vec(), at: 0, end: 1 }
+    }
+
+    // a visit overwrites the place after the current page, or adds it, and
+    // the history now ends there
+    fn visit(mut ref self, url: Str) {
+        self.at += 1;
+        if self.at < self.pages.len() {
+            self.pages[self.at] = url.to_string();
+        } else {
+            self.pages.push(url.to_string());
+        }
+        self.end = self.at + 1;
+    }
+
+    fn back(mut ref self, steps: i32) -> String {
+        self.at = (self.at - steps).max(0);
+        self.pages[self.at].clone()
+    }
+
+    fn forward(mut ref self, steps: i32) -> String {
+        self.at = (self.at + steps).min(self.end - 1);
+        self.pages[self.at].clone()
+    }
+}
+
+// ---- browser_history_stacks.kara ----
+struct A1BrowserHistory {
+    behind: Vec[String],
+    current: String,
+    ahead: Vec[String],
+}
+
+impl A1BrowserHistory {
+    fn new(homepage: Str) -> A1BrowserHistory {
+        A1BrowserHistory { behind: Vec.new(), current: homepage.to_string(), ahead: Vec.new() }
+    }
+
+    fn visit(mut ref self, url: Str) {
+        let old = mem.replace(mut self.current, url.to_string());
+        self.behind.push(old);
+        self.ahead.clear();
+    }
+
+    fn back(mut ref self, steps: i32) -> String {
+        for _ in 0..steps {
+            match self.behind.pop() {
+                Some(page) => {
+                    let old = mem.replace(mut self.current, page);
+                    self.ahead.push(old);
+                }
+                None => break,
+            }
+        }
+        self.current.clone()
+    }
+
+    fn forward(mut ref self, steps: i32) -> String {
+        for _ in 0..steps {
+            match self.ahead.pop() {
+                Some(page) => {
+                    let old = mem.replace(mut self.current, page);
+                    self.behind.push(old);
+                }
+                None => break,
+            }
+        }
+        self.current.clone()
+    }
+}
+
+// ---- browser_history_truncate.kara ----
+struct A2BrowserHistory {
+    pages: Vec[String],
+    at: i64,
+}
+
+impl A2BrowserHistory {
+    fn new(homepage: Str) -> A2BrowserHistory {
+        A2BrowserHistory { pages: [homepage.to_string()].to_vec(), at: 0 }
+    }
+
+    fn visit(mut ref self, url: Str) {
+        self.pages.truncate(self.at + 1);
+        self.pages.push(url.to_string());
+        self.at += 1;
+    }
+
+    fn back(mut ref self, steps: i32) -> String {
+        self.at -= (steps as i64).min(self.at);
+        self.pages[self.at].clone()
+    }
+
+    fn forward(mut ref self, steps: i32) -> String {
+        self.at += (steps as i64).min(self.pages.len() - 1 - self.at);
+        self.pages[self.at].clone()
+    }
+}
+
+// ---- browser_history_linked.kara ----
+shared struct A3Page {
+    url: String,
+    mut back: weak A3Page,
+    mut next: Option[A3Page],
+}
+
+struct A3BrowserHistory {
+    home: A3Page,
+    current: A3Page,
+}
+
+impl A3BrowserHistory {
+    fn new(homepage: Str) -> A3BrowserHistory {
+        let home = A3Page { url: homepage.to_string(), back: None, next: None };
+        A3BrowserHistory { home: home, current: home }
+    }
+
+    fn visit(mut ref self, url: Str) {
+        let page = A3Page { url: url.to_string(), back: None, next: None };
+        page.back = self.current;
+        self.current.next = Some(page);
+        self.current = page;
+    }
+
+    fn back(mut ref self, steps: i32) -> String {
+        for _ in 0..steps {
+            match self.current.back {
+                Some(p) => self.current = p,
+                None => break,
+            }
+        }
+        self.current.url.clone()
+    }
+
+    fn forward(mut ref self, steps: i32) -> String {
+        for _ in 0..steps {
+            match self.current.next.clone() {
+                Some(p) => self.current = p,
+                None => break,
+            }
+        }
+        self.current.url.clone()
+    }
+}
+
+// ---- browser_history_solution.kara ----
+struct A4BrowserHistory {
+    history: Vec[String],
+    cur: i64,
+    last: i64,
+}
+
+impl A4BrowserHistory {
+    fn new(homepage: own String) -> Self {
+        A4BrowserHistory { history: [homepage], cur: 0, last: 0 }
+    }
+
+    fn visit(mut ref self, url: own String) {
+        self.cur += 1;
+        if self.cur == self.history.len() {
+            self.history.push(url);
+        } else {
+            self.history[self.cur] = url;
+        }
+        self.last = self.cur;
+    }
+
+    fn back(mut ref self, steps: i32) -> String {
+        self.cur = self.cur.saturating_sub(steps as i64).max(0);
+        self.history[self.cur].clone()
+    }
+
+    fn forward(mut ref self, steps: i32) -> String {
+        self.cur = min(self.cur + steps, self.last);
+        self.history[self.cur].clone()
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// each arm's history driven through the same calls: a call is a visit
+// (0) to its page, or back (1) or forward (2) its steps; the answers to
+// back and forward in order
+fn run_a0(home: Str, ops: Vec[(i64, i32, String)]) -> Vec[String] {
+    let mut h = A0BrowserHistory.new(home);
+    let mut out = Vec.new();
+    for op in ops.iter() {
+        if op.0 == 0 {
+            h.visit(op.2);
+        } else if op.0 == 1 {
+            out.push(h.back(op.1));
+        } else {
+            out.push(h.forward(op.1));
+        }
+    }
+    out
+}
+
+fn run_a1(home: Str, ops: Vec[(i64, i32, String)]) -> Vec[String] {
+    let mut h = A1BrowserHistory.new(home);
+    let mut out = Vec.new();
+    for op in ops.iter() {
+        if op.0 == 0 {
+            h.visit(op.2);
+        } else if op.0 == 1 {
+            out.push(h.back(op.1));
+        } else {
+            out.push(h.forward(op.1));
+        }
+    }
+    out
+}
+
+fn run_a2(home: Str, ops: Vec[(i64, i32, String)]) -> Vec[String] {
+    let mut h = A2BrowserHistory.new(home);
+    let mut out = Vec.new();
+    for op in ops.iter() {
+        if op.0 == 0 {
+            h.visit(op.2);
+        } else if op.0 == 1 {
+            out.push(h.back(op.1));
+        } else {
+            out.push(h.forward(op.1));
+        }
+    }
+    out
+}
+
+fn run_a3(home: Str, ops: Vec[(i64, i32, String)]) -> Vec[String] {
+    let mut h = A3BrowserHistory.new(home);
+    let mut out = Vec.new();
+    for op in ops.iter() {
+        if op.0 == 0 {
+            h.visit(op.2);
+        } else if op.0 == 1 {
+            out.push(h.back(op.1));
+        } else {
+            out.push(h.forward(op.1));
+        }
+    }
+    out
+}
+
+fn run_a4(home: Str, ops: Vec[(i64, i32, String)]) -> Vec[String] {
+    let mut h = A4BrowserHistory.new(home.to_string());
+    let mut out = Vec.new();
+    for op in ops.iter() {
+        if op.0 == 0 {
+            h.visit(op.2.clone());
+        } else if op.0 == 1 {
+            out.push(h.back(op.1));
+        } else {
+            out.push(h.forward(op.1));
+        }
+    }
+    out
+}
+
+fn arm(i: i64, home: Str, ops: Vec[(i64, i32, String)]) -> Vec[String] {
+    match i {
+        0 => run_a0(home, ops),
+        1 => run_a1(home, ops),
+        2 => run_a2(home, ops),
+        3 => run_a3(home, ops),
+        _ => run_a4(home, ops),
+    }
+}
+
+// the statement read literally: before each answer the history is
+// rebuilt from the start, every call so far replayed on a plain list of
+// the pages and a place in it, a visit keeping the pages up to the place
+// and adding its own
+fn literal(home: Str, ops: Vec[(i64, i32, String)]) -> Vec[String] {
+    let mut out = Vec.new();
+    for j in 0..ops.len() {
+        if ops[j].0 == 0 {
+            continue;
+        }
+        let mut pages: Vec[String] = [home.to_string()].to_vec();
+        let mut at: i64 = 0;
+        for op in ops[0..j + 1].iter() {
+            if op.0 == 0 {
+                let mut kept: Vec[String] = pages[0..at + 1].to_vec();
+                kept.push(op.2.clone());
+                pages = kept;
+                at = pages.len() - 1;
+            } else if op.0 == 1 {
+                at = if op.1 > at { 0 } else { at - op.1 };
+            } else {
+                at = if at + op.1 >= pages.len() { pages.len() - 1 } else { at + op.1 };
+            }
+        }
+        out.push(pages[at].clone());
+    }
+    out
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, home: Str, ops: Vec[(i64, i32, String)]) {
+    t.cases += 1;
+    let star = arm(0, home, ops);
+    for page in star.iter() {
+        for b in page.bytes().iter() {
+            t.check = (t.check * 131 + b) % 1000000007;
+        }
+    }
+    let n = ops.len();
+    let want = literal(home, ops);
+    // the same calls with every page renamed under a prefix
+    let renamed: Vec[(i64, i32, String)] = ops.iter().map(|op| (op.0, op.1, f"w.{op.2}")).collect();
+    // a back of 1000 steps after every call, and a forward of 1000 steps
+    // after every visit, on the cases of at most 100 calls, where 1000
+    // steps reach either end
+    let probing = n <= 100;
+    let mut probed: Vec[(i64, i32, String)] = Vec.new();
+    for op in ops.iter() {
+        probed.push(op.clone());
+        if op.0 == 0 {
+            probed.push((2, 1000, String.new()));
+        }
+        probed.push((1, 1000, String.new()));
+        probed.push((2, 1000, String.new()));
+    }
+    for i in 0..5 {
+        let what = f"arm {i} on {n} calls";
+        let got = arm(i, home, ops);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: the pages renamed rename the answers, the homepage too
+        let back: Vec[String] = arm(i, f"w.{home}", renamed).iter().map(|p| p[2..].to_string()).collect();
+        expect(mut t, 2, back == got, f"P2 {what}");
+        // P6: the ★ arm's answers
+        expect(mut t, 6, got == star, f"P6 {what}");
+        if not probing {
+            continue;
+        }
+        // P3, P4, P5: with the probes, a forward right after a visit stays
+        // on the page visited, a back of 1000 steps reaches the homepage, and
+        // the forward of 1000 steps after it the last page not dropped
+        let answers = arm(i, home, probed);
+        let mut k = 0;
+        let mut last = home.to_string();
+        let mut p3 = true;
+        let mut p4 = true;
+        let mut p5 = true;
+        for op in ops.iter() {
+            if op.0 == 0 {
+                p3 = p3 and answers[k] == op.2;
+                last = op.2.clone();
+                k += 1;
+            } else {
+                k += 1;
+            }
+            p4 = p4 and answers[k] == home;
+            p5 = p5 and answers[k + 1] == last;
+            k += 2;
+        }
+        expect(mut t, 3, p3, f"P3 {what}");
+        expect(mut t, 4, p4, f"P4 {what}");
+        expect(mut t, 5, p5, f"P5 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's example and the edges: the homepage alone, a visit that
+    // drops the pages ahead, steps past each end, and the constraints'
+    // most of 5000 calls. Every case is drawn before any arm answers.
+    let mut cases: Vec[(String, Vec[(i64, i32, String)])] = Vec.new();
+    let example: Vec[(i64, i32, String)] = [
+        (0, 0, "google.com".to_string()),
+        (0, 0, "facebook.com".to_string()),
+        (0, 0, "youtube.com".to_string()),
+        (1, 1, String.new()),
+        (1, 1, String.new()),
+        (2, 1, String.new()),
+        (0, 0, "linkedin.com".to_string()),
+        (2, 2, String.new()),
+        (1, 2, String.new()),
+        (1, 7, String.new()),
+    ].to_vec();
+    cases.push(("leetcode.com".to_string(), example));
+    let alone: Vec[(i64, i32, String)] = [(1, 3, String.new()), (2, 3, String.new())].to_vec();
+    cases.push(("home.org".to_string(), alone));
+    let dropped: Vec[(i64, i32, String)] = [
+        (0, 0, "a.org".to_string()),
+        (0, 0, "b.org".to_string()),
+        (1, 2, String.new()),
+        (0, 0, "c.org".to_string()),
+        (2, 1, String.new()),
+        (1, 1, String.new()),
+        (2, 5, String.new()),
+    ].to_vec();
+    cases.push(("home.org".to_string(), dropped));
+    let mut seed = 14721;
+    // 2000 random sessions: half of 1 to 10 calls and half of 1 to 100, a
+    // visit one time in three, else back or forward 1 to 10 steps; and one
+    // of 5000 calls
+    for c in 0..2001 {
+        let n = if c == 2000 { 5000 } else if c % 2 == 0 { 1 + next_random(mut seed) % 10 } else { 1 + next_random(mut seed) % 100 };
+        let mut ops: Vec[(i64, i32, String)] = Vec.new();
+        for j in 0..n {
+            let r = next_random(mut seed) % 3;
+            let steps = (1 + next_random(mut seed) % 10) as i32;
+            ops.push(if r == 0 { (0, 0, f"c{c}.p{j}") } else { (r, steps, String.new()) });
+        }
+        cases.push((f"c{c}.home", ops));
+    }
+    for j in 0..cases.len() {
+        let (home, ops) = cases[j].clone();
+        check_case(mut t, home, ops);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

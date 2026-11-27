@@ -1,0 +1,117 @@
+// LeetCode #1472: Design Browser History -- a doubly linked list of
+// pages, held from the homepage: each page holds the next one and points
+// back at the one before it by a weak link, so the pages a visit drops
+// from ahead of the current one are freed
+
+shared struct Page {
+    url: String,
+    mut back: weak Page,
+    mut next: Option[Page],
+}
+
+struct BrowserHistory {
+    home: Page,
+    current: Page,
+}
+
+impl BrowserHistory {
+    fn new(homepage: Str) -> BrowserHistory {
+        let home = Page { url: homepage.to_string(), back: None, next: None };
+        BrowserHistory { home: home, current: home }
+    }
+
+    fn visit(mut ref self, url: Str) {
+        let page = Page { url: url.to_string(), back: None, next: None };
+        page.back = self.current;
+        self.current.next = Some(page);
+        self.current = page;
+    }
+
+    fn back(mut ref self, steps: i32) -> String {
+        for _ in 0..steps {
+            match self.current.back {
+                Some(p) => self.current = p,
+                None => break,
+            }
+        }
+        self.current.url.clone()
+    }
+
+    fn forward(mut ref self, steps: i32) -> String {
+        for _ in 0..steps {
+            match self.current.next.clone() {
+                Some(p) => self.current = p,
+                None => break,
+            }
+        }
+        self.current.url.clone()
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a page's text folded into a running checksum
+fn fold(check: i64, url: Str) -> i64 {
+    let mut c = check;
+    for b in url.bytes().iter() {
+        c = (c * 131 + b) % 1000000007;
+    }
+    c
+}
+
+fn main() {
+    // LeetCode's example
+    let mut b = BrowserHistory.new("leetcode.com");
+    b.visit("google.com");
+    b.visit("facebook.com");
+    b.visit("youtube.com");
+    let r1 = b.back(1);
+    let r2 = b.back(1);
+    let r3 = b.forward(1);
+    b.visit("linkedin.com");
+    let r4 = b.forward(2);
+    let r5 = b.back(2);
+    let r6 = b.back(7);
+    println(f"{r1} {r2} {r3} {r4} {r5} {r6}");
+    // the edges: back and forward on the homepage alone, and a visit that
+    // drops the pages ahead
+    let mut e = BrowserHistory.new("home.org");
+    let e1 = e.back(3);
+    let e2 = e.forward(3);
+    e.visit("a.org");
+    e.visit("b.org");
+    let e3 = e.back(2);
+    e.visit("c.org");
+    let e4 = e.forward(1);
+    let e5 = e.back(1);
+    let e6 = e.forward(5);
+    println(f"{e1} {e2} {e3} {e4} {e5} {e6}");
+    // 2000 random sessions of 1 to 100 calls: a visit to a fresh page one
+    // time in three, else back or forward 1 to 10 steps; each answer
+    // folded into a checksum
+    let mut seed = 1472;
+    let mut check = 0;
+    let mut calls = 0;
+    for s in 0..2000 {
+        let mut h = BrowserHistory.new(f"s{s}.home");
+        let n = 1 + next_random(mut seed) % 100;
+        for c in 0..n {
+            let r = next_random(mut seed) % 3;
+            let steps = (1 + next_random(mut seed) % 10) as i32;
+            if r == 0 {
+                h.visit(f"s{s}.p{c}");
+            } else if r == 1 {
+                check = fold(check, h.back(steps));
+            } else {
+                check = fold(check, h.forward(steps));
+            }
+            calls += 1;
+        }
+    }
+    println(f"2000 random sessions: {calls} calls, checksum {check}");
+}

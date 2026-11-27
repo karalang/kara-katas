@@ -1,0 +1,74 @@
+// LeetCode #1472: Design Browser History -- the pages in one list, the
+// place of the current page, and the end of the history past which a
+// later visit has dropped the pages
+
+struct BrowserHistory {
+    pages: Vec[String],
+    at: i64,
+    end: i64,
+}
+
+impl BrowserHistory {
+    fn new(homepage: Str) -> BrowserHistory {
+        BrowserHistory { pages: [homepage.to_string()].to_vec(), at: 0, end: 1 }
+    }
+
+    // a visit overwrites the place after the current page, or adds it, and
+    // the history now ends there
+    fn visit(mut ref self, url: Str) {
+        self.at += 1;
+        if self.at < self.pages.len() {
+            self.pages[self.at] = url.to_string();
+        } else {
+            self.pages.push(url.to_string());
+        }
+        self.end = self.at + 1;
+    }
+
+    fn back(mut ref self, steps: i32) -> String {
+        self.at = (self.at - steps).max(0);
+        self.pages[self.at].clone()
+    }
+
+    fn forward(mut ref self, steps: i32) -> String {
+        self.at = (self.at + steps).min(self.end - 1);
+        self.pages[self.at].clone()
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a page's text folded into a running checksum
+fn fold(check: i64, url: Str) -> i64 {
+    let mut c = check;
+    for b in url.bytes().iter() {
+        c = (c * 131 + b) % 1000000007;
+    }
+    c
+}
+
+fn main() {
+    // 1000 page names made once; 400 sessions of 5000 calls, a visit to
+    // one of them one time in three, else back or forward 1 to 10 steps
+    let pool: Vec[String] = (0..1000).map(|i| f"site{i}.example.com").collect();
+    let mut seed = 1472;
+    let mut check = 0;
+    for _ in 0..400 {
+        let mut h = BrowserHistory.new("home.example.com");
+        for _ in 0..5000 {
+            let r = next_random(mut seed) % 3;
+            let x = next_random(mut seed);
+            if r == 0 {
+                h.visit(pool[x % 1000]);
+            } else if r == 1 {
+                check = fold(check, h.back((1 + x % 10) as i32));
+            } else {
+                check = fold(check, h.forward((1 + x % 10) as i32));
+            }
+        }
+    }
+    println(f"400 sessions of 5000 calls: checksum {check}");
+}
