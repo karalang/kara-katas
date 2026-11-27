@@ -1,0 +1,85 @@
+// LeetCode #1787: Make the XOR of All Segments Equal to Zero -- a Rust
+// solution as LeetCode's Rust users write it, carried to Kāra by
+// `karac fix`
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_changes(nums: Vec[i32], k: i32) -> i32 {
+        let k = k as i64;
+        let n = nums.len();
+        const MX: i64 = 1 << 10;
+        let mut f = Vec.filled(MX, i32.MAX / 2);
+        f[0] = 0;
+        for i in 0..k {
+            let mut cnt = Map.new();
+            let mut size: i32 = 0;
+            let mut j = i;
+            while j < n {
+                *cnt.entry(nums[j] as i64).or_insert(0i32) += 1;
+                size += 1;
+                j += k;
+            }
+            let t2min = *f.iter().min().unwrap();
+            let mut g: Vec[i32] = Vec.filled(MX, t2min + size);
+            for x in 0..MX {
+                for (v, c) in cnt.iter() {
+                    g[x] = g[x].min(f[x ^ v] + size - c);
+                }
+            }
+            f = g;
+        }
+        f[0]
+    }
+}
+
+fn min_changes(nums: Vec[i32], k: i32) -> i32 {
+    Solution.min_changes(nums, k)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n numbers below `most`
+fn random_nums(seed: mut ref i64, n: i64, most: i64) -> Vec[i32] {
+    (0..n).map(|_| (next_random(mut seed) % most) as i32).collect()
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{min_changes([1, 2, 0, 3, 0], 1)} {min_changes([3, 4, 5, 2, 1, 7, 3, 4, 7], 3)} {min_changes([1, 2, 4, 1, 2, 5, 1, 2, 6], 3)}");
+    // the edges: one number, zero and not; k the whole length, its XOR
+    // already 0 and not; a repeating pattern that already works; every
+    // number the same, k even and odd
+    println(f"{min_changes([0], 1)} {min_changes([5], 1)} {min_changes([1, 2, 3], 3)} {min_changes([1, 2, 4], 3)} {min_changes([1, 2, 3, 1, 2, 3, 1], 3)} {min_changes([7, 7, 7, 7], 2)} {min_changes([7, 7, 7, 7], 3)}");
+    // the constraints' most: 2000 numbers below 1024 with k of 1, 7, 1000
+    // and 2000
+    let mut seed = 1787;
+    let wide = random_nums(mut seed, 2000, 1024);
+    println(f"the most: {min_changes(wide, 1)} {min_changes(wide, 7)} {min_changes(wide, 1000)} {min_changes(wide, 2000)}");
+    // 1500 random cases of 1 to 24 numbers below 2 to 32, k from 1 to the
+    // length; a quarter built from a pattern of k numbers, a few changed
+    let mut check = 0;
+    for c in 0..1500 {
+        let n = 1 + next_random(mut seed) % 24;
+        let k = 1 + next_random(mut seed) % n;
+        let most = 2 + next_random(mut seed) % 31;
+        let mut nums = random_nums(mut seed, n, most);
+        if c % 4 == 0 {
+            for i in k..n {
+                nums[i] = nums[i - k];
+            }
+            let changed = next_random(mut seed) % 3;
+            for _ in 0..changed {
+                let at = next_random(mut seed) % n;
+                nums[at] = (next_random(mut seed) % most) as i32;
+            }
+        }
+        check = (check * 31 + min_changes(nums, k as i32)) % 1000000007;
+    }
+    println(f"1500 random cases: checksum {check}");
+}

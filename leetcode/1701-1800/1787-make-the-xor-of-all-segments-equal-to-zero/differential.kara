@@ -1,0 +1,391 @@
+// LeetCode #1787: Make the XOR of All Segments Equal to Zero --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- min_changes.kara ----
+fn a0_min_changes(nums: Vec[i32], k: i32) -> i32 {
+    let mut best: Vec[i32] = Vec.filled(1024, i32.MAX / 2);
+    best[0] = 0;
+    for g in 0..k {
+        let mut count: Map[i32, i32] = Map.new();
+        let mut size: i32 = 0;
+        let mut i = g;
+        while i < nums.len() {
+            count[nums[i]] = count.get(nums[i]).unwrap_or(0) + 1;
+            size += 1;
+            i += k;
+        }
+        let floor = best.iter().min().unwrap() + size;
+        let mut next: Vec[i32] = Vec.filled(1024, floor);
+        for x in 0..1024 {
+            for (v, c) in count.iter() {
+                let here = best[x ^ v] + size - c;
+                if here < next[x] {
+                    next[x] = here;
+                }
+            }
+        }
+        best = next;
+    }
+    best[0]
+}
+
+// ---- min_changes_array.kara ----
+fn a1_min_changes(nums: Vec[i32], k: i32) -> i32 {
+    let big = 1000000;
+    let mut best: Vec[i32] = Vec.filled(1024, big);
+    best[0] = 0;
+    for g in 0..k {
+        let mut count: Vec[i32] = Vec.filled(1024, 0);
+        let mut values: Vec[i32] = Vec.new();
+        let mut size: i32 = 0;
+        for i in (g..nums.len()).step_by(k) {
+            if count[nums[i]] == 0 {
+                values.push(nums[i]);
+            }
+            count[nums[i]] += 1;
+            size += 1;
+        }
+        let mut low = big;
+        for b in best.iter() {
+            low = low.min(b);
+        }
+        let mut next: Vec[i32] = Vec.filled(1024, low + size);
+        for x in 0..1024 {
+            for v in values.iter() {
+                next[x] = next[x].min(best[x ^ v] + size - count[v]);
+            }
+        }
+        best = next;
+    }
+    best[0]
+}
+
+// ---- min_changes_onefree.kara ----
+fn a2_min_changes(nums: Vec[i32], k: i32) -> i32 {
+    let n = nums.len();
+    let mut kept_most = 0;
+    let mut least_most = n;
+    // the XORs reachable with every group keeping one of its own values,
+    // and the most numbers kept for each
+    let mut kept: Map[i32, i64] = Map.new();
+    kept[0] = 0;
+    for g in 0..k {
+        let mut count: Map[i32, i64] = Map.new();
+        let mut i = g;
+        while i < n {
+            count[nums[i]] = count.get(nums[i]).unwrap_or(0) + 1;
+            i += k;
+        }
+        let most = count.values().max().unwrap();
+        kept_most += most;
+        least_most = least_most.min(most);
+        let mut next: Map[i32, i64] = Map.new();
+        for (x, have) in kept.iter() {
+            for (v, c) in count.iter() {
+                let y = x ^ v;
+                let total = have + c;
+                if total > next.get(y).unwrap_or(-1) {
+                    next[y] = total;
+                }
+            }
+        }
+        kept = next;
+    }
+    let one_free = n - (kept_most - least_most);
+    let all_kept = match kept.get(0) {
+        Some(have) => n - have,
+        None => n,
+    };
+    one_free.min(all_kept) as i32
+}
+
+// ---- min_changes_memo.kara ----
+fn a3_group_counts(nums: Vec[i32], k: i32, g: i32) -> Map[i32, i32] {
+    let mut count: Map[i32, i32] = Map.new();
+    let mut i = g as i64;
+    while i < nums.len() {
+        count[nums[i]] = count.get(nums[i]).unwrap_or(0) + 1;
+        i += k;
+    }
+    count
+}
+
+fn a3_fewest(g: i32, x: i32, k: i32, counts: Vec[Map[i32, i32]], sizes: Vec[i32], memo: mut ref Vec[Vec[i32]], row_low: mut ref Vec[i32]) -> i32 {
+    if g == k {
+        return if x == 0 { 0 } else { 1000000 };
+    }
+    if memo[g][x] >= 0 {
+        return memo[g][x];
+    }
+    if row_low[g + 1] < 0 {
+        let mut low: i32 = 1000000;
+        for y in 0..1024 {
+            low = low.min(a3_fewest(g + 1, y, k, counts, sizes, mut memo, mut row_low));
+        }
+        row_low[g + 1] = low;
+    }
+    let mut answer = row_low[g + 1] + sizes[g];
+    for (v, c) in counts[g].iter() {
+        answer = answer.min(a3_fewest(g + 1, x ^ v, k, counts, sizes, mut memo, mut row_low) + sizes[g] - c);
+    }
+    memo[g][x] = answer;
+    answer
+}
+
+fn a3_min_changes(nums: Vec[i32], k: i32) -> i32 {
+    let mut counts: Vec[Map[i32, i32]] = Vec.new();
+    let mut sizes: Vec[i32] = Vec.new();
+    for g in 0..k {
+        let count = a3_group_counts(nums, k, g);
+        sizes.push(count.values().sum());
+        counts.push(count);
+    }
+    let mut memo: Vec[Vec[i32]] = Vec.filled(k, Vec.filled(1024, -1));
+    let mut row_low: Vec[i32] = Vec.filled(k + 1, -1);
+    // the last row's least value is 0 at an XOR of 0
+    row_low[k] = 0;
+    a3_fewest(0, 0, k, counts, sizes, mut memo, mut row_low)
+}
+
+// ---- min_changes_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn min_changes(nums: Vec[i32], k: i32) -> i32 {
+        let k = k as i64;
+        let n = nums.len();
+        const MX: i64 = 1 << 10;
+        let mut f = Vec.filled(MX, i32.MAX / 2);
+        f[0] = 0;
+        for i in 0..k {
+            let mut cnt = Map.new();
+            let mut size: i32 = 0;
+            let mut j = i;
+            while j < n {
+                *cnt.entry(nums[j] as i64).or_insert(0i32) += 1;
+                size += 1;
+                j += k;
+            }
+            let t2min = *f.iter().min().unwrap();
+            let mut g: Vec[i32] = Vec.filled(MX, t2min + size);
+            for x in 0..MX {
+                for (v, c) in cnt.iter() {
+                    g[x] = g[x].min(f[x ^ v] + size - c);
+                }
+            }
+            f = g;
+        }
+        f[0]
+    }
+}
+
+fn a4_min_changes(nums: Vec[i32], k: i32) -> i32 {
+    A4Solution.min_changes(nums, k)
+}
+// ---- the differential -------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_nums(seed: mut ref i64, n: i64, most: i64) -> Vec[i32] {
+    (0..n).map(|_| (next_random(mut seed) % most) as i32).collect()
+}
+
+// every array of numbers below 8 tried a position at a time, each window
+// of k checked as soon as it is complete, the fewest positions that differ
+// from nums kept
+fn try_all(i: i64, k: i64, nums: Vec[i32], b: mut ref Vec[i32], changed: i32, best: mut ref i32) {
+    if changed >= *best {
+        return;
+    }
+    if i == nums.len() {
+        *best = changed;
+        return;
+    }
+    for v in 0i32..8 {
+        b[i] = v;
+        let mut ok = true;
+        if i >= k - 1 {
+            let mut x = 0;
+            for j in i - k + 1..i + 1 {
+                x ^= b[j];
+            }
+            ok = x == 0;
+        }
+        if ok {
+            try_all(i + 1, k, nums, mut b, changed + if v != nums[i] { 1 } else { 0 }, mut best);
+        }
+    }
+}
+
+// the statement read literally, while every number is below 8: a changed
+// number needs no bit that no number has, since clearing that bit in every
+// changed number keeps every window's XOR 0
+fn literal(nums: Vec[i32], k: i32) -> i32 {
+    let mut b: Vec[i32] = Vec.filled(nums.len(), 0);
+    let mut best = nums.len() as i32 + 1;
+    try_all(0, k, nums, mut b, 0, mut best);
+    best
+}
+
+fn arm(i: i64, nums: Vec[i32], k: i32) -> i32 {
+    match i {
+        0 => a0_min_changes(nums, k),
+        1 => a1_min_changes(nums, k),
+        2 => a2_min_changes(nums, k),
+        3 => a3_min_changes(nums, k),
+        _ => a4_min_changes(nums, k),
+    }
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, seed: mut ref i64, nums: Vec[i32], k: i32) {
+    t.cases += 1;
+    let n = nums.len();
+    let star = arm(0, nums, k);
+    t.check = (t.check * 31 + star) % 1000000007;
+    let small = n <= 8 and k <= 4 and nums.iter().all(|x| x < 8);
+    let want = if small { Some(literal(nums, k)) } else { None };
+    // every window's XOR already 0, and the changes that keep each group's
+    // commonest value but give up the group whose commonest counts least
+    let mut solved = true;
+    for i in k - 1..n {
+        let mut x = 0;
+        for j in i - k + 1..i + 1 {
+            x ^= nums[j];
+        }
+        if x != 0 {
+            solved = false;
+        }
+    }
+    let mut kept = 0;
+    let mut least = n;
+    for g in 0..k {
+        let mut count: Map[i32, i64] = Map.new();
+        let mut i = g as i64;
+        while i < n {
+            count[nums[i]] = count.get(nums[i]).unwrap_or(0) + 1;
+            i += k;
+        }
+        let most = count.values().max().unwrap();
+        kept += most;
+        least = least.min(most);
+    }
+    let bound = n - (kept - least);
+    let mut back = nums.clone();
+    back.reverse();
+    // each group's numbers shuffled among its own positions
+    let mut mixed = nums.clone();
+    for g in 0..k as i64 {
+        let mut at: Vec[i64] = Vec.new();
+        let mut i = g;
+        while i < n {
+            at.push(i);
+            i += k;
+        }
+        for a in (1..at.len()).rev() {
+            let b = next_random(mut seed) % (a + 1);
+            let (p, q) = (at[a], at[b]);
+            let held = mixed[p];
+            mixed[p] = mixed[q];
+            mixed[q] = held;
+        }
+    }
+    // groups 0 and 1 XORed by one mask
+    let mask = (next_random(mut seed) % 1024) as i32;
+    let masked: Vec[i32] = (0..n).map(|i| if i % k < 2 { nums[i] ^ mask } else { nums[i] }).collect();
+    let nonzero = nums.iter().filter(|x| x != 0).count() as i32;
+    for i in 0..5 {
+        let what = f"arm {i} on {nums} {k}";
+        let got = arm(i, nums, k);
+        // P1: the statement read literally, while there are at most 8
+        // numbers, all below 8, and k is at most 4
+        if let Some(w) = want {
+            expect(mut t, 1, got == w, f"P1 {what}");
+        }
+        // P2: 0 exactly when every window already XORs to 0, and never
+        // more than with one group given up
+        expect(mut t, 2, (got == 0) == solved and got <= bound, f"P2 {what}");
+        // P3: the numbers reversed give the same answer
+        expect(mut t, 3, arm(i, back, k) == got, f"P3 {what}");
+        // P4: each group's numbers shuffled among its positions give the
+        // same answer
+        expect(mut t, 4, arm(i, mixed, k) == got, f"P4 {what}");
+        // P5: groups 0 and 1 XORed by one mask give the same answer, since
+        // every window holds one number of each; with k = 1 the answer is
+        // the count of numbers not 0
+        if k >= 2 {
+            expect(mut t, 5, arm(i, masked, k) == got, f"P5 {what}");
+        } else {
+            expect(mut t, 5, got == nonzero, f"P5 {what}");
+        }
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // LeetCode's examples, the edges, and 500 numbers below 1024 with k of
+    // 1, 7, 250 and 500. Every case is drawn before any arm answers.
+    let mut cases: Vec[(Vec[i32], i32)] = [([1, 2, 0, 3, 0], 1), ([3, 4, 5, 2, 1, 7, 3, 4, 7], 3), ([1, 2, 4, 1, 2, 5, 1, 2, 6], 3), ([0], 1), ([5], 1), ([1, 2, 3], 3), ([1, 2, 4], 3), ([1, 2, 3, 1, 2, 3, 1], 3), ([7, 7, 7, 7], 2), ([7, 7, 7, 7], 3)].to_vec();
+    let mut seed = 17871;
+    let wide = random_nums(mut seed, 500, 1024);
+    cases.push((wide.clone(), 1));
+    cases.push((wide.clone(), 7));
+    cases.push((wide.clone(), 250));
+    cases.push((wide, 500));
+    // 1986 random cases: half of at most 8 numbers below 8 and k at most 4,
+    // half of 1 to 24 numbers below 2 to 32; a quarter built from a pattern
+    // of k numbers, a few changed
+    for c in 0..1986 {
+        let (n, k, most) = if c % 2 == 0 {
+            let n = 1 + next_random(mut seed) % 8;
+            (n, 1 + next_random(mut seed) % n.min(4), 2 + next_random(mut seed) % 7)
+        } else {
+            let n = 1 + next_random(mut seed) % 24;
+            (n, 1 + next_random(mut seed) % n, 2 + next_random(mut seed) % 31)
+        };
+        let mut nums = random_nums(mut seed, n, most);
+        if c % 4 < 2 {
+            for i in k..n {
+                nums[i] = nums[i - k];
+            }
+            let changed = next_random(mut seed) % 3;
+            for _ in 0..changed {
+                let at = next_random(mut seed) % n;
+                nums[at] = (next_random(mut seed) % most) as i32;
+            }
+        }
+        cases.push((nums, k as i32));
+    }
+    for j in 0..cases.len() {
+        check_case(mut t, mut seed, cases[j].0, cases[j].1);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
