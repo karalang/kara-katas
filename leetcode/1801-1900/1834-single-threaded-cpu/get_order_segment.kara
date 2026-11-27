@@ -1,0 +1,114 @@
+// LeetCode #1834: Single-Threaded CPU -- the tasks sorted by when they come
+// in, and a segment tree over that order holding the least (processing
+// time, index) of each range: the tasks come in as a prefix of the order,
+// so the next to run is the least over the prefix the clock has reached,
+// and a task run is set to a value larger than any.
+// O(n log n)
+
+const DONE: (i64, i64) = (i64.MAX, i64.MAX);
+
+// the least over the tree's leaves from 0 to `upto`, exclusive
+fn least_before(tree: Slice[(i64, i64)], size: i64, upto: i64) -> (i64, i64) {
+    let mut best = DONE;
+    let mut lo = size;
+    let mut hi = size + upto;
+    while lo < hi {
+        if lo % 2 == 1 {
+            best = min(best, tree[lo]);
+            lo += 1;
+        }
+        if hi % 2 == 1 {
+            hi -= 1;
+            best = min(best, tree[hi]);
+        }
+        lo /= 2;
+        hi /= 2;
+    }
+    best
+}
+
+fn get_order(tasks: Vec[Vec[i64]]) -> Vec[i64] {
+    let n = tasks.len();
+    let mut coming: Vec[i64] = (0..n).collect();
+    coming.sort_by_key(|i| tasks[i][0]);
+    // where each task sits in the order it comes in
+    let mut place: Vec[i64] = Vec.filled(n, 0);
+    for (at, i) in coming.iter().enumerate() {
+        place[i] = at;
+    }
+    let mut size = 1;
+    while size < n {
+        size *= 2;
+    }
+    let mut tree: Vec[(i64, i64)] = Vec.filled(2 * size, DONE);
+    for at in 0..n {
+        tree[size + at] = (tasks[coming[at]][1], coming[at]);
+    }
+    for node in (1..size).rev() {
+        tree[node] = min(tree[2 * node], tree[2 * node + 1]);
+    }
+    let mut order: Vec[i64] = Vec.new();
+    let mut clock = 0;
+    let mut reached = 0;
+    while order.len() < n {
+        while reached < n and tasks[coming[reached]][0] <= clock {
+            reached += 1;
+        }
+        let best = least_before(tree[..], size, reached);
+        if best == DONE {
+            // nothing has come in that is not run: the clock jumps on
+            clock = tasks[coming[reached]][0];
+            continue;
+        }
+        let (processing, i) = best;
+        clock += processing;
+        order.push(i);
+        let mut node = size + place[i];
+        tree[node] = DONE;
+        while node > 1 {
+            node /= 2;
+            tree[node] = min(tree[2 * node], tree[2 * node + 1]);
+        }
+    }
+    order
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn rows(pairs: Slice[(i64, i64)]) -> Vec[Vec[i64]] {
+    pairs.iter().map(|(a, b)| [a, b].to_vec()).collect()
+}
+
+// an order folded to one number
+fn fold(order: Slice[i64]) -> i64 {
+    order.iter().fold(order.len(), |check, i| (check * 31 + i) % 1000000007)
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{get_order(rows([(1, 2), (2, 4), (3, 2), (4, 1)][..]))} {get_order(rows([(7, 10), (7, 12), (7, 5), (7, 4), (7, 2)][..]))}");
+    // the edges: one task; an idle gap before the second task; a tie on
+    // processing time, the smaller index first; every task the same; times
+    // of 10^9, whose sum passes 2^31
+    println(f"{get_order(rows([(5, 3)][..]))} {get_order(rows([(1, 1), (10, 1), (3, 1)][..]))} {get_order(rows([(1, 5), (2, 3), (2, 3), (3, 1)][..]))} {get_order(rows([(4, 4), (4, 4), (4, 4)][..]))} {get_order(rows([(1, 1000000000), (2, 1000000000), (3, 1000000000), (1000000000, 1)][..]))}");
+    // the constraints' most: 10^5 tasks coming in from 1 to 10^9 taking 1
+    // to 10^9, and 10^5 tasks all coming in at once
+    let mut seed = 1834;
+    let spread: Vec[(i64, i64)] = (0..100000).map(|_| (1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000, 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000)).collect();
+    let once: Vec[(i64, i64)] = (0..100000).map(|_| (1, 1 + next_random(mut seed) % 1000)).collect();
+    println(f"the most: {fold(get_order(rows(spread[..]))[..])} {fold(get_order(rows(once[..]))[..])}");
+    // 3000 random cases of 1 to 8 tasks coming in from 1 to 10 and taking
+    // 1 to 5
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 8;
+        let tasks: Vec[(i64, i64)] = (0..n).map(|_| (1 + next_random(mut seed) % 10, 1 + next_random(mut seed) % 5)).collect();
+        check = (check * 31 + fold(get_order(rows(tasks[..]))[..])) % 1000000007;
+    }
+    println(f"3000 random cases: checksum {check}");
+}

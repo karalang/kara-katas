@@ -1,0 +1,335 @@
+// LeetCode #1834: Single-Threaded CPU --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- get_order.kara ----
+fn a0_get_order(tasks: Vec[Vec[i64]]) -> Vec[i64] {
+    let n = tasks.len();
+    let mut coming: Vec[i64] = (0..n).collect();
+    coming.sort_by_key(|i| tasks[i][0]);
+    let mut ready: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    let mut order: Vec[i64] = Vec.new();
+    let mut clock = 0;
+    let mut next = 0;
+    while order.len() < n {
+        if ready.is_empty() and clock < tasks[coming[next]][0] {
+            clock = tasks[coming[next]][0];
+        }
+        while next < n and tasks[coming[next]][0] <= clock {
+            let i = coming[next];
+            ready.push((tasks[i][1], i));
+            next += 1;
+        }
+        let (processing, i) = ready.pop().unwrap();
+        clock += processing;
+        order.push(i);
+    }
+    order
+}
+
+// ---- get_order_set.kara ----
+fn a1_get_order(tasks: Vec[Vec[i64]]) -> Vec[i64] {
+    let n = tasks.len();
+    let mut coming: Vec[(i64, i64)] = (0..n).map(|i| (tasks[i][0], i)).collect();
+    coming.sort();
+    let mut ready: SortedSet[(i64, i64)] = SortedSet.new();
+    let mut order: Vec[i64] = Vec.new();
+    let mut clock = 0;
+    let mut next = 0;
+    while order.len() < n {
+        if ready.is_empty() {
+            clock = clock.max(coming[next].0);
+        }
+        while next < n and coming[next].0 <= clock {
+            let i = coming[next].1;
+            ready.insert((tasks[i][1], i));
+            next += 1;
+        }
+        let (processing, i) = *ready.min().unwrap();
+        ready.remove((processing, i));
+        clock += processing;
+        order.push(i);
+    }
+    order
+}
+
+// ---- get_order_heap.kara ----
+fn a2_sift_up(heap: mut ref Vec[(i64, i64)], at: i64) {
+    let mut k = at;
+    while k > 0 and heap[k] < heap[(k - 1) / 2] {
+        heap.swap(k, (k - 1) / 2);
+        k = (k - 1) / 2;
+    }
+}
+
+fn a2_sift_down(heap: mut ref Vec[(i64, i64)]) {
+    let mut k = 0;
+    loop {
+        let mut least = k;
+        for child in [2 * k + 1, 2 * k + 2] {
+            if child < heap.len() and heap[child] < heap[least] {
+                least = child;
+            }
+        }
+        if least == k {
+            return;
+        }
+        heap.swap(k, least);
+        k = least;
+    }
+}
+
+fn a2_get_order(tasks: Vec[Vec[i64]]) -> Vec[i64] {
+    let n = tasks.len();
+    let mut coming: Vec[i64] = (0..n).collect();
+    coming.sort_by_key(|i| (tasks[i][0], i));
+    let mut heap: Vec[(i64, i64)] = Vec.new();
+    let mut order: Vec[i64] = Vec.new();
+    let mut clock = 0;
+    let mut next = 0;
+    while order.len() < n {
+        if heap.is_empty() and clock < tasks[coming[next]][0] {
+            clock = tasks[coming[next]][0];
+        }
+        while next < n and tasks[coming[next]][0] <= clock {
+            let i = coming[next];
+            heap.push((tasks[i][1], i));
+            let last = heap.len() - 1;
+            a2_sift_up(mut heap, last);
+            next += 1;
+        }
+        let (processing, i) = heap[0];
+        let last = heap.pop().unwrap();
+        if heap.len() > 0 {
+            heap[0] = last;
+            a2_sift_down(mut heap);
+        }
+        clock += processing;
+        order.push(i);
+    }
+    order
+}
+
+// ---- get_order_segment.kara ----
+const A3_DONE: (i64, i64) = (i64.MAX, i64.MAX);
+
+// the least over the tree's leaves from 0 to `upto`, exclusive
+fn a3_least_before(tree: Slice[(i64, i64)], size: i64, upto: i64) -> (i64, i64) {
+    let mut best = A3_DONE;
+    let mut lo = size;
+    let mut hi = size + upto;
+    while lo < hi {
+        if lo % 2 == 1 {
+            best = min(best, tree[lo]);
+            lo += 1;
+        }
+        if hi % 2 == 1 {
+            hi -= 1;
+            best = min(best, tree[hi]);
+        }
+        lo /= 2;
+        hi /= 2;
+    }
+    best
+}
+
+fn a3_get_order(tasks: Vec[Vec[i64]]) -> Vec[i64] {
+    let n = tasks.len();
+    let mut coming: Vec[i64] = (0..n).collect();
+    coming.sort_by_key(|i| tasks[i][0]);
+    // where each task sits in the order it comes in
+    let mut place: Vec[i64] = Vec.filled(n, 0);
+    for (at, i) in coming.iter().enumerate() {
+        place[i] = at;
+    }
+    let mut size = 1;
+    while size < n {
+        size *= 2;
+    }
+    let mut tree: Vec[(i64, i64)] = Vec.filled(2 * size, A3_DONE);
+    for at in 0..n {
+        tree[size + at] = (tasks[coming[at]][1], coming[at]);
+    }
+    for node in (1..size).rev() {
+        tree[node] = min(tree[2 * node], tree[2 * node + 1]);
+    }
+    let mut order: Vec[i64] = Vec.new();
+    let mut clock = 0;
+    let mut reached = 0;
+    while order.len() < n {
+        while reached < n and tasks[coming[reached]][0] <= clock {
+            reached += 1;
+        }
+        let best = a3_least_before(tree[..], size, reached);
+        if best == A3_DONE {
+            // nothing has come in that is not run: the clock jumps on
+            clock = tasks[coming[reached]][0];
+            continue;
+        }
+        let (processing, i) = best;
+        clock += processing;
+        order.push(i);
+        let mut node = size + place[i];
+        tree[node] = A3_DONE;
+        while node > 1 {
+            node /= 2;
+            tree[node] = min(tree[2 * node], tree[2 * node + 1]);
+        }
+    }
+    order
+}
+
+// ---- get_order_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn get_order(tasks: Vec[Vec[i32]]) -> Vec[i32] {
+        let n = tasks.len();
+        let mut idx: Vec[i64] = (0..n).collect();
+        idx.sort_by_key(|i| tasks[i][0]);
+        let mut heap = PriorityQueue.new();
+        let mut ans = Vec.with_capacity(n);
+        let mut time: i64 = 0;
+        let mut i = 0;
+        while ans.len() < n {
+            if heap.is_empty() and time < tasks[idx[i]][0] {
+                time = tasks[idx[i]][0];
+            }
+            while i < n and tasks[idx[i]][0] <= time {
+                heap.push((tasks[idx[i]][1], idx[i]));
+                i += 1;
+            }
+            let (p, j) = heap.pop().unwrap();
+            time += p;
+            ans.push(j as i32);
+        }
+        ans
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+// the statement read literally: the clock ticks one unit at a time; at each
+// tick an idle CPU takes, of the tasks come in and not yet done, the one
+// with the shortest processing time, the smaller index on a tie, and is
+// busy until that time has passed
+fn literal(tasks: Slice[Vec[i64]]) -> Vec[i64] {
+    let n = tasks.len();
+    let mut done: Vec[bool] = Vec.filled(n, false);
+    let mut order: Vec[i64] = Vec.new();
+    let mut busy_until = 0;
+    let mut tick = 0;
+    while order.len() < n {
+        if tick >= busy_until {
+            let mut pick = -1;
+            for i in 0..n {
+                if not done[i] and tasks[i][0] <= tick {
+                    if pick == -1 or tasks[i][1] < tasks[pick][1] {
+                        pick = i;
+                    }
+                }
+            }
+            if pick != -1 {
+                done[pick] = true;
+                order.push(pick);
+                busy_until = tick + tasks[pick][1];
+                continue;
+            }
+        }
+        tick += 1;
+    }
+    order
+}
+
+fn arm(i: i64, tasks: Slice[Vec[i64]]) -> Vec[i64] {
+    match i {
+        0 => a0_get_order(tasks.to_vec()),
+        1 => a1_get_order(tasks.to_vec()),
+        2 => a2_get_order(tasks.to_vec()),
+        3 => a3_get_order(tasks.to_vec()),
+        _ => {
+            let narrow: Vec[Vec[i32]] = tasks.iter().map(|t| t.iter().map(|x| x as i32).collect()).collect();
+            A4Solution.get_order(narrow).iter().map(|x| x as i64).collect()
+        }
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, tasks: Slice[Vec[i64]]) {
+    t.cases += 1;
+    let n = tasks.len();
+    let star = arm(0, tasks);
+    for x in star.iter() {
+        t.check = (t.check * 31 + x + 1) % 1000000007;
+    }
+    let want = literal(tasks);
+    let shifted: Vec[Vec[i64]] = tasks.iter().map(|task| [task[0] + 7, task[1]]).collect();
+    let doubled: Vec[Vec[i64]] = tasks.iter().map(|task| [task[0] * 2, task[1] * 2]).collect();
+    let together: Vec[Vec[i64]] = tasks.iter().map(|task| [1, task[1]]).collect();
+    let mut by_length: Vec[i64] = (0..n).collect();
+    by_length.sort_by_key(|i| (tasks[i][1], i));
+    for i in 0..5 {
+        let what = f"arm {i} on {tasks}";
+        let got = arm(i, tasks);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: every task done once
+        let mut seen = got.clone();
+        seen.sort();
+        let all: Vec[i64] = (0..n).collect();
+        expect(mut t, 2, seen == all, f"P2 {what}");
+        // P3: every task coming in 7 later gives the same order
+        expect(mut t, 3, arm(i, shifted[..]) == got, f"P3 {what}");
+        // P4: every task coming in at once, the order is by processing
+        // time, the smaller index on a tie
+        expect(mut t, 4, arm(i, together[..]) == by_length, f"P4 {what}");
+        // P5: every time doubled gives the same order
+        expect(mut t, 5, arm(i, doubled[..]) == got, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 random cases of 1 to 10 tasks, each coming in at 1 to 20 and
+    // taking 1 to 10
+    let mut seed = 1834;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 10;
+        let mut tasks: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..n {
+            let enqueue = 1 + next_random(mut seed) % 20;
+            let processing = 1 + next_random(mut seed) % 10;
+            tasks.push([enqueue, processing]);
+        }
+        check_case(mut t, tasks[..]);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}

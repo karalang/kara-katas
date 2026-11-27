@@ -1,0 +1,69 @@
+// LeetCode #1834: Single-Threaded CPU -- a Rust solution as LeetCode's Rust
+// users write it, carried to Kāra by `karac fix`
+
+struct Solution {}
+
+impl Solution {
+    pub fn get_order(tasks: Vec[Vec[i32]]) -> Vec[i32] {
+        let n = tasks.len();
+        let mut idx: Vec[i64] = (0..n).collect();
+        idx.sort_by_key(|i| tasks[i][0]);
+        let mut heap = PriorityQueue.new();
+        let mut ans = Vec.with_capacity(n);
+        let mut time: i64 = 0;
+        let mut i = 0;
+        while ans.len() < n {
+            if heap.is_empty() and time < tasks[idx[i]][0] {
+                time = tasks[idx[i]][0];
+            }
+            while i < n and tasks[idx[i]][0] <= time {
+                heap.push((tasks[idx[i]][1], idx[i]));
+                i += 1;
+            }
+            let (p, j) = heap.pop().unwrap();
+            time += p;
+            ans.push(j as i32);
+        }
+        ans
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn rows(pairs: Slice[(i64, i64)]) -> Vec[Vec[i32]] {
+    pairs.iter().map(|(a, b)| [a as i32, b as i32].to_vec()).collect()
+}
+
+// an order folded to one number
+fn fold(order: Slice[i32]) -> i64 {
+    order.iter().fold(order.len(), |check, i| (check * 31 + i) % 1000000007)
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{Solution.get_order(rows([(1, 2), (2, 4), (3, 2), (4, 1)][..]))} {Solution.get_order(rows([(7, 10), (7, 12), (7, 5), (7, 4), (7, 2)][..]))}");
+    // the edges: one task; an idle gap before the second task; a tie on
+    // processing time, the smaller index first; every task the same; times
+    // of 10^9, whose sum passes 2^31
+    println(f"{Solution.get_order(rows([(5, 3)][..]))} {Solution.get_order(rows([(1, 1), (10, 1), (3, 1)][..]))} {Solution.get_order(rows([(1, 5), (2, 3), (2, 3), (3, 1)][..]))} {Solution.get_order(rows([(4, 4), (4, 4), (4, 4)][..]))} {Solution.get_order(rows([(1, 1000000000), (2, 1000000000), (3, 1000000000), (1000000000, 1)][..]))}");
+    // the constraints' most: 10^5 tasks coming in from 1 to 10^9 taking 1
+    // to 10^9, and 10^5 tasks all coming in at once
+    let mut seed = 1834;
+    let spread: Vec[(i64, i64)] = (0..100000).map(|_| (1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000, 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000)).collect();
+    let once: Vec[(i64, i64)] = (0..100000).map(|_| (1, 1 + next_random(mut seed) % 1000)).collect();
+    println(f"the most: {fold(Solution.get_order(rows(spread[..]))[..])} {fold(Solution.get_order(rows(once[..]))[..])}");
+    // 3000 random cases of 1 to 8 tasks coming in from 1 to 10 and taking
+    // 1 to 5
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 8;
+        let tasks: Vec[(i64, i64)] = (0..n).map(|_| (1 + next_random(mut seed) % 10, 1 + next_random(mut seed) % 5)).collect();
+        check = (check * 31 + fold(Solution.get_order(rows(tasks[..]))[..])) % 1000000007;
+    }
+    println(f"3000 random cases: checksum {check}");
+}
