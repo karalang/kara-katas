@@ -1,0 +1,192 @@
+// LeetCode #1833: Maximum Ice Cream Bars --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- max_ice_cream.kara ----
+fn a0_max_ice_cream(costs: Vec[i64], coins: i64) -> i64 {
+    let dearest = costs.iter().max().unwrap();
+    let mut count: Vec[i64] = Vec.filled(dearest + 1, 0);
+    for c in costs.iter() {
+        count[c] += 1;
+    }
+    let mut left = coins;
+    let mut bars = 0;
+    for price in 1..dearest + 1 {
+        if price > left {
+            break;
+        }
+        let bought = count[price].min(left / price);
+        bars += bought;
+        left -= bought * price;
+    }
+    bars
+}
+
+// ---- max_ice_cream_sort.kara ----
+fn a1_max_ice_cream(costs: Vec[i64], coins: i64) -> i64 {
+    let mut sorted = costs.clone();
+    sorted.sort();
+    let mut left = coins;
+    let mut bars = 0;
+    for c in sorted.iter() {
+        if c > left {
+            break;
+        }
+        left -= c;
+        bars += 1;
+    }
+    bars
+}
+
+// ---- max_ice_cream_heap.kara ----
+fn a2_max_ice_cream(costs: Vec[i64], coins: i64) -> i64 {
+    let mut queue: PriorityQueue[i64] = costs.iter().collect();
+    let mut left = coins;
+    let mut bars = 0;
+    while let Some(cheapest) = queue.pop() {
+        if cheapest > left {
+            break;
+        }
+        left -= cheapest;
+        bars += 1;
+    }
+    bars
+}
+
+// ---- max_ice_cream_prefix.kara ----
+fn a3_max_ice_cream(costs: Vec[i64], coins: i64) -> i64 {
+    let mut sorted = costs.clone();
+    sorted.sort();
+    let mut spent: Vec[i64] = Vec.new();
+    let mut total = 0;
+    for c in sorted.iter() {
+        total += c;
+        spent.push(total);
+    }
+    spent.partition_point(|s| s <= coins)
+}
+
+// ---- max_ice_cream_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn max_ice_cream(costs: own Vec[i32], coins: i32) -> i32 {
+        let mut costs = costs;
+        let mut coins = coins;
+        costs.sort();
+        let mut count = 0;
+        for c in costs {
+            if c > coins {
+                break;
+            }
+            coins -= c;
+            count += 1;
+        }
+        count
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+// the statement read literally: every set of bars the boy could buy, one
+// bit of a mask to a bar, and the most bars in a set the coins pay for
+fn literal(costs: Slice[i64], coins: i64) -> i64 {
+    let n = costs.len();
+    let mut most = 0;
+    for mask in 0..1 << n {
+        let mut spent = 0;
+        let mut bars = 0;
+        for i in 0..n {
+            if mask & (1 << i) != 0 {
+                spent += costs[i];
+                bars += 1;
+            }
+        }
+        if spent <= coins and bars > most {
+            most = bars;
+        }
+    }
+    most
+}
+
+fn arm(i: i64, costs: Slice[i64], coins: i64) -> i64 {
+    match i {
+        0 => a0_max_ice_cream(costs.to_vec(), coins),
+        1 => a1_max_ice_cream(costs.to_vec(), coins),
+        2 => a2_max_ice_cream(costs.to_vec(), coins),
+        3 => a3_max_ice_cream(costs.to_vec(), coins),
+        _ => {
+            let narrow: Vec[i32] = costs.iter().map(|c| c as i32).collect();
+            A4Solution.max_ice_cream(narrow, coins as i32)
+        }
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, costs: Slice[i64], coins: i64) {
+    t.cases += 1;
+    let star = arm(0, costs, coins);
+    t.check = (t.check * 31 + star) % 1000000007;
+    let want = literal(costs, coins);
+    let cheapest = costs.iter().min().unwrap();
+    let reversed: Vec[i64] = costs.iter().rev().collect();
+    let mut dear = costs.to_vec();
+    dear.push(coins + 1);
+    for i in 0..5 {
+        let what = f"arm {i} on {costs} with {coins} coins";
+        let got = arm(i, costs, coins);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: from none to every bar, none exactly when the cheapest bar
+        // costs more than the coins
+        expect(mut t, 2, got >= 0 and got <= costs.len() and (got == 0) == (cheapest > coins), f"P2 {what}");
+        // P3: the bars in reverse order give the same count
+        expect(mut t, 3, arm(i, reversed[..], coins) == got, f"P3 {what}");
+        // P4: more coins never buy fewer bars
+        expect(mut t, 4, arm(i, costs, coins + 5) >= got, f"P4 {what}");
+        // P5: a bar dearer than all the coins changes nothing
+        expect(mut t, 5, arm(i, dear[..], coins) == got, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 random cases of 1 to 10 bars of 1 to 20 coins, with 1 to 60
+    // coins
+    let mut seed = 1833;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 10;
+        let costs: Vec[i64] = (0..n).map(|_| 1 + next_random(mut seed) % 20).collect();
+        let coins = 1 + next_random(mut seed) % 60;
+        check_case(mut t, costs[..], coins);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
