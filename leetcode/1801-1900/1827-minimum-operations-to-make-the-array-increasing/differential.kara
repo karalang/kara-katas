@@ -1,0 +1,182 @@
+// LeetCode #1827: Minimum Operations to Make the Array Increasing --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- min_operations.kara ----
+fn a0_min_operations(nums: Vec[i64]) -> i64 {
+    let mut operations = 0;
+    let mut last = 0;
+    for x in nums.iter() {
+        if x <= last {
+            last += 1;
+            operations += last - x;
+        } else {
+            last = x;
+        }
+    }
+    operations
+}
+
+// ---- min_operations_fold.kara ----
+fn a1_min_operations(nums: Vec[i64]) -> i64 {
+    let (_, operations) = nums.iter().fold((0, 0), |(last, count), x| {
+        let raised = x.max(last + 1);
+        (raised, count + raised - x)
+    });
+    operations
+}
+
+// ---- min_operations_prefix.kara ----
+fn a2_min_operations(nums: Vec[i64]) -> i64 {
+    let mut lift = i64.MIN;
+    let mut operations = 0;
+    for (i, x) in nums.iter().enumerate() {
+        lift = lift.max(x - i);
+        operations += i + lift - x;
+    }
+    operations
+}
+
+// ---- min_operations_recursive.kara ----
+fn a3_raise(nums: Slice[i64], n: i64) -> (i64, i64) {
+    if n == 0 {
+        return (0, 0);
+    }
+    let (count, last) = a3_raise(nums, n - 1);
+    let raised = nums[n - 1].max(last + 1);
+    (count + raised - nums[n - 1], raised)
+}
+
+fn a3_min_operations(nums: Vec[i64]) -> i64 {
+    a3_raise(nums[..], nums.len()).0
+}
+
+// ---- min_operations_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn min_operations(nums: Vec[i32]) -> i32 {
+        let mut prev: i32 = 0;
+        let mut ans: i32 = 0;
+        for x in nums.iter() {
+            if x <= prev {
+                ans += prev + 1 - x;
+                prev += 1;
+            } else {
+                prev = x;
+            }
+        }
+        ans
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+// the statement read literally: one operation at a time, the first number
+// not above the one before it raised by one, until the list is strictly
+// increasing, and the operations counted
+fn literal(nums: Slice[i64]) -> i64 {
+    let mut list = nums.to_vec();
+    let mut operations = 0;
+    loop {
+        let mut raised = false;
+        for i in 1..list.len() {
+            if list[i] <= list[i - 1] {
+                list[i] += 1;
+                operations += 1;
+                raised = true;
+                break;
+            }
+        }
+        if not raised {
+            return operations;
+        }
+    }
+}
+
+fn arm(i: i64, nums: Slice[i64]) -> i64 {
+    match i {
+        0 => a0_min_operations(nums.to_vec()),
+        1 => a1_min_operations(nums.to_vec()),
+        2 => a2_min_operations(nums.to_vec()),
+        3 => a3_min_operations(nums.to_vec()),
+        _ => {
+            let narrow: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+            A4Solution.min_operations(narrow)
+        }
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, nums: Slice[i64], cut: i64) {
+    t.cases += 1;
+    let star = arm(0, nums);
+    t.check = (t.check * 31 + star) % 1000000007;
+    let want = literal(nums);
+    let increasing = (1..nums.len()).all(|i| nums[i] > nums[i - 1]);
+    let raised: Vec[i64] = nums.iter().map(|x| x + 7).collect();
+    let top = nums.iter().max().unwrap();
+    let mut longer = nums.to_vec();
+    longer.push(top + nums.len() + 1);
+    for i in 0..5 {
+        let what = f"arm {i} on {nums}";
+        let got = arm(i, nums);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: no operations exactly when the list is already strictly
+        // increasing
+        expect(mut t, 2, (got == 0) == increasing and got >= 0, f"P2 {what}");
+        // P3: every number raised by the same amount takes the same count
+        expect(mut t, 3, arm(i, raised[..]) == got, f"P3 {what}");
+        // P4: a number put last above every number the list can be raised
+        // to adds nothing
+        expect(mut t, 4, arm(i, longer[..]) == got, f"P4 {what}");
+        // P5: the list cut in two takes at least what the two pieces take
+        // alone, as the first piece only lifts the second
+        let pieces = arm(i, nums[..cut]) + arm(i, nums[cut..]);
+        expect(mut t, 5, cut == 0 or cut == nums.len() or got >= pieces, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 random cases of 1 to 10 numbers from 1 to 20, a quarter of them
+    // from 1 to 3, each with a place to cut it
+    let mut seed = 1827;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 10;
+        let top = if next_random(mut seed) % 4 == 0 { 3 } else { 20 };
+        let nums: Vec[i64] = (0..n).map(|_| 1 + next_random(mut seed) % top).collect();
+        let cut = next_random(mut seed) % (n + 1);
+        check_case(mut t, nums[..], cut);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
