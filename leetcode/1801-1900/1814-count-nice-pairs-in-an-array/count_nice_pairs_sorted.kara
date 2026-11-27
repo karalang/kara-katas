@@ -1,0 +1,68 @@
+// LeetCode #1814: Count Nice Pairs in an Array -- each number's difference
+// from its reverse collected and sorted, so equal differences stand
+// together, and a run of `k` of them makes `k * (k - 1) / 2` nice pairs.
+// O(n log n)
+
+fn rev(x: i64) -> i64 {
+    let mut x = x;
+    let mut r = 0;
+    while x > 0 {
+        r = r * 10 + x % 10;
+        x /= 10;
+    }
+    r
+}
+
+fn count_nice_pairs(nums: Vec[i64]) -> i64 {
+    let mut diffs: Vec[i64] = nums.iter().map(|x| x - rev(x)).collect();
+    diffs.sort();
+    let mut pairs = 0;
+    let mut i = 0;
+    while i < diffs.len() {
+        let mut j = i;
+        while j < diffs.len() and diffs[j] == diffs[i] {
+            j += 1;
+        }
+        let k = j - i;
+        pairs = (pairs + k * (k - 1) / 2) % 1000000007;
+        i = j;
+    }
+    pairs
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples
+    println(f"{count_nice_pairs([42, 11, 1, 97])} {count_nice_pairs([13, 10, 35, 24, 76])}");
+    // the edges: one number; two zeros; a number and its reverse with a
+    // trailing zero; palindromes only; the largest numbers; five numbers of
+    // one difference and one of its negative
+    println(f"{count_nice_pairs([5])} {count_nice_pairs([0, 0])} {count_nice_pairs([10, 1])} {count_nice_pairs([121, 7, 44, 9009, 0])} {count_nice_pairs([1000000000, 999999999, 1])} {count_nice_pairs([21, 12, 32, 43, 54, 65])}");
+    // the constraints' most: 10^5 equal numbers, and 10^5 numbers counting up
+    let same: Vec[i64] = Vec.filled(100000, 123);
+    let up: Vec[i64] = (0..100000).map(|k| k * 9973).collect();
+    println(f"the most: {count_nice_pairs(same)} {count_nice_pairs(up)}");
+    // 3000 random arrays of 1 to 40 numbers, small or up to 10^9
+    let mut seed = 1814;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 40;
+        let big = next_random(mut seed) % 2 == 0;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            if big {
+                nums.push((next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000001);
+            } else {
+                nums.push(next_random(mut seed) % 200);
+            }
+        }
+        check = (check * 31 + count_nice_pairs(nums)) % 1000000007;
+    }
+    println(f"3000 random arrays: checksum {check}");
+}

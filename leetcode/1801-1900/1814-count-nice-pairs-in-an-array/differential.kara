@@ -1,0 +1,245 @@
+// LeetCode #1814: Count Nice Pairs in an Array --
+// differential test of the five arms against the statement read literally,
+// with five more properties.
+
+// ---- count_nice_pairs.kara ----
+const A0_MOD: i64 = 1000000007;
+
+fn a0_rev(x: i64) -> i64 {
+    let mut x = x;
+    let mut r = 0;
+    while x > 0 {
+        r = r * 10 + x % 10;
+        x /= 10;
+    }
+    r
+}
+
+fn a0_count_nice_pairs(nums: Vec[i64]) -> i64 {
+    let mut seen: Map[i64, i64] = Map.new();
+    let mut pairs = 0;
+    for x in nums {
+        let d = x - a0_rev(x);
+        let c = seen.get(d).unwrap_or(0);
+        pairs = (pairs + c) % A0_MOD;
+        seen.insert(d, c + 1);
+    }
+    pairs
+}
+
+// ---- count_nice_pairs_sorted.kara ----
+fn a1_rev(x: i64) -> i64 {
+    let mut x = x;
+    let mut r = 0;
+    while x > 0 {
+        r = r * 10 + x % 10;
+        x /= 10;
+    }
+    r
+}
+
+fn a1_count_nice_pairs(nums: Vec[i64]) -> i64 {
+    let mut diffs: Vec[i64] = nums.iter().map(|x| x - a1_rev(x)).collect();
+    diffs.sort();
+    let mut pairs = 0;
+    let mut i = 0;
+    while i < diffs.len() {
+        let mut j = i;
+        while j < diffs.len() and diffs[j] == diffs[i] {
+            j += 1;
+        }
+        let k = j - i;
+        pairs = (pairs + k * (k - 1) / 2) % 1000000007;
+        i = j;
+    }
+    pairs
+}
+
+// ---- count_nice_pairs_text.kara ----
+fn a2_rev(x: i64) -> i64 {
+    let text: String = x.to_string().chars().rev().collect();
+    i64.parse(text).unwrap()
+}
+
+fn a2_count_nice_pairs(nums: Vec[i64]) -> i64 {
+    let mut counts: SortedMap[i64, i64] = SortedMap.new();
+    let mut pairs = 0;
+    for x in nums.iter() {
+        let d = x - a2_rev(x);
+        let earlier = counts.get(d).unwrap_or(0);
+        pairs = (pairs + earlier) % 1000000007;
+        counts.insert(d, earlier + 1);
+    }
+    pairs
+}
+
+// ---- count_nice_pairs_tally.kara ----
+fn a3_digits(x: i64) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    let mut x = x;
+    while x > 0 {
+        out.push(x % 10);
+        x /= 10;
+    }
+    out
+}
+
+fn a3_rev(x: i64) -> i64 {
+    a3_digits(x).iter().fold(0, |r, d| r * 10 + d)
+}
+
+fn a3_count_nice_pairs(nums: Vec[i64]) -> i64 {
+    let mut tally: Map[i64, i64] = Map.new();
+    for x in nums.iter() {
+        let d = x - a3_rev(x);
+        tally[d] = tally.get(d).unwrap_or(0) + 1;
+    }
+    let mut pairs = 0;
+    for (_, c) in tally.iter() {
+        pairs = (pairs + c * (c - 1) / 2) % 1000000007;
+    }
+    pairs
+}
+
+// ---- count_nice_pairs_solution.kara ----
+struct A4Solution {}
+
+impl A4Solution {
+    pub fn count_nice_pairs(nums: Vec[i32]) -> i32 {
+        let mut map: Map[i32, i64] = Map.new();
+        let mut ans: i64 = 0;
+        for n in nums {
+            let r = i32.parse(String.from_iter(n.to_string().chars().rev())).unwrap();
+            let e = map.entry(n - r).or_insert(0);
+            ans += *e;
+            *e += 1;
+        }
+        (ans % 1_000_000_007) as i32
+    }
+}
+// ---- the differential -------------------------------------------------------
+
+// the statement read literally: every pair `i < j` tried, the reverse of a
+// number read off its decimal text, and the pair counted when
+// `nums[i] + rev(nums[j]) == nums[j] + rev(nums[i])`
+fn reversed(x: i64) -> i64 {
+    let text: String = x.to_string().chars().rev().collect();
+    i64.parse(text).unwrap()
+}
+
+fn literal(nums: Slice[i64]) -> i64 {
+    let mut pairs = 0;
+    for i in 0..nums.len() {
+        for j in i + 1..nums.len() {
+            if nums[i] + reversed(nums[j]) == nums[j] + reversed(nums[i]) {
+                pairs += 1;
+            }
+        }
+    }
+    pairs % 1000000007
+}
+
+fn arm(i: i64, nums: Slice[i64]) -> i64 {
+    let v: Vec[i64] = nums.to_vec();
+    match i {
+        0 => a0_count_nice_pairs(v),
+        1 => a1_count_nice_pairs(v),
+        2 => a2_count_nice_pairs(v),
+        3 => a3_count_nice_pairs(v),
+        _ => {
+            let narrow: Vec[i32] = v.iter().map(|x| x as i32).collect();
+            A4Solution.count_nice_pairs(narrow)
+        }
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Tally {
+    cases: i64,
+    checks: i64,
+    failures: i64,
+    check: i64,
+    by: Vec[i64],
+}
+
+fn expect(t: mut ref Tally, property: i64, ok: bool, what: Str) {
+    t.checks += 1;
+    if not ok {
+        t.failures += 1;
+        t.by[property] += 1;
+        if t.failures <= 5 {
+            println(f"FAIL {what}");
+        }
+    }
+}
+
+fn check_case(t: mut ref Tally, nums: Slice[i64]) {
+    t.cases += 1;
+    let n = nums.len();
+    let star = arm(0, nums);
+    t.check = (t.check * 31 + star) % 1000000007;
+    let want = literal(nums);
+    let back: Vec[i64] = nums.iter().rev().collect();
+    let mut more: Vec[i64] = nums.to_vec();
+    more.push(nums[0]);
+    let alike = nums.iter().filter(|x| x - reversed(x) == nums[0] - reversed(nums[0])).count();
+    let mut twice: Vec[i64] = nums.to_vec();
+    twice.extend_from_slice(nums);
+    for i in 0..5 {
+        let what = f"arm {i} on {nums}";
+        let got = arm(i, nums);
+        // P1: the statement read literally
+        expect(mut t, 1, got == want, f"P1 {what}");
+        // P2: the array read backwards has as many nice pairs
+        expect(mut t, 2, arm(i, back) == got, f"P2 {what}");
+        // P3: a copy of the first number put at the end pairs with every
+        // number of its difference
+        expect(mut t, 3, arm(i, more) == got + alike, f"P3 {what}");
+        // P4: the array twice over has `4 * pairs + n` nice pairs, as a
+        // group of `c` becomes one of `2c`
+        expect(mut t, 4, arm(i, twice) == 4 * got + n, f"P4 {what}");
+        // P5: at least none and at most every pair
+        expect(mut t, 5, got >= 0 and got <= n * (n - 1) / 2, f"P5 {what}");
+        // P6: the ★ arm's answer
+        expect(mut t, 6, got == star, f"P6 {what}");
+    }
+}
+
+fn main() {
+    let mut t = Tally { cases: 0, checks: 0, failures: 0, check: 0, by: Vec.filled(7, 0) };
+    // 2000 random arrays of 1 to 12 numbers: small ones, ones up to 10^9,
+    // and ones built from a few digits so that many share a difference
+    let mut seed = 1814;
+    for _ in 0..2000 {
+        let n = 1 + next_random(mut seed) % 12;
+        let kind = next_random(mut seed) % 3;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            let x = match kind {
+                0 => next_random(mut seed) % 200,
+                1 => (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000001,
+                _ => {
+                    let a = next_random(mut seed) % 10;
+                    let b = next_random(mut seed) % 10;
+                    let zeros = next_random(mut seed) % 3;
+                    let mut x = a * 10 + b;
+                    for _ in 0..zeros {
+                        x *= 10;
+                    }
+                    x
+                }
+            };
+            nums.push(x);
+        }
+        check_case(mut t, nums);
+    }
+    println(f"{t.cases} cases: checksum {t.check}, {t.checks} checks over 5 arms: {t.failures} failures");
+    if t.failures > 0 {
+        let parts: Vec[String] = (1..7).filter(|p| t.by[p] > 0).map(|p| f"P{p} {t.by[p]}").collect();
+        println(f"failures by property: {parts.join(", ")}");
+    }
+}
