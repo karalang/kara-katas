@@ -1,0 +1,70 @@
+// LeetCode #1824: Minimum Sideway Jumps -- a shortest path over the
+// (point, lane) places: a step forward costs nothing and a side jump costs
+// one, so a deque searched front first, a free move to the front and a
+// jump to the back, finds each place's fewest jumps.
+// O(n)
+
+fn min_side_jumps(obstacles: Vec[i64]) -> i64 {
+    let n = obstacles.len();
+    let never = n + 1;
+    let mut best: Vec[i64] = Vec.filled(3 * n, never);
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    best[1] = 0;
+    queue.push_back((0, 1));
+    while let Some((i, lane)) = queue.pop_front() {
+        let here = best[3 * i + lane];
+        if i == n - 1 {
+            return here;
+        }
+        if obstacles[i + 1] != lane + 1 and best[3 * (i + 1) + lane] > here {
+            best[3 * (i + 1) + lane] = here;
+            queue.push_front((i + 1, lane));
+        }
+        for other in 0..3 {
+            if other != lane and obstacles[i] != other + 1 and best[3 * i + other] > here + 1 {
+                best[3 * i + other] = here + 1;
+                queue.push_back((i, other));
+            }
+        }
+    }
+    never
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples
+    println(f"{min_side_jumps([0, 1, 2, 3, 0])} {min_side_jumps([0, 1, 1, 3, 3, 0])} {min_side_jumps([0, 2, 1, 0, 3, 0])}");
+    // the edges: a road of one step; the frog's lane blocked at once and to
+    // the end; obstacles that send it from lane to lane; a road with none
+    println(f"{min_side_jumps([0, 0])} {min_side_jumps([0, 2, 2, 2, 0])} {min_side_jumps([0, 2, 1, 3, 2, 1, 3, 0])} {min_side_jumps([0, 0, 0, 0])}");
+    // the constraints' most: a road of 5 * 10^5 steps with an obstacle in
+    // every lane in turn, and one with none
+    let n = 500000;
+    let mut turns: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 1..n {
+        turns[i] = 1 + i % 3;
+    }
+    let clear: Vec[i64] = Vec.filled(n + 1, 0);
+    println(f"the most: {min_side_jumps(turns)} {min_side_jumps(clear)}");
+    // 3000 random roads of 1 to 20 steps, an obstacle at half the points
+    // in a lane drawn at random
+    let mut seed = 1824;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = 1 + next_random(mut seed) % 20;
+        let mut road: Vec[i64] = Vec.filled(n + 1, 0);
+        for i in 1..n {
+            if next_random(mut seed) % 2 == 0 {
+                road[i] = 1 + next_random(mut seed) % 3;
+            }
+        }
+        check = (check * 31 + min_side_jumps(road)) % 1000000007;
+    }
+    println(f"3000 random roads: checksum {check}");
+}
